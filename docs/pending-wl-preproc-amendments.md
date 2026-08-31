@@ -181,6 +181,21 @@ Every field below is one you already compute or consume, so the format asserts n
 S5 spec adopts `purkinje_vector` and `CalibrationModel` verbatim rather than defining a second
 model that could drift from yours.
 
+## A second, smaller offer: per-trial gaze staleness
+
+`EyeQuality` holds `tracking_loss_fraction` and `blink_rate_hz` per eye, described as *"a lower
+bound on how much of a session is unusable."* We can supply a third quantity of the same kind,
+which the recording alone cannot give you.
+
+Every gaze decision we make records **how stale the sample it used was** — the tracker's own
+`DataQuality` column says detection succeeded, but not that the sample the controller acted on
+was fresh. When a stall overlaps a gaze-contingent epoch the trial now proceeds and is marked,
+rather than aborting, so a per-trial staleness summary is what keeps that decision honest: it
+arrives as a column an analysis must actively drop rather than a flag it can miss.
+
+Offered rather than asked for. If it does not belong in `EyeQuality` it will sit in our own
+behavioural table and you can ignore it.
+
 ## One thing your conditioning table changed on our side
 
 Your measured constellations (`MIN_CONDITIONING`, and the table above it) show a **ring of eight

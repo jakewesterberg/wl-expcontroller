@@ -100,8 +100,19 @@ downstream may quote the paper's 2% as though it described our rig (P1).
 4. **A stall in a critical epoch emits `TRACKER_STALE`** (allocated in S2) so the affected trial
    is identifiable in analysis rather than silently included. This is mandatory whatever else is
    decided: a corrupted gaze-contingent trial that looks clean is worse than a lost one.
-5. **Gaze-contingent updates declare their own policy** — abort on stall, or proceed and mark.
-   Defaulting to abort is the safer choice, and a clean abort beats a silently-wrong trial.
+5. **A stall does not abort the trial** (PI, 2026-08-31). The update lands on the last known
+   gaze position, the trial completes, and it carries `TRACKER_STALE` plus the staleness of the
+   sample actually used. Keeping the trial and deciding in analysis beats discarding data at a
+   rate nobody has measured yet.
+
+   **The risk this accepts, and the mitigation.** A marked-but-included trial can be analysed by
+   someone who did not read the flag. So the mark must not depend on being noticed: staleness
+   is carried as a **per-trial quantity in the behavioural table**, not only as an event, so it
+   arrives as a column an analysis has to actively drop rather than a footnote it can miss.
+   `wl-preproc`'s `EyeQuality` already holds per-eye `tracking_loss_fraction` and
+   `blink_rate_hz` as *"a lower bound on how much of a session is unusable"* — a per-trial
+   staleness summary belongs in the same place and for the same reason, and §8's amendment
+   should offer it.
 
 ### 4.2 Attack the source, not only the symptom
 
@@ -212,6 +223,6 @@ the online fit is validated against `validate_map` before an animal depends on i
 |---|---|---|
 | 1 | `wl-preproc` accepting an online-calibration reader for our format | their `ONLINE` source working at all |
 | 2 | Staleness ceiling and grace-period values | frozen only after V3(a) |
-| 3 | Default policy for a stall inside a gaze-contingent epoch: abort, or proceed and mark | PI — §4.1 item 5 |
+| 3 | ~~Stall policy inside a gaze-contingent epoch~~ **Answered: proceed and mark.** Remaining: whether the per-trial staleness summary reaches `wl-preproc`'s `EyeQuality` | wl-preproc |
 | 4 | Whether both eyes are calibrated independently or a cyclopean map is fitted | S4 disparity work |
 | 5 | Saccade-detection algorithm and its parameters | PI + V3(c) |
