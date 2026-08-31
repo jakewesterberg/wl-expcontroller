@@ -71,6 +71,24 @@ animal cannot be in the chair and at the kiosk at once, so a start-time figure s
 cannot be reconstructed after a restart, reward is refused until a human confirms — and
 cage-side, nobody is watching to notice that it should have been.
 
+### 4.1 Supervision, and why the alert cannot come from the kiosk
+
+Both mechanisms (PI, 2026-08-31): the kiosk's state is visible as readings, **and** a stop raises
+an active alert that reaches a person.
+
+**But the kiosk cannot notify anyone.** It is a lab host, and lab hosts cannot initiate
+connections to wl.works (S3 §1). So the alert cannot originate where the fault is.
+
+**wl.works polls and wl.works alerts.** The kiosk publishes `state` as a reading like any other;
+wl.works, which *can* reach outward, raises the notification when it polls a fault, a fluid
+ceiling, or a fail-closed refusal. One mechanism serves both answers, and the kiosk stays a
+pure responder.
+
+**One residual, stated rather than solved:** a network-dependent alert cannot report a network
+failure. If the kiosk is unreachable, wl.works sees silence — which is indistinguishable from a
+kiosk nobody is using. A local indicator at the cage would close that gap and needs no network;
+worth considering when the hardware is specified (§6 item 2).
+
 ---
 
 ## 5. Recording
@@ -102,5 +120,5 @@ it to.
 | 1 | Recording model (§5) | PI + `wl-preproc` |
 | 2 | Kiosk hardware: panel, touch sensor, reward mechanism, host | S0-equivalent |
 | 3 | Whether the kiosk shares the stimulus vocabulary or a subset | S4 |
-| 4 | Supervision model — is a person notified when it stops? | PI, welfare |
+| 4 | ~~Supervision model~~ **Answered: both — readings on the dashboard, and an active alert.** See §4.1 for how, given the kiosk cannot initiate a connection | wl-works |
 | 5 | ~~Whether kiosk fluid counts against the rig's daily budget~~ **Answered: yes, one budget.** Remaining: wl.works holding the ledger | wl-works |

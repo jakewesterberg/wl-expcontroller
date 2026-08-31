@@ -34,9 +34,11 @@ Owns condition selection, block progression and the counters.
   a balanced design unverifiable.
 - The console shows **achieved against target**, because the question at a rig is never "how many
   have I run" but "how many more do I need."
-- **Aborted trials are re-queued under a declared policy** — immediately, at the end of the
-  block, or not at all. Declared per block, because the right answer differs between a fixation
-  break and a wrong choice.
+- **Aborted trials are re-queued under a declared policy.** Default (PI, 2026-08-31): a
+  **fixation break is re-queued at the end of the block**; a **wrong choice is not**. The
+  reasoning is that a broken fixation is a failure to engage and the condition still owes you a
+  datum, whereas a wrong choice *is* the datum. End of block rather than immediately, so the
+  animal cannot make an easy condition repeat by breaking on the hard one. Overridable per block.
 - Randomisation is seeded and the seed is recorded, so a session's condition order is
   reconstructable.
 
@@ -203,6 +205,6 @@ Everything else may change without a welfare review. These four may not.
 |---|---|---|
 | 1 | Arbitration rule between console and control-API writers (§3.3) | S9 |
 | 2 | Whether the sync box's delivered-line record is readable by us live, or only at session end | §5.1's "continuously" |
-| 3 | Default re-queue policy per abort reason | task templates |
+| 3 | ~~Default re-queue policy~~ **Answered: fixation break re-queued at end of block, wrong choice not, overridable per block** | — |
 | 4 | ~~Session duration from first reward or first trial~~ **Answered: chair time, from head-fixation.** Remaining: whether a hardware head-fix signal is ever worth adding beside the console action | welfare review |
 | 5 | Who plans blocks when wl.works is unreachable | S3 §7's quarantine risk |

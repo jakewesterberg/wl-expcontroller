@@ -7,7 +7,7 @@ spec files — §3 is the part that needs you, and it is fifteen questions.
 **Date:** 2026-08-31. **Specs:** S0–S13 plus the architecture, the spec map and the optics
 drawing. **Open items across them:** 76, of which 6 are already answered, 24 are engineering
 calls I have made (§4), 18 are blocked on other repositories (§5), 13 are blocked on hardware
-that does not exist yet (§6), and **15 need you** (§3) — **seven answered 2026-08-31, eight remain**.
+that does not exist yet (§6), and **15 need you** (§3) — **ten answered 2026-08-31, five remain** — and four of those five are a vendor email, a January measurement, or commissioning.
 
 ---
 
@@ -52,7 +52,7 @@ Six things that changed the design, all found by reading neighbouring repositori
 | 2 | Are SpikeGLX and Intan features **deliberately matched**, or allowed to differ? | Matched, unless a study never switches source. They compute differently by default — SpikeGLX does CAR server-side, RHX filters on GPU |
 | ~~3~~ | ~~Saccade-detection algorithm~~ **Answered: Engbert–Kliegl**, matching their offline suite so disagreement measures staleness rather than algorithm. Parameters from V3(c) | ✔ |
 | ~~4~~ | ~~Session duration from first trial or first reward~~ **Answered: chair time, from head-fixation.** Needed a console action and two new event codes, since it is the one welfare quantity with no hardware line | ✔ |
-| 5 | Default **re-queue policy** by abort reason | Fixation break re-queued at end of block; wrong choice not re-queued. Both overridable per block |
+| ~~5~~ | ~~Default re-queue policy~~ **Answered as recommended:** fixation break re-queued at end of block, wrong choice not, overridable per block | ✔ |
 | ~~6~~ | ~~Runaway thresholds~~ **Answered: rate window plus session total, numbers from protocol.** Per-delivery charge bounds already exist, so a count bound gives a session charge ceiling implicitly | ✔ numbers pending protocol |
 
 ### 3.2 Rig and animals (5)
@@ -70,9 +70,9 @@ Six things that changed the design, all found by reading neighbouring repositori
 | # | Question | Note |
 |---|---|---|
 | ~~12~~ | ~~Kiosk fluid against the daily budget~~ **Answered: yes, one budget.** wl-works holds the ledger and pushes the day's total in `prepare-session`; an unknown prior total fails closed | ✔ |
-| 13 | **Kiosk supervision** — is a person notified when it stops? | Fail-closed already applies; this is about who finds out |
+| ~~13~~ | ~~Kiosk supervision~~ **Answered: both readings and an active alert.** The alert must originate at wl.works, because the host that faults cannot initiate a connection | ✔ |
 | 14 | **Kiosk recording model** | Recommendation: a lighter record of its own, not the session directory — minting a synthetic session id would create the second identity authority S3 spent its length deleting |
-| 15 | **Push the repository.** The declared remote does not exist | Blocks anything resolving `wl.yaml`'s `remote` field |
+| ~~15~~ | ~~Push the repository~~ **Answered: create private and push** | in progress |
 
 ---
 
