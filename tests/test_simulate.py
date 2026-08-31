@@ -148,3 +148,74 @@ def test_behaviour_does_not_change_when_the_display_does():
     slow, fast = breaks_at(1 / 60), breaks_at(1 / 240)
 
     assert abs(slow - fast) < 0.08, f"60 Hz gave {slow:.2f}, 240 Hz gave {fast:.2f}"
+
+
+def test_a_simulated_animal_will_not_look_at_a_stimulus_that_is_not_there():
+    """The property that makes simulation able to catch a display bug.
+
+    A census over a task that asks for a hold on a window whose stimulus was never
+    shown must report the rewarded outcome as unreachable. Without this the subject
+    responds to the transition graph alone, so every "correct graph, wrong
+    experiment" defect simulates perfectly -- which is how a task that removed its
+    fixation point at the moment it asked for fixation passed 2,000 trials with a
+    clean report. Found by review 2026-08-31.
+    """
+    from wl_expcontroller.task import Show, Stimulus
+
+    def task(with_show: bool) -> Trial:
+        fix = Stimulus("fix", at=(0.0, 0.0))
+        return Trial(
+            start="hold",
+            windows=[Window("fix", at=(0.0, 0.0), radius=2.0, on="fix")],
+            states=[
+                State(
+                    "hold",
+                    enter=[Show(fix)] if with_show else [],
+                    go=[
+                        On(Hold("fix", 0.1), Outcome.CORRECT),
+                        On(After(3.0), Outcome.NO_FIXATION),
+                    ],
+                ),
+            ],
+        )
+
+    def census(with_show: bool):
+        return simulate(
+            task(with_show),
+            Subject(seed=11, engagement=1.0, hazards={Entered: 5.0}),
+            trials=200,
+            frame_period=1 / 240,
+        )
+
+    assert census(with_show=True).outcomes[Outcome.CORRECT] > 150
+    # Nothing on the screen: the animal has nothing to acquire, so the task can
+    # only ever time out.
+    assert census(with_show=False).outcomes[Outcome.CORRECT] == 0
+    assert Outcome.CORRECT in census(with_show=False).uncovered(task(False))
+
+
+def test_a_remembered_window_needs_no_stimulus():
+    """A memory-guided saccade is scored against a blank location on purpose, so
+    gating acquisition on a visible stimulus would make the paradigm unsimulatable."""
+    from wl_expcontroller.task import REMEMBERED
+
+    trial = Trial(
+        start="hold",
+        windows=[Window("mem", at=(8.0, 0.0), radius=2.0, on=REMEMBERED)],
+        states=[
+            State(
+                "hold",
+                go=[
+                    On(Hold("mem", 0.1), Outcome.CORRECT),
+                    On(After(3.0), Outcome.NO_RESPONSE),
+                ],
+            ),
+        ],
+    )
+    census = simulate(
+        trial,
+        Subject(seed=11, engagement=1.0, hazards={Entered: 5.0}),
+        trials=200,
+        frame_period=1 / 240,
+    )
+    assert census.outcomes[Outcome.CORRECT] > 150

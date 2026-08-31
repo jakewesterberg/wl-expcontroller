@@ -11,11 +11,19 @@ from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.task import (
     After,
     Custom,
+    Entered,
+    Exited,
+    Hide,
+    Hold,
     Mark,
     Outcome,
     P,
+    Remembered,
+    SaccadeTo,
     Show,
+    Touched,
     Trial,
+    Update,
     Window,
     actions_of,
 )
@@ -47,6 +55,8 @@ def check(
         + _offscreen_stimuli(trial, geometry)
         + _unallocated_outcomes(trial, allocation)
         + _undeclared_windows(trial)
+        + _uncoupled_windows(trial)
+        + _display_faults(trial)
     )
 
 
@@ -377,3 +387,162 @@ def _undeclared_windows(trial: Trial) -> list[Finding]:
                     )
                 )
     return findings
+
+
+# --- What is on the display ------------------------------------------------
+#
+# Every check above this line inspects the transition graph. None of them models
+# the screen, so the class of defect they cannot see is "correct graph, wrong
+# experiment" -- and the first reference task carried one: it showed a fixation
+# point in one state and asked for a hold on it in the next, which under the
+# original state-scoped `Show` removed the point at the exact frame the animal was
+# asked to hold it. Ten checks passed. Found by review 2026-08-31.
+
+
+def _uncoupled_windows(trial: Trial) -> list[Finding]:
+    """Every window says what it scores, or says `REMEMBERED`.
+
+    Unset cannot be allowed to mean "nothing there": that would make the
+    nothing-to-look-at check opt-in, and the tasks most likely to skip it are the
+    ones written fastest. A memory-guided saccade is a real paradigm and its blank
+    location is the point -- so it is spelled out rather than defaulted into.
+    """
+    return [
+        Finding(
+            "uncoupled-window",
+            f"window {window.name!r} does not say which stimulus it scores; give it "
+            f"on='<stimulus>', or on=REMEMBERED if nothing is displayed there",
+        )
+        for window in trial.windows
+        if window.on is None
+    ]
+
+
+def _visible_on_entry(trial: Trial) -> dict[str, frozenset[str]]:
+    """For each state, the stimuli on the display on *every* path into it.
+
+    A **must** analysis, not a may: visible on some route in is not visible. A task
+    whose one branch shows the target and whose other does not works for a hundred
+    trials and then scores a hold against a blank screen on the branch nobody ran.
+
+    Iterated to a fixpoint over the graph rather than walked once, because states
+    reachable by several routes -- and cycles, which the vocabulary permits -- have
+    no single predecessor to inherit from.
+    """
+    every = frozenset(
+        action.stimulus.name for _, action in actions_of(trial) if isinstance(action, Show)
+    )
+    by_name = {state.name: state for state in trial.states}
+    entry: dict[str, frozenset[str]] = {
+        name: (frozenset() if name == trial.start else every) for name in by_name
+    }
+
+    def after(visible: frozenset[str], actions: list) -> frozenset[str]:
+        for action in actions:
+            if isinstance(action, Show):
+                visible = visible | {action.stimulus.name}
+            elif isinstance(action, Hide):
+                visible = visible - {action.stimulus}
+        return visible
+
+    for _ in range(len(by_name) + 1):
+        arriving: dict[str, list[frozenset[str]]] = {name: [] for name in by_name}
+        for state in trial.states:
+            leaving = after(entry[state.name], state.enter)
+            for edge in state.go:
+                if isinstance(edge.to, Outcome):
+                    continue
+                arriving[edge.to].append(after(leaving, edge.do))
+        settled = {
+            name: (
+                frozenset()
+                if name == trial.start
+                else frozenset.intersection(*inbound) if inbound else frozenset()
+            )
+            for name, inbound in arriving.items()
+        }
+        if settled == entry:
+            break
+        entry = settled
+    return entry
+
+
+def _display_faults(trial: Trial) -> list[Finding]:
+    """Guards and actions checked against what is actually on the screen."""
+    scores = {window.name: window.on for window in trial.windows}
+    entry = _visible_on_entry(trial)
+    findings: list[Finding] = []
+
+    for state in trial.states:
+        visible = set(entry.get(state.name, frozenset()))
+        for action in state.enter:
+            findings += _one_action(state.name, action, visible)
+
+        # Guards are evaluated against the display as the state *begins*, after its
+        # entry actions: a state that shows a target and holds it is legal.
+        for edge in state.go:
+            window = getattr(edge.guard, "window", None)
+            if window is not None and isinstance(
+                edge.guard, (Entered, Exited, Hold, SaccadeTo, Touched)
+            ):
+                on = scores.get(window)
+                if isinstance(on, str) and on not in visible:
+                    findings.append(
+                        Finding(
+                            "nothing-to-look-at",
+                            f"state {state.name!r} scores {window!r} against stimulus "
+                            f"{on!r}, which is not on the display there; a hold on a "
+                            f"stimulus that has been taken down cannot be satisfied "
+                            f"by the animal doing the task correctly",
+                        )
+                    )
+            for action in edge.do:
+                findings += _one_action(state.name, action, set(visible))
+    return findings
+
+
+def _one_action(state: str, action, visible: set[str]) -> list[Finding]:
+    """Check one display action against the current screen, and apply it."""
+    if isinstance(action, Show):
+        if action.stimulus.name in visible:
+            return [
+                Finding(
+                    "duplicate-stimulus",
+                    f"state {state!r} shows {action.stimulus.name!r}, which is "
+                    f"already on the display; two live stimuli under one name make "
+                    f"Hide and Update ambiguous",
+                )
+            ]
+        visible.add(action.stimulus.name)
+        return []
+    if isinstance(action, Hide):
+        if action.stimulus not in visible:
+            return [
+                Finding(
+                    "absent-stimulus",
+                    f"state {state!r} hides {action.stimulus!r}, which is not on "
+                    f"the display",
+                )
+            ]
+        visible.discard(action.stimulus)
+        return []
+    if isinstance(action, Update):
+        found = []
+        if action.stimulus not in visible:
+            found.append(
+                Finding(
+                    "absent-stimulus",
+                    f"state {state!r} updates {action.stimulus!r}, which is not on "
+                    f"the display",
+                )
+            )
+        if not action.changes():
+            found.append(
+                Finding(
+                    "empty-update",
+                    f"state {state!r} updates {action.stimulus!r} without changing "
+                    f"anything",
+                )
+            )
+        return found
+    return []

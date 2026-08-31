@@ -76,6 +76,21 @@ class P:
 
 
 @dataclass(frozen=True, slots=True)
+class Remembered:
+    """The marker for a window with deliberately nothing in it.
+
+    A memory-guided saccade scores gaze against a location the animal must hold in
+    memory; the defining feature of the paradigm is that the display is blank there.
+    That is indistinguishable, from the outside, from an author who forgot to show
+    the stimulus -- so the two are made distinguishable by making one of them
+    something you have to write down.
+    """
+
+
+REMEMBERED = Remembered()
+
+
+@dataclass(frozen=True, slots=True)
 class Window:
     """A named region gaze, a joystick or a touch is tested against.
 
@@ -87,6 +102,19 @@ class Window:
     name: str
     at: "tuple[float, float] | P"
     radius: "float | P"
+    #: The stimulus this window scores, by name -- or `REMEMBERED` when nothing is
+    #: displayed there on purpose. **Unset is refused at load**, because the whole
+    #: value of the coupling is that "nothing is there" has to be a claim someone
+    #: made rather than a state the task fell into. With it, a hold on a window
+    #: whose stimulus is not on the display is a load-time error instead of a
+    #: silently different experiment (S1a §11).
+    on: "str | Remembered | None" = None
+    #: `"both"`, `"left"` or `"right"`. The tracker is binocular (architecture
+    #: §1: 500 Hz binocular dDPI), so a per-eye criterion is available and is the
+    #: correct primitive on a stereoscope: under dichoptic presentation the
+    #: non-viewing eye drifts, and scoring it against a conjugate estimate scores
+    #: an average of one eye doing the task and one eye doing nothing.
+    eye: str = "both"
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +436,11 @@ class Stimulus:
     display mode, and on the kiosk.
     """
 
+    #: The handle. `Hide` and `Update` address a stimulus by it, a `Window` names
+    #: the one it scores, and the review artifact labels the timeline with it.
+    #: Positional and required: an anonymous stimulus can be put up and never
+    #: referred to again, which is the whole of what went wrong.
+    name: str
     at: "tuple[float, float] | P"
     looks: "Appearance | P" = field(default_factory=Disc)
     disparity: "float | P" = 0.0
@@ -425,11 +458,73 @@ class Stimulus:
     # check 8 moved to reasoning over parameter *ranges* rather than values.
 
 
+class Unchanged:
+    """`Update`'s "leave this alone", which `None` cannot mean.
+
+    `None` is a legal value for several stimulus properties, so a default of `None`
+    would make "set it to nothing" and "do not touch it" the same instruction.
+    """
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "UNCHANGED"
+
+
+UNCHANGED = Unchanged()
+
+
 @dataclass(frozen=True, slots=True)
 class Show(Action):
-    """Put a stimulus on the display for as long as its state is current."""
+    """Put a stimulus on the display. **It stays until `Hide` or the end of the
+    trial** -- not until its state ends.
+
+    State-scoped presentation was the original wording and it was wrong in a way no
+    check could see: the reference task shows a fixation point in one state and asks
+    for a hold on it in the next, so the point was removed at the exact frame the
+    animal was asked to hold it. The task was written correctly and passed all ten
+    checks. Persistence also makes `Hide` and `Update` mean something, which
+    state-scoping did not.
+    """
 
     stimulus: Stimulus
+
+
+@dataclass(frozen=True, slots=True)
+class Hide(Action):
+    """Take a stimulus off the display, by name."""
+
+    stimulus: str
+
+
+@dataclass(frozen=True, slots=True)
+class Update(Action):
+    """Change properties of a stimulus already on the display, without an offset.
+
+    Change detection, apparent motion and gaze-contingent updating all need one
+    uninterrupted presentation with one property different. `Hide` followed by
+    `Show` inserts an offset transient and at least one blank frame -- which is the
+    exact confound those paradigms are built to avoid, so expressing them that way
+    would be expressing a different experiment.
+    """
+
+    stimulus: str
+    at: "tuple[float, float] | P | Unchanged" = UNCHANGED
+    looks: "Appearance | P | Unchanged" = UNCHANGED
+    disparity: "float | P | Unchanged" = UNCHANGED
+    eye: "str | Unchanged" = UNCHANGED
+
+    def changes(self) -> dict:
+        """The properties this actually sets. Empty means the action does nothing,
+        which the checker refuses."""
+        return {
+            field_name: value
+            for field_name, value in (
+                ("at", self.at),
+                ("looks", self.looks),
+                ("disparity", self.disparity),
+                ("eye", self.eye),
+            )
+            if not isinstance(value, Unchanged)
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -532,7 +627,10 @@ def actions_of(trial: Trial) -> list[tuple[str, Action]]:
 
 
 def FixPoint(
-    at: "tuple[float, float] | P" = (0.0, 0.0), size: "float | P" = 0.3, **kwargs
+    name: str = "fix",
+    at: "tuple[float, float] | P" = (0.0, 0.0),
+    size: "float | P" = 0.3,
+    **kwargs,
 ) -> Stimulus:
     """A small disc at the origin: the fixation point."""
-    return Stimulus(at=at, looks=Disc(size=size), **kwargs)
+    return Stimulus(name=name, at=at, looks=Disc(size=size), **kwargs)

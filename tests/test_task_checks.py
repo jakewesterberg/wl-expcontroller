@@ -7,6 +7,7 @@ generated task is caught before an animal sees it -- pitfalls P15.
 import pytest
 
 from wl_expcontroller.task import (
+    REMEMBERED,
     After,
     Entered,
     Bounded,
@@ -56,7 +57,7 @@ def test_a_state_with_no_time_bound_is_reported_as_an_unbounded_wait():
     explicit declaration that it has none."""
     trial = Trial(
         start="hold_fix",
-        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0, on=REMEMBERED)],
         states=[
             State(
                 "hold_fix",
@@ -272,7 +273,7 @@ def test_a_stimulus_outside_the_field_is_refused():
         states=[
             State(
                 "show",
-                enter=[Show(Stimulus(at=(30.0, 0.0)))],
+                enter=[Show(Stimulus("s", at=(30.0, 0.0)))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -295,7 +296,7 @@ def test_disparity_can_push_one_eye_off_screen_from_a_legal_cyclopean_position()
         states=[
             State(
                 "show",
-                enter=[Show(Stimulus(at=(16.5, 0.0), disparity=2.0))],
+                enter=[Show(Stimulus("s", at=(16.5, 0.0), disparity=2.0))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -316,7 +317,7 @@ def test_a_terminal_outcome_with_no_allocated_marker_is_refused():
     allocation = Allocation(outcomes={Outcome.CORRECT: 34})
     trial = Trial(
         start="decide",
-        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0, on=REMEMBERED)],
         states=[
             State(
                 "decide",
@@ -365,7 +366,7 @@ def test_a_task_referencing_an_undeclared_window_is_refused():
     exactly what an experimenter tunes, so they cannot be implicit."""
     trial = Trial(
         start="await_fix",
-        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0, on=REMEMBERED)],
         states=[
             State(
                 "await_fix",
@@ -394,7 +395,7 @@ def test_a_position_parameter_whose_range_leaves_the_field_is_refused():
         states=[
             State(
                 "show",
-                enter=[Show(Stimulus(at=(P("ecc"), 0.0)))],
+                enter=[Show(Stimulus("s", at=(P("ecc"), 0.0)))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -413,7 +414,7 @@ def test_a_position_parameter_whose_range_stays_inside_the_field_is_accepted():
         states=[
             State(
                 "show",
-                enter=[Show(Stimulus(at=(P("ecc"), 0.0)))],
+                enter=[Show(Stimulus("s", at=(P("ecc"), 0.0)))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],

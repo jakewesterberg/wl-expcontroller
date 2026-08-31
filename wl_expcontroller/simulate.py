@@ -22,7 +22,14 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from wl_expcontroller.run import Result, run_trial
-from wl_expcontroller.task import Entered, Exited, Guard, Outcome, Trial
+from wl_expcontroller.task import (
+    Entered,
+    Exited,
+    Guard,
+    Outcome,
+    Remembered,
+    Trial,
+)
 
 if TYPE_CHECKING:
     from wl_expcontroller.record import SessionRecord
@@ -71,6 +78,11 @@ class Subject:
     _inside: set = field(init=False, default_factory=set, repr=False)
     _windows: set = field(init=False, default_factory=set, repr=False)
     _frame: int = field(init=False, default=0, repr=False)
+    #: What is on the display right now, and which stimulus each window scores.
+    #: The second is set by `simulate` from the trial, so a subject need not be
+    #: constructed knowing the task.
+    _visible: set = field(init=False, default_factory=set, repr=False)
+    _scores: dict = field(init=False, default_factory=dict, repr=False)
     #: Set by `simulate`, so a subject need not be constructed knowing the rig.
     _frame_period: float = field(init=False, default=1 / 240, repr=False)
 
@@ -80,7 +92,33 @@ class Subject:
     def new_trial(self) -> None:
         self._engaged = self._rng.random() < self.engagement
         self._inside = set()
+        self._visible = set()
         self._frame = 0
+
+    def display(self, visible, frame: int) -> None:
+        """See the screen.
+
+        **An animal cannot look at something that is not there**, and until this
+        existed the subject responded to the transition graph alone -- so every
+        "correct graph, wrong experiment" defect simulated perfectly. A task that
+        took its fixation point down at the moment it asked for fixation ran 2,000
+        trials and reported clean.
+        """
+        self._visible = set(visible)
+
+    def _lookable(self, window: str) -> bool:
+        """Whether there is anything at `window` to look at.
+
+        An uncoupled window is not gated: the coupling is what the checker exists
+        to require, and a subject that silently treated "not declared" as "not
+        there" would report an authoring omission as an animal who will not work.
+        `REMEMBERED` is not gated either, by definition -- a memory-guided saccade
+        is scored against a blank location on purpose.
+        """
+        on = self._scores.get(window)
+        if on is None or isinstance(on, Remembered):
+            return True
+        return on in self._visible
 
     def _per_frame(self, rate: float) -> float:
         """A rate in events per second as a per-frame probability."""
@@ -106,9 +144,20 @@ class Subject:
         leave = self._per_frame(self.hazards.get(Exited, 0.0))
         for window in list(self._windows):
             if window in self._inside:
-                if leave > 0.0 and self._rng.random() < leave:
+                # A stimulus that disappears takes the animal's gaze with it.
+                # Conservative on purpose: an animal *can* hold gaze on a blank
+                # location, but no paradigm asks it to without saying so, and this
+                # is the assumption that turns a vanished stimulus into a visible
+                # break rather than a silently different experiment.
+                if not self._lookable(window):
                     self._inside.discard(window)
-            elif enter > 0.0 and self._rng.random() < enter:
+                elif leave > 0.0 and self._rng.random() < leave:
+                    self._inside.discard(window)
+            elif (
+                enter > 0.0
+                and self._lookable(window)
+                and self._rng.random() < enter
+            ):
                 self._inside.add(window)
 
     def in_window(self, window: str, frame: int) -> bool:
@@ -135,6 +184,8 @@ class Subject:
         # a target and then never register the animal as looking at it.
         window = getattr(guard, "window", None)
         if window is not None:
+            if not self._lookable(window):
+                return False
             self._inside.add(window)
         return True
 
@@ -205,6 +256,7 @@ def simulate(
     visited: set[str] = set()
     hangs = 0
     subject._frame_period = frame_period
+    subject._scores = {window.name: window.on for window in trial.windows}
     for index in range(trials):
         subject.new_trial()
         result: Result = run_trial(

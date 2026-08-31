@@ -13,19 +13,24 @@ time is the loop's own property rather than something the world reports.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Protocol
+from dataclasses import dataclass, field, replace
+from typing import Mapping, NamedTuple, Protocol
 
 from wl_expcontroller.task import (
+    Action,
     After,
     Entered,
     Exited,
     Guard,
+    Hide,
     Hold,
     Outcome,
     P,
     Score,
+    Show,
+    Stimulus,
     Trial,
+    Update,
 )
 
 
@@ -47,6 +52,18 @@ class World(Protocol):
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool: ...
 
+    def display(self, visible: Mapping[str, Stimulus], frame: int) -> None:
+        """What is on the screen this frame.
+
+        Called every frame, before the frame's guards are evaluated, with the
+        stimuli a real display would be showing at that moment. On a rig this is
+        what draws; in a simulated session it is what the subject can respond to.
+
+        **Without it the display was not modelled anywhere**, so every check
+        inspected the transition graph and none could see that a task was holding
+        fixation on a point it had taken down.
+        """
+
 
 @dataclass(frozen=True, slots=True)
 class Quiet:
@@ -61,6 +78,9 @@ class Quiet:
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool:
         return False
+
+    def display(self, visible: Mapping[str, Stimulus], frame: int) -> None:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +102,30 @@ class Scripted:
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool:
         return self.at_frame.get(guard) == frame
+
+    def display(self, visible: Mapping[str, Stimulus], frame: int) -> None:
+        return None
+
+
+class Shown(NamedTuple):
+    """One stimulus's time on the display.
+
+    `on` is the first frame it was visible and `off` the first frame it was not,
+    so a duration is a subtraction and a presentation still up when the trial ended
+    has `off is None`. Half-open because the alternative -- last-visible-frame --
+    makes every duration an off-by-one waiting to be reported as a result.
+    """
+
+    name: str
+    on: int
+    off: int | None
+
+
+class Changed(NamedTuple):
+    """An `Update` taking effect: which stimulus, and the first frame it differed."""
+
+    name: str
+    frame: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +149,12 @@ class Result:
     #: Scored responses in the order they happened. Empty for a task that scores
     #: only at the end, which is most of them.
     scored: tuple[Scored, ...] = ()
+    #: What was on the display and when. This is the realized timeline, not the
+    #: declared one: comparing the two is how a task whose stimulus was up for a
+    #: different duration than its author wrote gets caught.
+    shown: tuple[Shown, ...] = ()
+    #: Every `Update` that took effect, in order.
+    changed: tuple[Changed, ...] = ()
 
 
 def _resolve(value: float | P, values: dict[str, float]) -> float:
@@ -122,6 +172,57 @@ def _resolve(value: float | P, values: dict[str, float]) -> float:
             )
         return values[value.name]
     return value
+
+
+def _apply(
+    actions: "list[Action]",
+    visible: "dict[str, Stimulus]",
+    shown: "list[Shown]",
+    open_at: "dict[str, int]",
+    changed: "list[Changed]",
+    frame: int,
+) -> None:
+    """Execute the display actions among `actions`, effective from `frame`.
+
+    **A display action decided while processing frame N takes effect on frame N+1.**
+    The loop chooses during a frame what the *next* flip will carry; recording it as
+    though it were already visible would build the one-frame lie into every realized
+    duration this system reports, and reporting durations honestly is most of why it
+    exists.
+
+    Non-display actions are not this function's business: `Score` is the loop's, and
+    `Mark` and `Reward` belong to the I/O layer, which has no simulator yet.
+    """
+    for action in actions:
+        if isinstance(action, Show):
+            name = action.stimulus.name
+            if name in visible:
+                raise ValueError(
+                    f"stimulus {name!r} is already on the display; two live "
+                    f"stimuli under one name would make Hide and Update ambiguous"
+                )
+            visible[name] = action.stimulus
+            open_at[name] = len(shown)
+            shown.append(Shown(name, frame, None))
+        elif isinstance(action, Hide):
+            if action.stimulus not in visible:
+                raise ValueError(
+                    f"stimulus {action.stimulus!r} is not on the display, so it "
+                    f"cannot be hidden"
+                )
+            del visible[action.stimulus]
+            index = open_at.pop(action.stimulus)
+            shown[index] = shown[index]._replace(off=frame)
+        elif isinstance(action, Update):
+            if action.stimulus not in visible:
+                raise ValueError(
+                    f"stimulus {action.stimulus!r} is not on the display, so it "
+                    f"cannot be updated"
+                )
+            visible[action.stimulus] = replace(
+                visible[action.stimulus], **action.changes()
+            )
+            changed.append(Changed(action.stimulus, frame))
 
 
 def run_trial(
@@ -154,7 +255,18 @@ def run_trial(
     }
     was_inside: dict[str, bool] = dict.fromkeys(tracked, False)
     holding_since: dict[str, int] = {}
+
+    # The display. The start state's entry actions run before the loop, so what
+    # they put up is visible on frame 1 -- the same one-frame rule every other
+    # entry action follows, counted from a notional frame 0.
+    visible: dict[str, Stimulus] = {}
+    shown: list[Shown] = []
+    open_at: dict[str, int] = {}
+    changed: list[Changed] = []
+    _apply(current.enter, visible, shown, open_at, changed, 1)
+
     for frame in range(1, max_frames + 1):
+        world.display(visible, frame)
         elapsed = (frame - entered_at) * frame_period
         bound = values or {}
 
@@ -195,8 +307,18 @@ def run_trial(
                 if isinstance(action, Score)
             )
             if isinstance(edge.to, Outcome):
-                return Result(edge.to, frame, tuple(visited), tuple(scored))
+                _apply(edge.do, visible, shown, open_at, changed, frame + 1)
+                return Result(
+                    edge.to,
+                    frame,
+                    tuple(visited),
+                    tuple(scored),
+                    tuple(shown),
+                    tuple(changed),
+                )
             current, entered_at = by_name[edge.to], frame
+            _apply(edge.do, visible, shown, open_at, changed, frame + 1)
+            _apply(current.enter, visible, shown, open_at, changed, frame + 1)
             # **Entering a state clears every hold.** A hold declared in a state
             # means held continuously *since that state began*. Carrying the window's
             # own entry frame across a transition let a later state's hold be
@@ -209,4 +331,6 @@ def run_trial(
             visited.append(current.name)
             break
         was_inside = inside_now
-    return Result(None, max_frames, tuple(visited), tuple(scored))
+    return Result(
+        None, max_frames, tuple(visited), tuple(scored), tuple(shown), tuple(changed)
+    )

@@ -184,6 +184,10 @@ class _Membership:
     def happened(self, guard, state: str, frame: int) -> bool:
         return False
 
+    def display(self, visible, frame: int) -> None:
+        """Blind on purpose: these tests are about how membership becomes entering,
+        leaving and holding, which does not depend on what is drawn."""
+
 
 def test_entered_exited_and_hold_are_derived_from_membership_not_asked_of_the_world():
     """The property that makes worlds interchangeable.

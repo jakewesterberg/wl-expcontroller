@@ -34,13 +34,18 @@ from wl_expcontroller.task import (
     Window,
 )
 
-FIX = Stimulus(at=(0.0, 0.0), looks=Disc(size=0.3))
+FIX = Stimulus("fix", at=(0.0, 0.0), looks=Disc(size=0.3))
 
 adaptive_detection = Trial(
     start="await_fix",
     windows=[
-        Window("fix", at=(0.0, 0.0), radius=P("fix_window")),
-        Window("target", at=(P("target_position"), 0.0), radius=P("target_window")),
+        Window("fix", at=(0.0, 0.0), radius=P("fix_window"), on="fix"),
+        Window(
+            "target",
+            at=(P("target_position"), 0.0),
+            radius=P("target_window"),
+            on="target",
+        ),
     ],
     params=[
         Param("fix_timeout", unit="s", low=0.5, high=10.0),
@@ -83,7 +88,16 @@ adaptive_detection = Trial(
             # that moves the array from 0 to 10 degrees is a value change applied
             # in an ITI -- not a new task, and not a new block (S3 §7).
             "stim_on",
-            enter=[Show(Stimulus(at=(P("target_position"), 0.0), looks=P("target_looks"))), Mark(4097)],
+            enter=[
+                Show(
+                    Stimulus(
+                        "target",
+                        at=(P("target_position"), 0.0),
+                        looks=P("target_looks"),
+                    )
+                ),
+                Mark(4097),
+            ],
             go=[
                 On(SaccadeTo("target"), "verify", do=[Mark(4098)]),
                 On(After(P("response_window")), Outcome.NO_RESPONSE),

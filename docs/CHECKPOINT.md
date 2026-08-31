@@ -31,14 +31,14 @@ January validates rather than discovers. Nothing here has touched hardware.
 |---|---|
 | Tests | 96, green |
 | CI | pytest on 3.11 and 3.13, plus a **mutation gate over every module** — 60 functions, 0 survivors |
-| Load-time checks | **9 of S1 §9's 10, plus S1a's window check.** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
+| Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus four display checks.** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
 | Hardware verified | **none** |
 
 ### What exists
 
 - `task.py` — the declarative trial: states, guarded transitions, actions, parameters.
-- `check.py` — **all ten** load-time checks. Check 8 runs *per eye, after disparity*:
+- `check.py` — the load-time checks. Check 8 runs *per eye, after disparity*:
   a stimulus inside the cyclopean field can still put one eye's image outside it.
 - `geometry.py` — the split-screen field, derived from S0 §5.2's formula with tests
   asserting agreement with the optics drawing.
@@ -85,7 +85,7 @@ runs out of context before it produces anything.**
 | | Package | Exit condition | Read | Blocked on |
 |---|---|---|---|---|
 | ~~P0~~ | ~~Make the repo resumable~~ | **done 2026-08-31** | — | — |
-| ~~P1~~ | ~~Finish the task layer~~ | **done 2026-08-31** — 10/10 checks, both reference tasks, `wlx check` and `wlx review` | — | — |
+| ~~P1~~ | ~~Finish the task layer~~ | **done 2026-08-31** — checks, both reference tasks, `wlx check` and `wlx review`. Reopened the same day: review found the display was modelled nowhere | — | — |
 | ~~P2~~ | ~~Session record~~ | **done 2026-08-31** — streamed JSONL, config snapshot, parameter-change log, and `run_session` writing a real directory | — | — |
 | ~~P3~~ | ~~`taskd` skeleton~~ | **done 2026-08-31 — roadmap M1 met**: 1,000 deterministic trials, headless, full record, `wlx run` | — | — |
 | **P4** | Demo mode: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
@@ -165,3 +165,16 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    per second — a per-frame number describes a different animal at every refresh rate. It fires eventually given
    enough frames, so `NO_FIXATION` — the commonest real abort — was unreachable in
    every simulated session until engagement became per-trial.
+
+9. **Every check inspected the same object, so a whole defect class was invisible.**
+   Unreachable-state, unbounded-wait, no-outcome-path, shadowing — all three views of
+   the transition graph. Nothing modelled what was *on the screen*, when, or for how
+   long, so the residual class was **"correct graph, wrong experiment"**, and the
+   first reference task carried one: `Show` was scoped to its state, so the fixation
+   point was removed at the exact frame the animal was asked to hold it. The task read
+   correctly, all ten checks passed, and 2,000 simulated trials reported clean.
+   Fixed by making `Show` persist until `Hide`, giving stimuli names, coupling each
+   `Window` to the stimulus it scores, and adding both a static check
+   (`nothing-to-look-at`) and a dynamic one (a simulated animal will not look at a
+   stimulus that is not there). Found by review 2026-08-31.
+   **The general lesson: ask what a gate is looking at, not how many gates there are.**

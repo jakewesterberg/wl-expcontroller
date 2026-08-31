@@ -29,14 +29,19 @@ from wl_expcontroller.task import (
     Window,
 )
 
-FIX = Stimulus(at=(0.0, 0.0), looks=Disc(size=0.3))
-TARGET = Stimulus(at=(P("target_position"), 0.0), looks=P("target_looks"))
+FIX = Stimulus("fix", at=(0.0, 0.0), looks=Disc(size=0.3))
+TARGET = Stimulus("target", at=(P("target_position"), 0.0), looks=P("target_looks"))
 
 detection = Trial(
     start="await_fix",
     windows=[
-        Window("fix", at=(0.0, 0.0), radius=P("fix_window")),
-        Window("target", at=(P("target_position"), 0.0), radius=P("target_window")),
+        Window("fix", at=(0.0, 0.0), radius=P("fix_window"), on="fix"),
+        Window(
+            "target",
+            at=(P("target_position"), 0.0),
+            radius=P("target_window"),
+            on="target",
+        ),
     ],
     params=[
         Param("fix_timeout", unit="s", low=0.5, high=10.0),
