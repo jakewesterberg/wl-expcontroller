@@ -127,7 +127,10 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
     """
     original = path.read_text()
     pattern = (
-        rf'( *def {re.escape(function)}\([^)]*\)[^:]*:\n(?: *""".*?"""\n)?)'
+        # `[^\n]*` after the colon so a trailing comment does not defeat the match.
+        # `def __repr__(self) -> str:  # pragma: no cover` did, and under `--all`
+        # that aborted the sweep at that line.
+        rf'( *def {re.escape(function)}\([^)]*\)[^:]*:[^\n]*\n(?: *""".*?"""\n)?)'
     )
     def _neuter(match: re.Match) -> str:
         head = match.group(0)
@@ -136,7 +139,12 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
 
     mutated, count = re.subn(pattern, _neuter, original, flags=re.S)
     if count == 0:
-        raise SystemExit(f"could not find {function} in {path}")
+        # A miss is reported, never fatal. Under `--all` an abort here stopped the
+        # sweep at the first unmatchable signature, and every function *after* it
+        # went silently unmutated -- which reads as a completed run. That is the
+        # same false-clean failure this whole script exists to prevent, and it is
+        # the fourth blind spot of exactly that shape.
+        return None, f"could not find {function}"
 
     try:
         path.write_text(mutated)
@@ -182,16 +190,24 @@ def main() -> int:
     print(f"baseline: {baseline}\n")
 
     survivors = []
+    skipped = []
     for name in targets:
         caught, summary = mutate(path, name, args.returns)
+        if caught is None:
+            skipped.append(name)
+            print(f"  SKIPPED   {name:32} {summary}")
+            continue
         print(f"  {'caught  ' if caught else 'SURVIVED'}  {name:32} {summary}")
         if not caught:
             survivors.append(name)
 
     ok, summary = _run_suite()
     print(f"\nrestored: {summary}")
+    if skipped:
+        print(f"\nNOT MUTATED (signature not matched): {', '.join(skipped)}")
     if survivors:
         print(f"\nNOT COVERED: {', '.join(survivors)}")
+    if survivors or skipped:
         return 1
     return 0 if ok else 1
 

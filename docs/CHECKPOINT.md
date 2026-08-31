@@ -167,11 +167,15 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    its next run, and the rule stands that **nothing is committed without a green
    suite in the same breath**. `git add -A` after a long-running command is the shape
    of the mistake.
-7. **The mutation harness has been wrong three times, always the same way** — quietly
+7. **The mutation harness has been wrong four times, always the same way** — quietly
    examining nothing and reporting success. It matched only `_`-prefixed names, then
-   only module-level `def`, then gave up entirely on a name defined twice. Each time
-   it found real gaps once fixed, including a dead `per_eye` method and an untested
-   CLI. **If a module reports few functions, distrust the tool before the code.**
+   only module-level `def`, then gave up entirely on a name defined twice, then
+   **aborted the whole `--all` sweep at the first signature it could not match** --
+   `def __repr__(self) -> str:  # pragma: no cover`, whose trailing comment defeated
+   the pattern -- so every function after it went unmutated and the run read as
+   complete. Each time it found real gaps once fixed, including a dead `per_eye`
+   method and an untested CLI. **If a module reports few functions, distrust the tool
+   before the code**, and a miss is now reported rather than fatal.
 8. **A pure hazard model cannot produce non-engagement**, and hazards are rates
    per second — a per-frame number describes a different animal at every refresh rate. It fires eventually given
    enough frames, so `NO_FIXATION` — the commonest real abort — was unreachable in
