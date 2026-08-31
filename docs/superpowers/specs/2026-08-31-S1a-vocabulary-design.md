@@ -205,7 +205,7 @@ which is why the field names them separately rather than parameterising one.
 stimulus would have appeared*, and making that explicit keeps catch and non-catch
 trials structurally identical, which is what makes them comparable.
 
-## 10. Open — disparity-defined form
+## 10. Settled 2026-08-31 — disparity-defined form
 
 **The gap that matters for a stereo lab, and it is not in the list above.**
 
@@ -219,8 +219,21 @@ Adding it means either an `RDS` appearance carrying its own figure and disparity
 a general way for an appearance to be *defined* by disparity rather than merely
 displaced by it — which would also cover disparity-defined edges and surfaces.
 
-This needs the PI, because which of those two shapes is right depends on what the
-disparity experiments actually manipulate.
+**Settled: both, split by what they describe.** `RDS` is an appearance carrying
+`correlation` — +1 correlated, 0 uncorrelated, **-1 anticorrelated** — because
+anticorrelation is not a shape at all and cannot be expressed as a displacement, and
+it is the control every disparity paper is asked for. Separately, `Form` is a
+disparity *field* across a patch (`Corrugation`, `Slant`), because a patch carrying
+one has no single disparity to be displaced by. A `Slant`'s extreme depends on how
+wide the patch is, so its range is answered against the aperture rather than quoted
+alone.
+
+Check 8 adds a form's extremes to the stimulus's own disparity: a patch centred
+safely can still push one eye's image off the panel at the extreme of its
+corrugation, and only that eye's. A stereogram declared for one eye is refused —
+monocular presentation of one half is a field of random dots with no disparity, and
+it would still run, still record, and still appear in a figure as a disparity
+condition.
 
 ## 11. Still open — the naming, which is the point
 
@@ -237,3 +250,49 @@ confident:
    is right, but `Held("fix", 300ms)` can read as a duration already elapsed.
 6. Whether windows should be `Window` or `Region` — the latter also covers touch
    targets, which are not gaze windows at all.
+
+
+## 12. Added 2026-08-31 after review — what the graph could not see
+
+Two independent reviews found the same shape of problem: **every gate inspected the
+transition graph**, so the residual defect class was "correct graph, wrong
+experiment". Five additions, each closing a paradigm that was unwritable or a defect
+that was uncatchable.
+
+**The display is state.** `Show` persists until `Hide` or the end of the trial rather
+than being scoped to its state — the original wording removed a fixation point at the
+exact frame the animal was asked to hold it, in a task that read correctly and passed
+all ten checks. Stimuli carry **names**; `Hide` and `Update` address them. `Update`
+changes a live stimulus without the offset transient `Hide`+`Show` inserts, which is
+the confound change detection exists to avoid. A `Window` names the stimulus it
+scores, or `REMEMBERED` when the location is deliberately blank; unset is refused,
+because otherwise the check is opt-in and the tasks likeliest to skip it are the ones
+written fastest.
+
+**Colour, device-independently.** `xyY` names a light absolutely; `DKL` is a
+modulation from the background along the cardinal cone-opponent axes, where `lum=0`
+is isoluminant by construction. Colour sits on the **appearance**, not the stimulus,
+so "red among green" and "circles among squares" are the same kind of switch and both
+are values a parameter can carry. Colour without a measured `Calibration` is refused,
+and a calibration that does not name whose luminous efficiency it used cannot carry an
+isoluminance claim — a macaque V(lambda) is not a human one.
+
+**Set size as a value.** `Array` is an appearance, so an N-item search array is one
+named stimulus and the rest of the system needs to know nothing about arrays.
+`ItemWindows` is one declaration that becomes n windows plus the aliases
+`<of>.target` and `<of>.distractor`. The distractor alias is the point: enumerating
+error saccades per item is the same structure-versus-value problem one level down,
+and it would make the measurement search tasks exist to produce unavailable.
+`target-outside-array` reasons over declared **ranges**, because set size and target
+index are both live.
+
+**Per-eye criteria.** `Window.eye` is honoured by the loop, which previously parsed
+and dropped it. The tracker is binocular, and on a stereoscope a per-eye criterion is
+the correct primitive: under dichoptic presentation the non-viewing eye drifts, so a
+conjugate estimate averages one eye doing the task with one eye doing nothing. A
+window scoring the eye its stimulus is not shown to is refused.
+
+**The simulated animal sees the screen.** `World.display` is called every frame with
+what a real display would carry, and a subject will not acquire a window whose
+coupled stimulus is absent. Without it the subject responded to the transition graph
+alone, so every defect in this section simulated perfectly.
