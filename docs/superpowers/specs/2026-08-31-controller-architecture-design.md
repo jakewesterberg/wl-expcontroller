@@ -758,6 +758,6 @@ auditory performance feedback, plus vocalization monitoring.
 | `docs/roadmap.md` | Stim tiers 1–2 move into v1; parity gate M5 loses its comparator; demo mode and preflight become gated deliverables |
 | `docs/validation.md` | V2b, V7, V8, V9 added; V4 widened to both neural paths |
 | `README.md` | Two rigs, not 3–4; bridge language removed |
-| `docs/superpowers/specs/` | **S0**–**S6** written, plus the stereoscope optics drawing |
+| `docs/superpowers/specs/` | **S0**–**S6** and **S8** written, plus the stereoscope optics drawing |
 | `docs/design/decisions/` | **ADR-0007** (event vocabulary ownership) |
 | `docs/design/decisions/` | **ADR-0005** (day-one stack and interchangeability; supersedes ADR-0001 decision 3) and **ADR-0006** (task representation) written. Lab-host protocol adoption (D11) still needs an ADR once S10 is specified. |
