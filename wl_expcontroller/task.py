@@ -119,6 +119,45 @@ class Action:
 
 
 @dataclass(frozen=True, slots=True)
+class Stimulus:
+    """Declared in **cyclopean degrees**, with disparity as a property (S4 §2).
+
+    A task never names a pixel: the display module maps cyclopean position to
+    per-eye viewport pixels using measured optics. That is what lets one task run
+    at a different viewing distance, on a different panel, in either display mode,
+    and on the kiosk -- and it is why a monocular task is the zero-disparity case
+    of the stereo path rather than a separate one.
+    """
+
+    at: tuple[float, float]
+    disparity: float = 0.0
+
+    def per_eye(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Left and right image positions: equal and opposite horizontal offsets."""
+        x, y = self.at
+        half = self.disparity / 2.0
+        return ((x - half, y), (x + half, y))
+
+
+@dataclass(frozen=True, slots=True)
+class FixPoint(Stimulus):
+    size: float = 0.3
+
+
+@dataclass(frozen=True, slots=True)
+class Blob(Stimulus):
+    size: float = 1.0
+    contrast: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Show(Action):
+    """Put a stimulus on the display for as long as its state is current."""
+
+    stimulus: Stimulus
+
+
+@dataclass(frozen=True, slots=True)
 class Custom(Action):
     """Behaviour the vocabulary lacks, named rather than contained (S1 §8).
 

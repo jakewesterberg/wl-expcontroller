@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.components import Registry
-from wl_expcontroller.task import After, Custom, Emit, Outcome, P, Trial
+from wl_expcontroller.geometry import Geometry
+from wl_expcontroller.task import After, Custom, Emit, Outcome, P, Show, Trial
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +24,7 @@ def check(
     trial: Trial,
     allocation: Allocation = PROVISIONAL,
     components: Registry | None = None,
+    geometry: Geometry | None = None,
 ) -> list[Finding]:
     return (
         _unreachable_states(trial)
@@ -32,6 +34,8 @@ def check(
         + _unallocated_codes(trial, allocation)
         + _undeclared_parameters(trial)
         + _custom_components(trial, components or Registry())
+        + _offscreen_stimuli(trial, geometry)
+        + _unallocated_outcomes(trial, allocation)
     )
 
 
@@ -232,3 +236,68 @@ def _custom_components(trial: Trial, components: Registry) -> list[Finding]:
                     )
                 )
     return findings
+
+
+def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]:
+    """S1 §9 check 8: every stimulus can actually be shown.
+
+    Checked **per eye, after disparity**, not at the cyclopean position. Disparity
+    is applied as equal and opposite horizontal offsets, so a stimulus comfortably
+    inside the field can still put one eye's image outside it -- and only that
+    eye's. On a split-screen stereoscope that is a stimulus the animal fuses on one
+    side and loses on the other, which is a far stranger failure than simply not
+    seeing it.
+
+    Skipped when no geometry is supplied, because a task is not wrong for being
+    checked without a rig; it is unchecked, and the caller knows which it wanted.
+    """
+    if geometry is None:
+        return []
+    findings: list[Finding] = []
+    for state in trial.states:
+        for action in state.enter:
+            if not isinstance(action, Show):
+                continue
+            for eye, (x, y) in zip(("left", "right"), action.stimulus.per_eye()):
+                if geometry.can_show(x, y):
+                    continue
+                where = (
+                    f"at {action.stimulus.at}"
+                    if action.stimulus.disparity == 0.0
+                    else f"at {action.stimulus.at} with disparity "
+                    f"{action.stimulus.disparity}, putting the {eye} eye's image "
+                    f"at ({x:.1f}, {y:.1f})"
+                )
+                findings.append(
+                    Finding(
+                        "stimulus-off-screen",
+                        f"state {state.name!r} shows a stimulus {where}, outside "
+                        f"the ±{geometry.half_field_h_deg:.1f}° × "
+                        f"±{geometry.half_field_v_deg:.1f}° field",
+                    )
+                )
+                break
+    return findings
+
+
+def _unallocated_outcomes(trial: Trial, allocation: Allocation) -> list[Finding]:
+    """S1 §9 check 5: every terminal outcome maps to an allocated marker.
+
+    An outcome with no marker is a trial that ends without saying how: the
+    recording carries the timing of a decision whose result exists only in our
+    files, and the pairing between the two is exactly what the hardware-truth rule
+    exists to avoid depending on.
+    """
+    seen: list[object] = []
+    for state in trial.states:
+        for edge in state.go:
+            if isinstance(edge.to, Outcome) and edge.to not in seen:
+                seen.append(edge.to)
+    return [
+        Finding(
+            "unallocated-outcome",
+            f"outcome {outcome.name} maps to no allocated marker",
+        )
+        for outcome in seen
+        if outcome not in allocation.outcomes
+    ]

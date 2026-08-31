@@ -8,6 +8,7 @@ import pytest
 
 from wl_expcontroller.task import (
     After,
+    Blob,
     Bounded,
     Custom,
     GazeLeaves,
@@ -18,12 +19,16 @@ from wl_expcontroller.task import (
     Emit,
     Response,
     Reward,
+    Show,
     State,
     Trial,
 )
 from wl_expcontroller.check import check
-from wl_expcontroller.codes import Allocation
+from dataclasses import replace
+
+from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.components import Registry
+from wl_expcontroller.geometry import Geometry
 
 
 def test_a_state_no_transition_can_reach_is_reported():
@@ -142,7 +147,7 @@ def test_a_task_emitting_an_unallocated_code_is_refused():
     """S1 §9 check 1, and the cheapest guardrail in the design against a
     model-authored task (P15). A model will emit a plausible-looking number; the
     allocation is the only thing that knows 4097 means nothing."""
-    allocation = Allocation(task_events={4096: "STIMULUS_ON"})
+    allocation = replace(PROVISIONAL, task_events={4096: "STIMULUS_ON"})
     trial = Trial(
         start="show",
         states=[
@@ -161,7 +166,7 @@ def test_a_task_emitting_an_unallocated_code_is_refused():
 
 
 def test_a_task_emitting_an_allocated_code_is_accepted():
-    allocation = Allocation(task_events={4096: "STIMULUS_ON"})
+    allocation = replace(PROVISIONAL, task_events={4096: "STIMULUS_ON"})
     trial = Trial(
         start="show",
         states=[
@@ -249,3 +254,77 @@ def test_a_resolving_custom_component_is_accepted_but_flagged_for_review():
 
     assert [f.code for f in findings] == ["custom-component-needs-review"]
     assert findings[0].blocking is False
+
+
+GEOMETRY = Geometry(panel_diagonal_cm=80.01, viewing_distance_cm=57.0)
+
+
+def test_a_stimulus_outside_the_field_is_refused():
+    """S1 §9 check 8. Asked for a peripheral target, a model will write 30 degrees
+    as readily as 10. The stimulus would be drawn off the panel, the animal would
+    never see it, and the trial would score as a miss indistinguishable from
+    behaviour -- which is the worst kind of defect, because the data looks fine."""
+    trial = Trial(
+        start="show",
+        states=[
+            State(
+                "show",
+                enter=[Show(Blob(at=(30.0, 0.0)))],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+    findings = check(trial, geometry=GEOMETRY)
+
+    assert [f.code for f in findings] == ["stimulus-off-screen"]
+    assert "30" in findings[0].detail
+
+
+def test_disparity_can_push_one_eye_off_screen_from_a_legal_cyclopean_position():
+    """The stereo defect a monocular check cannot see. Disparity is applied as
+    equal and opposite horizontal offsets about the cyclopean position, so a
+    stimulus comfortably inside the field can still put one eye's image outside
+    it -- and only that eye's. On a split-screen stereoscope that is a stimulus
+    the animal fuses on one side and loses on the other."""
+    trial = Trial(
+        start="show",
+        states=[
+            State(
+                "show",
+                enter=[Show(Blob(at=(16.5, 0.0), disparity=2.0))],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+    assert GEOMETRY.can_show(16.5, 0.0), "the cyclopean position is legal"
+
+    findings = check(trial, geometry=GEOMETRY)
+
+    assert [f.code for f in findings] == ["stimulus-off-screen"]
+    assert "disparity" in findings[0].detail
+
+
+def test_a_terminal_outcome_with_no_allocated_marker_is_refused():
+    """S1 §9 check 5. An outcome that maps to no marker is a trial that ends
+    without saying how it ended -- the recording carries the timing of a decision
+    whose result is only in our files."""
+    allocation = Allocation(outcomes={Outcome.CORRECT: 34})
+    trial = Trial(
+        start="decide",
+        states=[
+            State(
+                "decide",
+                go=[
+                    On(After(1.0), Outcome.CORRECT),
+                    On(GazeLeaves("fix"), Outcome.FIXATION_BREAK),
+                ],
+            ),
+        ],
+    )
+
+    findings = check(trial, allocation)
+
+    assert [f.code for f in findings] == ["unallocated-outcome"]
+    assert "FIXATION_BREAK" in findings[0].detail

@@ -28,12 +28,48 @@ class Allocation:
     """Which numeric codes mean what. Loaded, never invented."""
 
     task_events: dict[int, str] = field(default_factory=dict)
+    #: Which `Marker` each terminal outcome strobes. **These are `wl-preproc`'s**,
+    #: from `Marker` 1-255, which ADR-0007 leaves in their ownership -- so unlike
+    #: `task_events` this half is not waiting on anything and can be populated with
+    #: their real, frozen values today.
+    outcomes: dict[object, int] = field(default_factory=dict)
 
     def __contains__(self, code: int) -> bool:
         return code in self.task_events
 
 
-#: Placeholder until `wl-mllib` publishes one. Empty on purpose: a task that emits
-#: any code fails the check until a real allocation is loaded, which is the correct
-#: behaviour for a project whose whole guardrail is that codes come from elsewhere.
-PROVISIONAL = Allocation()
+#: `Marker` values transcribed from `wl-preproc/wl_preproc/contracts/events.py`,
+#: which is frozen and carries an explicit warning that renumbering silently
+#: relabels every prior recording. Mirrored rather than imported so the rig carries
+#: no pipeline dependency; the round-trip tests keep the mirror honest.
+#:
+#: **`NO_FIXATION` maps to `TRIAL_ABORT`, and that loses information on purpose.**
+#: There is no dedicated marker for it, and asking for one would put a task-level
+#: distinction into a range whose owner reserves it for trial structure. The reason
+#: an abort happened is carried by a `TaskEvent` strobed just before the marker --
+#: identity and timing in the stream, the specific meaning in our own range. Any
+#: analysis distinguishing abort kinds reads the pair, not the marker alone.
+_TRIAL_CORRECT = 34
+_TRIAL_ERROR = 35
+_TRIAL_ABORT = 36
+_TRIAL_FIXATION_BREAK = 37
+_TRIAL_NO_RESPONSE = 38
+
+
+def _standing_outcomes() -> dict[object, int]:
+    from wl_expcontroller.task import Outcome
+
+    return {
+        Outcome.CORRECT: _TRIAL_CORRECT,
+        Outcome.WRONG_TARGET: _TRIAL_ERROR,
+        Outcome.NO_FIXATION: _TRIAL_ABORT,
+        Outcome.FIXATION_BREAK: _TRIAL_FIXATION_BREAK,
+        Outcome.NO_RESPONSE: _TRIAL_NO_RESPONSE,
+    }
+
+
+#: Placeholder until `wl-mllib` publishes one. `task_events` is empty on purpose --
+#: a task emitting any code fails until a real allocation is loaded, which is right
+#: for a project whose whole guardrail is that codes come from elsewhere. Outcomes
+#: are populated, because their half of the allocation is already settled.
+PROVISIONAL = Allocation(outcomes=_standing_outcomes())
