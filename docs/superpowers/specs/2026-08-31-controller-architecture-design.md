@@ -736,7 +736,7 @@ auditory performance feedback, plus vocalization monitoring.
 |---|---|---|---|
 | 1 | ~~Escape-hatch strictness in the within-trial layer~~ **Answered in S1**: typed seam, novelty promoted into reviewed framework code, tasks using one are flagged. The bake-off's permissive version contained two defects the author did not notice | S1 | — |
 | 2 | Touchscreen: second panel, rig mode, or deferred | PI | S4, S6 |
-| 3 | ~~Display panel, refresh target, panel technology~~ **Answered in S0**: 32-inch-class 16:9 flat OLED, tandem model deferred to late 2026, bench panel bought now, ~50 cm build distance, mode as rig config. Remaining: whether burn-in protection is defeatable, and whether GPU + panel can avoid DSC | S0 | panel purchase only |
+| 3 | ~~Display panel, refresh target, panel technology~~ **Answered in S0**: 32-inch-class 16:9 flat OLED, tandem model deferred to late 2026, bench panel bought now, 57 cm build distance, mode as rig config. Remaining: whether burn-in protection is defeatable, and whether GPU + panel can avoid DSC | S0 | panel purchase only |
 | 4 | Photodiode patch placement against the real optics | PI + `wl-sync` | rig build |
 | 5 | Misc BNC assignment for the audio verification tap | `wl-sync` agreement | S0 |
 | 6 | ~~Event-code vocabulary allocation~~ **Largely answered in S2**: the protocol exists and is frozen; ADR-0007 splits ownership. Remaining: `wl-preproc` agreeing that `TaskEvent` 256–4095 moves, and accepting one new escape | `wl-preproc` | allocation, then S1 |

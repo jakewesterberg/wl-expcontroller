@@ -31,8 +31,12 @@ stack. Nothing existing does that on Linux from Python.
 - Eye tracking: OpenIrisDPI over UDP as the control path; its analog copy recorded so the
   eye PC's lag stays measurable.
 
-Non-goals for v1: a general community framework, freely-moving or home-cage paradigms, a
-GUI task builder, and hard-real-time (sub-millisecond software loop) guarantees.
+Non-goals for v1: a general community framework, freely-moving paradigms, a GUI task
+builder, and hard-real-time (sub-millisecond software loop) guarantees.
+
+**A cage-side touchscreen kiosk is in scope, but not in v1** (spec map S13) — a single-screen
+deployment with no stereoscope, no DAQ and no neural plane. It is the second concrete consumer
+that earns the hardware interfaces their generality.
 
 ## Approach — five commitments
 

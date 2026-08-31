@@ -168,11 +168,18 @@ For a 31.5" panel (`L` = 80.0 cm; half-width 17.44 cm, half-height 19.61 cm):
 | D | Field per eye (H × V) | 4K mode | FHD/480 mode |
 |---|---|---|---|
 | 45 cm | ±21.2° × ±23.5° | 45 px/deg | 23 px/deg |
-| **50 cm** | **±19.2° × ±21.4°** | **50 px/deg** | **25 px/deg** |
-| 57 cm | ±17.0° × ±19.0° | 56 px/deg | 28 px/deg |
+| 50 cm | ±19.2° × ±21.4° | 50 px/deg | 25 px/deg |
+| **57 cm** | **±17.0° × ±19.0°** | **56 px/deg** | **28 px/deg** |
 | 65 cm | ±15.0° × ±16.8° | 64 px/deg | 32 px/deg |
 
-**Build for ~50 cm.** A six-item array at the stated 10° maximum eccentricity sits inside
+**Build for 57 cm** (ruled 2026-08-31). At 57.3 cm one centimetre on the screen subtends one
+degree — `1/tan(1°) = 57.29` — which is why it is the field's standing convention. The
+arithmetic benefit is largely vestigial now that software does the trigonometry, and the
+identity is a small-angle one that breaks down off-centre (at 20° eccentricity, 20° is 20.9 cm,
+not 20 cm — a 4.5% error, so it must never be treated as linear across the field). What
+survives is comparability with the literature and the ability to catch a gross geometry error
+by eye. Against 50 cm it trades 2.2° of horizontal field for 6 px/deg, and ±17° still holds a
+six-item array at 10° eccentricity with 7° of margin. A six-item array at the stated 10° maximum eccentricity sits inside
 ±19° with room to roughly double it, at 1.2 arcmin/pixel. The viewport is 8:9, so horizontal
 eccentricity is the binding dimension — the cost of 16:9, and not binding on anything in the
 stated program. Path lengths are **measured per eye**, not derived (V9): the two folded paths
@@ -184,10 +191,10 @@ calibrated parameter with a Nonius/vernier procedure rather than an assumed symm
 4K and FHD/480 carry **identical pixel rates** (~30 Gbps at 10-bit for 4K/120 and FHD/480),
 which is why dual-mode panels offer both. That gives a real experimental trade:
 
-| Mode | Per eye @50 cm | Frame quantum | Suits |
+| Mode | Per eye @57 cm | Frame quantum | Suits |
 |---|---|---|---|
-| 4K | 1920×2160, 50 px/deg | 4.2 ms @240, 8.3 ms @120 | Disparity, fine gratings, natural images |
-| FHD | 960×1080, 25 px/deg | **2.08 ms** | Saccade-contingent updates, fast timing |
+| 4K | 1920×2160, 56 px/deg | 4.2 ms @240, 8.3 ms @120 | Disparity, fine gratings, natural images |
+| FHD | 960×1080, 28 px/deg | **2.08 ms** | Saccade-contingent updates, fast timing |
 
 Consequences: **V1 runs in every mode the rig will use**; each mode carries its own
 calibration and deg/pixel; the mode is recorded in the session snapshot; and gaze-contingent
@@ -224,9 +231,17 @@ Fold into **V9**. A panel that fails 1 or 2 is disqualified regardless of everyt
 6. **Sustained full-field luminance at 100% APL**, which is the tandem claim that actually
    matters.
 
-Burn-in mitigation then returns to us, which is where it belongs: **jitter the fixation point
-a few pixels between trials, inside the gaze-window tolerance, and log the offset.**
-Deliberate and recorded beats invisible and vendor-controlled.
+**Burn-in mitigation may not touch the stimulus** (ruled 2026-08-31). Jittering the fixation
+point between trials was proposed here and **rejected**: microsaccade analyses, fixation-
+stability measures and receptive-field mapping all assume a fixed fixation point, and
+introducing a stimulus manipulation to solve a hardware problem trades a real experimental
+property for a panel's convenience.
+
+So mitigation is entirely hardware-side, which **raises the stakes on the tandem panel**: its
+inherent burn-in resistance is now load-bearing rather than a bonus, and running well below
+peak luminance is a longevity strategy as well as an ABL one. Panel replacement is budgeted
+rather than avoided. This makes acceptance criterion 6 — sustained full-field luminance at
+100% APL — the number that decides how low we can sit, and therefore how long a panel lasts.
 
 ---
 

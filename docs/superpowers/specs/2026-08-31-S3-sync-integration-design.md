@@ -43,12 +43,15 @@ could ingest.
 
 And `wl-preproc/contracts/paths.py` keys the session **directory** on
 `wl_sync.session.SessionId` — the day-scoped one — while its `Session` **table** is
-subject-scoped. Those coincide only if exactly one subject works per day. If two ever do,
-either `_02` is minted (contradicting `wl-sync`'s own spec) or one directory holds two
-`Session` rows.
+subject-scoped. Those coincide only if exactly one subject works per day.
 
-**We do not resolve another repository's ambiguity.** We adopt the interpretation that is
-correct under either resolution:
+**Two animals will routinely work in one day on one rig** (PI, 2026-08-31). So they do not
+coincide, and `wl-sync`'s *"a day is one session, hence `_01`"* does not hold for this lab.
+`_NN` is load-bearing: something must mint `_02`, and nothing currently does. This is no longer
+an ambiguity to note — it is a gap with a known answer on one side, and the amendment in §9
+says so rather than asking.
+
+Our own posture is unchanged and was chosen to survive exactly this:
 
 1. Our outputs live under the **sync box's session id**, because the directory contract says so.
 2. **Every record we write names its subject explicitly**, so a day containing two subjects
@@ -149,11 +152,13 @@ does**, and so does inserting an unplanned calibration block.
 Three consequences, and the third is the one that keeps flexibility:
 
 1. **Block structure is planned in wl.works before a session**, not invented at the rig.
-2. **Calibration interludes must not be blocks** unless planned. S5's calibration-as-interlude
-   design should use `TaskEvent.CALIBRATION_START`/`CALIBRATION_END` — the in-task mechanism
-   `wl-preproc` already provides for exactly this — rather than a `TaskTypeCode.CALIBRATION`
-   block. Their own docstring draws that distinction; we should follow it rather than rediscover
-   it.
+2. **Calibration uses both mechanisms** (PI, 2026-08-31), which is what `wl-preproc`'s own
+   docstring calls them: *"complementary, not alternatives."* A **planned** calibration block
+   opens the session — a dedicated block "reliably supplies six well-spread targets," and that
+   is what decides whether a session reaches the second-order calibration rung at all — and
+   **in-task `CALIBRATION_START`/`CALIBRATION_END` epochs** top it up and track drift through
+   the day. The planned block is a coordination cost: wl.works' session planner must plan one
+   for every session, or ingest quarantines it. Added to the wl-works amendment.
 3. **The measured boundary is ours to emit and theirs to compare.** `trial.Block` holds the
    measured boundary, `core.Block` holds wl.works' assertion, and disagreement is its own
    tier-D condition rather than a silent reconciliation. So an unplanned block is *visible*, not
@@ -170,7 +175,7 @@ reach the recorders as edges plus analog copies.
 **Placement is the open physical question.** Both patches must sit outside both eyes' viewports
 on the split screen, or the flip patch is a flickering distractor in one eye's field. Candidates
 are the septum strip and a screen edge outside the mirror-visible region. **This is decided
-against the real optics, with `wl-sync`, before the mirrors are mounted** — and the ~50 cm
+against the real optics, with `wl-sync`, before the mirrors are mounted** — and the 57 cm
 viewing distance from S0 §5.2 must be fixed first, since it sets what is visible.
 
 **Cameras** take the barcode as a timebase to record, not a trigger — they free-run, and the
@@ -191,9 +196,9 @@ Against **`wl-sync`** (drafted at `docs/pending-wl-sync-amendments.md`):
 
 1. **Expose the session id to other hosts on the rig.** It mints `YYYY-MM-DD_NN` and nothing
    else can learn it without guessing `_NN`.
-2. **State the day/session/block relationship**, or defer to `wl-preproc`'s. Its spec says a day
-   is one session; `wl-preproc`'s `Session` is subject-scoped and its directory is keyed on the
-   day. Both cannot be right when two subjects work in one day.
+2. **Say what mints `_02`.** Two animals will routinely work in one day on one rig, so a day is
+   not one session and the continuous-recording design's *"a restart joins that directory as a
+   new segment rather than minting `_02`"* needs a companion rule for what does mint it.
 
 Against **`wl-preproc`** (appended to the existing amendment file): the same day/session
 question, from their side.
@@ -205,7 +210,7 @@ question, from their side.
 | # | Item | Blocks |
 |---|---|---|
 | 1 | How taskd learns the session id | every output path |
-| 2 | Day versus subject-session, when two animals work in one day | directory layout under two subjects |
+| 2 | ~~Day versus subject-session~~ **Answered: two animals routinely.** Remaining: what mints `_02`, which is `wl-sync`'s to say | directory layout under two subjects |
 | 3 | Photodiode patch placement against the real optics | rig build |
-| 4 | Whether calibration blocks are ever *planned* blocks, or always in-task epochs | S5, S8 |
+| 4 | ~~Calibration blocks versus in-task epochs~~ **Answered: both.** Remaining: wl.works planning a calibration block per session | S5, S8, wl-works |
 | 5 | Whether our synthetic generator feeds `wl-preproc`'s harness or its own | V6 |

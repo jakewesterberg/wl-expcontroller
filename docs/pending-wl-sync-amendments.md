@@ -49,7 +49,7 @@ with no code written.
 
 ---
 
-# OPEN — "a day is one session" and wl-preproc's Session are not the same thing
+# OPEN — a day is not one session on these rigs, so something must mint `_02`
 
 ## The finding
 
@@ -62,9 +62,13 @@ Three definitions of "session" are live across two repositories:
 | Block | `wl-preproc` `core.Block` | *"One run of one task, mirroring wl.works `animal_session_block`"* |
 
 And `wl-preproc` keys the session **directory** on this package's day-scoped `SessionId` while
-its `Session` **table** is subject-scoped. **Those coincide only if exactly one subject works
-per day.** If two ever do, either `_02` is minted — contradicting this repository's own spec —
-or one directory holds two `Session` rows, and nothing states which.
+its `Session` **table** is subject-scoped. Those coincide only if exactly one subject works per
+day.
+
+**The rig owner has confirmed that two animals will routinely work in one day on one rig**
+(2026-08-31). So they do not coincide, and the continuous-recording design's *"a day is one
+session, hence `_01`"* does not hold. This is not a question about whether the case can arise;
+it is the ordinary case, and nothing currently mints `_02`.
 
 ## Why it reaches you
 
@@ -82,16 +86,15 @@ overloading one.
 
 ## The ask
 
-State the relationship in one place, in whichever direction is true:
+A rule for what mints `_02`, alongside the existing rule that a restart does not. The obvious
+candidate is *a change of subject*, but that is this repository's call and not ours to assume —
+the sync box runs continuously across both animals and does not know when one leaves the chair,
+so whatever mints `_02` has to be told, and by whom is exactly the question.
 
-- **If a day is always one session**, say so where `_NN` is defined, and record why `_NN` is
-  two digits when only `_01` is ever used — a reader who finds an unused index assumes it is
-  available.
-- **If a day can hold several sessions**, then the continuous-recording design's *"a restart
-  joins that directory as a new segment rather than minting `_02`"* needs a companion sentence
-  saying what *does* mint `_02`.
-
-Either answer costs a paragraph. Neither changes any code we can see.
+This is now a **prerequisite for the first amendment**, not a companion to it: if `_02` can
+exist, then reading "the newest `YYYY-MM-DD_NN/` directory" is not sufficient for a task PC to
+learn which session it is in, because the newest directory may belong to the animal that just
+finished.
 
 ---
 

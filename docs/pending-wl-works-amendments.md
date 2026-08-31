@@ -151,6 +151,19 @@ discovering an option:
   frozen before wl-works has said whether it wants this at all. When it is frozen it will
   be exported and CI-diffed, the way wl-preproc's two contracts are.
 
+## One addition to the session planner
+
+**Every session needs a planned calibration block.** `wl-preproc` authors block rows from
+wl.works' session planner and quarantines on absence, so a calibration block run at the rig
+without a matching plan degrades the session's timing tier. And a *dedicated* calibration block
+is not optional in the way it might look: `wl-preproc`'s own docstring says it "reliably
+supplies six well-spread targets," which is what decides whether a session reaches the
+second-order calibration rung at all — an in-task epoch cannot guarantee the spread.
+
+So the planner should emit a calibration block at the head of every session, with
+`TaskTypeCode.CALIBRATION`. The in-task `CALIBRATION_START`/`CALIBRATION_END` epochs that follow
+through the day need no planning and create no blocks.
+
 ## What wl-works must decide
 
 1. Whether the client's host list becomes configuration.
