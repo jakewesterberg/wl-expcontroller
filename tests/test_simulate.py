@@ -16,6 +16,8 @@ from wl_expcontroller.task import (
     Exited,
     On,
     Outcome,
+    SaccadeTo,
+    Score,
     State,
     Trial,
     Window,
@@ -75,3 +77,32 @@ def test_an_outcome_no_behaviour_reaches_is_reported_as_uncovered():
 
     assert Outcome.FIXATION_BREAK not in census.outcomes
     assert census.uncovered(DETECTION) == {Outcome.FIXATION_BREAK}
+
+
+def test_the_census_counts_scored_responses_not_only_outcomes():
+    """A free-viewing task ends the same mundane way every trial, so an
+    outcome-only census says nothing about it. What varies -- and what the
+    experiment is about -- is the responses inside the trial."""
+    trial = Trial(
+        start="look",
+        windows=[Window("a", at=(-10.0, 0.0), radius=2.0)],
+        states=[
+            State(
+                "look",
+                go=[
+                    On(SaccadeTo("a"), "look", do=[Score("a", Outcome.CORRECT)]),
+                    On(After(0.5), Outcome.NO_RESPONSE),
+                ],
+            ),
+        ],
+    )
+
+    census = simulate(
+        trial,
+        Subject(seed=3, engagement=1.0, hazards={SaccadeTo: 0.05}),
+        trials=200,
+        frame_period=0.01,
+    )
+
+    assert census.outcomes == {Outcome.NO_RESPONSE: 200}, "every trial ends alike"
+    assert census.responses[("a", Outcome.CORRECT)] > 0, "and yet things happened"

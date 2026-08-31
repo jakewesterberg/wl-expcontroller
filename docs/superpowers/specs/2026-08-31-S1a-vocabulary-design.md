@@ -152,10 +152,23 @@ their range is for *trial structure*, and which distractor an animal chose, and
 whether it went early, is task meaning. Pushing it into their range would be
 convenient for one analysis and wrong about who owns what.
 
-## 8. Open — multiple responses in one trial
+## 8. Multiple responses in one trial — settled 2026-08-31
 
-**Raised by the PI 2026-08-31 and deliberately not answered here.** Two cases the
-single-terminal-outcome model does not cover:
+**Trials emit scored events; the terminal outcome summarises.** A `Score(window,
+outcome)` action records a response as it happens, and the trial still ends once.
+
+- **Several correct targets**: *which* was chosen is a scored event, which is the
+  thing the experiment is about and was previously not expressible anywhere.
+- **Free viewing**: a trial with many scored responses and a mundane ending. The
+  census counts responses as well as outcomes, because a free-viewing task ends the
+  same way every trial and an outcome-only report would say nothing about it.
+
+**The classification reuses `Outcome`.** The same taxonomy applies at both grains --
+a single choice can be early, late, to a distractor or correct exactly as a whole
+trial can -- and a second vocabulary would need keeping in step with this one for no
+gain.
+
+The two cases this answers, recorded because they are what forced it:
 
 1. **Several correct targets.** A trial where any of N choices scores. The outcome is
    still one value, but *which* target was chosen is not currently expressible

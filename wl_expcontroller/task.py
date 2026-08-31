@@ -341,6 +341,26 @@ class Show(Action):
 
 
 @dataclass(frozen=True, slots=True)
+class Score(Action):
+    """Record a scored response *within* a trial (S1a §8).
+
+    A trial emits scored events as it goes and the terminal outcome summarises. That
+    is what lets a task express several correct targets -- *which* one was chosen is
+    the thing the experiment is about, and it was previously not expressible anywhere
+    -- and free viewing, where an animal moves between windows producing a sequence
+    of responses rather than one.
+
+    **The classification reuses `Outcome`**, because the same taxonomy applies at
+    both grains: a single choice can be early, late, to a distractor or correct
+    exactly as a whole trial can. A second vocabulary would have to be kept in step
+    with this one for no gain.
+    """
+
+    window: str
+    scored_as: Outcome
+
+
+@dataclass(frozen=True, slots=True)
 class Custom(Action):
     """Behaviour the vocabulary lacks, named rather than contained (S1 §8).
 

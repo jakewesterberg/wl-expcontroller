@@ -78,6 +78,10 @@ class Census:
     outcomes: Counter
     states_visited: set[str]
     hangs: int
+    #: Scored responses by `(window, classification)`. A free-viewing task ends the
+    #: same mundane way every trial, so an outcome-only census says nothing about
+    #: it -- what varies, and what the experiment is about, happens inside.
+    responses: Counter = field(default_factory=Counter)
 
     def uncovered(self, trial: Trial) -> set[Outcome]:
         """Outcomes the task declares that no simulated trial reached.
@@ -111,6 +115,7 @@ def simulate(
     to find pathological paths.
     """
     outcomes: Counter = Counter()
+    responses: Counter = Counter()
     visited: set[str] = set()
     hangs = 0
     for _ in range(trials):
@@ -119,8 +124,15 @@ def simulate(
             trial, subject, frame_period, values=values or {}
         )
         visited.update(result.visited)
+        for scored in result.scored:
+            responses[(scored.window, scored.scored_as)] += 1
         if result.outcome is None:
             hangs += 1
         else:
             outcomes[result.outcome] += 1
-    return Census(outcomes=outcomes, states_visited=visited, hangs=hangs)
+    return Census(
+        outcomes=outcomes,
+        states_visited=visited,
+        hangs=hangs,
+        responses=responses,
+    )

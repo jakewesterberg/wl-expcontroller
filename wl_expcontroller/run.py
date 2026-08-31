@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from wl_expcontroller.task import After, Guard, Outcome, P, Trial
+from wl_expcontroller.task import After, Guard, Outcome, P, Score, Trial
 
 
 class World(Protocol):
@@ -53,6 +53,15 @@ class Scripted:
 
 
 @dataclass(frozen=True, slots=True)
+class Scored:
+    """One scored response inside a trial: what, where, and when."""
+
+    window: str
+    scored_as: Outcome
+    frame: int
+
+
+@dataclass(frozen=True, slots=True)
 class Result:
     outcome: Outcome | None
     frames: int
@@ -61,6 +70,9 @@ class Result:
     #: unreachable in practice or gated on behaviour the animal never produces,
     #: and the static checks cannot tell the difference.
     visited: tuple[str, ...] = ()
+    #: Scored responses in the order they happened. Empty for a task that scores
+    #: only at the end, which is most of them.
+    scored: tuple[Scored, ...] = ()
 
 
 def _resolve(value: float | P, values: dict[str, float]) -> float:
@@ -98,6 +110,7 @@ def run_trial(
     current = by_name[trial.start]
     entered_at = 0
     visited = [current.name]
+    scored: list[Scored] = []
     for frame in range(1, max_frames + 1):
         elapsed = (frame - entered_at) * frame_period
         for edge in current.go:
@@ -108,9 +121,14 @@ def run_trial(
             )
             if not fired:
                 continue
+            scored.extend(
+                Scored(action.window, action.scored_as, frame)
+                for action in edge.do
+                if isinstance(action, Score)
+            )
             if isinstance(edge.to, Outcome):
-                return Result(edge.to, frame, tuple(visited))
+                return Result(edge.to, frame, tuple(visited), tuple(scored))
             current, entered_at = by_name[edge.to], frame
             visited.append(current.name)
             break
-    return Result(None, max_frames, tuple(visited))
+    return Result(None, max_frames, tuple(visited), tuple(scored))

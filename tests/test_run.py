@@ -17,6 +17,8 @@ from wl_expcontroller.task import (
     Outcome,
     P,
     Param,
+    SaccadeTo,
+    Score,
     State,
     Trial,
     Window,
@@ -115,3 +117,52 @@ def test_running_without_a_value_for_a_declared_parameter_is_refused():
 
     with pytest.raises(KeyError, match="timeout"):
         run_trial(trial, Quiet(), frame_period=0.01, values={})
+
+
+def test_a_trial_records_every_scored_response_and_still_ends_once():
+    """S1a §8. A trial emits scored events as it goes; the terminal outcome
+    summarises. Free viewing is then a trial with many scored responses and a
+    mundane ending, rather than a shape the model cannot express."""
+    trial = Trial(
+        start="first",
+        windows=[
+            Window("a", at=(-10.0, 0.0), radius=2.0),
+            Window("b", at=(10.0, 0.0), radius=2.0),
+        ],
+        states=[
+            State(
+                "first",
+                go=[
+                    On(
+                        SaccadeTo("a"),
+                        "second",
+                        do=[Score("a", Outcome.CORRECT)],
+                    ),
+                    On(After(1.0), Outcome.NO_RESPONSE),
+                ],
+            ),
+            State(
+                "second",
+                go=[
+                    On(
+                        SaccadeTo("b"),
+                        Outcome.CORRECT,
+                        do=[Score("b", Outcome.WRONG_TARGET)],
+                    ),
+                    On(After(1.0), Outcome.NO_RESPONSE),
+                ],
+            ),
+        ],
+    )
+
+    result = run_trial(
+        trial,
+        Scripted({SaccadeTo("a"): 3, SaccadeTo("b"): 7}),
+        frame_period=0.01,
+    )
+
+    assert result.outcome is Outcome.CORRECT
+    assert [(s.window, s.scored_as, s.frame) for s in result.scored] == [
+        ("a", Outcome.CORRECT, 3),
+        ("b", Outcome.WRONG_TARGET, 7),
+    ]
