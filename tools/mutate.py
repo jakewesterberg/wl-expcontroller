@@ -39,18 +39,42 @@ SENTINEL = ROOT / ".mutate-in-progress.json"
 
 
 def _restore_any_interrupted_run() -> None:
-    """Undo a mutation left behind by a killed process.
+    """Undo a mutation left behind by a killed process -- **only if it is still there**.
 
     Called before anything else, including the baseline, so a suite that looks red
     because of a stale mutation is repaired rather than reported.
+
+    **It restores only when the file still matches the text this tool wrote.** A
+    blind restore is worse than the problem it solves: run this in the background,
+    edit the source while it holds a mutation, and healing would revert that work
+    silently. Never edit source while this is running; this check is the backstop,
+    not permission.
     """
     if not SENTINEL.exists():
         return
     saved = json.loads(SENTINEL.read_text())
     path = Path(saved["path"])
-    path.write_text(saved["original"])
+    current = path.read_text()
+    if current == saved["mutated"]:
+        path.write_text(saved["original"])
+        print(f"restored {path} from an interrupted run\n")
+    elif current == saved["original"]:
+        pass  # someone already put it back
+    else:
+        # **Do not restore.** The file has changed since the mutation, so the
+        # sentinel's copy is stale and writing it back would silently revert
+        # whatever was done in between. This nearly happened: a harness run was
+        # backgrounded, source was edited while it held a mutation, and a
+        # self-healing restore would have thrown that work away without a word.
+        print(
+            f"WARNING: {path} changed since an interrupted mutation run.\n"
+            f"  Not restoring -- the sentinel's copy is stale and would revert "
+            f"live edits.\n"
+            f"  Check for a stray `return` at the top of a function, then delete "
+            f"{SENTINEL.name}.\n"
+        )
+        return
     SENTINEL.unlink()
-    print(f"restored {path} from an interrupted run\n")
 
 
 def _clear_pycache() -> None:
@@ -114,9 +138,13 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
     if count == 0:
         raise SystemExit(f"could not find {function} in {path}")
 
-    SENTINEL.write_text(json.dumps({"path": str(path), "original": original}))
     try:
         path.write_text(mutated)
+        # Written *after* the mutation, holding both texts: the restore checks the
+        # file still looks like what it wrote before putting the original back.
+        SENTINEL.write_text(
+            json.dumps({"path": str(path), "original": original, "mutated": mutated})
+        )
         passed, summary = _run_suite()
         return not passed, summary
     finally:

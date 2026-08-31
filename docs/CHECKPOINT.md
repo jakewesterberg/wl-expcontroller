@@ -29,9 +29,9 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | 82, green |
+| Tests | 96, green |
 | CI | pytest on 3.11 and 3.13, plus a **mutation gate over every module** — 60 functions, 0 survivors |
-| Load-time checks | **10 of 10** (S1 §9) |
+| Load-time checks | **9 of S1 §9's 10, plus S1a's window check.** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
 | Hardware verified | **none** |
 

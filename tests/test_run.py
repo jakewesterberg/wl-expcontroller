@@ -220,8 +220,9 @@ def test_entered_exited_and_hold_are_derived_from_membership_not_asked_of_the_wo
     result = run_trial(trial, world, frame_period=0.01)
 
     assert result.outcome is Outcome.CORRECT
-    # Enters on frame 2; a 30 ms hold at 10 ms frames covers 2, 3 and 4.
-    assert result.frames == 4
+    # Frame 2 is consumed entering `hold_fix`; the hold there runs 3, 4, 5. A hold
+    # cannot count the frame that triggered entry into its own state.
+    assert result.frames == 5
 
 
 def test_leaving_a_window_restarts_a_hold_rather_than_pausing_it():
@@ -248,3 +249,44 @@ def test_leaving_a_window_restarts_a_hold_rather_than_pausing_it():
 
     assert result.outcome is Outcome.CORRECT
     assert result.frames == 6, "the hold restarted at frame 4, completing on 6"
+
+
+def test_a_hold_is_measured_from_state_entry_not_from_when_gaze_arrived():
+    """Found by review, 2026-08-31, and it made correctly-authored tasks wrong.
+
+    `holding_since` was trial-scoped, so a `Hold` in a later state was already
+    satisfied by presence that began before that state was entered. A memory-guided
+    structure -- hold 0.3 s, then a declared 0.3 s delay with fixation enforced --
+    ran the delay for **one frame** and scored CORRECT. Every working-memory delay
+    in the v1 inventory is written this way.
+
+    A hold in a state means held continuously *since that state began*.
+    """
+    trial = Trial(
+        start="hold_fix",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
+        states=[
+            State(
+                "hold_fix",
+                go=[
+                    On(Hold("fix", 0.3), "delay"),
+                    On(After(5.0), Outcome.NO_FIXATION),
+                ],
+            ),
+            State(
+                "delay",
+                go=[
+                    On(Hold("fix", 0.3), Outcome.CORRECT),
+                    On(Exited("fix"), Outcome.FIXATION_BREAK),
+                    On(After(5.0), Outcome.NO_RESPONSE),
+                ],
+            ),
+        ],
+    )
+    always_inside = Scripted({}, inside={f: "fix" for f in range(1, 5000)})
+
+    result = run_trial(trial, always_inside, frame_period=0.01)
+
+    assert result.outcome is Outcome.CORRECT
+    # 0.3 s to satisfy the first hold, then a further 0.3 s inside `delay`.
+    assert result.frames == 60, f"the delay ran {(result.frames - 30) / 100:.2f} s"

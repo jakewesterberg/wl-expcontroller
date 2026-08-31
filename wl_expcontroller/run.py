@@ -197,6 +197,15 @@ def run_trial(
             if isinstance(edge.to, Outcome):
                 return Result(edge.to, frame, tuple(visited), tuple(scored))
             current, entered_at = by_name[edge.to], frame
+            # **Entering a state clears every hold.** A hold declared in a state
+            # means held continuously *since that state began*. Carrying the window's
+            # own entry frame across a transition let a later state's hold be
+            # satisfied by presence that began before it -- a memory-guided structure
+            # with a declared 0.3 s delay ran that delay for **one frame** and scored
+            # CORRECT, with the task written correctly and every load-time check
+            # passing. Found by review 2026-08-31; every working-memory delay in the
+            # v1 inventory is written this way.
+            holding_since.clear()
             visited.append(current.name)
             break
         was_inside = inside_now
