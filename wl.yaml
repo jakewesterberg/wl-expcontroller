@@ -3,9 +3,7 @@ slug: wl-expcontroller
 class: application
 lifecycle: scaffolded
 visibility: private
-# Not yet created. Declared here because the registry resolves names through it
-# and this repository follows the lab's naming convention; `git remote -v` in this
-# checkout returns nothing as of 4e95bf0. Push before anyone depends on this field.
+# Created private and pushed 2026-08-31. Private until ADR-0004 settles the licence.
 remote: https://github.com/jakewesterberg/wl-expcontroller.git
 
 summary: >-

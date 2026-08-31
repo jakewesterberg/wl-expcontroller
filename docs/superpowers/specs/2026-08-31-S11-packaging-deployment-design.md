@@ -14,9 +14,8 @@
   an out-of-tree DKMS module and so constrains the machine's *distribution* — the fact
   `wlo stack` needs and cannot recover elsewhere.
 
-**The remote does not exist yet.** Both the manifest and the registry entry say so in place
-rather than implying a repository that would 404. Pushing it is a prerequisite for anything
-resolving that field.
+**The remote now exists** — created private and pushed 2026-08-31, `main` tracking. The manifest
+and registry entries resolve. Private until ADR-0004 settles the licence, as the README says.
 
 ---
 
@@ -76,7 +75,7 @@ scenario" ADR-0004 said would reopen the question. **Revisit at M10, with S13 as
 
 | # | Item | Blocks |
 |---|---|---|
-| 1 | Push the repository; the declared remote does not exist | anything resolving it |
+| ~~1~~ | ~~Push the repository~~ **Done 2026-08-31** | — |
 | 2 | `wl-stack` adopting the `rig/*` role vocabulary | `runs_on` meaning anything |
 | 3 | A machine class for the kiosk | S13 |
 | 4 | ADR-0002 and ADR-0003 accepted, so dependencies can be declared | `wlo stack` building a real task PC |

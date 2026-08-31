@@ -72,7 +72,7 @@ Six things that changed the design, all found by reading neighbouring repositori
 | ~~12~~ | ~~Kiosk fluid against the daily budget~~ **Answered: yes, one budget.** wl-works holds the ledger and pushes the day's total in `prepare-session`; an unknown prior total fails closed | ✔ |
 | ~~13~~ | ~~Kiosk supervision~~ **Answered: both readings and an active alert.** The alert must originate at wl.works, because the host that faults cannot initiate a connection | ✔ |
 | 14 | **Kiosk recording model** | Recommendation: a lighter record of its own, not the session directory — minting a synthetic session id would create the second identity authority S3 spent its length deleting |
-| ~~15~~ | ~~Push the repository~~ **Answered: create private and push** | in progress |
+| ~~15~~ | ~~Push the repository~~ **Done 2026-08-31** — created private, `main` pushed and tracking | ✔ |
 
 ---
 
