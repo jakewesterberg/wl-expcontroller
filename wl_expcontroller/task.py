@@ -13,14 +13,38 @@ from enum import Enum
 
 
 class Outcome(Enum):
-    """Terminal states. Real codes come from wl-mllib's allocation (S2); these
-    names stand in until that allocation exists."""
+    """How a trial ended.
 
+    Two families. **Responses** are what the animal did about a stimulus, crossed
+    with when: to the target or to a distractor, early, on time, or late. **Breaks**
+    are the trial ending because a hold was not maintained -- of fixation, of the
+    target, of a catch trial, or because the chair moved too much.
+
+    `ABORT` is the residual and is deliberately not a break: the animal went
+    somewhere that was neither target nor distractor, which is a different statement
+    from failing to hold something.
+    """
+
+    # Responses to the target
     CORRECT = "correct"
-    NO_FIXATION = "no_fixation"
-    FIXATION_BREAK = "fixation_break"
-    NO_RESPONSE = "no_response"
+    EARLY_RESPONSE = "early_response"
+    LATE_RESPONSE = "late_response"
+
+    # Responses to a distractor
     WRONG_TARGET = "wrong_target"
+    EARLY_ERROR = "early_error"
+    LATE_ERROR = "late_error"
+
+    # Nothing at all
+    NO_FIXATION = "no_fixation"
+    NO_RESPONSE = "no_response"
+    ABORT = "abort"
+
+    # Breaks: a hold that was not maintained
+    FIXATION_BREAK = "fixation_break"
+    TARGET_BREAK = "target_break"
+    CATCH_BREAK = "catch_break"
+    MOTION_BREAK = "motion_break"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,8 +104,8 @@ class After(Guard):
 
 
 @dataclass(frozen=True, slots=True)
-class Acquired(Guard):
-    """Gaze entered a window and settled. MonkeyLogic's `acquirefix`."""
+class Entered(Guard):
+    """Gaze entered a window and settled. Pairs with `Exited`."""
 
     window: str
 
@@ -98,7 +122,7 @@ class Hold(Guard):
     """Gaze continuously inside a window for a duration. ML's `holdfix`.
 
     Imperative rather than past tense, because a task file describes what should
-    happen rather than what did. Distinct from `Acquired` followed by `After`, because the hold restarts if gaze
+    happen rather than what did. Distinct from `Entered` followed by `After`, because the hold restarts if gaze
     leaves -- and because the staleness policy differs: a hold spanning a tracker
     stall is not a hold that was observed (S5 §4.1).
     """
@@ -350,13 +374,16 @@ class Reward(Action):
 
     __slots__ = ("ref",)
 
-    def __init__(self, ref: Bounded) -> None:
-        if not isinstance(ref, Bounded):
+    def __init__(self, ref: "str | Bounded") -> None:
+        if isinstance(ref, Bounded):
+            ref = ref.name
+        if not isinstance(ref, str):
             raise TypeError(
-                f"Reward takes a bounded-config reference, not {type(ref).__name__}: "
-                f"a task may name how reward is configured but never how much it is"
+                f"Reward takes the name of a bounded-config entry, not "
+                f"{type(ref).__name__}: a task may name how reward is configured "
+                f"but never how much it is"
             )
-        object.__setattr__(self, "ref", ref)
+        object.__setattr__(self, "ref", Bounded(ref))
 
 
 def actions_of(trial: Trial) -> list[tuple[str, Action]]:
@@ -379,3 +406,21 @@ def actions_of(trial: Trial) -> list[tuple[str, Action]]:
         for edge in state.go:
             found.extend((state.name, action) for action in edge.do)
     return found
+
+
+
+# --- Shortcuts -------------------------------------------------------------
+#
+# Named constructors over `Stimulus`, not classes beside it. A fixation point is a
+# small disc at the origin often enough that every task would otherwise spell it
+# out, and "fix point" is the most-used phrase in the field -- so it earns a name
+# without earning a type. Expect more of these; the rule is that a shortcut adds
+# **defaults and a name**, never a concept, and anything it produces is an ordinary
+# `Stimulus` the rest of the system cannot distinguish.
+
+
+def FixPoint(
+    at: "tuple[float, float] | P" = (0.0, 0.0), size: "float | P" = 0.3, **kwargs
+) -> Stimulus:
+    """A small disc at the origin: the fixation point."""
+    return Stimulus(at=at, looks=Disc(size=size), **kwargs)

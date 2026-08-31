@@ -27,5 +27,20 @@ ALLOCATION: Allocation = replace(
         4100: "ABORT_NO_FIXATION",
         4101: "ABORT_FIXATION_BREAK",
         4102: "REWARD_COMMANDED",
+        # Outcome reasons. Thirteen outcomes share five markers, so these are what
+        # distinguish them in a recording -- strobed immediately before the marker.
+        4110: "OUTCOME_CORRECT",
+        4111: "OUTCOME_EARLY_RESPONSE",
+        4112: "OUTCOME_LATE_RESPONSE",
+        4113: "OUTCOME_WRONG_TARGET",
+        4114: "OUTCOME_EARLY_ERROR",
+        4115: "OUTCOME_LATE_ERROR",
+        4116: "OUTCOME_NO_FIXATION",
+        4117: "OUTCOME_NO_RESPONSE",
+        4118: "OUTCOME_ABORT",
+        4119: "OUTCOME_FIXATION_BREAK",
+        4120: "OUTCOME_TARGET_BREAK",
+        4121: "OUTCOME_CATCH_BREAK",
+        4122: "OUTCOME_MOTION_BREAK",
     },
 )

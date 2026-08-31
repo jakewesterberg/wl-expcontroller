@@ -119,7 +119,58 @@ A pure function of parameters, seed and frame index — never a logged trajector
 
 ---
 
-## 6. Open — the naming, which is the point
+## 6. Settled 2026-08-31
+
+`Mark` · `Onscreen` · `Entered` / `Exited` / `Hold` · `Window` · one `Stimulus` with
+`looks` · `Reward("name")` taking a bare name · `FixPoint` as a **shortcut**, not a
+class.
+
+**The shortcut rule**, since more are expected: a shortcut adds *defaults and a
+name*, never a concept, and what it returns is an ordinary `Stimulus` the rest of
+the system cannot distinguish. `FixPoint()` is a small disc at the origin because
+every task would otherwise spell that out and "fix point" is the most-used phrase in
+the field -- it earns a name without earning a type.
+
+## 7. Outcomes
+
+Thirteen, in two families plus a residual.
+
+| Family | Outcomes |
+|---|---|
+| Response to the **target** | `CORRECT`, `EARLY_RESPONSE`, `LATE_RESPONSE` |
+| Response to a **distractor** | `WRONG_TARGET`, `EARLY_ERROR`, `LATE_ERROR` |
+| **Nothing** | `NO_FIXATION`, `NO_RESPONSE`, `ABORT` |
+| **Breaks** — a hold not maintained | `FIXATION_BREAK`, `TARGET_BREAK`, `CATCH_BREAK`, `MOTION_BREAK` |
+
+`ABORT` is deliberately not a break: the animal went somewhere that was neither
+target nor distractor, which is a different statement from failing to hold something.
+
+**Thirteen outcomes onto five markers.** The marker gives the class and the reason
+travels as a `TaskEvent` strobed immediately before it — the rule S2 §4 already set
+for `NO_FIXATION`. We did **not** ask `wl-preproc` for eight more `Marker` values:
+their range is for *trial structure*, and which distractor an animal chose, and
+whether it went early, is task meaning. Pushing it into their range would be
+convenient for one analysis and wrong about who owns what.
+
+## 8. Open — multiple responses in one trial
+
+**Raised by the PI 2026-08-31 and deliberately not answered here.** Two cases the
+single-terminal-outcome model does not cover:
+
+1. **Several correct targets.** A trial where any of N choices scores. The outcome is
+   still one value, but *which* target was chosen is not currently expressible
+   anywhere, and it is the thing the experiment is about.
+2. **Free viewing with multiple responses.** An animal moving between windows,
+   producing a sequence of responses rather than one, with **intermediary outcomes
+   throughout the trial**.
+
+The second is the harder one, and it questions an assumption the whole model rests
+on: that a trial has exactly one outcome, at the end. S1 already made unbounded
+epochs first-class, but not multi-response scoring.
+
+This needs its own design pass, not an extension bolted onto `Outcome`.
+
+## 9. Still open — the naming, which is the point
 
 Everything above is a proposal and the words are the deliverable. Places I am least
 confident:

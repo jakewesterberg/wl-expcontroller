@@ -12,7 +12,7 @@ from __future__ import annotations
 from wl_expcontroller.simulate import Subject, simulate
 from wl_expcontroller.task import (
     After,
-    Acquired,
+    Entered,
     Exited,
     On,
     Outcome,
@@ -28,7 +28,7 @@ DETECTION = Trial(
         State(
             "await_fix",
             go=[
-                On(Acquired("fix"), "hold_fix"),
+                On(Entered("fix"), "hold_fix"),
                 On(After(2.0), Outcome.NO_FIXATION),
             ],
         ),
@@ -49,7 +49,7 @@ def test_simulation_reaches_every_outcome_the_task_declares():
     a task quietly never scores an error, and how a condition silently never runs."""
     census = simulate(
         DETECTION,
-        Subject(seed=7, hazards={Acquired: 0.25, Exited: 0.02}),
+        Subject(seed=7, hazards={Entered: 0.25, Exited: 0.02}),
         trials=2_000,
         frame_period=0.01,
     )
@@ -68,7 +68,7 @@ def test_an_outcome_no_behaviour_reaches_is_reported_as_uncovered():
     census says so rather than the absence being invisible in a pass."""
     census = simulate(
         DETECTION,
-        Subject(seed=7, hazards={Acquired: 0.25, Exited: 0.0}),
+        Subject(seed=7, hazards={Entered: 0.25, Exited: 0.0}),
         trials=500,
         frame_period=0.01,
     )

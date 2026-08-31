@@ -8,7 +8,7 @@ import pytest
 
 from wl_expcontroller.task import (
     After,
-    Acquired,
+    Entered,
     Bounded,
     Custom,
     Exited,
@@ -370,7 +370,7 @@ def test_a_task_referencing_an_undeclared_window_is_refused():
             State(
                 "await_fix",
                 go=[
-                    On(Acquired("target"), Outcome.CORRECT),
+                    On(Entered("target"), Outcome.CORRECT),
                     On(After(1.0), Outcome.NO_FIXATION),
                 ],
             ),

@@ -12,7 +12,7 @@ import pytest
 from wl_expcontroller.run import Quiet, Scripted, run_trial
 from wl_expcontroller.task import (
     After,
-    Acquired,
+    Entered,
     On,
     Outcome,
     P,
@@ -50,7 +50,7 @@ def test_the_clock_restarts_on_state_entry():
             State(
                 "await_fix",
                 go=[
-                    On(Acquired("fix"), "hold_fix"),
+                    On(Entered("fix"), "hold_fix"),
                     On(After(1.0), Outcome.NO_FIXATION),
                 ],
             ),
@@ -59,7 +59,7 @@ def test_the_clock_restarts_on_state_entry():
     )
 
     result = run_trial(
-        trial, world=Scripted({Acquired("fix"): 3}), frame_period=0.01
+        trial, world=Scripted({Entered("fix"): 3}), frame_period=0.01
     )
 
     assert result.outcome is Outcome.CORRECT
@@ -74,7 +74,7 @@ def test_a_world_where_nothing_happens_falls_through_to_the_time_bound():
             State(
                 "await_fix",
                 go=[
-                    On(Acquired("fix"), "hold_fix"),
+                    On(Entered("fix"), "hold_fix"),
                     On(After(0.04), Outcome.NO_FIXATION),
                 ],
             ),

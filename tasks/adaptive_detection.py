@@ -17,7 +17,7 @@ from wl_expcontroller.task import (
     Bounded,
     Mark,
     Disc,
-    Acquired,
+    Entered,
     Hold,
     Exited,
     On,
@@ -66,7 +66,7 @@ adaptive_detection = Trial(
             "await_fix",
             enter=[Show(FIX), Mark(4096)],
             go=[
-                On(Acquired("fix"), "hold_fix"),
+                On(Entered("fix"), "hold_fix"),
                 On(After(P("fix_timeout")), Outcome.NO_FIXATION, do=[Mark(4100)]),
             ],
         ),
@@ -95,7 +95,7 @@ adaptive_detection = Trial(
                 On(
                     Hold("target", P("target_hold")),
                     Outcome.CORRECT,
-                    do=[Mark(4099), Mark(4102), Reward(Bounded("reward_correct"))],
+                    do=[Mark(4099), Mark(4102), Reward("reward_correct")],
                 ),
                 On(Exited("target"), Outcome.WRONG_TARGET),
                 On(After(P("response_window")), Outcome.NO_RESPONSE),

@@ -57,14 +57,38 @@ _TRIAL_NO_RESPONSE = 38
 
 
 def _standing_outcomes() -> dict[object, int]:
+    """Thirteen outcomes onto five markers.
+
+    **The marker gives the class; the reason travels as a `TaskEvent` strobed just
+    before it** -- the rule S2 §4 already established for `NO_FIXATION`. So four
+    different breaks all mark `TRIAL_ABORT`, and an analysis distinguishing them
+    reads the pair rather than the marker alone.
+
+    The alternative is asking `wl-preproc` for eight more `Marker` values. Not
+    asked for, because `Marker` 1-255 is theirs and reserved for **trial
+    structure**: whether a trial ended, and roughly how. Which distractor an animal
+    went to, and whether it went early, is task meaning, and task meaning lives in
+    the range this project allocates. Pushing it into their range would be
+    convenient for one analysis and wrong about who owns what.
+    """
     from wl_expcontroller.task import Outcome
 
     return {
         Outcome.CORRECT: _TRIAL_CORRECT,
+        # Right thing, wrong time: still not a correct trial.
+        Outcome.EARLY_RESPONSE: _TRIAL_ERROR,
+        Outcome.LATE_RESPONSE: _TRIAL_ERROR,
         Outcome.WRONG_TARGET: _TRIAL_ERROR,
-        Outcome.NO_FIXATION: _TRIAL_ABORT,
-        Outcome.FIXATION_BREAK: _TRIAL_FIXATION_BREAK,
+        Outcome.EARLY_ERROR: _TRIAL_ERROR,
+        Outcome.LATE_ERROR: _TRIAL_ERROR,
         Outcome.NO_RESPONSE: _TRIAL_NO_RESPONSE,
+        # Fixation break has its own marker; the other breaks do not.
+        Outcome.FIXATION_BREAK: _TRIAL_FIXATION_BREAK,
+        Outcome.TARGET_BREAK: _TRIAL_ABORT,
+        Outcome.CATCH_BREAK: _TRIAL_ABORT,
+        Outcome.MOTION_BREAK: _TRIAL_ABORT,
+        Outcome.NO_FIXATION: _TRIAL_ABORT,
+        Outcome.ABORT: _TRIAL_ABORT,
     }
 
 
