@@ -38,16 +38,19 @@ class SessionSpec:
     frame_period: float
     seed: int
     values: dict
+    #: Rates per second, not per frame (S9/simulate). Roughly: acquires fixation
+    #: within a few hundred ms, saccades to a target at a plausible latency, and
+    #: breaks fixation about once every twenty seconds of holding.
     hazards: dict = field(
         default_factory=lambda: {
-            Entered: 0.20,
-            Hold: 0.30,
-            SaccadeTo: 0.15,
-            Exited: 0.01,
+            Entered: 6.0,
+            SaccadeTo: 5.0,
+            Exited: 0.05,
         }
     )
     engagement: float = 0.85
-    lapse: float = 0.004
+    #: Per second, so a trial of a few seconds lapses occasionally.
+    lapse: float = 0.15
 
 
 @dataclass

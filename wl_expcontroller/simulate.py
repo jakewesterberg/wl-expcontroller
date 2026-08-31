@@ -14,6 +14,7 @@ that looked convincing would invite exactly the confusion between the two.
 
 from __future__ import annotations
 
+import math
 import random
 from collections import Counter
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from wl_expcontroller.run import Result, run_trial
-from wl_expcontroller.task import Guard, Outcome, Trial
+from wl_expcontroller.task import Entered, Exited, Guard, Outcome, Trial
 
 if TYPE_CHECKING:
     from wl_expcontroller.record import SessionRecord
@@ -31,9 +32,15 @@ if TYPE_CHECKING:
 class Subject:
     """A behaving animal, to the fidelity simulation needs.
 
-    `hazards` maps a guard *type* to its per-frame probability of firing, so a
-    latency is geometric with that rate. Seeded, because a simulated session that
-    cannot be reproduced is an anecdote.
+    `hazards` maps a guard *type* to a **rate in events per second**, converted to a
+    per-frame probability by the frame period. Rates rather than probabilities
+    because a per-frame number means something different at every refresh rate --
+    0.01 per frame is a 51% chance of breaking across a 0.3 s hold at 240 Hz and 16%
+    at 60 Hz -- and the animal does not know the refresh rate. S0's dual-mode panel
+    makes that a rate change *within* a session, so a subject expressed per frame
+    would describe a different animal in each mode.
+
+    Seeded, because a simulated session that cannot be reproduced is an anecdote.
 
     **`engagement` is not a refinement, it is what makes the model able to produce
     a no-response at all.** A pure hazard fires eventually given enough frames --
@@ -61,21 +68,75 @@ class Subject:
     lapse: float = 0.0
     _rng: random.Random = field(init=False, repr=False)
     _engaged: bool = field(init=False, default=True, repr=False)
+    _inside: set = field(init=False, default_factory=set, repr=False)
+    _windows: set = field(init=False, default_factory=set, repr=False)
+    _frame: int = field(init=False, default=0, repr=False)
+    #: Set by `simulate`, so a subject need not be constructed knowing the rig.
+    _frame_period: float = field(init=False, default=1 / 240, repr=False)
 
     def __post_init__(self) -> None:
         self._rng = random.Random(self.seed)
 
     def new_trial(self) -> None:
         self._engaged = self._rng.random() < self.engagement
+        self._inside = set()
+        self._frame = 0
 
-    def satisfied(self, guard: Guard, state: str, frame: int) -> bool:
+    def _per_frame(self, rate: float) -> float:
+        """A rate in events per second as a per-frame probability."""
+        return 1.0 - math.exp(-rate * self._frame_period)
+
+    def _tick(self, frame: int) -> None:
+        """Advance membership once per frame, however many windows are asked about.
+
+        Guards are evaluated several times per frame, so drawing on every question
+        would make an animal's behaviour depend on how many transitions a state
+        happens to declare -- which is a property of the task file, not of the animal.
+        """
+        if frame == self._frame:
+            return
+        self._frame = frame
+        if not self._engaged:
+            return
+        if self.lapse > 0.0 and self._rng.random() < self._per_frame(self.lapse):
+            self._engaged = False
+            self._inside = set()
+            return
+        enter = self._per_frame(self.hazards.get(Entered, 0.0))
+        leave = self._per_frame(self.hazards.get(Exited, 0.0))
+        for window in list(self._windows):
+            if window in self._inside:
+                if leave > 0.0 and self._rng.random() < leave:
+                    self._inside.discard(window)
+            elif enter > 0.0 and self._rng.random() < enter:
+                self._inside.add(window)
+
+    def in_window(self, window: str, frame: int) -> bool:
+        """Per-window and independent, which is not how an animal looks.
+
+        Adequate rather than faithful, and deliberately so (M0 §4): agents model
+        outcome distributions and reaction times, not gaze traces. A task whose
+        conclusions depend on an animal being unable to occupy two windows at once
+        is a task that needs replayed recordings, not a better synthetic animal.
+        """
+        self._windows.add(window)
+        self._tick(frame)
+        return window in self._inside
+
+    def happened(self, guard: Guard, state: str, frame: int) -> bool:
+        self._tick(frame)
         if not self._engaged:
             return False
-        if self.lapse > 0.0 and self._rng.random() < self.lapse:
-            self._engaged = False
+        hazard = self._per_frame(self.hazards.get(type(guard), 0.0))
+        if hazard <= 0.0 or self._rng.random() >= hazard:
             return False
-        hazard = self.hazards.get(type(guard), 0.0)
-        return hazard > 0.0 and self._rng.random() < hazard
+        # A saccade that lands in a window leaves the animal *in* it, so a hold
+        # that follows can complete. Without this a task could detect a saccade to
+        # a target and then never register the animal as looking at it.
+        window = getattr(guard, "window", None)
+        if window is not None:
+            self._inside.add(window)
+        return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +204,7 @@ def simulate(
     responses: Counter = Counter()
     visited: set[str] = set()
     hangs = 0
+    subject._frame_period = frame_period
     for index in range(trials):
         subject.new_trial()
         result: Result = run_trial(

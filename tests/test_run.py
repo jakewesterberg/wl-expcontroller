@@ -13,6 +13,8 @@ from wl_expcontroller.run import Quiet, Scripted, run_trial
 from wl_expcontroller.task import (
     After,
     Entered,
+    Exited,
+    Hold,
     On,
     Outcome,
     P,
@@ -61,11 +63,13 @@ def test_the_clock_restarts_on_state_entry():
     )
 
     result = run_trial(
-        trial, world=Scripted({Entered("fix"): 3}), frame_period=0.01
+        trial,
+        world=Scripted({}, inside={frame: "fix" for frame in range(3, 40)}),
+        frame_period=0.01,
     )
 
     assert result.outcome is Outcome.CORRECT
-    assert result.frames == 8  # 3 frames to acquire, then 5 to hold
+    assert result.frames == 8  # enters on 3, holds 50 ms across frames 4-8
 
 
 def test_a_world_where_nothing_happens_falls_through_to_the_time_bound():
@@ -166,3 +170,81 @@ def test_a_trial_records_every_scored_response_and_still_ends_once():
         ("a", Outcome.CORRECT, 3),
         ("b", Outcome.WRONG_TARGET, 7),
     ]
+
+
+class _Membership:
+    """A world that reports only where gaze is, frame by frame."""
+
+    def __init__(self, inside: dict[int, str]) -> None:
+        self.inside = inside
+
+    def in_window(self, window: str, frame: int) -> bool:
+        return self.inside.get(frame) == window
+
+    def happened(self, guard, state: str, frame: int) -> bool:
+        return False
+
+
+def test_entered_exited_and_hold_are_derived_from_membership_not_asked_of_the_world():
+    """The property that makes worlds interchangeable.
+
+    A world reports *where gaze is*. The loop derives entering, leaving and holding
+    from that, so those semantics -- including the staleness policy S5 §4.1
+    requires -- exist once. If each world implemented them, the simulator and a
+    mouse would disagree about what a hold is, and a person validating a task in
+    demo mode would be validating different behaviour from the one an animal gets.
+    """
+    trial = Trial(
+        start="await_fix",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
+        states=[
+            State(
+                "await_fix",
+                go=[
+                    On(Entered("fix"), "hold_fix"),
+                    On(After(1.0), Outcome.NO_FIXATION),
+                ],
+            ),
+            State(
+                "hold_fix",
+                go=[
+                    On(Hold("fix", 0.03), Outcome.CORRECT),
+                    On(Exited("fix"), Outcome.FIXATION_BREAK),
+                ],
+            ),
+        ],
+    )
+    # inside from frame 2; a hold of 30 ms at 10 ms frames completes on frame 5
+    world = _Membership({frame: "fix" for frame in range(2, 40)})
+
+    result = run_trial(trial, world, frame_period=0.01)
+
+    assert result.outcome is Outcome.CORRECT
+    # Enters on frame 2; a 30 ms hold at 10 ms frames covers 2, 3 and 4.
+    assert result.frames == 4
+
+
+def test_leaving_a_window_restarts_a_hold_rather_than_pausing_it():
+    """A hold is continuous. Accumulating across a gap would score an animal that
+    looked away and back as having held throughout, which is the opposite of what
+    the criterion is for."""
+    trial = Trial(
+        start="hold_fix",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
+        states=[
+            State(
+                "hold_fix",
+                go=[
+                    On(Hold("fix", 0.03), Outcome.CORRECT),
+                    On(After(0.2), Outcome.NO_RESPONSE),
+                ],
+            ),
+        ],
+    )
+    # in for two frames, out for one, then in continuously
+    inside = {1: "fix", 2: "fix", 4: "fix", 5: "fix", 6: "fix", 7: "fix"}
+
+    result = run_trial(trial, _Membership(inside), frame_period=0.01)
+
+    assert result.outcome is Outcome.CORRECT
+    assert result.frames == 6, "the hold restarted at frame 4, completing on 6"

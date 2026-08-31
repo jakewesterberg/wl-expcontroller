@@ -66,13 +66,9 @@ def test_simulation_reaches_every_outcome_the_reference_task_declares(detection)
         Subject(
             seed=11,
             engagement=0.85,
-            lapse=0.004,
-            hazards={
-                Entered: 0.20,
-                Hold: 0.30,
-                SaccadeTo: 0.15,
-                Exited: 0.01,
-            },
+            # Rates per second, not per frame.
+            lapse=0.15,
+            hazards={Entered: 6.0, SaccadeTo: 5.0, Exited: 0.05},
         ),
         trials=5_000,
         frame_period=1 / 240,

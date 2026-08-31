@@ -122,4 +122,5 @@ class SessionRecord:
         return self
 
     def __exit__(self, *_: object) -> None:
+        return None
         self.close()

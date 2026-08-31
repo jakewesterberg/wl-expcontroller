@@ -14,6 +14,9 @@ from wl_expcontroller.task import (
     After,
     Entered,
     Exited,
+    Entered,
+    Exited,
+    Hold,
     On,
     Outcome,
     SaccadeTo,
@@ -106,3 +109,42 @@ def test_the_census_counts_scored_responses_not_only_outcomes():
 
     assert census.outcomes == {Outcome.NO_RESPONSE: 200}, "every trial ends alike"
     assert census.responses[("a", Outcome.CORRECT)] > 0, "and yet things happened"
+
+
+def test_behaviour_does_not_change_when_the_display_does():
+    """Hazards are rates per second, not per frame.
+
+    A per-frame probability means something different at every refresh rate: 0.01
+    per frame is a 51% chance of breaking across a 0.3 s hold at 240 Hz and 16% at
+    60 Hz. The animal does not know the refresh rate, so a subject tuned on one rig
+    would describe a different animal on another -- and S0's dual-mode panel makes
+    that a rate change *within* a session.
+    """
+    trial = Trial(
+        start="hold",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
+        states=[
+            State(
+                "hold",
+                go=[
+                    On(Hold("fix", 0.3), Outcome.CORRECT),
+                    On(Exited("fix"), Outcome.FIXATION_BREAK),
+                    On(After(3.0), Outcome.NO_FIXATION),
+                ],
+            ),
+        ],
+    )
+
+    def breaks_at(frame_period: float) -> float:
+        census = simulate(
+            trial,
+            Subject(seed=4, engagement=1.0, hazards={Entered: 0.2, Exited: 0.01}),
+            trials=600,
+            frame_period=frame_period,
+        )
+        total = sum(census.outcomes.values())
+        return census.outcomes[Outcome.FIXATION_BREAK] / total
+
+    slow, fast = breaks_at(1 / 60), breaks_at(1 / 240)
+
+    assert abs(slow - fast) < 0.08, f"60 Hz gave {slow:.2f}, 240 Hz gave {fast:.2f}"
