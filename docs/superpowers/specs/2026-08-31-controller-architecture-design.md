@@ -598,8 +598,9 @@ this being four subsystems that drift.
 
 JSONL trial/event log; behavioral tables (parquet); complete config snapshot including the
 resolved parameter set, bounded config, gaze mapping versions, task version and code
-version; the plot declaration; the parameter-change log; and a DONE marker conforming to
-`wl-preproc`'s published schema. Raw neural data never touches the task PC.
+version; the plot declaration; the parameter-change log; and — **not** a DONE marker. S3 §5: `wl-preproc`'s frozen path contract places us at
+`<root>/<YYYY-MM-DD_NN>/expcontroller/`, deliberately outside `SYSTEMS`, so we write no marker
+and never block session-complete detection. Raw neural data never touches the task PC.
 
 ### 12.3 wl-works and the ELN
 
@@ -757,6 +758,6 @@ auditory performance feedback, plus vocalization monitoring.
 | `docs/roadmap.md` | Stim tiers 1–2 move into v1; parity gate M5 loses its comparator; demo mode and preflight become gated deliverables |
 | `docs/validation.md` | V2b, V7, V8, V9 added; V4 widened to both neural paths |
 | `README.md` | Two rigs, not 3–4; bridge language removed |
-| `docs/superpowers/specs/` | **S0**, **S1** and **S2** written |
+| `docs/superpowers/specs/` | **S0**, **S1**, **S2** and **S3** written |
 | `docs/design/decisions/` | **ADR-0007** (event vocabulary ownership) |
 | `docs/design/decisions/` | **ADR-0005** (day-one stack and interchangeability; supersedes ADR-0001 decision 3) and **ADR-0006** (task representation) written. Lab-host protocol adoption (D11) still needs an ADR once S10 is specified. |
