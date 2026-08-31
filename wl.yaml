@@ -1,0 +1,123 @@
+schema: 1
+slug: wl-expcontroller
+class: application
+lifecycle: scaffolded
+visibility: private
+# Not yet created. Declared here because the registry resolves names through it
+# and this repository follows the lab's naming convention; `git remote -v` in this
+# checkout returns nothing as of 4e95bf0. Push before anyone depends on this field.
+remote: https://github.com/jakewesterberg/wl-expcontroller.git
+
+summary: >-
+  The behavioural task controller: a Python, Linux-first replacement for NIMH
+  MonkeyLogic on the recording rigs. Runs trials, drives the display and the
+  rig's NI DIO, consumes OpenIrisDPI gaze and real-time neural features from
+  SpikeGLX and Intan RHX, and triggers Intan RHS stimulation.
+
+status:
+  phase: >-
+    Design phase, no code. The 2026-08-31 session took eleven decisions and
+    corrected the architecture against the rest of the lab stack.
+  next: >-
+    S0 (rig topology, hosts and hardware) from
+    docs/superpowers/specs/2026-08-31-spec-map.md. It is short, it unblocks
+    purchasing, and it carries the one unverified claim the design depends on:
+    NI PCIe-6343 with NI-DAQmx on a supported Linux.
+  describes: 4e95bf0c84dca4a2b89824866b7b09661cab9755
+
+# The task PC. The role name is proposed, not settled -- S0 fixes the rig role
+# vocabulary (rig/task, rig/eye, rig/sglx, rig/intan, rig/sync) with wl-stack.
+runs_on: [rig/task]
+builds_on: [dws]
+
+third_party:
+  - name: python
+    constraint: ">=3.11"
+    why: >-
+      The floor wl-sync and wl-preproc both support. Matching them keeps one
+      Python story across the lab's own packages.
+  - name: ni-daqmx
+    where: rig/task
+    why: >-
+      The task PC drives an NI PCIe-6343 -- 19 digital out, 4 digital in and 9
+      analog in -- and that card is fixed in copper by wl-sync's breakout board,
+      not chosen here. Catalogued because the driver is an out-of-tree kernel
+      module built by DKMS, so it constrains the machine's distribution rather
+      than merely being installed on it: NI-DAQmx 2026 Q2 supports RHEL 9.6/10.0,
+      openSUSE 15.6/16.0 and Ubuntu 22.04/24.04 LTS, and does NOT support Fedora,
+      which is wl-stack's workstation standard. The task PC therefore deviates
+      deliberately. UNVERIFIED on hardware until a card is benched (pitfalls P10).
+  - name: nidaqmx-python
+    where: rig/task
+    why: >-
+      The ctypes wrapper over the NI-DAQmx C API. Declared separately because
+      NI's Linux readme lists only LabVIEW and C/C++ (gcc) as supported
+      development environments, so the Python binding is our exposure, not NI's.
+
+# Deliberately absent: psychopy, pyzmq and msgpack. ADR-0002 (display engine) and
+# ADR-0003 (messaging and transport) are both still `Proposed`, and declaring them
+# here would assert a toolchain nothing has accepted -- the same reason wl-mllib's
+# manifest declines to name MATLAB and Psychtoolbox. They land when those ADRs do.
+
+requires:
+  - name: wl-sync
+    for: session identity, the barcode codec, and event-code routing
+    why: >-
+      The sync box defines session time and owns everything it produces. This
+      controller consumes those definitions rather than minting its own; an
+      earlier draft of the architecture had it minting a sync barcode, which
+      would have created a second definition free to drift from the hardware's.
+      Unpinned because there is no code here yet to pin from.
+  - name: wl-mllib
+    for: the task event vocabulary
+    why: >-
+      A recorded event code carries timing without meaning. wl-mllib publishes
+      the allocation and nothing is allocated yet, so this edge is a v1 blocker
+      with a cross-repo dependency rather than a convenience. Unpinned for the
+      same reason as wl-sync.
+
+publishes:
+  - name: session-summary
+    kind: json-schema
+    stability: planned
+    what: >-
+      What a finished session did: trials run, performance by condition, fluid
+      delivered, task and config versions, the parameter-change log, the abort
+      census and the preflight result. Written into the session directory and
+      ingested by wl-preproc, not served over the wire -- the lab host protocol
+      declines result upload ("wl.works pulls; this host never pushes") and a
+      summary is a result. Live session state reaches wl-works separately, as
+      readings on GET /health. Shape not agreed yet; the amendment proposing both
+      is docs/pending-wl-works-amendments.md.
+
+  - name: task-definition
+    kind: python-model
+    stability: planned
+    what: >-
+      The representation a behavioural task is written in: within-trial logic as
+      declarative data, between-trial logic as ordinary Python (ADR-0006). Named
+      here because it is read outside this package -- wl-works renders a page per
+      task, and any tool that labels trials needs to know what a task declared.
+      The format is ours; the tasks written in it belong to wl-mllib, whose own
+      identity under ADR-0005 is an open question this manifest does not settle.
+
+consumes:
+  - name: session-id
+    why: >-
+      Every session this controller runs is keyed by the identity the sync box
+      minted for it, and everything downstream joins on it.
+  - name: barcode-codec
+    why: >-
+      Our events are only interpretable once every stream is aligned onto one
+      clock, which is decoded from the barcodes the sync box emits.
+  - name: task-event-vocabulary
+    why: >-
+      Codes are allocated in wl-mllib and never invented in a task file. Loading
+      a task whose codes are not in the allocation is refused, which is the
+      cheapest guardrail this design has against model-authored task files
+      (pitfalls P15).
+  - name: health-response
+    why: >-
+      This controller implements wl-preproc's lab-host protocol rather than a
+      second one, so wl-works polls one shape across both lab hosts and its own
+      contract tests -- which already run against a fake wl-preproc -- carry over.

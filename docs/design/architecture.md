@@ -160,8 +160,13 @@ code versions, plot declaration, parameter-change log), and a DONE marker confor
 
 **The rig cannot push to the ELN.** wl-works binds only to WireGuard and lab machines have
 no route in, and `wl-preproc` enforces "never initiates a connection" with an AST guardrail.
-Integration is pull-based and reuses `wl-preproc`'s existing lab-host protocol: wl-works
-pushes a session activation in, and polls a session-summary endpoint out.
+Integration is pull-based and reuses `wl-preproc`'s existing lab-host protocol, in three
+directions: wl-works pushes a `prepare-session` action carrying the ELN metadata bundle;
+live session state is exposed as **readings on `GET /health`**; and the finished session
+summary is **a file in the session directory** that `wl-preproc` ingests, because the
+protocol declines result upload. No welfare-affecting action — reward, stimulation, session
+start, parameter change — is ever published through it, since wl-works' permission model is
+flat by design. Drafted at `docs/pending-wl-works-amendments.md`.
 
 Behavioral visualization lives here; **neural visualization stays in `wl-expviz`**.
 

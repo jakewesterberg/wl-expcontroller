@@ -599,14 +599,29 @@ verdict shape, published JSON Schemas — rather than inventing a second protoco
 
 | Direction | Carries | Mechanism |
 |---|---|---|
-| ELN -> rig | subject, planned insertions, `trajectory_id`, session intent | wl-works pushes a session activation at session start |
-| rig -> ELN | trials run, performance by condition, fluid delivered, task and config versions, parameter-change log, abort census, preflight result | wl-works polls the session-summary endpoint |
+| ELN -> rig | subject, probe serials, `insertion_number`, `trajectory_id`, planned task, session intent | wl-works pushes a `prepare-session` action; three of six fields already exist in the bundle it sends `wl-preproc` |
+| rig -> wl-works, live | session, subject, task, state, trial counts, fluid against ceiling, preflight result | **readings on `GET /health`**, polled at the protocol's 60 s cadence |
+| rig -> ELN, finished | trials run, performance by condition, fluid delivered, task and config versions, parameter-change log, abort census | **a file in the session directory**, ingested by `wl-preproc`, reaching the ELN by the path that already exists |
 
-Every field in the second row is already recorded for other reasons.
+The split is not arbitrary. `lab-host-protocol.md` declines a job-status endpoint and states
+that when progress becomes observable "it will be as a **reading**, because readings are the
+surface this host already publishes and wl.works already polls — not as a new endpoint"; it
+separately declines result upload, "wl.works pulls; this host never pushes." Live state is a
+reading; a finished summary is a result. Following both rules costs us no new endpoint and
+no second copy of the session record free to drift from the ingested one. The trade is that
+the ELN entry appears **after ingest rather than at session end**; if that latency matters,
+the fix is prompt ingest, not a new endpoint.
 
-**This implies a cross-repo amendment against `wl-works`**, drafted in the style of
-`wl-preproc`'s open amendments rather than assumed. Another worker owns that repository,
-including its remote.
+**No welfare-affecting action is ever published through this protocol.** wl-works' permission
+model is flat by design — publishing an action makes it available to every lab member. On a
+preprocessing server the worst case is wasted compute; on a rig it is fluid, stimulation, or
+a session started on an animal nobody is standing next to. Reward, stimulation, session start
+and parameter changes require a person at the console.
+
+**The cross-repo amendment is drafted at `docs/pending-wl-works-amendments.md`**, in the style
+of `wl-preproc`'s open amendments, and is theirs to accept, amend or refuse. Another worker
+owns that repository, including its remote. Note that it builds on a protocol document that
+is itself proposed rather than agreed.
 
 ---
 
