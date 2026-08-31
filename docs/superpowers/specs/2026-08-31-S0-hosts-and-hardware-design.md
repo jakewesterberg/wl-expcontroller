@@ -254,7 +254,7 @@ rather than avoided. This makes acceptance criterion 6 — sustained full-field 
 | Bench 4K OLED | 1 | stock | Now — unblocks M1/M2 from the tandem launch |
 | Task PC | 2 (+1 bench) | stock | Now, so the §3.1 bench test can run |
 | Tandem OLED | 2 | late 2026 | On release, against §5.4 |
-| Stereoscope optics | 2 sets | build | After §5.2's distance is fixed against the real chair geometry |
+| Stereoscope optics | 2 sets | build | Geometry drawn (`2026-08-31-stereoscope-optics-drawing.md`); first-surface mirrors, 4 per rig |
 
 `wl-sync` fabs the breakout boards on its own schedule: prototype late October to late
 November, production run mid-November to mid-December, with almost no slack for a respin.

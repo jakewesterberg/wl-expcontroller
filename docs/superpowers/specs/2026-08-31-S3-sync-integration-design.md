@@ -172,11 +172,14 @@ Three consequences, and the third is the one that keeps flexibility:
 `A_PD2` the flip patch alternating every refresh. Both reach us as digital comparator edges and
 reach the recorders as edges plus analog copies.
 
-**Placement is the open physical question.** Both patches must sit outside both eyes' viewports
-on the split screen, or the flip patch is a flickering distractor in one eye's field. Candidates
-are the septum strip and a screen edge outside the mirror-visible region. **This is decided
-against the real optics, with `wl-sync`, before the mirrors are mounted** — and the 57 cm
-viewing distance from S0 §5.2 must be fixed first, since it sets what is visible.
+**Placement now has a geometric answer.** Both patches must sit outside both eyes' viewports,
+or the flip patch — alternating every refresh — is a flickering distractor in one eye's field.
+Naively impossible, since two viewports tile the panel exactly. But the stereoscope's roof
+mirrors clip each eye's nasal field, and that clip **is** an unviewed central strip: 8.8 cm wide
+at the recommended 7.0 cm mirror distance. See
+`2026-08-31-stereoscope-optics-drawing.md` §5, which also gives the fallbacks and the trade
+against nasal field. Confirmed with `wl-sync` before mirrors are mounted, and verified dark to
+each eye at bring-up rather than assumed from geometry.
 
 **Cameras** take the barcode as a timebase to record, not a trigger — they free-run, and the
 sync box captures their `ExposureActive` strobes on GPIO 26/27. **We do not trigger cameras and
@@ -211,6 +214,6 @@ question, from their side.
 |---|---|---|
 | 1 | How taskd learns the session id | every output path |
 | 2 | ~~Day versus subject-session~~ **Answered: two animals routinely.** Remaining: what mints `_02`, which is `wl-sync`'s to say | directory layout under two subjects |
-| 3 | Photodiode patch placement against the real optics | rig build |
+| 3 | Photodiode patch placement — **candidate found** (central strip from the nasal clip); confirm with `wl-sync` and verify dark at bring-up | rig build |
 | 4 | ~~Calibration blocks versus in-task epochs~~ **Answered: both.** Remaining: wl.works planning a calibration block per session | S5, S8, wl-works |
 | 5 | Whether our synthetic generator feeds `wl-preproc`'s harness or its own | V6 |
