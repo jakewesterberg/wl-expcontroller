@@ -48,19 +48,28 @@ def _run_suite() -> tuple[bool, str]:
 
 
 def _function_names(source: str) -> list[str]:
-    """Every module-level function, public ones included.
+    """Every function, module-level and method alike.
 
-    This matched only `_`-prefixed names until a run over `simulate.py` -- whose
-    functions are public -- reported nothing to mutate. It exited with a message
-    rather than a false success, which was luck rather than design: a coverage
-    tool that can quietly examine nothing is worse than no tool, so `--all` now
-    refuses an empty target list explicitly.
+    Two blind spots found by using it, both the same shape -- the tool quietly
+    examining nothing and reporting success. First it matched only `_`-prefixed
+    names, so a run over `simulate.py` covered none of it. Then it matched only
+    module-level `def`, so `record.py` -- which is entirely methods -- reported
+    nothing to mutate, which reads like nothing to check.
+
+    A coverage tool that can silently cover nothing has the exact failure mode it
+    exists to catch, so `--all` refuses an empty target list and this matches both
+    indentation levels.
     """
-    return re.findall(r"^def ([a-z_][a-z0-9_]*)\(", source, flags=re.M)
+    return re.findall(r"^ *def ([a-z_][a-z0-9_]*)\(", source, flags=re.M)
 
 
 def mutate(path: Path, function: str, args_returns: str) -> bool:
     """True if neutering `function` makes the suite fail, i.e. it is covered.
+
+    A name defined more than once -- `satisfied`, implemented by every `World` --
+    has **all** its definitions neutered together. Bailing on the ambiguity was the
+    earlier behaviour and it was worse than useless: it stopped the whole run, so
+    `run.py` reported nothing at all rather than reporting what it could.
 
     **What the neutered body returns changes how sharp the answer is.** For the
     checkers, whose results are concatenated, `return []` fails exactly the tests
@@ -71,10 +80,17 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
     returns because that is what this codebase's checkers do.
     """
     original = path.read_text()
-    pattern = rf'(def {re.escape(function)}\([^)]*\)[^:]*:\n(?:    """.*?"""\n)?)'
-    mutated, count = re.subn(pattern, r"\1    return " + args_returns + "\n", original, flags=re.S)
-    if count != 1:
-        raise SystemExit(f"could not neuter {function} in {path} (matched {count})")
+    pattern = (
+        rf'( *def {re.escape(function)}\([^)]*\)[^:]*:\n(?: *""".*?"""\n)?)'
+    )
+    def _neuter(match: re.Match) -> str:
+        head = match.group(0)
+        indent = " " * (len(head) - len(head.lstrip(" ")))
+        return f"{head}{indent}    return {args_returns}\n"
+
+    mutated, count = re.subn(pattern, _neuter, original, flags=re.S)
+    if count == 0:
+        raise SystemExit(f"could not find {function} in {path}")
 
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as backup:
         backup.write(original)

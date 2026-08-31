@@ -18,8 +18,13 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 
+from typing import TYPE_CHECKING
+
 from wl_expcontroller.run import Result, run_trial
 from wl_expcontroller.task import Guard, Outcome, Trial
+
+if TYPE_CHECKING:
+    from wl_expcontroller.record import SessionRecord
 
 
 @dataclass
@@ -101,12 +106,32 @@ class Census:
         return declared - set(self.outcomes)
 
 
+def run_session(
+    trial: Trial,
+    subject: Subject,
+    trials: int,
+    frame_period: float,
+    values: dict[str, float] | None = None,
+    record: "SessionRecord | None" = None,
+) -> Census:
+    """Run a session, optionally writing the record a rig would write.
+
+    **The simulator and the rig write through the same code.** That is what makes a
+    simulated session evidence about a real one rather than a rehearsal of it -- a
+    separate "simulation output" path would be free to differ from the real one in
+    exactly the ways that matter, and nobody would find out until January.
+    """
+    census = simulate(trial, subject, trials, frame_period, values, record)
+    return census
+
+
 def simulate(
     trial: Trial,
     subject: Subject,
     trials: int,
     frame_period: float,
     values: dict[str, float] | None = None,
+    record: "SessionRecord | None" = None,
 ) -> Census:
     """Run `trials` trials and report what happened.
 
@@ -118,7 +143,7 @@ def simulate(
     responses: Counter = Counter()
     visited: set[str] = set()
     hangs = 0
-    for _ in range(trials):
+    for index in range(trials):
         subject.new_trial()
         result: Result = run_trial(
             trial, subject, frame_period, values=values or {}
@@ -130,6 +155,12 @@ def simulate(
             hangs += 1
         else:
             outcomes[result.outcome] += 1
+        if record is not None:
+            record.trial(
+                index=index,
+                outcome=result.outcome.value if result.outcome else "hang",
+                params=dict(values or {}),
+            )
     return Census(
         outcomes=outcomes,
         states_visited=visited,

@@ -31,6 +31,11 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev]"
+      # Every module, methods included. The harness exits non-zero on a survivor,
+      # so a test that cannot fail fails the build.
       - run: python tools/mutate.py --all wl_expcontroller/check.py
       - run: python tools/mutate.py --all wl_expcontroller/encode.py
-      - run: python tools/mutate.py --all --returns None wl_expcontroller/simulate.py
+      - run: |
+          for module in run simulate review record geometry task codes components cli; do
+            python tools/mutate.py --all --returns None "wl_expcontroller/$module.py"
+          done

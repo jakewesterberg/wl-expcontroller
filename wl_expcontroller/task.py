@@ -417,11 +417,12 @@ class Stimulus:
     #: does not. Distinct from disparity, which shifts one stimulus in both eyes.
     eye: str = "both"
 
-    def per_eye(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        """Left and right image positions: equal and opposite horizontal offsets."""
-        x, y = self.at
-        half = self.disparity / 2.0
-        return ((x - half, y), (x + half, y))
+    # No `per_eye()` here. Mapping a cyclopean position to two viewport positions
+    # needs the vergence offset and each eye's *measured* optical path (S4 §2,
+    # optics drawing §6), which live in the display module and not in a task. An
+    # earlier version of this class carried one; it was deleted when the mutation
+    # harness reported it as covered by nothing, having been left behind when
+    # check 8 moved to reasoning over parameter *ranges* rather than values.
 
 
 @dataclass(frozen=True, slots=True)
