@@ -9,6 +9,7 @@ type checking -- and so a model authoring one is writing the language it writes 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from enum import Enum
 
 from wl_expcontroller.photometry import Color
@@ -256,7 +257,10 @@ class Trial:
     start: str
     states: list[State]
     params: list[Param] = field(default_factory=list)
-    windows: list[Window] = field(default_factory=list)
+    #: Hand-written windows and `ItemWindows` families, in one list: a window is a
+    #: window whether an author typed it or an array generated it, and keeping them
+    #: apart would mean every check that walks windows had to walk two lists.
+    windows: "list[Window | ItemWindows]" = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,6 +492,125 @@ class Blank(Appearance):
 
 
 @dataclass(frozen=True, slots=True)
+class Array(Appearance):
+    """`n` items evenly spaced on a ring, one of them the target.
+
+    **This exists so that set size is a value.** Written the obvious way -- an
+    N-item array as N separate `Show` actions -- set size becomes a change to the
+    *shape* of the task: a different task file for four items and eight, unavailable
+    to live editing, and untouchable by a parameter. That is the commonest
+    manipulation in visual search, and visual search is the lab's programme.
+
+    An appearance rather than an action, so the whole array is **one named stimulus**
+    on the display. The rest of the system -- `Hide`, `Update`, the visibility
+    analysis, the review artifact -- then needs to know nothing about arrays.
+    """
+
+    n: "int | P" = 4
+    radius: "float | P" = 8.0
+    #: Index of the target within the ring. A parameter, so target position is
+    #: manipulable between trials like anything else.
+    target: "int | P" = 0
+    looks: "Appearance | P" = field(default_factory=Disc)
+    #: What the other items look like. Target and distractors differing in exactly
+    #: one property is what makes this a feature-search array rather than a
+    #: collection of unrelated shapes -- and `looks`/`among` being parameters is what
+    #: makes "red among green" and "circle among squares" the same task.
+    among: "Appearance | P" = field(default_factory=Disc)
+    #: Where item 0 sits, in degrees counter-clockwise from the positive x axis.
+    #: Randomising it between trials is what stops an animal learning positions.
+    phase: "float | P" = 0.0
+
+    def positions(self, values: dict) -> "list[tuple[float, float]]":
+        """Item centres, in cyclopean degrees relative to the stimulus position."""
+        n = int(_value(self.n, values))
+        radius = float(_value(self.radius, values))
+        phase = math.radians(float(_value(self.phase, values)))
+        return [
+            (
+                radius * math.cos(phase + 2 * math.pi * i / n),
+                radius * math.sin(phase + 2 * math.pi * i / n),
+            )
+            for i in range(n)
+        ]
+
+    def item_looks(self, index: int, values: dict) -> "Appearance | P":
+        target = int(_value(self.target, values))
+        return self.looks if index == target else self.among
+
+
+def _value(value, values: dict):
+    """A parameter reference against bound values, for expansion.
+
+    Missing is an error rather than a default, for the reason `run._resolve` gives:
+    a set size that silently became zero would draw an empty screen, and an empty
+    screen reads as an animal who will not work.
+    """
+    if isinstance(value, P):
+        if value.name not in values:
+            raise KeyError(f"no value bound for parameter {value.name!r}")
+        return values[value.name]
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class ItemWindows:
+    """The per-item windows an `Array` needs, declared once.
+
+    One declaration rather than n, because n is not known until a trial runs. It
+    generates `<of>.<i>` per item plus two aliases: **`<of>.target`**, and
+    **`<of>.distractor`**, which is satisfied by any non-target item.
+
+    The distractor alias is the point. Without it, every error saccade would have to
+    be enumerated as one transition per item -- which is the same structure-versus-
+    value problem one level down, and it would make the measurement search tasks
+    exist to produce, target-versus-distractor, unavailable.
+    """
+
+    of: str
+    radius: "float | P"
+    eye: str = "both"
+
+    def expand(self, array: Array, values: dict) -> "list[Window]":
+        at = array.positions(values)
+        target = int(_value(array.target, values))
+        windows = [
+            Window(f"{self.of}.{i}", at=xy, radius=self.radius, on=self.of, eye=self.eye)
+            for i, xy in enumerate(at)
+        ]
+        windows.append(
+            Window(
+                f"{self.of}.target",
+                at=at[target],
+                radius=self.radius,
+                on=self.of,
+                eye=self.eye,
+            )
+        )
+        windows.append(
+            Window(
+                f"{self.of}.distractor",
+                at=at[target],  # nominal; membership is the union of the others
+                radius=self.radius,
+                on=self.of,
+                eye=self.eye,
+            )
+        )
+        return windows
+
+    def members(self, array: Array, values: dict) -> "dict[str, tuple[str, ...]]":
+        """Alias name to the concrete item windows that satisfy it."""
+        n = len(array.positions(values))
+        target = int(_value(array.target, values))
+        return {
+            f"{self.of}.target": (f"{self.of}.{target}",),
+            f"{self.of}.distractor": tuple(
+                f"{self.of}.{i}" for i in range(n) if i != target
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class Stimulus:
     """Something on the display: a position, an appearance, and how it is shown.
 
@@ -696,3 +819,36 @@ def FixPoint(
 ) -> Stimulus:
     """A small disc at the origin: the fixation point."""
     return Stimulus(name=name, at=at, looks=Disc(size=size), **kwargs)
+
+
+def arrays_of(trial: Trial) -> "dict[str, Array]":
+    """Every array stimulus a trial can show, by stimulus name."""
+    return {
+        action.stimulus.name: action.stimulus.looks
+        for _, action in actions_of(trial)
+        if isinstance(action, Show) and isinstance(action.stimulus.looks, Array)
+    }
+
+
+def expand_windows(
+    trial: Trial, values: dict
+) -> "tuple[list[Window], dict[str, tuple[str, ...]]]":
+    """A trial's windows with every array family expanded, plus alias membership.
+
+    One definition, used by the runner and the checker both, for the reason
+    `actions_of` gives: a checker that inspected a different set of windows from the
+    one the loop scores would be validating a task nobody runs.
+    """
+    arrays = arrays_of(trial)
+    windows: list[Window] = []
+    aliases: dict[str, tuple[str, ...]] = {}
+    for declared in trial.windows:
+        if isinstance(declared, ItemWindows):
+            array = arrays.get(declared.of)
+            if array is None:
+                continue
+            windows.extend(declared.expand(array, values))
+            aliases.update(declared.members(array, values))
+        else:
+            windows.append(declared)
+    return windows, aliases

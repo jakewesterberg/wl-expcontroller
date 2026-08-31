@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from wl_expcontroller.run import Result, run_trial
 from wl_expcontroller.task import (
     Entered,
+    expand_windows,
     Exited,
     Guard,
     Outcome,
@@ -256,7 +257,10 @@ def simulate(
     visited: set[str] = set()
     hangs = 0
     subject._frame_period = frame_period
-    subject._scores = {window.name: window.on for window in trial.windows}
+    # Expanded, because an array's per-item windows are not in `trial.windows` --
+    # how many there are is not known until `n` is bound.
+    declared, _ = expand_windows(trial, values or {})
+    subject._scores = {window.name: window.on for window in declared}
     for index in range(trials):
         subject.new_trial()
         result: Result = run_trial(

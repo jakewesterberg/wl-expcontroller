@@ -31,6 +31,7 @@ from wl_expcontroller.task import (
     Stimulus,
     Trial,
     Update,
+    expand_windows,
 )
 
 
@@ -253,7 +254,18 @@ def run_trial(
         if isinstance(edge.guard, (Entered, Exited, Hold))
         for guard in (edge.guard,)
     }
-    was_inside: dict[str, bool] = dict.fromkeys(tracked, False)
+    # An array's windows do not exist until `n` is bound, so aliases -- `<of>.target`
+    # and `<of>.distractor` -- are resolved here against this trial's values. A
+    # saccade guard reaches the world directly and worked by accident; membership is
+    # derived by the loop, so an unresolved alias is simply never satisfied and the
+    # animal fixates the target while the task waits forever.
+    _, aliases = expand_windows(trial, values or {})
+    asked = {
+        name: aliases.get(name, (name,))
+        for name in tracked
+    }
+    tracked = {concrete for names in asked.values() for concrete in names}
+    was_inside: dict[str, bool] = dict.fromkeys(asked, False)
     holding_since: dict[str, int] = {}
 
     # The display. The start state's entry actions run before the loop, so what
@@ -272,7 +284,11 @@ def run_trial(
 
         # Membership first, once per frame: entering and leaving are edges against
         # the previous frame, and a hold that lapses restarts rather than pausing.
-        inside_now = {name: world.in_window(name, frame) for name in tracked}
+        membership = {name: world.in_window(name, frame) for name in tracked}
+        inside_now = {
+            name: any(membership[concrete] for concrete in concretes)
+            for name, concretes in asked.items()
+        }
         for name, inside in inside_now.items():
             if inside:
                 holding_since.setdefault(name, frame)

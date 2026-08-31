@@ -11,6 +11,8 @@ from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.photometry import DKL, Calibration, Color, unrealizable, xyY
 from wl_expcontroller.task import (
     After,
+    Array,
+    ItemWindows,
     Custom,
     Entered,
     Exited,
@@ -27,6 +29,7 @@ from wl_expcontroller.task import (
     Update,
     Window,
     actions_of,
+    arrays_of,
 )
 
 
@@ -60,6 +63,7 @@ def check(
         + _uncoupled_windows(trial)
         + _display_faults(trial)
         + _color_faults(trial, calibration)
+        + _array_faults(trial)
     )
 
 
@@ -300,6 +304,14 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
         stimulus = action.stimulus
         x_values = _extremes(stimulus.at[0], ranges)
         y_values = _extremes(stimulus.at[1], ranges)
+        if isinstance(stimulus.looks, Array):
+            # An array's items sit on a ring around the stimulus position, so the
+            # thing that can leave the field is an *item*, never the centre. The
+            # extreme is the widest legal radius: with n a parameter too, every
+            # smaller set is a subset of those positions.
+            widest = max(_extremes(stimulus.looks.radius, ranges))
+            x_values = [x + dx for x in x_values for dx in (widest, -widest, 0.0)]
+            y_values = [y + dy for y in y_values for dy in (widest, -widest, 0.0)]
         half = _extremes(stimulus.disparity, ranges)
         bad = [
             (x + offset, y)
@@ -377,7 +389,7 @@ def _undeclared_windows(trial: Trial) -> list[Finding]:
     no position, no radius, nothing an experimenter can tune. It is the same defect
     as an undeclared parameter and would read just as reasonably in a generated file.
     """
-    declared = {window.name for window in trial.windows}
+    declared = _declared_window_names(trial)
     findings: list[Finding] = []
     for state in trial.states:
         for name in _window_refs(state):
@@ -417,7 +429,8 @@ def _uncoupled_windows(trial: Trial) -> list[Finding]:
             f"on='<stimulus>', or on=REMEMBERED if nothing is displayed there",
         )
         for window in trial.windows
-        if window.on is None
+        # An `ItemWindows` family always couples to its array, by construction.
+        if not isinstance(window, ItemWindows) and window.on is None
     ]
 
 
@@ -472,7 +485,7 @@ def _visible_on_entry(trial: Trial) -> dict[str, frozenset[str]]:
 
 def _display_faults(trial: Trial) -> list[Finding]:
     """Guards and actions checked against what is actually on the screen."""
-    scores = {window.name: window.on for window in trial.windows}
+    scores = _coupling(trial)
     entry = _visible_on_entry(trial)
     findings: list[Finding] = []
 
@@ -630,5 +643,90 @@ def _color_faults(trial: Trial, panel: Calibration | None) -> list[Finding]:
         if why is not None:
             findings.append(
                 Finding("unrealizable-color", f"{what} asks for {color}: {why}")
+            )
+    return findings
+
+
+# --- Arrays ----------------------------------------------------------------
+
+
+def _ranges(trial: Trial) -> dict[str, tuple[float, float]]:
+    return {
+        p.name: (p.low, p.high)
+        for p in trial.params
+        if p.low is not None and p.high is not None
+    }
+
+
+def _widest(value, ranges) -> tuple[float, float]:
+    """The lowest and highest a value can take over its declared range."""
+    if isinstance(value, P):
+        low, high = ranges.get(value.name, (0.0, 0.0))
+        return (low, high)
+    return (float(value), float(value))
+
+
+def _declared_window_names(trial: Trial) -> set[str]:
+    """Window names a task has, including every one an array generates.
+
+    An array's items are named `<of>.<i>` and are as declared as anything an author
+    typed -- the whole point is that the author cannot type them, because how many
+    there are is not known until a trial runs.
+    """
+    arrays = arrays_of(trial)
+    ranges = _ranges(trial)
+    names: set[str] = set()
+    for window in trial.windows:
+        if isinstance(window, ItemWindows):
+            names |= {f"{window.of}.target", f"{window.of}.distractor"}
+            array = arrays.get(window.of)
+            if array is not None:
+                highest = int(_widest(array.n, ranges)[1])
+                names |= {f"{window.of}.{i}" for i in range(highest)}
+        else:
+            names.add(window.name)
+    return names
+
+
+def _coupling(trial: Trial) -> dict[str, object]:
+    """Which stimulus each window scores, generated families included."""
+    scores: dict[str, object] = {}
+    for name in _declared_window_names(trial):
+        scores[name] = None
+    for window in trial.windows:
+        if isinstance(window, ItemWindows):
+            for name in list(scores):
+                if name.startswith(f"{window.of}."):
+                    scores[name] = window.of
+        else:
+            scores[window.name] = window.on
+    return scores
+
+
+def _array_faults(trial: Trial) -> list[Finding]:
+    """An array's target must be one of its items, for every legal setting.
+
+    Set size and target index are both live parameters, so an experimenter can put
+    the target at position 6 of a four-item array between one trial and the next.
+    Reasoning over declared ranges is the only way to catch that before it is a
+    session rather than a load.
+    """
+    ranges = _ranges(trial)
+    findings: list[Finding] = []
+    for state, action in actions_of(trial):
+        looks = getattr(getattr(action, "stimulus", None), "looks", None)
+        if not isinstance(looks, Array):
+            continue
+        lowest_n = int(_widest(looks.n, ranges)[0])
+        lowest_t, highest_t = (int(v) for v in _widest(looks.target, ranges))
+        if lowest_t < 0 or highest_t >= lowest_n:
+            findings.append(
+                Finding(
+                    "target-outside-array",
+                    f"state {state!r} shows an array of as few as {lowest_n} items "
+                    f"with a target index reaching {highest_t}; the target must be "
+                    f"one of the items for every setting the console allows, not "
+                    f"only the one it has today",
+                )
             )
     return findings

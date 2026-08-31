@@ -27,6 +27,8 @@ ALLOCATION: Allocation = replace(
         4100: "ABORT_NO_FIXATION",
         4101: "ABORT_FIXATION_BREAK",
         4102: "REWARD_COMMANDED",
+        4103: "ARRAY_ON",
+        4104: "DISTRACTOR_ACQUIRED",
         # Outcome reasons. Thirteen outcomes share five markers, so these are what
         # distinguish them in a recording -- strobed immediately before the marker.
         4110: "OUTCOME_CORRECT",

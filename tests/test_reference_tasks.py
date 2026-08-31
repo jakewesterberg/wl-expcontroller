@@ -14,6 +14,7 @@ import pytest
 
 from wl_expcontroller.check import check
 from wl_expcontroller.geometry import Geometry
+from wl_expcontroller.photometry import Calibration, xyY
 from wl_expcontroller.simulate import Subject, simulate
 from wl_expcontroller.task import (
     Entered,
@@ -123,3 +124,91 @@ def test_an_aborted_trial_does_not_move_the_staircase():
         next_params(staircase, eccentricity=10.0, last=outcome)
 
     assert staircase.value == 0.5
+
+
+# --- Colour pop-out search -------------------------------------------------
+#
+# The paradigm the vocabulary could not express before 2026-08-31: no colour, so a
+# red target among green distractors could not be stated; and an array was N `Show`
+# actions, so set size was a change to the shape of the task rather than a value.
+
+SEARCH_VALUES = {
+    "fix_timeout": 4.0,
+    "fix_hold": 0.3,
+    "response_window": 0.6,
+    "target_hold": 0.2,
+    "fix_window": 2.0,
+    "item_window": 2.0,
+    "eccentricity": 8.0,
+    "set_size": 6,
+    "target_index": 1,
+    "array_phase": 0.0,
+}
+
+#: Illustrative, not measured. A real calibration comes from a photometer on the
+#: actual panel and is committed under `docs/measurements/`; none exists yet.
+PANEL = Calibration(
+    red=xyY(0.640, 0.330, 45.0),
+    green=xyY(0.300, 0.600, 145.0),
+    blue=xyY(0.150, 0.060, 15.0),
+    background=xyY(0.3127, 0.3290, 50.0),
+    gamma=2.2,
+    observer="macaque V(lambda) -- placeholder, unmeasured",
+    measured_on="unmeasured",
+)
+
+
+@pytest.fixture(scope="module")
+def search() -> Trial:
+    return _load("visual_search", "search")
+
+
+def test_the_search_task_passes_every_load_time_check(search):
+    allocation = _load("allocation", "ALLOCATION")
+
+    assert check(search, allocation, geometry=GEOMETRY, calibration=PANEL) == []
+
+
+def test_the_search_task_will_not_load_without_a_measured_display(search):
+    """Isoluminance is a claim about photometry, so it needs a photometer.
+
+    The failure mode this prevents is not a crash: it is a task that runs, looks
+    convincing, and reports a colour nobody measured -- which reaches a methods
+    section.
+    """
+    allocation = _load("allocation", "ALLOCATION")
+    codes = {f.code for f in check(search, allocation, geometry=GEOMETRY)}
+
+    assert "uncalibrated-color" in codes
+
+
+def test_set_size_is_a_value_this_task_can_be_run_at_several_of(search):
+    """The gap, closed: one task file, many set sizes, no structural change."""
+    for n in (2, 4, 8, 12):
+        census = simulate(
+            search,
+            Subject(seed=7, engagement=0.9, lapse=0.1, hazards={Entered: 4.0, Exited: 0.3, SaccadeTo: 5.0}),
+            trials=120,
+            frame_period=1 / 240,
+            values={**SEARCH_VALUES, "set_size": n, "target_index": 0},
+        )
+        assert census.hangs == 0
+        assert census.outcomes.total() == 120
+
+
+def test_simulation_reaches_every_outcome_the_search_task_declares(search):
+    census = simulate(
+        search,
+        Subject(
+            seed=5,
+            engagement=0.85,
+            lapse=0.15,
+            hazards={Entered: 4.0, Exited: 0.5, SaccadeTo: 5.0},
+        ),
+        trials=1500,
+        frame_period=1 / 240,
+        values=SEARCH_VALUES,
+    )
+
+    assert census.hangs == 0
+    assert census.uncovered(search) == set()
