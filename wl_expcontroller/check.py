@@ -2,25 +2,36 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 from wl_expcontroller.codes import PROVISIONAL, Allocation
-from wl_expcontroller.task import After, Emit, Outcome, Trial
+from wl_expcontroller.components import Registry
+from wl_expcontroller.task import After, Custom, Emit, Outcome, P, Trial
 
 
 @dataclass(frozen=True, slots=True)
 class Finding:
     code: str
     detail: str
+    #: Whether this refuses the load. A non-blocking finding still surfaces -- a
+    #: `Custom` component is legitimate and still belongs on the review list.
+    blocking: bool = True
 
 
-def check(trial: Trial, allocation: Allocation = PROVISIONAL) -> list[Finding]:
+def check(
+    trial: Trial,
+    allocation: Allocation = PROVISIONAL,
+    components: Registry | None = None,
+) -> list[Finding]:
     return (
         _unreachable_states(trial)
         + _unbounded_waits(trial)
         + _states_with_no_outcome_path(trial)
         + _shadowed_transitions(trial)
         + _unallocated_codes(trial, allocation)
+        + _undeclared_parameters(trial)
+        + _custom_components(trial, components or Registry())
     )
 
 
@@ -146,3 +157,78 @@ def _unallocated_codes(trial: Trial, allocation: Allocation) -> list[Finding]:
         for action in state.enter
         if isinstance(action, Emit) and action.code not in allocation
     ]
+
+
+def _iter_param_refs(value: object) -> list[P]:
+    """Every parameter reference anywhere inside a value.
+
+    Walks dataclass fields generically rather than knowing the guard and action
+    vocabularies, so a new vocabulary member is covered by this check the day it
+    is added rather than the day someone remembers to update a list here.
+    """
+    if isinstance(value, P):
+        return [value]
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        found: list[P] = []
+        for f in dataclasses.fields(value):
+            found.extend(_iter_param_refs(getattr(value, f.name)))
+        return found
+    if isinstance(value, (list, tuple)):
+        return [ref for item in value for ref in _iter_param_refs(item)]
+    return []
+
+
+def _undeclared_parameters(trial: Trial) -> list[Finding]:
+    """S1 §9 check 6: every parameter a task references is declared.
+
+    An undeclared reference has no range, no widget and no place in the per-trial
+    snapshot -- so it is either live-editable to any value or not editable at all,
+    and nothing distinguishes the two from the task file.
+    """
+    declared = {param.name for param in trial.params}
+    findings: list[Finding] = []
+    for state in trial.states:
+        for ref in _iter_param_refs(state):
+            if ref.name not in declared:
+                findings.append(
+                    Finding(
+                        "undeclared-parameter",
+                        f"state {state.name!r} references parameter "
+                        f"{ref.name!r}, which the task does not declare",
+                    )
+                )
+    return findings
+
+
+def _custom_components(trial: Trial, components: Registry) -> list[Finding]:
+    """S1 §9 check 9: every `Custom` component resolves to reviewed framework code.
+
+    Two findings rather than one, because they are different statements. A name
+    that resolves to nothing **refuses the load** -- the seam is being used as a
+    hole, and the behaviour would simply not exist at run time. A name that does
+    resolve is **accepted and flagged**: using the seam is legitimate and still
+    puts the task on the human-review list beside the welfare-critical modules.
+    """
+    findings: list[Finding] = []
+    for state in trial.states:
+        for action in state.enter:
+            if not isinstance(action, Custom):
+                continue
+            if action.name in components:
+                findings.append(
+                    Finding(
+                        "custom-component-needs-review",
+                        f"state {state.name!r} uses custom component "
+                        f"{action.name!r}; this task needs human review",
+                        blocking=False,
+                    )
+                )
+            else:
+                findings.append(
+                    Finding(
+                        "unresolved-custom-component",
+                        f"state {state.name!r} names custom component "
+                        f"{action.name!r}, which resolves to no reviewed component",
+                    )
+                )
+    return findings

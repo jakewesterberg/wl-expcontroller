@@ -24,6 +24,29 @@ class Outcome(Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class Param:
+    """One live-editable parameter: name, unit, and the range it may hold.
+
+    The single declaration S8 §3.1 turns into validation, the console's widget,
+    the per-trial snapshot and the ELN summary -- which is what makes live control
+    work for a task nobody hand-wrote, with no per-task UI code.
+    """
+
+    name: str
+    unit: str
+    low: float
+    high: float
+    live: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class P:
+    """A reference to a declared parameter, usable anywhere a value is."""
+
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
 class Guard:
     """Base for the guard vocabulary (S1 §2.2). A guard is data: the framework
     evaluates it, the task never does."""
@@ -34,7 +57,7 @@ class After(Guard):
     """Elapsed time from state entry, in seconds. The only guard that bounds a
     wait by construction -- which is why the checker asks about it by type."""
 
-    seconds: float
+    seconds: "float | P"
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +99,7 @@ class State:
 class Trial:
     start: str
     states: list[State]
+    params: list[Param] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +116,18 @@ class Bounded:
 @dataclass(frozen=True, slots=True)
 class Action:
     """Base for the action vocabulary (S1 §2.3)."""
+
+
+@dataclass(frozen=True, slots=True)
+class Custom(Action):
+    """Behaviour the vocabulary lacks, named rather than contained (S1 §8).
+
+    Resolves to a reviewed component in the framework's own source. A task using
+    one is flagged onto the human-review list beside the welfare-critical modules
+    -- accepted is not the same as unremarkable.
+    """
+
+    name: str
 
 
 @dataclass(frozen=True, slots=True)

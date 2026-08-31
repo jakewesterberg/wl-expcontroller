@@ -9,9 +9,12 @@ import pytest
 from wl_expcontroller.task import (
     After,
     Bounded,
+    Custom,
     GazeLeaves,
     On,
     Outcome,
+    P,
+    Param,
     Emit,
     Response,
     Reward,
@@ -20,6 +23,7 @@ from wl_expcontroller.task import (
 )
 from wl_expcontroller.check import check
 from wl_expcontroller.codes import Allocation
+from wl_expcontroller.components import Registry
 
 
 def test_a_state_no_transition_can_reach_is_reported():
@@ -170,3 +174,78 @@ def test_a_task_emitting_an_allocated_code_is_accepted():
     )
 
     assert check(trial, allocation) == []
+
+
+def test_a_task_referencing_an_undeclared_parameter_is_refused():
+    """S1 §9 check 6. Parameters are declared with type, unit and range (S8 §3.1),
+    and that one declaration drives validation, the console's widgets and the saved
+    record. A reference to something undeclared has no widget, no range and no
+    snapshot -- so it would be live-editable to any value, or not editable at all,
+    and nobody would know which."""
+    trial = Trial(
+        start="hold",
+        params=[Param("fix_hold", unit="s", low=0.1, high=2.0)],
+        states=[
+            State("hold", go=[On(After(P("response_window")), Outcome.NO_RESPONSE)]),
+        ],
+    )
+
+    findings = check(trial)
+
+    assert [f.code for f in findings] == ["undeclared-parameter"]
+    assert "response_window" in findings[0].detail
+
+
+def test_a_task_referencing_a_declared_parameter_is_accepted():
+    trial = Trial(
+        start="hold",
+        params=[Param("fix_hold", unit="s", low=0.1, high=2.0)],
+        states=[
+            State("hold", go=[On(After(P("fix_hold")), Outcome.NO_RESPONSE)]),
+        ],
+    )
+
+    assert check(trial) == []
+
+
+def test_a_custom_component_that_does_not_resolve_is_refused():
+    """S1 §9 check 9, and what makes S1 §8's typed seam real. A task may name
+    behaviour the vocabulary lacks, but that behaviour lives in the framework's
+    own reviewed source -- not in the task file. A name that resolves to nothing
+    is the seam being used as a hole."""
+    trial = Trial(
+        start="stabilise",
+        states=[
+            State(
+                "stabilise",
+                enter=[Custom("retinal_stabilisation")],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+    findings = check(trial, components=Registry({}))
+
+    assert [f.code for f in findings] == ["unresolved-custom-component"]
+    assert "retinal_stabilisation" in findings[0].detail
+
+
+def test_a_resolving_custom_component_is_accepted_but_flagged_for_review():
+    """S1 §8: a task using a Custom component goes on the human-review list beside
+    the welfare-critical modules. Accepted is not the same as unremarkable."""
+    registry = Registry({"retinal_stabilisation": "reviewed 2026-08-31"})
+    trial = Trial(
+        start="stabilise",
+        states=[
+            State(
+                "stabilise",
+                enter=[Custom("retinal_stabilisation")],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+    findings = check(trial, components=registry)
+
+    assert [f.code for f in findings] == ["custom-component-needs-review"]
+    assert findings[0].blocking is False
