@@ -724,7 +724,7 @@ auditory performance feedback, plus vocalization monitoring.
 |---|---|---|---|
 | 1 | Escape-hatch strictness in the within-trial layer | PI, after the S1 bake-off | S1 |
 | 2 | Touchscreen: second panel, rig mode, or deferred | PI | S4, S6 |
-| 3 | Display panel, refresh target, panel technology | S0 recommendation | procurement |
+| 3 | ~~Display panel, refresh target, panel technology~~ **Answered in S0**: 32-inch-class 16:9 flat OLED, tandem model deferred to late 2026, bench panel bought now, ~50 cm build distance, mode as rig config. Remaining: whether burn-in protection is defeatable, and whether GPU + panel can avoid DSC | S0 | panel purchase only |
 | 4 | Photodiode patch placement against the real optics | PI + `wl-sync` | rig build |
 | 5 | Misc BNC assignment for the audio verification tap | `wl-sync` agreement | S0 |
 | 6 | Event-code vocabulary allocation | joint with `wl-mllib`, `wl-preproc` | v1 |
@@ -746,4 +746,5 @@ auditory performance feedback, plus vocalization monitoring.
 | `docs/roadmap.md` | Stim tiers 1–2 move into v1; parity gate M5 loses its comparator; demo mode and preflight become gated deliverables |
 | `docs/validation.md` | V2b, V7, V8, V9 added; V4 widened to both neural paths |
 | `README.md` | Two rigs, not 3–4; bridge language removed |
+| `docs/superpowers/specs/` | **S0** written: `2026-08-31-S0-hosts-and-hardware-design.md` |
 | `docs/design/decisions/` | **ADR-0005** (day-one stack and interchangeability; supersedes ADR-0001 decision 3) and **ADR-0006** (task representation) written. Lab-host protocol adoption (D11) still needs an ADR once S10 is specified. |

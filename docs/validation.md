@@ -82,3 +82,14 @@ nonuniformity is by construction an interocular mismatch that biases binocular c
 and would hide inside a panel that looks uniform. Report both halves' luminance and
 chromaticity across the used area, and the vergence alignment residual after the
 Nonius/vernier procedure.
+
+**The full panel acceptance test is S0 §5.4** and is written to run before a panel is
+committed to, not after. Its six criteria, two of which are disqualifying: burn-in
+protection fully defeatable (pixel-shift silently translates the image and can walk the
+photodiode patch off its sensor); ABL characterised **as an interocular coupling** by
+sweeping fill factor in one viewport while photometering the other; per-half uniformity;
+per-unit gamma, additivity and channel independence; photodiode-measured pixel response
+and onset **in every display mode the rig will use**; and sustained full-field luminance
+at 100% APL. Re-run in full on any panel change, including between units of one model --
+the JOV study this derives from states performance "cannot be assumed or guaranteed"
+across identical models.
