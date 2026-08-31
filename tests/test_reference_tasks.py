@@ -16,11 +16,11 @@ from wl_expcontroller.check import check
 from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.simulate import Subject, simulate
 from wl_expcontroller.task import (
-    GazeEnters,
-    GazeHeld,
-    GazeLeaves,
+    Acquired,
+    Held,
+    Broke,
     Outcome,
-    SaccadeInto,
+    SaccadeTo,
     Trial,
 )
 
@@ -68,10 +68,10 @@ def test_simulation_reaches_every_outcome_the_reference_task_declares(detection)
             engagement=0.85,
             lapse=0.004,
             hazards={
-                GazeEnters: 0.20,
-                GazeHeld: 0.30,
-                SaccadeInto: 0.15,
-                GazeLeaves: 0.01,
+                Acquired: 0.20,
+                Held: 0.30,
+                SaccadeTo: 0.15,
+                Broke: 0.01,
             },
         ),
         trials=5_000,

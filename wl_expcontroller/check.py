@@ -11,11 +11,12 @@ from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.task import (
     After,
     Custom,
-    Emit,
+    Mark,
     Outcome,
     P,
     Show,
     Trial,
+    Window,
     actions_of,
 )
 
@@ -45,6 +46,7 @@ def check(
         + _custom_components(trial, components or Registry())
         + _offscreen_stimuli(trial, geometry)
         + _unallocated_outcomes(trial, allocation)
+        + _undeclared_windows(trial)
     )
 
 
@@ -167,7 +169,7 @@ def _unallocated_codes(trial: Trial, allocation: Allocation) -> list[Finding]:
             f"allocation; codes are allocated in wl-mllib, never invented in a task",
         )
         for name, action in actions_of(trial)
-        if isinstance(action, Emit) and action.code not in allocation
+        if isinstance(action, Mark) and action.code not in allocation
     ]
 
 
@@ -308,3 +310,41 @@ def _unallocated_outcomes(trial: Trial, allocation: Allocation) -> list[Finding]
         if outcome not in allocation.outcomes
     ]
 
+
+def _window_refs(value: object) -> list[str]:
+    """Window names referenced anywhere. Walks generically, like `_iter_param_refs`,
+    so a new guard naming a window is covered the day it is added."""
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        found: list[str] = []
+        for f in dataclasses.fields(value):
+            attribute = getattr(value, f.name)
+            if f.name == "window" and isinstance(attribute, str):
+                found.append(attribute)
+            else:
+                found.extend(_window_refs(attribute))
+        return found
+    if isinstance(value, (list, tuple)):
+        return [name for item in value for name in _window_refs(item)]
+    return []
+
+
+def _undeclared_windows(trial: Trial) -> list[Finding]:
+    """S1a §1: every window a task names is declared.
+
+    A task referring to a gaze window nothing declares has no fixation criterion --
+    no position, no radius, nothing an experimenter can tune. It is the same defect
+    as an undeclared parameter and would read just as reasonably in a generated file.
+    """
+    declared = {window.name for window in trial.windows}
+    findings: list[Finding] = []
+    for state in trial.states:
+        for name in _window_refs(state):
+            if name not in declared:
+                findings.append(
+                    Finding(
+                        "undeclared-window",
+                        f"state {state.name!r} references window {name!r}, "
+                        f"which the task does not declare",
+                    )
+                )
+    return findings

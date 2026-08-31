@@ -15,7 +15,7 @@ from __future__ import annotations
 from wl_expcontroller.task import (
     After,
     Custom,
-    Emit,
+    Mark,
     Guard,
     Outcome,
     P,
@@ -36,13 +36,16 @@ def _value_label(value: object) -> str:
     if isinstance(value, P):
         return value.name
     if isinstance(value, float):
-        return f"{value:g}s"
+        return f"{value:g}"
     return str(value)
 
 
 def _guard_label(guard: Guard) -> str:
     fields = [getattr(guard, name) for name in guard.__slots__]
-    return f"{type(guard).__name__}({', '.join(_value_label(f) for f in fields)})"
+    label = f"{type(guard).__name__}({', '.join(_value_label(f) for f in fields)})"
+    if isinstance(guard, After) and isinstance(guard.seconds, float):
+        label = label[:-1] + "s)"
+    return label
 
 
 def _target_label(target: object) -> str:
@@ -63,12 +66,25 @@ def render(trial: Trial, allocation_names: dict[int, str] | None = None) -> str:
 
     lines += ["## Event codes", "", "| Code | Meaning | Emitted by |", "|---|---|---|"]
     for name, action in actions_of(trial):
-        if isinstance(action, Emit):
+        if isinstance(action, Mark):
             lines.append(
                 f"| {action.code} | {names.get(action.code, '**UNALLOCATED**')} "
                 f"| `{name}` |"
             )
     lines.append("")
+
+    if trial.windows:
+        lines += ["## Windows", "", "| Name | Centre | Radius |", "|---|---|---|"]
+        for window in trial.windows:
+            centre = (
+                f"({_value_label(window.at[0])}, {_value_label(window.at[1])})"
+                if isinstance(window.at, tuple)
+                else _value_label(window.at)
+            )
+            lines.append(
+                f"| `{window.name}` | {centre} | {_value_label(window.radius)} |"
+            )
+        lines.append("")
 
     if trial.params:
         lines += ["## Parameters", "", "| Name | Unit | Range | Live |", "|---|---|---|---|"]

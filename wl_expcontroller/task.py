@@ -47,6 +47,20 @@ class P:
 
 
 @dataclass(frozen=True, slots=True)
+class Window:
+    """A named region gaze, a joystick or a touch is tested against.
+
+    Declared rather than referred to in passing: position and radius are exactly
+    what an experimenter tunes, so both may be parameters, and a task naming a
+    window nothing declares has no criterion at all.
+    """
+
+    name: str
+    at: "tuple[float, float] | P"
+    radius: "float | P"
+
+
+@dataclass(frozen=True, slots=True)
 class Guard:
     """Base for the guard vocabulary (S1 §2.2). A guard is data: the framework
     evaluates it, the task never does."""
@@ -61,22 +75,26 @@ class After(Guard):
 
 
 @dataclass(frozen=True, slots=True)
-class GazeEnters(Guard):
+class Acquired(Guard):
+    """Gaze entered a window and settled. MonkeyLogic's `acquirefix`."""
+
     window: str
 
 
 @dataclass(frozen=True, slots=True)
-class GazeLeaves(Guard):
+class Broke(Guard):
+    """Gaze left a window after acquiring it. "The animal broke fixation." """
+
     window: str
 
 
 @dataclass(frozen=True, slots=True)
-class GazeHeld(Guard):
-    """Gaze continuously inside a window for a duration.
+class Held(Guard):
+    """Gaze continuously inside a window for a duration. ML's `holdfix`.
 
-    Distinct from `GazeEnters` followed by `After`, because the hold restarts if
-    gaze leaves -- and because the staleness policy differs: a hold spanning a
-    tracker stall is not a hold that was observed (S5 §4.1).
+    Distinct from `Acquired` followed by `After`, because the hold restarts if gaze
+    leaves -- and because the staleness policy differs: a hold spanning a tracker
+    stall is not a hold that was observed (S5 §4.1).
     """
 
     window: str
@@ -84,11 +102,57 @@ class GazeHeld(Guard):
 
 
 @dataclass(frozen=True, slots=True)
-class SaccadeInto(Guard):
+class SaccadeTo(Guard):
     """A detected saccade landing in a window. Detection is the versioned
     Engbert-Kliegl component (S5 §5), never re-derived per task."""
 
     window: str
+
+
+@dataclass(frozen=True, slots=True)
+class SaccadeOnset(Guard):
+    """A saccade began, wherever it lands. What a gaze-contingent update rides."""
+
+
+@dataclass(frozen=True, slots=True)
+class Onscreen(Guard):
+    """The photodiode says the stimulus reached the display (S6 §3).
+
+    Named for the world rather than for our intention, which is the whole
+    distinction: a state waiting on `Onscreen` advances on evidence, not on the
+    belief that a flip happened.
+    """
+
+    patch: str = "task"
+
+
+@dataclass(frozen=True, slots=True)
+class Pressed(Guard):
+    device: str
+
+
+@dataclass(frozen=True, slots=True)
+class Released(Guard):
+    device: str
+
+
+@dataclass(frozen=True, slots=True)
+class Touched(Guard):
+    window: str
+
+
+@dataclass(frozen=True, slots=True)
+class ChairStill(Guard):
+    """`wl-shook`'s motion gate: the chair is quiet enough to proceed."""
+
+
+@dataclass(frozen=True, slots=True)
+class RateAbove(Guard):
+    """A neural feature over threshold. Tier-3 gating (S7); the decision stays in
+    taskd, never in the feature client."""
+
+    source: str
+    threshold: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +191,7 @@ class Trial:
     start: str
     states: list[State]
     params: list[Param] = field(default_factory=list)
+    windows: list[Window] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,8 +221,13 @@ class Stimulus:
     of the stereo path rather than a separate one.
     """
 
-    at: tuple[float, float]
+    at: "tuple[float, float] | P"
     disparity: float = 0.0
+    #: `"both"`, `"left"` or `"right"`. Monocular and dichoptic presentation are
+    #: first-class on a stereoscope: rivalry, monocular RF mapping and
+    #: interocular-suppression designs all need one viewport to carry what the
+    #: other does not. Distinct from disparity, which shifts one stimulus in both.
+    eye: str = "both"
 
     def per_eye(self) -> tuple[tuple[float, float], tuple[float, float]]:
         """Left and right image positions: equal and opposite horizontal offsets."""
@@ -172,9 +242,53 @@ class FixPoint(Stimulus):
 
 
 @dataclass(frozen=True, slots=True)
-class Blob(Stimulus):
+class Spot(Stimulus):
+    """A plain disc."""
+
     size: float = 1.0
     contrast: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Gabor(Stimulus):
+    """Field names throughout: `sf` is spatial frequency in cycles per degree,
+    `sigma` the Gaussian envelope. A model writing
+    `spatial_frequency_cycles_per_degree` has not read a methods section."""
+
+    sf: "float | P" = 2.0
+    orientation: "float | P" = 0.0
+    phase: "float | P" = 0.0
+    contrast: "float | P" = 1.0
+    sigma: "float | P" = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Dots(Stimulus):
+    """A random-dot kinematogram. `seed` is the stimulus: motion is a pure function
+    of parameters, seed and frame index, so a trial reconstructs exactly (S4 §5)."""
+
+    coherence: "float | P" = 0.5
+    direction: "float | P" = 0.0
+    speed: "float | P" = 5.0
+    density: "float | P" = 1.0
+    aperture: "float | P" = 5.0
+    seed: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class Bar(Stimulus):
+    """For receptive-field mapping."""
+
+    length: "float | P" = 4.0
+    width: "float | P" = 0.5
+    orientation: "float | P" = 0.0
+    contrast: "float | P" = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Image(Stimulus):
+    asset: str = ""
+    size: "float | P" = 10.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,9 +311,12 @@ class Custom(Action):
 
 
 @dataclass(frozen=True, slots=True)
-class Emit(Action):
-    """Strobe an event code. The code is allocated elsewhere (S2, ADR-0007) and
-    validated at load; a task naming an unallocated one is refused."""
+class Mark(Action):
+    """Strobe an event code -- what ML and the field both call an *event marker*.
+
+    The code is allocated elsewhere (S2, ADR-0007) and validated at load; a task
+    naming an unallocated one is refused.
+    """
 
     code: int
 

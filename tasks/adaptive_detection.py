@@ -14,51 +14,59 @@ from dataclasses import dataclass, field
 
 from wl_expcontroller.task import (
     After,
-    Blob,
+    Spot,
     Bounded,
-    Emit,
+    Mark,
     FixPoint,
-    GazeEnters,
-    GazeHeld,
-    GazeLeaves,
+    Acquired,
+    Held,
+    Broke,
     On,
     Outcome,
     P,
     Param,
     Reward,
-    SaccadeInto,
+    SaccadeTo,
     Show,
     State,
     Trial,
+    Window,
 )
 
 FIX = FixPoint(at=(0.0, 0.0), size=0.3)
 
 adaptive_detection = Trial(
     start="await_fix",
+    windows=[
+        Window("fix", at=(0.0, 0.0), radius=P("fix_window")),
+        Window("target", at=(P("target_position"), 0.0), radius=P("target_window")),
+    ],
     params=[
         Param("fix_timeout", unit="s", low=0.5, high=10.0),
         Param("fix_hold", unit="s", low=0.05, high=2.0),
         Param("response_window", unit="s", low=0.1, high=3.0),
         Param("target_hold", unit="s", low=0.05, high=1.0),
+        Param("fix_window", unit="deg", low=0.5, high=5.0),
+        Param("target_window", unit="deg", low=0.5, high=6.0),
+        Param("target_position", unit="deg", low=-16.0, high=16.0),
         Param("contrast", unit="fraction", low=0.02, high=1.0),
         Param("eccentricity", unit="deg", low=2.0, high=16.0),
     ],
     states=[
         State(
             "await_fix",
-            enter=[Show(FIX), Emit(4096)],
+            enter=[Show(FIX), Mark(4096)],
             go=[
-                On(GazeEnters("fix"), "hold_fix"),
-                On(After(P("fix_timeout")), Outcome.NO_FIXATION, do=[Emit(4100)]),
+                On(Acquired("fix"), "hold_fix"),
+                On(After(P("fix_timeout")), Outcome.NO_FIXATION, do=[Mark(4100)]),
             ],
         ),
         State(
             "hold_fix",
             go=[
-                On(GazeHeld("fix", P("fix_hold")), "stim_on"),
-                On(GazeLeaves("fix"), Outcome.FIXATION_BREAK, do=[Emit(4101)]),
-                On(After(P("fix_timeout")), Outcome.NO_FIXATION, do=[Emit(4100)]),
+                On(Held("fix", P("fix_hold")), "stim_on"),
+                On(Broke("fix"), Outcome.FIXATION_BREAK, do=[Mark(4101)]),
+                On(After(P("fix_timeout")), Outcome.NO_FIXATION, do=[Mark(4100)]),
             ],
         ),
         State(
@@ -66,9 +74,9 @@ adaptive_detection = Trial(
             # that moves the array from 0 to 10 degrees is a value change applied
             # in an ITI -- not a new task, and not a new block (S3 §7).
             "stim_on",
-            enter=[Show(Blob(at=(10.0, 0.0), size=1.0)), Emit(4097)],
+            enter=[Show(Spot(at=(10.0, 0.0), size=1.0)), Mark(4097)],
             go=[
-                On(SaccadeInto("target"), "verify", do=[Emit(4098)]),
+                On(SaccadeTo("target"), "verify", do=[Mark(4098)]),
                 On(After(P("response_window")), Outcome.NO_RESPONSE),
             ],
         ),
@@ -76,11 +84,11 @@ adaptive_detection = Trial(
             "verify",
             go=[
                 On(
-                    GazeHeld("target", P("target_hold")),
+                    Held("target", P("target_hold")),
                     Outcome.CORRECT,
-                    do=[Emit(4099), Emit(4102), Reward(Bounded("reward_correct"))],
+                    do=[Mark(4099), Mark(4102), Reward(Bounded("reward_correct"))],
                 ),
-                On(GazeLeaves("target"), Outcome.WRONG_TARGET),
+                On(Broke("target"), Outcome.WRONG_TARGET),
                 On(After(P("response_window")), Outcome.NO_RESPONSE),
             ],
         ),

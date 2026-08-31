@@ -8,19 +8,21 @@ import pytest
 
 from wl_expcontroller.task import (
     After,
-    Blob,
+    Acquired,
+    Spot,
     Bounded,
     Custom,
-    GazeLeaves,
+    Broke,
     On,
     Outcome,
     P,
     Param,
-    Emit,
+    Mark,
     Response,
     Reward,
     Show,
     State,
+    Window,
     Trial,
 )
 from wl_expcontroller.check import check
@@ -54,10 +56,11 @@ def test_a_state_with_no_time_bound_is_reported_as_an_unbounded_wait():
     explicit declaration that it has none."""
     trial = Trial(
         start="hold_fix",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
         states=[
             State(
                 "hold_fix",
-                go=[On(GazeLeaves("fix"), Outcome.FIXATION_BREAK)],
+                go=[On(Broke("fix"), Outcome.FIXATION_BREAK)],
             ),
         ],
     )
@@ -153,7 +156,7 @@ def test_a_task_emitting_an_unallocated_code_is_refused():
         states=[
             State(
                 "show",
-                enter=[Emit(4097)],
+                enter=[Mark(4097)],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -172,7 +175,7 @@ def test_a_task_emitting_an_allocated_code_is_accepted():
         states=[
             State(
                 "show",
-                enter=[Emit(4096)],
+                enter=[Mark(4096)],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -269,7 +272,7 @@ def test_a_stimulus_outside_the_field_is_refused():
         states=[
             State(
                 "show",
-                enter=[Show(Blob(at=(30.0, 0.0)))],
+                enter=[Show(Spot(at=(30.0, 0.0)))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -292,7 +295,7 @@ def test_disparity_can_push_one_eye_off_screen_from_a_legal_cyclopean_position()
         states=[
             State(
                 "show",
-                enter=[Show(Blob(at=(16.5, 0.0), disparity=2.0))],
+                enter=[Show(Spot(at=(16.5, 0.0), disparity=2.0))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -313,12 +316,13 @@ def test_a_terminal_outcome_with_no_allocated_marker_is_refused():
     allocation = Allocation(outcomes={Outcome.CORRECT: 34})
     trial = Trial(
         start="decide",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
         states=[
             State(
                 "decide",
                 go=[
                     On(After(1.0), Outcome.CORRECT),
-                    On(GazeLeaves("fix"), Outcome.FIXATION_BREAK),
+                    On(Broke("fix"), Outcome.FIXATION_BREAK),
                 ],
             ),
         ],
@@ -344,7 +348,7 @@ def test_actions_on_a_transition_are_checked_too():
         states=[
             State(
                 "decide",
-                go=[On(After(1.0), Outcome.CORRECT, do=[Emit(4097)])],
+                go=[On(After(1.0), Outcome.CORRECT, do=[Mark(4097)])],
             ),
         ],
     )
@@ -353,3 +357,27 @@ def test_actions_on_a_transition_are_checked_too():
 
     assert [f.code for f in findings] == ["unallocated-code"]
     assert "4097" in findings[0].detail
+
+
+def test_a_task_referencing_an_undeclared_window_is_refused():
+    """S1a §1. A task naming `"fix"` as a gaze window while nothing says where it
+    is or how large has no fixation criterion at all -- and position and size are
+    exactly what an experimenter tunes, so they cannot be implicit."""
+    trial = Trial(
+        start="await_fix",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
+        states=[
+            State(
+                "await_fix",
+                go=[
+                    On(Acquired("target"), Outcome.CORRECT),
+                    On(After(1.0), Outcome.NO_FIXATION),
+                ],
+            ),
+        ],
+    )
+
+    findings = check(trial)
+
+    assert [f.code for f in findings] == ["undeclared-window"]
+    assert "target" in findings[0].detail

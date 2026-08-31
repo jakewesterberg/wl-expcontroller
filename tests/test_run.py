@@ -12,13 +12,14 @@ import pytest
 from wl_expcontroller.run import Quiet, Scripted, run_trial
 from wl_expcontroller.task import (
     After,
-    GazeEnters,
+    Acquired,
     On,
     Outcome,
     P,
     Param,
     State,
     Trial,
+    Window,
 )
 
 
@@ -44,11 +45,12 @@ def test_the_clock_restarts_on_state_entry():
     worse the slower the animal is, which is exactly backwards."""
     trial = Trial(
         start="await_fix",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
         states=[
             State(
                 "await_fix",
                 go=[
-                    On(GazeEnters("fix"), "hold_fix"),
+                    On(Acquired("fix"), "hold_fix"),
                     On(After(1.0), Outcome.NO_FIXATION),
                 ],
             ),
@@ -57,7 +59,7 @@ def test_the_clock_restarts_on_state_entry():
     )
 
     result = run_trial(
-        trial, world=Scripted({GazeEnters("fix"): 3}), frame_period=0.01
+        trial, world=Scripted({Acquired("fix"): 3}), frame_period=0.01
     )
 
     assert result.outcome is Outcome.CORRECT
@@ -67,11 +69,12 @@ def test_the_clock_restarts_on_state_entry():
 def test_a_world_where_nothing_happens_falls_through_to_the_time_bound():
     trial = Trial(
         start="await_fix",
+        windows=[Window("fix", at=(0.0, 0.0), radius=2.0)],
         states=[
             State(
                 "await_fix",
                 go=[
-                    On(GazeEnters("fix"), "hold_fix"),
+                    On(Acquired("fix"), "hold_fix"),
                     On(After(0.04), Outcome.NO_FIXATION),
                 ],
             ),
