@@ -177,9 +177,14 @@ class ChairStill(Guard):
 
 
 @dataclass(frozen=True, slots=True)
-class RateAbove(Guard):
+class FeatureAbove(Guard):
     """A neural feature over threshold. Tier-3 gating (S7); the decision stays in
-    taskd, never in the feature client."""
+    `taskd`, never in the feature client.
+
+    Named for the *feature* rather than for a rate, because `FeatureSource` publishes
+    whichever of the two feature types an experiment chose (S7 §5) and may one day
+    publish something that is not a rate at all -- a phase, a decoder output.
+    """
 
     source: str
     threshold: float
@@ -301,9 +306,95 @@ class Dots(Appearance):
 
 
 @dataclass(frozen=True, slots=True)
+class Annulus(Appearance):
+    inner: "float | P" = 1.0
+    outer: "float | P" = 2.0
+    contrast: "float | P" = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Cross(Appearance):
+    """A plus sign. The other thing people fixate, besides a disc."""
+
+    size: "float | P" = 0.5
+    thickness: "float | P" = 0.1
+    contrast: "float | P" = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Polygon(Appearance):
+    """`sides=3` a triangle, `sides=4` a diamond, and so on. One appearance rather
+    than a class per shape -- the same reasoning that produced `Stimulus`."""
+
+    sides: int = 3
+    size: "float | P" = 1.0
+    orientation: "float | P" = 0.0
+    contrast: "float | P" = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Grating(Appearance):
+    """A grating in a hard aperture. Distinct from `Gabor`, whose envelope is
+    Gaussian -- the difference matters for edge artifacts and for spatial-frequency
+    bandwidth, which is why the field names them separately."""
+
+    sf: "float | P" = 2.0
+    orientation: "float | P" = 0.0
+    phase: "float | P" = 0.0
+    contrast: "float | P" = 1.0
+    aperture: "float | P" = 5.0
+
+
+@dataclass(frozen=True, slots=True)
+class Plaid(Appearance):
+    """Two superimposed gratings. `angle` is the separation between components."""
+
+    sf: "float | P" = 2.0
+    orientation: "float | P" = 0.0
+    angle: "float | P" = 90.0
+    contrast: "float | P" = 1.0
+    aperture: "float | P" = 5.0
+
+
+@dataclass(frozen=True, slots=True)
+class Checkerboard(Appearance):
+    """RF mapping and evoked potentials."""
+
+    check_size: "float | P" = 1.0
+    contrast: "float | P" = 1.0
+    aperture: "float | P" = 10.0
+
+
+@dataclass(frozen=True, slots=True)
+class Noise(Appearance):
+    """`exponent` 0 is white, 1 is pink, 2 is brown. `seed` is the stimulus, so a
+    trial reconstructs exactly; `refresh_hz` above zero makes it dynamic."""
+
+    exponent: "float | P" = 1.0
+    contrast: "float | P" = 1.0
+    aperture: "float | P" = 5.0
+    refresh_hz: "float | P" = 0.0
+    seed: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class Picture(Appearance):
     asset: str = ""
     size: "float | P" = 10.0
+
+
+@dataclass(frozen=True, slots=True)
+class Movie(Appearance):
+    asset: str = ""
+    size: "float | P" = 10.0
+    loop: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Blank(Appearance):
+    """Nothing. A catch trial's stimulus is not the absence of a `Show` -- it is a
+    `Show` of nothing, which is what makes catch and non-catch trials structurally
+    identical and therefore comparable."""
 
 
 @dataclass(frozen=True, slots=True)

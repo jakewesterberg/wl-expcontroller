@@ -183,7 +183,46 @@ epochs first-class, but not multi-response scoring.
 
 This needs its own design pass, not an extension bolted onto `Outcome`.
 
-## 9. Still open — the naming, which is the point
+## 9. Appearances
+
+Fifteen, and the set is deliberately shape-agnostic where it can be: `Polygon(sides=3)`
+rather than a `Triangle` class, for the same reason `Stimulus` carries a look rather
+than being subclassed per shape.
+
+| Family | Appearances |
+|---|---|
+| Shapes | `Disc`, `Square`, `Polygon`, `Annulus`, `Cross`, `Bar` |
+| Patterns | `Gabor`, `Grating`, `Plaid`, `Checkerboard`, `Noise` |
+| Motion | `Dots` |
+| Assets | `Picture`, `Movie` |
+| Nothing | `Blank` |
+
+`Gabor` and `Grating` are separate because the envelope differs — Gaussian against a
+hard aperture — and that changes edge artifacts and spatial-frequency bandwidth,
+which is why the field names them separately rather than parameterising one.
+
+`Blank` is not the absence of a `Show`. A catch trial shows nothing *at the moment a
+stimulus would have appeared*, and making that explicit keeps catch and non-catch
+trials structurally identical, which is what makes them comparable.
+
+## 10. Open — disparity-defined form
+
+**The gap that matters for a stereo lab, and it is not in the list above.**
+
+`Stimulus.disparity` shifts a whole stimulus in depth. That is not what a random-dot
+stereogram does: an RDS defines a **shape by disparity within the dot pattern**, so
+the figure is invisible monocularly and exists only in the correspondence between the
+two eyes' images. Cyclopean form, in the Julesz sense.
+
+The two are different mechanisms and the vocabulary currently has only the first.
+Adding it means either an `RDS` appearance carrying its own figure and disparity, or
+a general way for an appearance to be *defined* by disparity rather than merely
+displaced by it — which would also cover disparity-defined edges and surfaces.
+
+This needs the PI, because which of those two shapes is right depends on what the
+disparity experiments actually manipulate.
+
+## 11. Still open — the naming, which is the point
 
 Everything above is a proposal and the words are the deliverable. Places I am least
 confident:
