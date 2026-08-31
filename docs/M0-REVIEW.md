@@ -7,7 +7,7 @@ spec files — §3 is the part that needs you, and it is fifteen questions.
 **Date:** 2026-08-31. **Specs:** S0–S13 plus the architecture, the spec map and the optics
 drawing. **Open items across them:** 76, of which 6 are already answered, 24 are engineering
 calls I have made (§4), 18 are blocked on other repositories (§5), 13 are blocked on hardware
-that does not exist yet (§6), and **15 need you** (§3).
+that does not exist yet (§6), and **15 need you** (§3) — **four answered 2026-08-31, eleven remain**.
 
 ---
 
@@ -48,12 +48,12 @@ Six things that changed the design, all found by reading neighbouring repositori
 
 | # | Question | My position |
 |---|---|---|
-| 1 | **MUA feature definition v0** — band, rectification, integration window, channel combination | None. Yours entirely; every closed-loop number depends on it |
+| ~~1~~ | ~~MUA feature definition v0~~ **Answered: both types, selectable per experiment** — envelope on the SpikeGLX path, RHX's own threshold crossings on the Intan path. Band, threshold and window stay per-experiment | ✔ |
 | 2 | Are SpikeGLX and Intan features **deliberately matched**, or allowed to differ? | Matched, unless a study never switches source. They compute differently by default — SpikeGLX does CAR server-side, RHX filters on GPU |
 | 3 | **Saccade-detection algorithm** and its parameters for the online detector | Engbert–Kliegl as the default, since `wl-preproc`'s offline suite already includes it and agreement becomes measurable |
-| 4 | Does **session duration** count from first trial or first reward? | First reward — it is when fluid control starts, and it is what a welfare review will ask |
+| ~~4~~ | ~~Session duration from first trial or first reward~~ **Answered: chair time, from head-fixation.** Needed a console action and two new event codes, since it is the one welfare quantity with no hardware line | ✔ |
 | 5 | Default **re-queue policy** by abort reason | Fixation break re-queued at end of block; wrong choice not re-queued. Both overridable per block |
-| 6 | **Runaway thresholds** for tier-3 stim: rate window and per-session total | None. Needs you plus a welfare review |
+| ~~6~~ | ~~Runaway thresholds~~ **Answered: rate window plus session total, numbers from protocol.** Per-delivery charge bounds already exist, so a count bound gives a session charge ceiling implicitly | ✔ numbers pending protocol |
 
 ### 3.2 Rig and animals (5)
 
@@ -69,7 +69,7 @@ Six things that changed the design, all found by reading neighbouring repositori
 
 | # | Question | Note |
 |---|---|---|
-| 12 | Does **kiosk fluid count against the same daily budget** as rig work? | Changes the accounting model, not just the numbers |
+| ~~12~~ | ~~Kiosk fluid against the daily budget~~ **Answered: yes, one budget.** wl-works holds the ledger and pushes the day's total in `prepare-session`; an unknown prior total fails closed | ✔ |
 | 13 | **Kiosk supervision** — is a person notified when it stops? | Fail-closed already applies; this is about who finds out |
 | 14 | **Kiosk recording model** | Recommendation: a lighter record of its own, not the session directory — minting a synthetic session id would create the second identity authority S3 spent its length deleting |
 | 15 | **Push the repository.** The declared remote does not exist | Blocks anything resolving `wl.yaml`'s `remote` field |

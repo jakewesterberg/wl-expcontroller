@@ -135,6 +135,7 @@ are allocated once, in `wl-mllib`, in one commit, so no two sessions can pick di
 | Reward and tokens | `REWARD_COMMANDED`, `TOKEN_AWARDED`, `TOKEN_LOST`, `TOKEN_CASHED` | Token economies; the reward lines are hardware truth, these carry the reason |
 | Stimulation | `STIM_TRIGGERED_EPOCH`, `STIM_TRIGGERED_GAZE`, `STIM_TRIGGERED_NEURAL` | Three tiers (parent §10.4); the trigger itself is already on three hardware lines, so these carry *which rule fired* |
 | Session control | `PAUSE_START`, `PAUSE_END`, `FREE_VIEW_START`, `FREE_VIEW_END` | Unbounded free-viewing epochs are first-class (parent §5.4) |
+| **Restraint** | **`HEAD_FIXED`, `HEAD_RELEASED`** | Session duration is chair time (S8 §5.2), and it is the one welfare quantity with no hardware line — so the codes *are* its durable record, and a restart reconstructs the clock from the sync box's `W` capture of them |
 | Calibration | `RECENTER_APPLIED`, `DRIFT_CORRECTION_APPLIED`, `GAZE_MAPPING_CHANGED` | The mapping is versioned and every trial cites its version (parent §9.3) |
 | Display | `DISPLAY_MODE_CHANGED`, `FRAME_DROP` | Dual-mode is a rig configuration (S0 §5.3); drops are detected in hardware via `PD2_COMP` |
 | Audio | `AUDIO_ON`, `AUDIO_OFF` | Auditory stimuli and feedback (parent §8.5) |

@@ -37,6 +37,8 @@ the project: it prevents the two-hours-recorded-with-no-eye-data class of loss.
 | Display at expected mode and refresh | S0 §5.3 — mode is rig configuration and V1 is per mode |
 | `stimulus_calibration_id` current | S4 §9 — invalid if anything feeding it changed |
 | **Daily fluid total reconstructable** | S8 §5.2 — if it is not, reward is refused and preflight must say so *before* the animal is in the chair |
+| **Day's prior fluid known** | S8 §5.2b — one budget spans rig and kiosk, so the ceiling is `ceiling − already_delivered_today` and an unknown prior total fails closed |
+| **Head-fixation recorded** | S8 §5.2 — session duration is chair time, and the clock cannot start without it |
 | Pump primed, calibration in date | S6 §4 — an uncalibrated pump makes fluid numbers fiction |
 | Disk space for a full session | |
 | **Config diff against last session** | "This rig differs in 3 ways" catches the change nobody remembers making |
@@ -51,6 +53,9 @@ A failed check names the fix, not just the failure.
   awkward, so it is designed as a first-class state rather than an interruption.
 - **Emergency stop** is distinct: immediate, mid-trial, safe — stimulus blanked, stimulation
   inhibited, reward stopped, trial marked aborted. Pause is for thinking; stop is for trouble.
+- **Animal fixed / released** — an explicit console action, required before a session starts,
+  event-coded as `HEAD_FIXED` / `HEAD_RELEASED`. It starts and stops the restraint clock, which is
+  the welfare limit; nothing else in the system knows when the animal went in.
 - **Manual reward** commands through the normal path so it logs as commanded *and* delivered,
   distinguishable from a panel press (S6 §4).
 - **Generated parameter panel**, derived from the task's declaration — typed widgets, range

@@ -125,7 +125,41 @@ naive restart begins the daily fluid total at zero and the ceiling stops meaning
    ceiling that cannot be computed cannot be enforced, and continuing on an unknown total is the
    one failure mode with a cost that is not ours to absorb. This is the single place in the
    design that deliberately fails closed.
-4. Session duration is wall-clock from the first delivered reward, reconstructed the same way.
+4. **Session duration is chair time, from head-fixation** (PI, 2026-08-31) — not from the first
+   trial and not from the first reward. The limit is on restraint, not on work, so setup,
+   calibration and unrewarded shaping all count.
+
+   **This needs an input the software did not have, and it needs one for a second reason.**
+   Nothing tells `taskd` when the animal was fixed: `wl-shook`'s resting pedestal proves the
+   chair device is present, not that an animal is in it. So the console gains an explicit
+   **"animal fixed" / "animal released"** action, required by preflight before a session can
+   start.
+
+   And because §5.2 requires the clock to survive a crash, **head-fixation must be event-coded**
+   (`HEAD_FIXED` / `HEAD_RELEASED`, allocated in S2) — otherwise chair time is the one quantity
+   with no hardware record to reconstruct from, and a restart would silently reset the restraint
+   limit. Fluid reconstructs from the delivered line; chair time reconstructs from the sync box's
+   `W` record of these codes. Same principle, different line.
+
+### 5.2b One fluid budget across rig and kiosk
+
+**Kiosk fluid counts against the same daily budget as rig work** (PI, 2026-08-31). Neither
+deployment can see the other's record — the kiosk has no sync box at all — so a shared total has
+to live somewhere neither owns.
+
+**wl-works holds the ledger and pushes the day's already-delivered total in `prepare-session`.**
+It is the ELN, it already keys on subject and session, and the network topology permits a push in
+but no pull out. Each deployment then enforces `ceiling − already_delivered_today` rather than the
+raw ceiling, and its own finished total reaches wl-works by the normal path.
+
+- **A start-time figure is sufficient**, because an animal cannot be in the chair and at the cage
+  kiosk simultaneously — the deployments are sequential, so the one that starts second gets a
+  current number.
+- **The fail-closed rule of §5.2 now bites more often.** A deployment that cannot learn the day's
+  prior total cannot compute its ceiling, so it refuses reward until a human confirms. That is
+  more likely cage-side, where the ELN link is the only source, and it is the correct behaviour
+  rather than a degradation.
+- Added to the wl-works handover as a field on `prepare-session`.
 
 ### 5.3 Tokens
 
@@ -170,5 +204,5 @@ Everything else may change without a welfare review. These four may not.
 | 1 | Arbitration rule between console and control-API writers (§3.3) | S9 |
 | 2 | Whether the sync box's delivered-line record is readable by us live, or only at session end | §5.1's "continuously" |
 | 3 | Default re-queue policy per abort reason | task templates |
-| 4 | Whether session duration counts from first reward or first trial | welfare review |
+| 4 | ~~Session duration from first reward or first trial~~ **Answered: chair time, from head-fixation.** Remaining: whether a hardware head-fix signal is ever worth adding beside the console action | welfare review |
 | 5 | Who plans blocks when wl.works is unreachable | S3 §7's quarantine risk |

@@ -117,8 +117,25 @@ session because it directly determines what the closed loop can see.
 
 ## 5. Features
 
-**Definition v0 is a scientific choice and is PI-owned** (parent §16 item 8): band, rectification,
-integration window, and how channels combine. Two engineering constraints on whatever is chosen:
+**Two feature types, selectable per experiment** (PI, 2026-08-31), behind one `FeatureSource`
+interface:
+
+| Type | Computed as | Natural home |
+|---|---|---|
+| **Envelope** | band-pass, full-wave rectify, boxcar integrate over a sliding window | SpikeGLX path — the filtered AP stream is already there |
+| **Threshold-crossing rate** | events past a per-channel threshold, counted in a window | Intan path — **RHX's Spike Output socket already produces these on GPU**, so the local loop is nearly free |
+
+This plays each system's strength rather than forcing a common denominator, and it is why the
+local path costs so much less to build than the distant one (§1).
+
+**The cost is comparability, and it is paid explicitly.** The two types are different quantities,
+so an experiment that switches source mid-study is comparing different things unless it
+deliberately matches them — which means reimplementing detection on the SpikeGLX side, or an
+envelope on the Intan side, at that experiment's own cost. **The feature type and its full
+parameter set are recorded per session**, so the question can at least be asked afterwards.
+
+Band, threshold, integration window and channel combination remain PI-owned per experiment. Two
+engineering constraints on whatever is chosen:
 
 - **CAR is server-side on the SpikeGLX path** — SpikeGLX maintains a bandpassed, globally
   demuxed-CAR stream (`js = -2`) and the cost is paid inside its C++, not our client. RHX does its

@@ -61,6 +61,12 @@ Two consequences that matter more than the numbers:
 - The precedence chain gains a layer: **deployment → rig → subject → task → session → live
   edits**, still under one ceiling.
 
+**Kiosk fluid counts against the same daily budget as rig work** (PI, 2026-08-31), so the two
+deployments share a total neither can see directly — the kiosk has no sync box. wl-works holds the
+ledger and pushes the day's already-delivered figure in `prepare-session`; each deployment enforces
+`ceiling − already_delivered_today` (S8 §5.2b). Sequential use is the only real case, since an
+animal cannot be in the chair and at the kiosk at once, so a start-time figure suffices.
+
 **S8 §5.2's fail-closed rule applies here with more force, not less.** If the daily fluid total
 cannot be reconstructed after a restart, reward is refused until a human confirms — and
 cage-side, nobody is watching to notice that it should have been.
@@ -97,4 +103,4 @@ it to.
 | 2 | Kiosk hardware: panel, touch sensor, reward mechanism, host | S0-equivalent |
 | 3 | Whether the kiosk shares the stimulus vocabulary or a subset | S4 |
 | 4 | Supervision model — is a person notified when it stops? | PI, welfare |
-| 5 | Whether kiosk fluid counts against the same daily budget as rig work | PI, protocol |
+| 5 | ~~Whether kiosk fluid counts against the rig's daily budget~~ **Answered: yes, one budget.** Remaining: wl.works holding the ledger | wl-works |
