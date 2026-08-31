@@ -1,5 +1,9 @@
 # M0 review packet
 
+> **Signed off 2026-08-31.** Code starts. Also ruled the same day: people arrive with or before
+> the animals in January and a tech or student runs the rigs day to day, which sharpens P8 and
+> makes operator documentation an M1 deliverable rather than a later one.
+
 **What signing this off means:** the contracts in `docs/design/` and
 `docs/superpowers/specs/` are frozen, and code starts. Nothing here asks you to read seventeen
 spec files — §3 is the part that needs you, and it is fifteen questions.

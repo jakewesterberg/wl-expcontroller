@@ -73,7 +73,20 @@ duplicate concepts rather than maintain a second definition (S3).
 
 **P8 — Drift and bus factor.** Conventions in CLAUDE.md; CI green as merge condition; ADRs
 so decisions survive personnel and sessions; welfare-critical modules require human review.
-Boring technology choices are a deliberate mitigation here. **Registry over README:** a
+Boring technology choices are a deliberate mitigation here.
+
+**Sharpened 2026-08-31, and the previous mitigation was inadequate.** People arrive with or
+before the animals in January, and **a tech or student runs the rigs day to day rather than the
+PI**. Every mitigation above protects *developers*; none of them help an operator. So:
+
+- **Operator documentation is an M1 deliverable**, not a later one. Not a design doc — a "how to
+  run a session" doc, written for someone who has never read a spec.
+- **Every operator-facing string is written as though a stranger reads it.** Preflight failures
+  name the fix, abort reasons are self-explanatory, and an error that requires knowing the design
+  to interpret is a bug. This costs nothing now and cannot be retrofitted cheaply.
+- **The acceptance test moves earlier.** Roadmap M5's gate — a naive operator running a full
+  training session without a terminal — is the right test, and with people arriving in January it
+  cannot wait until M5 to be attempted for the first time. **Registry over README:** a
 package's lifecycle is what `wl-orchestrator` says it is, not what that repo's own README
 says — `wl-elab` reads as the live ELN in its README and is `deprecated` in the registry.
 

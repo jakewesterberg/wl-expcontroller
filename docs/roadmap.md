@@ -18,8 +18,10 @@ Gate: PI sign-off on `docs/design/` and the spec map.
 `taskd` runs a complete fixation task headless against simulators (replayed OpenIris JSON,
 synthetic features, fake I/O); CI green; a 1,000-trial simulated session is deterministic
 and produces the full log/data outputs. **Keyboard/mouse demo mode runs the same task.**
-Gate: recorded sim session artifact committed; a generated task reviewed from its rendered
-diagram and its simulation report alone (the D4 acceptance test).
+**Operator documentation begins here** — people arrive with or before the animals, and a tech or
+student runs the rigs day to day (P8), so a "how to run a session" document is an M1 deliverable
+rather than a later one. Gate: recorded sim session artifact committed; a generated task reviewed
+from its rendered diagram and its simulation report alone (the D4 acceptance test).
 
 ## M2 — Display validated on rig hardware
 Protocol V1 on at least one rig: photodiode-measured onset lag and variability, dropped-frame
@@ -45,7 +47,7 @@ Preflight, one-action launch, pause and emergency stop, manual reward, generated
 panel with per-trial snapshots, per-condition counters, abort-reason readout, live plots,
 test screens including the per-eye alignment target, remote console. Protocol **V7** (audio
 onset). Gate: a naive operator runs a full training session start to finish without a
-terminal.
+terminal — **attempted early and repeatedly from M1 onward**, not first tried here.
 
 ## M6 — First real task, first animal
 One production task (fixation -> detection) end-to-end on the bench and then in a pilot

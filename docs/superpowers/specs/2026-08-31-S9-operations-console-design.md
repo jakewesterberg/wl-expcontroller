@@ -7,6 +7,18 @@
 Not an appendix. Three items here are the verification loop that makes model-authored tasks
 safe (ADR-0006), and they carry v1 status alongside the display module.
 
+**Written for a stranger** (PI, 2026-08-31). People arrive with or before the animals in January,
+and a tech or student runs the rigs day to day rather than the PI. So the reader of every
+operator-facing string in this system is someone who has never read a spec. Three consequences,
+and they are requirements rather than aspirations:
+
+1. **An error that requires knowing the design to interpret is a bug.** Preflight failures name
+   the fix, not just the failure; abort reasons are self-explanatory; nothing surfaces an
+   internal identifier as though it were an explanation.
+2. **Operator documentation is an M1 deliverable** — a "how to run a session" document, not a
+   design doc (pitfalls P8).
+3. **The naive-operator test is attempted early and repeatedly**, not once at M5.
+
 ---
 
 ## 1. The process split is a hard rule
