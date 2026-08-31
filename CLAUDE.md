@@ -3,10 +3,14 @@
 These conventions bind every session (human- or AI-driven) working in this repo.
 
 ## Read order before touching code
-1. `docs/M0-REVIEW.md` — where the project actually is, and what is still open
-2. `docs/design/architecture.md` — topology, contracts, latency budgets
-3. `docs/pitfalls.md` — the failure modes we are designing against
-4. Relevant ADRs in `docs/design/decisions/`, then the S-spec you are working in
+1. `docs/CHECKPOINT.md` — where the build is, which package you are in, and what to
+   read. **It tells you to read a small number of documents. Believe it.** Reading
+   all 24 is how a session runs out of context before producing anything.
+2. `docs/M0-REVIEW.md` §3–§4 — what is still open, and the engineering calls made
+   without asking
+3. `docs/design/architecture.md` — topology, contracts, latency budgets
+4. `docs/pitfalls.md` — the failure modes we are designing against
+5. Relevant ADRs in `docs/design/decisions/`, then the S-spec you are working in
    (`docs/superpowers/specs/2026-08-31-spec-map.md` says which)
 
 ## Rules
@@ -47,6 +51,15 @@ These conventions bind every session (human- or AI-driven) working in this repo.
   to get wrong goes to the PI as a question at the moment it arises. Recording it in an
   open-items table is a record, not an ask — and three of the first four decisions
   revisited that way were changed.
+
+- **Leave the repo resumable.** A session ends by updating `docs/CHECKPOINT.md`:
+  what moved, what is next, and anything learned that would cost the next session
+  something to rediscover. A checkpoint that has gone stale is worse than none,
+  because it is believed.
+- **Prove a test can fail.** `python3 tools/mutate.py --all <module>` before trusting
+  a new check. CI gates on it. A test that cannot fail reports safety it does not
+  provide, and for a checker whose whole job is refusing bad tasks that is worse than
+  having no checker.
 
 ## Commit style
 Imperative subject line; body explains why when non-obvious. The repo history is part

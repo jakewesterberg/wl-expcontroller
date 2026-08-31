@@ -1,6 +1,6 @@
 # ADR-0003: Messaging and transport
 
-- Status: Proposed
+- Status: Accepted 2026-08-31
 - Date: 2026-08-30
 
 ## Context
@@ -8,7 +8,7 @@ Three data paths with different needs: eye samples (high rate, latest-wins), neu
 features (high rate, latest-wins, cross-machine), control/telemetry (reliable,
 low rate). Plus the hardware-truth rule (architecture.md, principle 2).
 
-## Decision (proposed)
+## Decision
 - Eye: consume OpenIris's native UDP poll protocol unmodified (port 9003,
   WAITFORDATA -> JSON); poll >= display rate; local staleness accounting.
 - Neural features + control/telemetry: ZeroMQ (PUB/SUB + REQ/REP) with msgpack,
@@ -28,3 +28,12 @@ low rate). Plus the hardware-truth rule (architecture.md, principle 2).
 ## Consequences
 Two small, boring dependencies (pyzmq, msgpack). Message schemas live in one module
 with golden-file tests; version field from day one.
+
+## Accepted 2026-08-31
+
+Accepted unchanged, and narrowed by what the specs found. S3 removed a use it never
+needed — we do not emit barcodes and do not derive time from messages — and S7 kept
+ZMQ where it earns its place: two feature sources publishing one schema-versioned
+message, consumed latest-wins. S10 adds a use this ADR did not anticipate: the
+lab-host protocol is plain HTTP, not ZMQ, because it is `wl-preproc`'s and reusing it
+was worth more than consistency with our own transport.

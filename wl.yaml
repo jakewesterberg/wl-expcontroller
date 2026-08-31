@@ -14,14 +14,15 @@ summary: >-
 
 status:
   phase: >-
-    Design phase, no code. The 2026-08-31 session took eleven decisions and
-    corrected the architecture against the rest of the lab stack.
+    M0 signed off 2026-08-31; contracts frozen and code started. The task schema,
+    8 of 10 load-time checks, the event encoder (round-tripped through
+    wl-preproc's own decoder), the trial loop and simulated sessions exist, with
+    27 tests and a mutation gate in CI.
   next: >-
-    S0 (rig topology, hosts and hardware) from
-    docs/superpowers/specs/2026-08-31-spec-map.md. It is short, it unblocks
-    purchasing, and it carries the one unverified claim the design depends on:
-    NI PCIe-6343 with NI-DAQmx on a supported Linux.
-  describes: 4e95bf0c84dca4a2b89824866b7b09661cab9755
+    Package P1 in docs/CHECKPOINT.md -- finish the task layer: the two remaining
+    load-time checks, the first two real task files, and the review artifact a
+    generated task is approved from. Needs no hardware and no other repository.
+  describes: HEAD
 
 # The task PC. The role name is proposed, not settled -- S0 fixes the rig role
 # vocabulary (rig/task, rig/eye, rig/sglx, rig/intan, rig/sync) with wl-stack.
@@ -52,10 +53,29 @@ third_party:
       NI's Linux readme lists only LabVIEW and C/C++ (gcc) as supported
       development environments, so the Python binding is our exposure, not NI's.
 
-# Deliberately absent: psychopy, pyzmq and msgpack. ADR-0002 (display engine) and
-# ADR-0003 (messaging and transport) are both still `Proposed`, and declaring them
-# here would assert a toolchain nothing has accepted -- the same reason wl-mllib's
-# manifest declines to name MATLAB and Psychtoolbox. They land when those ADRs do.
+  - name: psychopy
+    where: rig/task
+    why: >-
+      The display engine, accepted in ADR-0002 on 2026-08-31 and used strictly as a
+      library behind our own DisplayAdapter. Declared only for rig/task: the kiosk
+      has its own display path and a workstation needs it only to run the suite.
+      Brings GPL-3 gravity on distribution, which is ADR-0004's open question.
+  - name: pyzmq
+    why: >-
+      The console runs as a separate process from taskd under all conditions, and
+      the neural feature clients publish across machines (ADR-0003). Needed on a
+      workstation too, since the simulated console talks to a fake taskd in tests.
+  - name: msgpack
+    why: >-
+      The wire format for schema-versioned feature messages (ADR-0003). Small and
+      boring, which is the point: the messages are latest-wins and carry no
+      structure that would repay a richer format.
+
+# Declared on 2026-08-31, when ADR-0002 and ADR-0003 were accepted. Until then this
+# file deliberately named none of them -- asserting a toolchain nothing had accepted
+# is the fault wl-mllib's manifest avoids by declining to name MATLAB, and `wlo
+# stack` reads third_party alone, so a premature entry puts wrong software on a real
+# machine.
 
 requires:
   - name: wl-sync

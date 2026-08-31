@@ -1,6 +1,6 @@
 # ADR-0007: Ownership of the event vocabulary
 
-- Status: Proposed
+- Status: Accepted 2026-08-31, with one clause pending wl-preproc
 - Date: 2026-08-31
 - Deciders: Jake (PI)
 
@@ -82,3 +82,15 @@ Consequences of the rule, adopted with it:
   allocations go to 4096–32767 and nothing else in this decision changes.
 - The parent architecture spec §6's claim that codes are "allocated in `wl-mllib`" is true of
   the ranges a task uses and false of the protocol. Corrected there.
+
+## Accepted 2026-08-31, with one clause pending
+
+The **rule** — decodability versus meaning — is ours and is accepted. So is everything
+that follows from it: no renumbering, allocation never happening here, new escapes
+being amendments while new task events are not, and no second decoder.
+
+**One clause is not ours to accept alone.** Moving `TaskEvent` 256–4095 to `wl-mllib`
+needs `wl-preproc`'s agreement, since they allocated 256–259 into it. Until they
+answer, this project allocates in **4096–32767**, whose ownership is undisputed, so a
+decline costs no rework. The code already does this: `wl_expcontroller/codes.py`
+confines itself to that range and says why.

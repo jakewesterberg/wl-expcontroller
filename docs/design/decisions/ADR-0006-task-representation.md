@@ -1,6 +1,6 @@
 # ADR-0006: Task representation and authoring model
 
-- Status: Proposed; item 6 settled by S1 (2026-08-31)
+- Status: Accepted 2026-08-31 (item 6 settled by S1's bake-off)
 - Date: 2026-08-31
 - Deciders: Jake (PI)
 

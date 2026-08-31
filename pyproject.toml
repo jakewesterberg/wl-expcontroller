@@ -9,6 +9,9 @@ description = "Behavioural task controller for closed-loop NHP neurophysiology"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2"]
 
+[project.scripts]
+wlx = "wl_expcontroller.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 

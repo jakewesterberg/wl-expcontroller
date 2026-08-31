@@ -1,0 +1,36 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Both ends of the supported range, matching wl-preproc's own CI: 3.11 is
+        # the floor wl-sync also supports, 3.13 is what Fedora ships.
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
+  mutation:
+    # A green suite proves the tests pass. This proves they can fail: every
+    # load-time check and every encoder function is neutered in turn, and the job
+    # fails if any survives. A test that cannot fail reports safety it does not
+    # provide, which for a checker whose whole job is refusing bad tasks would be
+    # worse than having no checker (pitfalls P15).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: python tools/mutate.py --all wl_expcontroller/check.py
+      - run: python tools/mutate.py --all wl_expcontroller/encode.py
+      - run: python tools/mutate.py --all --returns None wl_expcontroller/simulate.py
