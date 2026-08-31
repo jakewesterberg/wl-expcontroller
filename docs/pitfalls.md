@@ -46,6 +46,15 @@ rig-contract layer instead.
 under load. The console is a separate process precisely so no UI or plotting work can
 share the hot loop's runtime.
 
+**P4a — Display timing measured off-rig is not evidence.** A display spike on a macOS
+laptop showed a thin glfw stack at 36% long frames against PsychoPy's 1.8%, which reads
+as a verdict. It was not: the same machine, the same measurement, and the difference was
+a missing pipeline drain in the spike's own loop. Fullscreen made it look worse still --
+221 Hz on a 120 Hz panel, the signature of vsync not being enforced rather than of speed.
+**No display stack is judged anywhere but a rig, under V1, with a photodiode.** Numbers
+from a development machine go under `docs/measurements/dev-machine/` and are labelled as
+deciding nothing.
+
 **P4 — Graphics stack.** X11-vs-Wayland, compositor bypass, and NVIDIA vsync behavior all
 move timing. Pin distro/driver/session type per rig, record it with every measurement, and
 re-run V1 after any change. OLED task displays additionally need luminance/persistence QA.

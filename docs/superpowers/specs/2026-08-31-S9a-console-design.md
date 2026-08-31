@@ -113,11 +113,15 @@ work for a task nobody hand-wrote.
 Nothing in this repository or `wl-preproc`'s said so. Three consequences:
 
 1. `wl.yaml`'s Python constraint is now `>=3.11,<3.13`.
-2. **A Fedora workstation cannot run the display code**, since `wl-preproc` records that
-   3.13 is what Fedora ships. Development of the display layer happens on 3.12.
-3. **S0's Ubuntu 24.04 choice is right for a second, independent reason** — it ships
-   Python 3.12. It was chosen for NI-DAQmx; it also happens to be the only mainstream
-   option that satisfies both constraints at once.
+2. Fedora ships 3.13, but **this is a provisioning detail, not an incompatibility** —
+   `dnf install python3.12` and the rig uses that. Corrected 2026-08-31; an earlier
+   version of this section overstated it.
+3. **It does not add a reason to prefer Ubuntu.** S0's choice rests on NI-DAQmx, which
+   is an out-of-tree kernel module against unsupported distributions and is not fixed by
+   installing another Python. One reason, not two.
+
+**And it is an argument against PsychoPy rather than for a Python version** — ADR-0002
+is reopened on it, among other things.
 
 CI keeps a 3.13 leg **deliberately**, testing the core — schema, checks, encoder, runner,
 record — which has no display dependency and must not acquire one. If a 3.13 job ever

@@ -4,5 +4,6 @@
 .mutate-in-progress.json
 .pytest_cache/
 .ruff_cache/
+.venv-spike/
 .venv/
 __pycache__/
