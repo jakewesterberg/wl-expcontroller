@@ -97,16 +97,34 @@ def _unbounded_waits(trial: Trial) -> list[Finding]:
     form of a fixation task -- a hold loop with no timeout, invisible on reading.
     A state whose transitions are all event-guarded can wait forever if the event
     never arrives, which for a fixation hold means an animal that has looked away.
+
+    **An `After` with a `since` does not count.** Its clock is started by an event --
+    a photodiode confirmation -- so if the flip is dropped or the patch occluded it
+    never arms, and a state relying on it alone waits forever while looking bounded
+    on the page. That is the same defect this check exists to catch, wearing the
+    type that normally satisfies it.
     """
     return [
         Finding(
             "unbounded-wait",
-            f"state {state.name!r} has no `After` transition and does not "
-            f"declare `unbounded=True`",
+            f"state {state.name!r} has no unconditional `After` transition and does "
+            f"not declare `unbounded=True`"
+            + (
+                " -- an `After` with a `since` is started by an event, so it is not "
+                "a bound"
+                if any(
+                    isinstance(edge.guard, After) and edge.guard.since is not None
+                    for edge in state.go
+                )
+                else ""
+            ),
         )
         for state in trial.states
         if not state.unbounded
-        and not any(isinstance(edge.guard, After) for edge in state.go)
+        and not any(
+            isinstance(edge.guard, After) and edge.guard.since is None
+            for edge in state.go
+        )
     ]
 
 

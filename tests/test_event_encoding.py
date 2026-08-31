@@ -5,12 +5,32 @@ If these pass, we emit their protocol rather than our idea of it.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
-wl_preproc_events = pytest.importorskip(
-    "wl_preproc.contracts.events",
-    reason="wl-preproc checkout not beside this repo; the round-trip cannot run",
-)
+#: CI sets this. A skip is the right behaviour on a laptop without the sibling
+#: checkout and the **wrong** behaviour in CI, where these nine tests are the only
+#: thing proving we emit wl-preproc's protocol rather than our idea of it -- and
+#: where they were silently skipping into a green build, because `actions/checkout`
+#: fetches this repository alone. A contract test that is allowed to not run is not
+#: a contract test.
+_REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
+
+try:
+    from wl_preproc.contracts import events as wl_preproc_events
+except ImportError as exc:  # pragma: no cover - exercised by the CI job
+    if _REQUIRED:
+        raise AssertionError(
+            f"WLX_REQUIRE_PREPROC=1 but wl-preproc is not importable ({exc}). "
+            f"The event-codec round-trip is the only check that we emit their "
+            f"protocol; skipping it would report a compatibility nobody verified"
+        ) from exc
+    wl_preproc_events = None
+    pytest.skip(
+        "wl-preproc checkout not beside this repo; the round-trip cannot run",
+        allow_module_level=True,
+    )
 
 from wl_expcontroller.encode import words_for, words_for_code  # noqa: E402
 

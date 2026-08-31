@@ -128,10 +128,25 @@ class Guard:
 
 @dataclass(frozen=True, slots=True)
 class After(Guard):
-    """Elapsed time from state entry, in seconds. The only guard that bounds a
-    wait by construction -- which is why the checker asks about it by type."""
+    """Elapsed time in seconds, from state entry by default.
+
+    **`since` moves the zero.** Timed from state entry, an interval starts before the
+    stimulus it follows exists: the transition happens during a frame and the flip
+    that carries the stimulus is 8-33 ms later, depending on refresh rate and where
+    in the frame the transition landed. Every SOA written that way is wrong by a
+    variable amount -- and variable error is worse than constant error, because it
+    cannot be corrected offline. `After(0.05, since=Onscreen("task"))` runs from the
+    photodiode saying the stimulus reached the display.
+
+    A plain `After` is the only guard that bounds a wait by construction, which is
+    why the checker asks about it by type. **One with a `since` is not**: if the flip
+    is dropped or the patch occluded, the guard never arms, so a state relying on it
+    alone could wait forever -- and check 4 refuses that.
+    """
 
     seconds: "float | P"
+    #: What starts the clock. `None` is state entry.
+    since: "Guard | None" = None
 
 
 @dataclass(frozen=True, slots=True)

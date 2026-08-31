@@ -41,10 +41,27 @@ def _value_label(value: object) -> str:
 
 
 def _guard_label(guard: Guard) -> str:
-    fields = [getattr(guard, name) for name in guard.__slots__]
-    label = f"{type(guard).__name__}({', '.join(_value_label(f) for f in fields)})"
+    """A guard as a reviewer would say it out loud.
+
+    Unset optional fields are omitted rather than rendered as `None`: a diagram that
+    says `After(0.3s, None)` is noisier than the source it replaces, and noise is how
+    a reviewer stops reading the artifact. What is *set* is always shown -- an SOA
+    timed from photodiode onset rather than state entry is a different experiment,
+    so `since` appears whenever it is there.
+    """
+    fields = [
+        (name, getattr(guard, name))
+        for name in guard.__slots__
+        if getattr(guard, name) is not None
+    ]
+    rendered = [
+        _value_label(value) if name != "since" else f"since={_guard_label(value)}"
+        for name, value in fields
+    ]
+    label = f"{type(guard).__name__}({', '.join(rendered)})"
     if isinstance(guard, After) and isinstance(guard.seconds, float):
-        label = label[:-1] + "s)"
+        head, _, tail = label.partition(f"{guard.seconds:g}")
+        label = f"{head}{guard.seconds:g}s{tail}"
     return label
 
 

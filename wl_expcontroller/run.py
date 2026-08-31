@@ -24,6 +24,7 @@ from wl_expcontroller.task import (
     Guard,
     Hide,
     Hold,
+    Onscreen,
     Outcome,
     P,
     Score,
@@ -130,6 +131,18 @@ class Shown(NamedTuple):
     off: int | None
 
 
+class Confirmed(NamedTuple):
+    """A photodiode reporting a stimulus actually reached the display.
+
+    The realized onset, against which a declared one can be compared. Without it the
+    record says what was asked for and nothing about what happened -- and the two
+    differ by exactly the amount `After(since=...)` exists to expose.
+    """
+
+    patch: str
+    frame: int
+
+
 class Changed(NamedTuple):
     """An `Update` taking effect: which stimulus, and the first frame it differed."""
 
@@ -164,6 +177,8 @@ class Result:
     shown: tuple[Shown, ...] = ()
     #: Every `Update` that took effect, in order.
     changed: tuple[Changed, ...] = ()
+    #: Photodiode confirmations, in order: the display as the world reported it.
+    confirmed: tuple[Confirmed, ...] = ()
 
 
 def _resolve(value: float | P, values: dict[str, float]) -> float:
@@ -282,6 +297,11 @@ def run_trial(
     # The display. The start state's entry actions run before the loop, so what
     # they put up is visible on frame 1 -- the same one-frame rule every other
     # entry action follows, counted from a notional frame 0.
+    #: When each `since` guard fired, per state entry. Reset on every transition,
+    #: because a clock started in one state saying something about a later one is
+    #: the same defect as a hold clocked from the wrong zero.
+    started_at: dict[Guard, int] = {}
+    confirmed: list[Confirmed] = []
     visible: dict[str, Stimulus] = {}
     shown: list[Shown] = []
     open_at: dict[str, int] = {}
@@ -309,10 +329,28 @@ def run_trial(
             else:
                 holding_since.pop(name, None)
 
+        # Arm any `since` clocks this frame, before the guards that read them, so a
+        # zero-length interval fires on the frame the photodiode reports rather than
+        # one frame later.
+        for edge in current.go:
+            since = getattr(edge.guard, "since", None)
+            if since is not None and since not in started_at:
+                if world.happened(since, current.name, frame):
+                    started_at[since] = frame
+                    if isinstance(since, Onscreen):
+                        confirmed.append(Confirmed(since.patch, frame))
+
         for edge in current.go:
             guard = edge.guard
             if isinstance(guard, After):
-                fired = elapsed >= _resolve(guard.seconds, bound)
+                if guard.since is None:
+                    fired = elapsed >= _resolve(guard.seconds, bound)
+                else:
+                    began = started_at.get(guard.since)
+                    fired = began is not None and (
+                        (frame - began) * frame_period
+                        >= _resolve(guard.seconds, bound)
+                    )
             elif isinstance(guard, Entered):
                 fired = inside_now[guard.window] and not was_inside[guard.window]
             elif isinstance(guard, Exited):
@@ -345,6 +383,7 @@ def run_trial(
                     tuple(scored),
                     tuple(shown),
                     tuple(changed),
+                    tuple(confirmed),
                 )
             current, entered_at = by_name[edge.to], frame
             _apply(edge.do, visible, shown, open_at, changed, frame + 1)
@@ -358,9 +397,16 @@ def run_trial(
             # passing. Found by review 2026-08-31; every working-memory delay in the
             # v1 inventory is written this way.
             holding_since.clear()
+            started_at.clear()
             visited.append(current.name)
             break
         was_inside = inside_now
     return Result(
-        None, max_frames, tuple(visited), tuple(scored), tuple(shown), tuple(changed)
+        None,
+        max_frames,
+        tuple(visited),
+        tuple(scored),
+        tuple(shown),
+        tuple(changed),
+        tuple(confirmed),
     )
