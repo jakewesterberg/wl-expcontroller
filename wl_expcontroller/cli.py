@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from wl_expcontroller.check import check
+from wl_expcontroller.review import render
 from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.task import Trial
 
@@ -62,7 +63,19 @@ def main(argv: list[str] | None = None) -> int:
     checker = sub.add_parser("check", help="run the load-time checks on a task file")
     checker.add_argument("task", type=Path)
     checker.add_argument("--allocation", type=Path, default=None)
+
+    reviewer = sub.add_parser(
+        "review", help="render the artifact a task is approved from"
+    )
+    reviewer.add_argument("task", type=Path)
+    reviewer.add_argument("--allocation", type=Path, default=None)
+
     args = parser.parse_args(argv)
+
+    if args.command == "review":
+        allocation = _load_allocation(args.allocation)
+        print(render(_load_trial(args.task), allocation.task_events))
+        return 0
 
     findings = check(_load_trial(args.task), _load_allocation(args.allocation))
     for finding in findings:

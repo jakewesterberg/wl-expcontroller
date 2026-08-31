@@ -19,6 +19,7 @@ from wl_expcontroller.task import (
     GazeEnters,
     GazeHeld,
     GazeLeaves,
+    Outcome,
     SaccadeInto,
     Trial,
 )
@@ -81,3 +82,48 @@ def test_simulation_reaches_every_outcome_the_reference_task_declares(detection)
     assert census.hangs == 0
     assert census.uncovered(detection) == set()
     assert census.states_visited == {"await_fix", "hold_fix", "stim_on", "verify"}
+
+
+@pytest.fixture(scope="module")
+def adaptive() -> Trial:
+    return _load("adaptive_detection", "adaptive_detection")
+
+
+def test_the_adaptive_task_passes_every_load_time_check(adaptive):
+    allocation = _load("allocation", "ALLOCATION")
+
+    assert check(adaptive, allocation, geometry=GEOMETRY) == []
+
+
+def test_the_adaptive_trial_is_the_detection_trial_with_more_parameters(adaptive, detection):
+    """S1's bake-off finding, asserted rather than claimed: the adaptive task's
+    *trial* is structurally the same. Everything adaptive lives between trials."""
+    assert [s.name for s in adaptive.states] == [s.name for s in detection.states]
+    assert {p.name for p in detection.params} < {p.name for p in adaptive.params}
+
+
+def test_the_staircase_converges_downward_on_success_and_backs_off_on_error():
+    staircase = _load("adaptive_detection", "Staircase")(value=0.5)
+
+    staircase.update(True)
+    assert staircase.value == 0.5, "one correct is not enough; it is two-down"
+    staircase.update(True)
+    assert staircase.value < 0.5
+
+    harder = staircase.value
+    staircase.update(False)
+    assert staircase.value > harder, "one error backs off immediately"
+
+
+def test_an_aborted_trial_does_not_move_the_staircase():
+    """An abort says nothing about difficulty. Letting one move the estimate makes
+    contrast track engagement rather than perception -- so a disengaged animal
+    would be handed easier stimuli for a reason unrelated to what it can see."""
+    module_staircase = _load("adaptive_detection", "Staircase")
+    next_params = _load("adaptive_detection", "next_params")
+    staircase = module_staircase(value=0.5)
+
+    for outcome in (Outcome.NO_FIXATION, Outcome.FIXATION_BREAK, Outcome.NO_RESPONSE):
+        next_params(staircase, eccentricity=10.0, last=outcome)
+
+    assert staircase.value == 0.5

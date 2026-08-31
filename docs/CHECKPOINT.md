@@ -29,18 +29,23 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | 27, green |
+| Tests | 45, green |
 | CI | pytest on 3.11 and 3.13, plus a **mutation gate** |
-| Load-time checks | **8 of 10** (S1 §9) |
+| Load-time checks | **10 of 10** (S1 §9) |
 | Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
 | Hardware verified | **none** |
 
 ### What exists
 
 - `task.py` — the declarative trial: states, guarded transitions, actions, parameters.
-- `check.py` — 8 of the 10 load-time checks. Missing: **5** (terminal states map to
-  allocated outcome codes) needs `wl-mllib`'s allocation; **8** (stimuli expressible
-  in cyclopean degrees) needs S4's stimulus vocabulary.
+- `check.py` — **all ten** load-time checks. Check 8 runs *per eye, after disparity*:
+  a stimulus inside the cyclopean field can still put one eye's image outside it.
+- `geometry.py` — the split-screen field, derived from S0 §5.2's formula with tests
+  asserting agreement with the optics drawing.
+- `review.py` + `wlx review` — the artifact a task is approved from: Mermaid diagram,
+  event-code table, parameter ranges, what needs human review, stimuli.
+- `tasks/` — the two reference tasks and the reference allocation. `wl-mllib`'s to
+  own eventually; here until it exists.
 - `encode.py` — the 16-bit strobed word stream. Round-trips through `wl-preproc`'s
   own `decode_stream` and matches their `encode_payload` exactly across the uint32
   range. **We deliberately write no decoder.**
@@ -54,9 +59,7 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 ### What does not exist, and matters
 
-- **No task has been written.** The artifact this whole design exists to produce.
-  S1's bake-off tasks are snippets in a spec, not files. This is P1.
-- **No session record.** Nothing is written to disk. This is P2.
+- **No session record.** Nothing is written to disk. This is P2, and it is next.
 - **The round-trip tests skip in CI**, because they need a `wl-preproc` checkout
   beside this repo and CI has none. So **CI cannot currently catch an encoder
   drift** — the strongest test in the suite is the one CI does not run. Fixing it
@@ -73,8 +76,8 @@ runs out of context before it produces anything.**
 | | Package | Exit condition | Read | Blocked on |
 |---|---|---|---|---|
 | ~~P0~~ | ~~Make the repo resumable~~ | **done 2026-08-31** | — | — |
-| **P1** | Finish the task layer: checks 5 and 8, the first two real task files, the review artifact | A generated task is approved from a diagram and a report, without reading source | S1, S2 | nothing |
-| P2 | Session record: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
+| ~~P1~~ | ~~Finish the task layer~~ | **done 2026-08-31** — 10/10 checks, both reference tasks, `wlx check` and `wlx review` | — | — |
+| **P2** | Session record: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
 | P3 | `taskd` skeleton → **roadmap M1** | 1,000 deterministic trials with full outputs | S8, S9 | P2 |
 | P4 | Demo mode + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | P3 |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics drawing | ADR-0002 ✔ |
@@ -123,6 +126,11 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
 4. **Clear `__pycache__` when mutating.** Doing it by hand left stale bytecode and
    reported failures against already-correct code. The same staleness the other way
    reports a false *pass*. Use `tools/mutate.py`.
-5. **A pure hazard model cannot produce non-engagement.** It fires eventually given
+5. **Writing a real task found four gaps specification had not.** Missing vocabulary
+   (`GazeHeld`, `SaccadeInto`, transition actions), a checker blind to transitions
+   that passed a task emitting an unallocated code, a runner that never resolved
+   parameters, and a subject that could not lapse mid-trial. **Write the artifact
+   before trusting the machinery that makes it.**
+6. **A pure hazard model cannot produce non-engagement.** It fires eventually given
    enough frames, so `NO_FIXATION` — the commonest real abort — was unreachable in
    every simulated session until engagement became per-trial.

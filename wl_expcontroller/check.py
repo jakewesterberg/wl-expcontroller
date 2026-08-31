@@ -8,7 +8,16 @@ from dataclasses import dataclass
 from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.components import Registry
 from wl_expcontroller.geometry import Geometry
-from wl_expcontroller.task import After, Custom, Emit, Outcome, P, Show, Trial
+from wl_expcontroller.task import (
+    After,
+    Custom,
+    Emit,
+    Outcome,
+    P,
+    Show,
+    Trial,
+    actions_of,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +166,7 @@ def _unallocated_codes(trial: Trial, allocation: Allocation) -> list[Finding]:
             f"state {name!r} emits code {action.code}, which is not in the "
             f"allocation; codes are allocated in wl-mllib, never invented in a task",
         )
-        for name, action in _actions(trial)
+        for name, action in actions_of(trial)
         if isinstance(action, Emit) and action.code not in allocation
     ]
 
@@ -213,7 +222,7 @@ def _custom_components(trial: Trial, components: Registry) -> list[Finding]:
     puts the task on the human-review list beside the welfare-critical modules.
     """
     findings: list[Finding] = []
-    for name, action in _actions(trial):
+    for name, action in actions_of(trial):
         if not isinstance(action, Custom):
             continue
         if action.name in components:
@@ -252,7 +261,7 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
     if geometry is None:
         return []
     findings: list[Finding] = []
-    for name, action in _actions(trial):
+    for name, action in actions_of(trial):
         if not isinstance(action, Show):
             continue
         for eye, (x, y) in zip(("left", "right"), action.stimulus.per_eye()):
@@ -299,19 +308,3 @@ def _unallocated_outcomes(trial: Trial, allocation: Allocation) -> list[Finding]
         if outcome not in allocation.outcomes
     ]
 
-
-def _actions(trial: Trial) -> list[tuple[str, object]]:
-    """Every action in the trial, with the state it belongs to.
-
-    **Both places.** Actions sit on state entry and on transitions, and a check
-    that walks only the first is blind to exactly the actions that score -- reward
-    can only ever be a transition action, because a terminal outcome has no state
-    to enter. The first real task passed a checker that had this gap while emitting
-    an unallocated code, which is how the gap was found.
-    """
-    found: list[tuple[str, object]] = []
-    for state in trial.states:
-        found.extend((state.name, action) for action in state.enter)
-        for edge in state.go:
-            found.extend((state.name, action) for action in edge.do)
-    return found

@@ -222,3 +222,25 @@ class Reward(Action):
                 f"a task may name how reward is configured but never how much it is"
             )
         object.__setattr__(self, "ref", ref)
+
+
+def actions_of(trial: Trial) -> list[tuple[str, Action]]:
+    """Every action in a trial, with the state it belongs to.
+
+    **Both places.** Actions sit on state entry and on transitions, and anything
+    walking them must walk both -- reward can only ever be a transition action,
+    because a terminal outcome has no state to enter. The first real task passed a
+    checker with this gap while emitting an unallocated code, which is how it was
+    found.
+
+    One definition rather than two, because `check.py` and `review.py` both need
+    it: a review artifact showing a different set of actions from the one the
+    checker inspected would be the worst possible artifact -- a picture the
+    reviewer trusts, of a task nobody validated.
+    """
+    found: list[tuple[str, Action]] = []
+    for state in trial.states:
+        found.extend((state.name, action) for action in state.enter)
+        for edge in state.go:
+            found.extend((state.name, action) for action in edge.do)
+    return found
