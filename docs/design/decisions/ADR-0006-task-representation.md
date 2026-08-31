@@ -1,6 +1,6 @@
 # ADR-0006: Task representation and authoring model
 
-- Status: Proposed
+- Status: Proposed; item 6 settled by S1 (2026-08-31)
 - Date: 2026-08-31
 - Deciders: Jake (PI)
 
@@ -35,10 +35,14 @@ and expose live-editable parameters.
 5. **Welfare-critical parameters are unreachable from a task file.** They live in a
    rig/subject bounded config that a task references and cannot set, and that a human can
    move within but not exceed.
-6. **Escape-hatch strictness is deferred to spec S1** and decided against two real tasks
-   written both ways, not from first principles. Working assumption: the within-trial layer
-   stays pure data, and behaviour the vocabulary lacks is declared by name with its
-   implementation in the framework's reviewed source.
+6. **Escape-hatch strictness — settled by S1's bake-off, as the working assumption
+   predicted.** The within-trial layer stays pure data; behaviour the vocabulary lacks is
+   declared by name and resolves to a typed, reviewed component in the framework's own
+   source, and a task using one is flagged for human review. The bake-off's decisive finding
+   was not an argument but an accident: writing the permissive version of a fixation task, I
+   produced an unbounded hold loop and silently dropped the photodiode confirmation, and
+   neither was visible on reading. See
+   `docs/superpowers/specs/2026-08-31-S1-task-model-design.md` §7.
 
 ## Alternatives considered
 

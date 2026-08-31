@@ -178,8 +178,7 @@ type checking and jump-to-definition, and it keeps tasks plain-text and diffable
 
 ### 5.3 Escape hatches
 
-**Open, to be settled in S1 against two real tasks written both ways.** Working
-assumption: the within-trial layer stays pure data; behavior the vocabulary lacks is
+**Settled by S1's bake-off (2026-08-31).** The within-trial layer stays pure data; behavior the vocabulary lacks is
 declared by name and its implementation lives in the framework's tested, reviewed source
 rather than in the task file. Gaze-contingent rendering and neural-threshold gating are
 *not* escape hatches — they are core lab science with many consumers and belong in the
@@ -734,7 +733,7 @@ auditory performance feedback, plus vocalization monitoring.
 
 | # | Question | Owner | Blocks |
 |---|---|---|---|
-| 1 | Escape-hatch strictness in the within-trial layer | PI, after the S1 bake-off | S1 |
+| 1 | ~~Escape-hatch strictness in the within-trial layer~~ **Answered in S1**: typed seam, novelty promoted into reviewed framework code, tasks using one are flagged. The bake-off's permissive version contained two defects the author did not notice | S1 | — |
 | 2 | Touchscreen: second panel, rig mode, or deferred | PI | S4, S6 |
 | 3 | ~~Display panel, refresh target, panel technology~~ **Answered in S0**: 32-inch-class 16:9 flat OLED, tandem model deferred to late 2026, bench panel bought now, ~50 cm build distance, mode as rig config. Remaining: whether burn-in protection is defeatable, and whether GPU + panel can avoid DSC | S0 | panel purchase only |
 | 4 | Photodiode patch placement against the real optics | PI + `wl-sync` | rig build |
@@ -758,6 +757,6 @@ auditory performance feedback, plus vocalization monitoring.
 | `docs/roadmap.md` | Stim tiers 1–2 move into v1; parity gate M5 loses its comparator; demo mode and preflight become gated deliverables |
 | `docs/validation.md` | V2b, V7, V8, V9 added; V4 widened to both neural paths |
 | `README.md` | Two rigs, not 3–4; bridge language removed |
-| `docs/superpowers/specs/` | **S0** and **S2** written |
+| `docs/superpowers/specs/` | **S0**, **S1** and **S2** written |
 | `docs/design/decisions/` | **ADR-0007** (event vocabulary ownership) |
 | `docs/design/decisions/` | **ADR-0005** (day-one stack and interchangeability; supersedes ADR-0001 decision 3) and **ADR-0006** (task representation) written. Lab-host protocol adoption (D11) still needs an ADR once S10 is specified. |
