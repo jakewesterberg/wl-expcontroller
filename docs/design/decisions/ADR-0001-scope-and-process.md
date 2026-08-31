@@ -1,6 +1,6 @@
 # ADR-0001: Scope and process for wl-expcontroller
 
-- Status: Accepted
+- Status: Accepted; decision 3 superseded by ADR-0005 (2026-08-31)
 - Date: 2026-08-30
 - Deciders: Jake (PI)
 
@@ -15,9 +15,13 @@ is the main risk (docs/pitfalls.md).
 2. Process commitments: spec-first (contracts before code), sim-first (headless CI),
    measure-everything (docs/validation.md; numbers committed per rig), ADRs for
    irreversible choices, AI-assisted development under CLAUDE.md conventions.
-3. Bridge strategy: rigs may run MonkeyLogic + OpenIrisDPI analog out during
-   development; tasks migrate on demonstrated parity (roadmap M5). Science is never
-   blocked on this project.
+3. ~~Bridge strategy: rigs may run MonkeyLogic + OpenIrisDPI analog out during
+   development; tasks migrate on demonstrated parity (roadmap M5).~~ **Superseded by
+   ADR-0005.** The bridge assumed a MonkeyLogic task library that does not exist
+   (`wl-mllib` holds no code and its own manifest states the behavioural stack is
+   unchosen), so switching to it would have meant writing that library from scratch
+   under pressure. wl-expcontroller is the day-one stack; see ADR-0005 for the
+   replacement commitment and pitfalls P12 for the replacement mitigation.
 
 ## Alternatives considered
 - Adopt MWorks: healthiest open-source NHP suite, but macOS-only and MWEL-first —
