@@ -31,10 +31,16 @@ builds_on: [dws]
 
 third_party:
   - name: python
-    constraint: ">=3.11"
+    constraint: ">=3.11,<3.13"
     why: >-
-      The floor wl-sync and wl-preproc both support. Matching them keeps one
-      Python story across the lab's own packages.
+      The floor is what wl-sync and wl-preproc both support. **The ceiling is
+      PsychoPy's**: 2026.2.3 declares `>=3.10,<3.13`, so Python 3.13 cannot run the
+      display layer at all. That is not a preference and it reaches past this
+      package -- wl-preproc's CI tests 3.13 because "3.13 is what Fedora ships",
+      so a Fedora workstation cannot run this project's display code, and the task
+      PC's Ubuntu 24.04 (Python 3.12) is the right choice for a second reason
+      beyond NI-DAQmx. Discovered 2026-08-31 by installing it; nothing in either
+      repository's documents said so.
   - name: ni-daqmx
     where: rig/task
     why: >-
@@ -54,17 +60,30 @@ third_party:
       development environments, so the Python binding is our exposure, not NI's.
 
   - name: psychopy
+    constraint: ">=2026.2"
     where: rig/task
     why: >-
       The display engine, accepted in ADR-0002 on 2026-08-31 and used strictly as a
       library behind our own DisplayAdapter. Declared only for rig/task: the kiosk
       has its own display path and a workstation needs it only to run the suite.
-      Brings GPL-3 gravity on distribution, which is ADR-0004's open question.
+      Brings GPL-3 gravity on distribution, which is ADR-0004's open question, and
+      a Python ceiling of 3.12 which reaches the whole project (see `python`).
   - name: pyzmq
     why: >-
       The console runs as a separate process from taskd under all conditions, and
       the neural feature clients publish across machines (ADR-0003). Needed on a
       workstation too, since the simulated console talks to a fake taskd in tests.
+  - name: pyside6
+    where: rig/task
+    why: >-
+      The console is a desktop application (S9a), separate from taskd under all
+      conditions and able to run on another machine over ZMQ. Qt because the live
+      plots need pyqtgraph, which is Qt.
+  - name: pyqtgraph
+    where: rig/task
+    why: >-
+      Live plots at trial rates. Matplotlib is too slow to redraw per trial and a
+      browser would put a server on a machine whose job is frame-accurate timing.
   - name: msgpack
     why: >-
       The wire format for schema-versioned feature messages (ADR-0003). Small and

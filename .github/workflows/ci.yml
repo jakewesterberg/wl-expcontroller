@@ -7,9 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Both ends of the supported range, matching wl-preproc's own CI: 3.11 is
-        # the floor wl-sync also supports, 3.13 is what Fedora ships.
-        python: ["3.11", "3.13"]
+        # Both ends of the supported range. The ceiling is PsychoPy's: 2026.2.3
+        # declares <3.13, so 3.13 cannot run the display layer. 3.13 stays in the
+        # matrix deliberately, testing the core -- schema, checks, encoder, runner,
+        # record -- which has no display dependency and must not acquire one. If a
+        # 3.13 job ever fails on an import, something has leaked through
+        # DisplayAdapter and that is worth failing over.
+        python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

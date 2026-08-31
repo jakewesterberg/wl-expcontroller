@@ -1,8 +1,8 @@
-__pycache__/
+*.egg-info/
 *.py[cod]
+.DS_Store
+.mutate-in-progress.json
 .pytest_cache/
 .ruff_cache/
 .venv/
-*.egg-info/
-.DS_Store
-.mutate-in-progress.json
+__pycache__/
