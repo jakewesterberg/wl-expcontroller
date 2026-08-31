@@ -14,13 +14,12 @@ from dataclasses import dataclass, field
 
 from wl_expcontroller.task import (
     After,
-    Spot,
     Bounded,
     Mark,
-    FixPoint,
+    Disc,
     Acquired,
-    Held,
-    Broke,
+    Hold,
+    Exited,
     On,
     Outcome,
     P,
@@ -28,12 +27,14 @@ from wl_expcontroller.task import (
     Reward,
     SaccadeTo,
     Show,
+    Square,
     State,
+    Stimulus,
     Trial,
     Window,
 )
 
-FIX = FixPoint(at=(0.0, 0.0), size=0.3)
+FIX = Stimulus(at=(0.0, 0.0), looks=Disc(size=0.3))
 
 adaptive_detection = Trial(
     start="await_fix",
@@ -49,6 +50,14 @@ adaptive_detection = Trial(
         Param("fix_window", unit="deg", low=0.5, high=5.0),
         Param("target_window", unit="deg", low=0.5, high=6.0),
         Param("target_position", unit="deg", low=-16.0, high=16.0),
+        # Appearance is a parameter, so switching circles among squares for
+        # penguins among elephants is a value applied in an ITI -- not a new
+        # task and not a new block.
+        Param(
+            "target_looks",
+            unit="appearance",
+            choices=(Disc(size=1.0), Square(size=1.0)),
+        ),
         Param("contrast", unit="fraction", low=0.02, high=1.0),
         Param("eccentricity", unit="deg", low=2.0, high=16.0),
     ],
@@ -64,8 +73,8 @@ adaptive_detection = Trial(
         State(
             "hold_fix",
             go=[
-                On(Held("fix", P("fix_hold")), "stim_on"),
-                On(Broke("fix"), Outcome.FIXATION_BREAK, do=[Mark(4101)]),
+                On(Hold("fix", P("fix_hold")), "stim_on"),
+                On(Exited("fix"), Outcome.FIXATION_BREAK, do=[Mark(4101)]),
                 On(After(P("fix_timeout")), Outcome.NO_FIXATION, do=[Mark(4100)]),
             ],
         ),
@@ -74,7 +83,7 @@ adaptive_detection = Trial(
             # that moves the array from 0 to 10 degrees is a value change applied
             # in an ITI -- not a new task, and not a new block (S3 §7).
             "stim_on",
-            enter=[Show(Spot(at=(10.0, 0.0), size=1.0)), Mark(4097)],
+            enter=[Show(Stimulus(at=(P("target_position"), 0.0), looks=P("target_looks"))), Mark(4097)],
             go=[
                 On(SaccadeTo("target"), "verify", do=[Mark(4098)]),
                 On(After(P("response_window")), Outcome.NO_RESPONSE),
@@ -84,11 +93,11 @@ adaptive_detection = Trial(
             "verify",
             go=[
                 On(
-                    Held("target", P("target_hold")),
+                    Hold("target", P("target_hold")),
                     Outcome.CORRECT,
                     do=[Mark(4099), Mark(4102), Reward(Bounded("reward_correct"))],
                 ),
-                On(Broke("target"), Outcome.WRONG_TARGET),
+                On(Exited("target"), Outcome.WRONG_TARGET),
                 On(After(P("response_window")), Outcome.NO_RESPONSE),
             ],
         ),

@@ -17,8 +17,8 @@ from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.simulate import Subject, simulate
 from wl_expcontroller.task import (
     Acquired,
-    Held,
-    Broke,
+    Hold,
+    Exited,
     Outcome,
     SaccadeTo,
     Trial,
@@ -69,9 +69,9 @@ def test_simulation_reaches_every_outcome_the_reference_task_declares(detection)
             lapse=0.004,
             hazards={
                 Acquired: 0.20,
-                Held: 0.30,
+                Hold: 0.30,
                 SaccadeTo: 0.15,
-                Broke: 0.01,
+                Exited: 0.01,
             },
         ),
         trials=5_000,

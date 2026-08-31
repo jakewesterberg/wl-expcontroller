@@ -247,46 +247,75 @@ def _custom_components(trial: Trial, components: Registry) -> list[Finding]:
     return findings
 
 
+def _extremes(value: object, ranges: dict[str, tuple[float, float]]) -> list[float]:
+    """The values a position component can actually take.
+
+    A literal is itself; a parameter is **both ends of its declared range**, because
+    every value between them is one an experimenter can dial in live. Checking the
+    range rather than a value proves the task cannot place a stimulus off-screen for
+    any legal setting, instead of proving it happens not to today.
+    """
+    if isinstance(value, P):
+        low, high = ranges.get(value.name, (0.0, 0.0))
+        return [low, high]
+    return [float(value)]
+
+
 def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]:
     """S1 §9 check 8: every stimulus can actually be shown.
 
-    Checked **per eye, after disparity**, not at the cyclopean position. Disparity
-    is applied as equal and opposite horizontal offsets, so a stimulus comfortably
-    inside the field can still put one eye's image outside it -- and only that
-    eye's. On a split-screen stereoscope that is a stimulus the animal fuses on one
-    side and loses on the other, which is a far stranger failure than simply not
-    seeing it.
+    Checked **per eye, after disparity**, not at the cyclopean position. Disparity is
+    applied as equal and opposite horizontal offsets, so a stimulus comfortably inside
+    the field can still put one eye's image outside it -- and only that eye's. On a
+    split-screen stereoscope that is a stimulus the animal fuses on one side and loses
+    on the other, a far stranger failure than simply not seeing it.
 
-    Skipped when no geometry is supplied, because a task is not wrong for being
-    checked without a rig; it is unchecked, and the caller knows which it wanted.
+    Skipped when no geometry is supplied: a task is not wrong for being checked
+    without a rig, it is unchecked, and the caller knows which it wanted.
     """
     if geometry is None:
         return []
+    ranges = {
+        p.name: (p.low, p.high)
+        for p in trial.params
+        if p.low is not None and p.high is not None
+    }
     findings: list[Finding] = []
     for name, action in actions_of(trial):
         if not isinstance(action, Show):
             continue
-        for eye, (x, y) in zip(("left", "right"), action.stimulus.per_eye()):
-            if geometry.can_show(x, y):
-                continue
-            where = (
-                f"at {action.stimulus.at}"
-                if action.stimulus.disparity == 0.0
-                else f"at {action.stimulus.at} with disparity "
-                f"{action.stimulus.disparity}, putting the {eye} eye's image "
-                f"at ({x:.1f}, {y:.1f})"
+        stimulus = action.stimulus
+        x_values = _extremes(stimulus.at[0], ranges)
+        y_values = _extremes(stimulus.at[1], ranges)
+        half = _extremes(stimulus.disparity, ranges)
+        bad = [
+            (x + offset, y)
+            for x in x_values
+            for y in y_values
+            for offset in (min(half) / 2, -min(half) / 2, max(half) / 2, -max(half) / 2)
+            if not geometry.can_show(x + offset, y)
+        ]
+        if not bad:
+            continue
+        described = ", ".join(
+            f"{v.name}" if isinstance(v, P) else f"{v:g}"
+            for v in (stimulus.at[0], stimulus.at[1])
+        )
+        findings.append(
+            Finding(
+                "stimulus-off-screen",
+                f"state {name!r} shows a stimulus at ({described}) which can reach "
+                f"{bad[0][0]:.1f}, {bad[0][1]:.1f} -- outside the "
+                f"\u00b1{geometry.half_field_h_deg:.1f}\u00b0 \u00d7 "
+                f"\u00b1{geometry.half_field_v_deg:.1f}\u00b0 field"
+                + (
+                    f", with disparity {stimulus.disparity}"
+                    if stimulus.disparity
+                    else ""
+                ),
             )
-            findings.append(
-                Finding(
-                    "stimulus-off-screen",
-                    f"state {name!r} shows a stimulus {where}, outside "
-                    f"the ±{geometry.half_field_h_deg:.1f}° × "
-                    f"±{geometry.half_field_v_deg:.1f}° field",
-                )
-            )
-            break
+        )
     return findings
-
 
 def _unallocated_outcomes(trial: Trial, allocation: Allocation) -> list[Finding]:
     """S1 §9 check 5: every terminal outcome maps to an allocated marker.

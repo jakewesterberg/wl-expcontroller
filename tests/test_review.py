@@ -12,8 +12,8 @@ from wl_expcontroller.review import render
 from wl_expcontroller.task import (
     After,
     Mark,
-    Held,
-    Broke,
+    Hold,
+    Exited,
     On,
     P,
     Param,
@@ -31,7 +31,7 @@ TRIAL = Trial(
             "hold",
             enter=[Mark(4096)],
             go=[
-                On(Broke("fix"), Outcome.FIXATION_BREAK),
+                On(Exited("fix"), Outcome.FIXATION_BREAK),
                 On(After(0.3), Outcome.CORRECT),
             ],
         ),
@@ -46,7 +46,7 @@ def test_the_diagram_shows_every_transition_with_its_guard():
 
     assert "stateDiagram-v2" in artifact
     assert "[*] --> hold" in artifact
-    assert "hold --> FIXATION_BREAK: Broke(fix)" in artifact
+    assert "hold --> FIXATION_BREAK: Exited(fix)" in artifact
     assert "hold --> CORRECT: After(0.3s)" in artifact
 
 
@@ -73,7 +73,7 @@ def test_a_parameter_reference_renders_as_its_name():
             State(
                 "hold",
                 go=[
-                    On(Held("fix", P("fix_hold")), Outcome.CORRECT),
+                    On(Hold("fix", P("fix_hold")), Outcome.CORRECT),
                     On(After(P("fix_hold")), Outcome.NO_RESPONSE),
                 ],
             ),
@@ -82,7 +82,7 @@ def test_a_parameter_reference_renders_as_its_name():
 
     artifact = render(trial)
 
-    assert "Held(fix, fix_hold)" in artifact
+    assert "Hold(fix, fix_hold)" in artifact
     assert "After(fix_hold)" in artifact
     assert "P(name=" not in artifact
     assert "fix_holds" not in artifact

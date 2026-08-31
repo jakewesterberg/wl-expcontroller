@@ -9,10 +9,9 @@ import pytest
 from wl_expcontroller.task import (
     After,
     Acquired,
-    Spot,
     Bounded,
     Custom,
-    Broke,
+    Exited,
     On,
     Outcome,
     P,
@@ -22,6 +21,7 @@ from wl_expcontroller.task import (
     Reward,
     Show,
     State,
+    Stimulus,
     Window,
     Trial,
 )
@@ -60,7 +60,7 @@ def test_a_state_with_no_time_bound_is_reported_as_an_unbounded_wait():
         states=[
             State(
                 "hold_fix",
-                go=[On(Broke("fix"), Outcome.FIXATION_BREAK)],
+                go=[On(Exited("fix"), Outcome.FIXATION_BREAK)],
             ),
         ],
     )
@@ -272,7 +272,7 @@ def test_a_stimulus_outside_the_field_is_refused():
         states=[
             State(
                 "show",
-                enter=[Show(Spot(at=(30.0, 0.0)))],
+                enter=[Show(Stimulus(at=(30.0, 0.0)))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -295,7 +295,7 @@ def test_disparity_can_push_one_eye_off_screen_from_a_legal_cyclopean_position()
         states=[
             State(
                 "show",
-                enter=[Show(Spot(at=(16.5, 0.0), disparity=2.0))],
+                enter=[Show(Stimulus(at=(16.5, 0.0), disparity=2.0))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -322,7 +322,7 @@ def test_a_terminal_outcome_with_no_allocated_marker_is_refused():
                 "decide",
                 go=[
                     On(After(1.0), Outcome.CORRECT),
-                    On(Broke("fix"), Outcome.FIXATION_BREAK),
+                    On(Exited("fix"), Outcome.FIXATION_BREAK),
                 ],
             ),
         ],
@@ -381,3 +381,42 @@ def test_a_task_referencing_an_undeclared_window_is_refused():
 
     assert [f.code for f in findings] == ["undeclared-window"]
     assert "target" in findings[0].detail
+
+
+def test_a_position_parameter_whose_range_leaves_the_field_is_refused():
+    """Stronger than checking one value. At load there is no value -- there is a
+    declared range, and every value in it is one an experimenter can dial in live
+    (S8 §3). So the check proves the task *cannot* place a stimulus off-screen for
+    any legal setting, rather than that it happens not to today."""
+    trial = Trial(
+        start="show",
+        params=[Param("ecc", unit="deg", low=-20.0, high=20.0)],
+        states=[
+            State(
+                "show",
+                enter=[Show(Stimulus(at=(P("ecc"), 0.0)))],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+    findings = check(trial, geometry=GEOMETRY)
+
+    assert [f.code for f in findings] == ["stimulus-off-screen"]
+    assert "ecc" in findings[0].detail
+
+
+def test_a_position_parameter_whose_range_stays_inside_the_field_is_accepted():
+    trial = Trial(
+        start="show",
+        params=[Param("ecc", unit="deg", low=-15.0, high=15.0)],
+        states=[
+            State(
+                "show",
+                enter=[Show(Stimulus(at=(P("ecc"), 0.0)))],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+    assert check(trial, geometry=GEOMETRY) == []

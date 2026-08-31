@@ -34,8 +34,13 @@ class Param:
 
     name: str
     unit: str
-    low: float
-    high: float
+    #: Numeric parameters carry a range; categorical ones carry `choices` instead.
+    #: Categorical exists because **appearance is a parameter** -- swapping circles
+    #: among squares for penguins among elephants is a value change, and a range
+    #: cannot express it (S1a §4).
+    low: float | None = None
+    high: float | None = None
+    choices: tuple = ()
     live: bool = True
 
 
@@ -82,17 +87,18 @@ class Acquired(Guard):
 
 
 @dataclass(frozen=True, slots=True)
-class Broke(Guard):
-    """Gaze left a window after acquiring it. "The animal broke fixation." """
+class Exited(Guard):
+    """Gaze left a window after acquiring it."""
 
     window: str
 
 
 @dataclass(frozen=True, slots=True)
-class Held(Guard):
+class Hold(Guard):
     """Gaze continuously inside a window for a duration. ML's `holdfix`.
 
-    Distinct from `Acquired` followed by `After`, because the hold restarts if gaze
+    Imperative rather than past tense, because a task file describes what should
+    happen rather than what did. Distinct from `Acquired` followed by `After`, because the hold restarts if gaze
     leaves -- and because the staleness policy differs: a hold spanning a tracker
     stall is not a hold that was observed (S5 §4.1).
     """
@@ -211,46 +217,41 @@ class Action:
 
 
 @dataclass(frozen=True, slots=True)
-class Stimulus:
-    """Declared in **cyclopean degrees**, with disparity as a property (S4 §2).
+class Appearance:
+    """What a stimulus looks like. Never what it is *for* -- that is its window.
 
-    A task never names a pixel: the display module maps cyclopean position to
-    per-eye viewport pixels using measured optics. That is what lets one task run
-    at a different viewing distance, on a different panel, in either display mode,
-    and on the kiosk -- and it is why a monocular task is the zero-disparity case
-    of the stereo path rather than a separate one.
+    Separating the two is what lets a visual search task switch from circles among
+    squares to penguins among elephants **without touching the task**: the structure
+    is identical and only an appearance changes. Since appearance can be a parameter
+    (§`Param.choices`), that switch is a value applied in an inter-trial interval
+    rather than a new task or a new block.
     """
 
-    at: "tuple[float, float] | P"
-    disparity: float = 0.0
-    #: `"both"`, `"left"` or `"right"`. Monocular and dichoptic presentation are
-    #: first-class on a stereoscope: rivalry, monocular RF mapping and
-    #: interocular-suppression designs all need one viewport to carry what the
-    #: other does not. Distinct from disparity, which shifts one stimulus in both.
-    eye: str = "both"
 
-    def per_eye(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        """Left and right image positions: equal and opposite horizontal offsets."""
-        x, y = self.at
-        half = self.disparity / 2.0
-        return ((x - half, y), (x + half, y))
+@dataclass(frozen=True, slots=True)
+class Disc(Appearance):
+    size: "float | P" = 1.0
+    contrast: "float | P" = 1.0
 
 
 @dataclass(frozen=True, slots=True)
-class FixPoint(Stimulus):
-    size: float = 0.3
+class Square(Appearance):
+    size: "float | P" = 1.0
+    contrast: "float | P" = 1.0
 
 
 @dataclass(frozen=True, slots=True)
-class Spot(Stimulus):
-    """A plain disc."""
+class Bar(Appearance):
+    """For receptive-field mapping."""
 
-    size: float = 1.0
-    contrast: float = 1.0
+    length: "float | P" = 4.0
+    width: "float | P" = 0.5
+    orientation: "float | P" = 0.0
+    contrast: "float | P" = 1.0
 
 
 @dataclass(frozen=True, slots=True)
-class Gabor(Stimulus):
+class Gabor(Appearance):
     """Field names throughout: `sf` is spatial frequency in cycles per degree,
     `sigma` the Gaussian envelope. A model writing
     `spatial_frequency_cycles_per_degree` has not read a methods section."""
@@ -263,7 +264,7 @@ class Gabor(Stimulus):
 
 
 @dataclass(frozen=True, slots=True)
-class Dots(Stimulus):
+class Dots(Appearance):
     """A random-dot kinematogram. `seed` is the stimulus: motion is a pure function
     of parameters, seed and frame index, so a trial reconstructs exactly (S4 §5)."""
 
@@ -276,19 +277,36 @@ class Dots(Stimulus):
 
 
 @dataclass(frozen=True, slots=True)
-class Bar(Stimulus):
-    """For receptive-field mapping."""
-
-    length: "float | P" = 4.0
-    width: "float | P" = 0.5
-    orientation: "float | P" = 0.0
-    contrast: "float | P" = 1.0
+class Picture(Appearance):
+    asset: str = ""
+    size: "float | P" = 10.0
 
 
 @dataclass(frozen=True, slots=True)
-class Image(Stimulus):
-    asset: str = ""
-    size: "float | P" = 10.0
+class Stimulus:
+    """Something on the display: a position, an appearance, and how it is shown.
+
+    **One class, because the structure of a task does not change when the things in
+    it change.** Position is cyclopean degrees; the display module maps it to
+    per-eye viewport pixels using measured optics, so a task never names a pixel and
+    the same task runs at a different distance, on a different panel, in either
+    display mode, and on the kiosk.
+    """
+
+    at: "tuple[float, float] | P"
+    looks: "Appearance | P" = field(default_factory=Disc)
+    disparity: "float | P" = 0.0
+    #: `"both"`, `"left"` or `"right"`. Monocular and dichoptic presentation are
+    #: first-class on a stereoscope: rivalry, monocular RF mapping and
+    #: interocular-suppression designs all need one viewport to carry what the other
+    #: does not. Distinct from disparity, which shifts one stimulus in both eyes.
+    eye: str = "both"
+
+    def per_eye(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Left and right image positions: equal and opposite horizontal offsets."""
+        x, y = self.at
+        half = self.disparity / 2.0
+        return ((x - half, y), (x + half, y))
 
 
 @dataclass(frozen=True, slots=True)
