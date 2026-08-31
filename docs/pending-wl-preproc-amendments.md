@@ -148,6 +148,53 @@ pixels on the wire.
 
 ---
 
+# OPEN — `read_online_map` needs a reader for a controller that is not MonkeyLogic
+
+## The finding
+
+`eye/calibration.py::read_online_map` takes a `.bhv2` path and parses a MonkeyLogic binary.
+`CalibrationSource.ONLINE`'s own docstring already anticipates this: *"The behavioural control
+system will change, and whatever replaces MonkeyLogic will also save a calibration."*
+
+Under wl-expcontroller ADR-0005, MonkeyLogic is not deployed, so **there will be no `.bhv2` to
+read** and `ONLINE` — the source you rank above carry-forward, because it is the map the animal
+was actually held to — would be unavailable for every session.
+
+## The ask
+
+A second reader, for a small text file written into `expcontroller/`. We write it, you read it;
+neither side reverse-engineers the other's binary.
+
+Every field below is one you already compute or consume, so the format asserts nothing new:
+
+| Field | Why |
+|---|---|
+| `model` | `CalibrationModel`: `affine` or `second_order` |
+| `coefficients`, per eye | in `basis()` order — `[1, dx, dy]` or `[1, dx, dy, dx², dy², dx·dy]` |
+| `raw_definition` | stated explicitly as `CR1 − CR4`, so a future change on either side is loud |
+| `targets` | the constellation actually presented, in degrees |
+| `conditioning` | as computed by `_conditioning`, so you can check our arithmetic against yours |
+| `rms_residual_deg` | as `validate_map` computes it |
+| `mapping_version` | ours; every trial cites it, and a recentre or drift correction increments it |
+
+**We fit your basis to your raw vector.** The shape of the map is not ours to design — §2 of our
+S5 spec adopts `purkinje_vector` and `CalibrationModel` verbatim rather than defining a second
+model that could drift from yours.
+
+## One thing your conditioning table changed on our side
+
+Your measured constellations (`MIN_CONDITIONING`, and the table above it) show a **ring of eight
+scoring 0.0000 on the second-order basis** — degenerate despite having more points than the fit
+needs, because points on a circle make the constant, `dx²` and `dy²` columns linearly dependent.
+
+A ring is the intuitive calibration pattern, and adopting it would have silently foreclosed the
+second-order rung for every session. Our calibration block now presents a **3×3 grid** and
+computes conditioning online, refusing to complete on a degenerate constellation rather than
+discovering it in your pipeline. Recorded here because that table is doing work outside your
+repository now, and a change to it would reach us.
+
+---
+
 # Not an ask — one consequence recorded
 
 `contracts/events.py` states that Intan RHS receives the strobe only, because its 16 digital
