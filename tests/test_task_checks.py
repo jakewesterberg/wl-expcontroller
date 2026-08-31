@@ -328,3 +328,28 @@ def test_a_terminal_outcome_with_no_allocated_marker_is_refused():
 
     assert [f.code for f in findings] == ["unallocated-outcome"]
     assert "FIXATION_BREAK" in findings[0].detail
+
+
+def test_actions_on_a_transition_are_checked_too():
+    """Found by writing the first real task, which the checker passed while
+    emitting an unallocated code.
+
+    Actions live in two places -- on state entry and on a transition -- and every
+    check that walks actions must walk both. Reward in particular can only ever be
+    a transition action, because a terminal outcome has no state to enter, so a
+    checker blind to transitions is blind to exactly the actions that score.
+    """
+    trial = Trial(
+        start="decide",
+        states=[
+            State(
+                "decide",
+                go=[On(After(1.0), Outcome.CORRECT, do=[Emit(4097)])],
+            ),
+        ],
+    )
+
+    findings = check(trial, replace(PROVISIONAL, task_events={4096: "STIMULUS_ON"}))
+
+    assert [f.code for f in findings] == ["unallocated-code"]
+    assert "4097" in findings[0].detail

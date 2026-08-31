@@ -154,11 +154,10 @@ def _unallocated_codes(trial: Trial, allocation: Allocation) -> list[Finding]:
     return [
         Finding(
             "unallocated-code",
-            f"state {state.name!r} emits code {action.code}, which is not in the "
+            f"state {name!r} emits code {action.code}, which is not in the "
             f"allocation; codes are allocated in wl-mllib, never invented in a task",
         )
-        for state in trial.states
-        for action in state.enter
+        for name, action in _actions(trial)
         if isinstance(action, Emit) and action.code not in allocation
     ]
 
@@ -214,27 +213,26 @@ def _custom_components(trial: Trial, components: Registry) -> list[Finding]:
     puts the task on the human-review list beside the welfare-critical modules.
     """
     findings: list[Finding] = []
-    for state in trial.states:
-        for action in state.enter:
-            if not isinstance(action, Custom):
-                continue
-            if action.name in components:
-                findings.append(
-                    Finding(
-                        "custom-component-needs-review",
-                        f"state {state.name!r} uses custom component "
-                        f"{action.name!r}; this task needs human review",
-                        blocking=False,
-                    )
+    for name, action in _actions(trial):
+        if not isinstance(action, Custom):
+            continue
+        if action.name in components:
+            findings.append(
+                Finding(
+                    "custom-component-needs-review",
+                    f"state {name!r} uses custom component "
+                    f"{action.name!r}; this task needs human review",
+                    blocking=False,
                 )
-            else:
-                findings.append(
-                    Finding(
-                        "unresolved-custom-component",
-                        f"state {state.name!r} names custom component "
-                        f"{action.name!r}, which resolves to no reviewed component",
-                    )
+            )
+        else:
+            findings.append(
+                Finding(
+                    "unresolved-custom-component",
+                    f"state {name!r} names custom component "
+                    f"{action.name!r}, which resolves to no reviewed component",
                 )
+            )
     return findings
 
 
@@ -254,29 +252,28 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
     if geometry is None:
         return []
     findings: list[Finding] = []
-    for state in trial.states:
-        for action in state.enter:
-            if not isinstance(action, Show):
+    for name, action in _actions(trial):
+        if not isinstance(action, Show):
+            continue
+        for eye, (x, y) in zip(("left", "right"), action.stimulus.per_eye()):
+            if geometry.can_show(x, y):
                 continue
-            for eye, (x, y) in zip(("left", "right"), action.stimulus.per_eye()):
-                if geometry.can_show(x, y):
-                    continue
-                where = (
-                    f"at {action.stimulus.at}"
-                    if action.stimulus.disparity == 0.0
-                    else f"at {action.stimulus.at} with disparity "
-                    f"{action.stimulus.disparity}, putting the {eye} eye's image "
-                    f"at ({x:.1f}, {y:.1f})"
+            where = (
+                f"at {action.stimulus.at}"
+                if action.stimulus.disparity == 0.0
+                else f"at {action.stimulus.at} with disparity "
+                f"{action.stimulus.disparity}, putting the {eye} eye's image "
+                f"at ({x:.1f}, {y:.1f})"
+            )
+            findings.append(
+                Finding(
+                    "stimulus-off-screen",
+                    f"state {name!r} shows a stimulus {where}, outside "
+                    f"the ±{geometry.half_field_h_deg:.1f}° × "
+                    f"±{geometry.half_field_v_deg:.1f}° field",
                 )
-                findings.append(
-                    Finding(
-                        "stimulus-off-screen",
-                        f"state {state.name!r} shows a stimulus {where}, outside "
-                        f"the ±{geometry.half_field_h_deg:.1f}° × "
-                        f"±{geometry.half_field_v_deg:.1f}° field",
-                    )
-                )
-                break
+            )
+            break
     return findings
 
 
@@ -301,3 +298,20 @@ def _unallocated_outcomes(trial: Trial, allocation: Allocation) -> list[Finding]
         for outcome in seen
         if outcome not in allocation.outcomes
     ]
+
+
+def _actions(trial: Trial) -> list[tuple[str, object]]:
+    """Every action in the trial, with the state it belongs to.
+
+    **Both places.** Actions sit on state entry and on transitions, and a check
+    that walks only the first is blind to exactly the actions that score -- reward
+    can only ever be a transition action, because a terminal outcome has no state
+    to enter. The first real task passed a checker that had this gap while emitting
+    an unallocated code, which is how the gap was found.
+    """
+    found: list[tuple[str, object]] = []
+    for state in trial.states:
+        found.extend((state.name, action) for action in state.enter)
+        for edge in state.go:
+            found.extend((state.name, action) for action in edge.do)
+    return found

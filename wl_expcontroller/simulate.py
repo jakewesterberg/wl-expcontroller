@@ -39,11 +39,21 @@ class Subject:
     simulation exists to find. So engagement is decided **once per trial**: a
     disengaged animal ignores the world for the whole trial and the task falls
     through to its time bounds.
+
+    **`lapse` is the same argument one level down, and it was found the same way.**
+    Engagement decided once per trial cannot produce an animal that acquires
+    fixation, holds it, and then stops -- so `NO_RESPONSE` was unreachable on the
+    first reference task, and every task's no-response path would have gone untested
+    by simulation while the report claimed a clean run. A per-frame lapse gives up
+    mid-trial, which is behaviour animals actually produce and is the only route to
+    that outcome.
     """
 
     seed: int
     hazards: dict[type, float] = field(default_factory=dict)
     engagement: float = 0.9
+    #: Per-frame probability of giving up part-way through a trial.
+    lapse: float = 0.0
     _rng: random.Random = field(init=False, repr=False)
     _engaged: bool = field(init=False, default=True, repr=False)
 
@@ -55,6 +65,9 @@ class Subject:
 
     def satisfied(self, guard: Guard, state: str, frame: int) -> bool:
         if not self._engaged:
+            return False
+        if self.lapse > 0.0 and self._rng.random() < self.lapse:
+            self._engaged = False
             return False
         hazard = self.hazards.get(type(guard), 0.0)
         return hazard > 0.0 and self._rng.random() < hazard
@@ -85,7 +98,11 @@ class Census:
 
 
 def simulate(
-    trial: Trial, subject: Subject, trials: int, frame_period: float
+    trial: Trial,
+    subject: Subject,
+    trials: int,
+    frame_period: float,
+    values: dict[str, float] | None = None,
 ) -> Census:
     """Run `trials` trials and report what happened.
 
@@ -98,7 +115,9 @@ def simulate(
     hangs = 0
     for _ in range(trials):
         subject.new_trial()
-        result: Result = run_trial(trial, subject, frame_period)
+        result: Result = run_trial(
+            trial, subject, frame_period, values=values or {}
+        )
         visited.update(result.visited)
         if result.outcome is None:
             hangs += 1

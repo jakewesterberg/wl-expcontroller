@@ -71,16 +71,43 @@ class GazeLeaves(Guard):
 
 
 @dataclass(frozen=True, slots=True)
+class GazeHeld(Guard):
+    """Gaze continuously inside a window for a duration.
+
+    Distinct from `GazeEnters` followed by `After`, because the hold restarts if
+    gaze leaves -- and because the staleness policy differs: a hold spanning a
+    tracker stall is not a hold that was observed (S5 §4.1).
+    """
+
+    window: str
+    seconds: "float | P"
+
+
+@dataclass(frozen=True, slots=True)
+class SaccadeInto(Guard):
+    """A detected saccade landing in a window. Detection is the versioned
+    Engbert-Kliegl component (S5 §5), never re-derived per task."""
+
+    window: str
+
+
+@dataclass(frozen=True, slots=True)
 class Response(Guard):
     device: str
 
 
 @dataclass(frozen=True, slots=True)
 class On:
-    """One guarded transition: when `guard` fires, go to `to`."""
+    """One guarded transition: when `guard` fires, do `do`, then go to `to`.
+
+    Actions belong on the transition rather than on the destination because the
+    scoring action -- reward -- happens on the *edge* that scores. A terminal
+    outcome has no state to enter, so an entry action could never express it.
+    """
 
     guard: Guard
     to: "str | Outcome"
+    do: list["Action"] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

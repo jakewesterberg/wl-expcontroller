@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from wl_expcontroller.task import After, Guard, Outcome, Trial
+from wl_expcontroller.task import After, Guard, Outcome, P, Trial
 
 
 class World(Protocol):
@@ -63,8 +63,29 @@ class Result:
     visited: tuple[str, ...] = ()
 
 
+def _resolve(value: float | P, values: dict[str, float]) -> float:
+    """A parameter reference against this trial's bound values.
+
+    **Missing is an error, never a default.** A timeout that silently became 0.0
+    would abort every trial immediately -- and that reads as an animal who will not
+    work, not as a bug, which is the most expensive way for this to fail.
+    """
+    if isinstance(value, P):
+        if value.name not in values:
+            raise KeyError(
+                f"no value bound for parameter {value.name!r}; a trial runs against "
+                f"a resolved parameter set, not a partially resolved one"
+            )
+        return values[value.name]
+    return value
+
+
 def run_trial(
-    trial: Trial, world: World, frame_period: float, max_frames: int = 100_000
+    trial: Trial,
+    world: World,
+    frame_period: float,
+    max_frames: int = 100_000,
+    values: dict[str, float] | None = None,
 ) -> Result:
     """Run one trial to its outcome.
 
@@ -81,7 +102,7 @@ def run_trial(
         elapsed = (frame - entered_at) * frame_period
         for edge in current.go:
             fired = (
-                elapsed >= edge.guard.seconds
+                elapsed >= _resolve(edge.guard.seconds, values or {})
                 if isinstance(edge.guard, After)
                 else world.satisfied(edge.guard, current.name, frame)
             )
