@@ -47,9 +47,14 @@ subject-scoped. Those coincide only if exactly one subject works per day.
 
 **Two animals will routinely work in one day on one rig** (PI, 2026-08-31). So they do not
 coincide, and `wl-sync`'s *"a day is one session, hence `_01`"* does not hold for this lab.
-`_NN` is load-bearing: something must mint `_02`, and nothing currently does. This is no longer
-an ambiguity to note — it is a gap with a known answer on one side, and the amendment in §9
-says so rather than asking.
+
+**And `wl-preproc`'s own contract settles what `_02` must mean.**
+`contracts/manifest.py::SessionManifest` sits at the root of the session directory and carries
+**exactly one `subject`** — a single string, not a list — alongside the `session_id` it validates
+against `wl-sync`'s form. A directory can therefore describe one subject and no more. So with two
+animals in a day, **the session id must change when the subject changes**; there is no
+representation in which it does not. That is an answer derived from a frozen contract rather than
+a preference, and §9 states it to `wl-sync` as such.
 
 Our own posture is unchanged and was chosen to survive exactly this:
 
@@ -213,7 +218,7 @@ question, from their side.
 | # | Item | Blocks |
 |---|---|---|
 | 1 | How taskd learns the session id | every output path |
-| 2 | ~~Day versus subject-session~~ **Answered: two animals routinely.** Remaining: what mints `_02`, which is `wl-sync`'s to say | directory layout under two subjects |
+| 2 | ~~Day versus subject-session~~ **Answered: two animals routinely, and `SessionManifest` carries one subject — so a subject change must mint `_02`.** Remaining: `wl-sync` implementing it, and being told when a subject changes | directory layout under two subjects |
 | 3 | Photodiode patch placement — **candidate found** (central strip from the nasal clip); confirm with `wl-sync` and verify dark at bring-up | rig build |
 | 4 | ~~Calibration blocks versus in-task epochs~~ **Answered: both.** Remaining: wl.works planning a calibration block per session | S5, S8, wl-works |
 | 5 | Whether our synthetic generator feeds `wl-preproc`'s harness or its own | V6 |

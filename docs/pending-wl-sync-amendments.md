@@ -84,12 +84,24 @@ subject explicitly**, so a day containing two subjects partitions correctly with
 no inference. Our own documents now use three distinct words — day, session, block — rather than
 overloading one.
 
+## `wl-preproc`'s own contract already answers it
+
+`wl-preproc/contracts/manifest.py::SessionManifest` sits at the root of the session directory
+and carries **exactly one `subject`** — a single string, not a list — beside the `session_id` it
+validates against your form. **A directory can describe one subject and no more.** So with two
+animals in a day, the session id must change when the subject changes; there is no representation
+in which it does not.
+
+That is not our preference, it is a consequence of a frozen interface in a third repository, and
+it holds whatever anyone here would have chosen.
+
 ## The ask
 
-A rule for what mints `_02`, alongside the existing rule that a restart does not. The obvious
-candidate is *a change of subject*, but that is this repository's call and not ours to assume —
-the sync box runs continuously across both animals and does not know when one leaves the chair,
-so whatever mints `_02` has to be told, and by whom is exactly the question.
+**A subject change mints `_02`.** The remaining question is mechanical rather than definitional:
+the sync box runs continuously across both animals and cannot know when one leaves the chair, so
+**something has to tell it.** Whether that is the task PC, wl.works, or a person pressing a
+button on the box is yours to decide — but whatever it is, it is also the moment the task PC
+learns the new id, so the two amendments share one mechanism.
 
 This is now a **prerequisite for the first amendment**, not a companion to it: if `_02` can
 exist, then reading "the newest `YYYY-MM-DD_NN/` directory" is not sufficient for a task PC to
