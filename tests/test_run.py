@@ -178,7 +178,7 @@ class _Membership:
     def __init__(self, inside: dict[int, str]) -> None:
         self.inside = inside
 
-    def in_window(self, window: str, frame: int) -> bool:
+    def in_window(self, window: str, frame: int, eye: str = "both") -> bool:
         return self.inside.get(frame) == window
 
     def happened(self, guard, state: str, frame: int) -> bool:

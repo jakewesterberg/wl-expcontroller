@@ -10,6 +10,7 @@ from wl_expcontroller.components import Registry
 from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.photometry import DKL, Calibration, Color, unrealizable, xyY
 from wl_expcontroller.task import (
+    RDS,
     After,
     Array,
     ItemWindows,
@@ -64,6 +65,8 @@ def check(
         + _display_faults(trial)
         + _color_faults(trial, calibration)
         + _array_faults(trial)
+        + _stereogram_faults(trial)
+        + _eye_faults(trial)
     )
 
 
@@ -313,6 +316,18 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
             x_values = [x + dx for x in x_values for dx in (widest, -widest, 0.0)]
             y_values = [y + dy for y in y_values for dy in (widest, -widest, 0.0)]
         half = _extremes(stimulus.disparity, ranges)
+        if isinstance(stimulus.looks, RDS):
+            # A disparity *field* has no single value to displace by, so the
+            # extremes of the form are added to the stimulus's own disparity: a
+            # patch centred safely can still push one eye's image off the panel at
+            # the extreme of its corrugation, and only that eye's.
+            try:
+                low, high = stimulus.looks.disparity_range(
+                    {name: bounds[1] for name, bounds in ranges.items()}
+                )
+            except (KeyError, TypeError):
+                low, high = (0.0, 0.0)
+            half = [value + reach for value in half for reach in (low, high)]
         bad = [
             (x + offset, y)
             for x in x_values
@@ -727,6 +742,92 @@ def _array_faults(trial: Trial) -> list[Finding]:
                     f"with a target index reaching {highest_t}; the target must be "
                     f"one of the items for every setting the console allows, not "
                     f"only the one it has today",
+                )
+            )
+    return findings
+
+
+# --- Stereograms -----------------------------------------------------------
+
+
+def _stereogram_faults(trial: Trial) -> list[Finding]:
+    """A stereogram is a relationship between two images, so it needs both."""
+    ranges = _ranges(trial)
+    findings: list[Finding] = []
+    for state, action in actions_of(trial):
+        stimulus = getattr(action, "stimulus", None)
+        looks = getattr(stimulus, "looks", None)
+        if not isinstance(looks, RDS):
+            continue
+        low, high = _widest(looks.correlation, ranges)
+        if low < -1.0 or high > 1.0:
+            findings.append(
+                Finding(
+                    "impossible-correlation",
+                    f"state {state!r} shows a stereogram whose correlation reaches "
+                    f"{low if low < -1.0 else high:g}; correlation runs from -1 "
+                    f"(anticorrelated) through 0 (uncorrelated) to +1. A value "
+                    f"outside that is not a stronger stimulus, it is not a stimulus",
+                )
+            )
+        if getattr(stimulus, "eye", "both") != "both":
+            findings.append(
+                Finding(
+                    "monocular-stereogram",
+                    f"state {state!r} shows a stereogram to the "
+                    f"{stimulus.eye} eye only; monocular presentation of one half "
+                    f"is not a degraded stereogram, it is a field of random dots "
+                    f"with no disparity -- and it would still run, still record, "
+                    f"and still appear in a figure as a disparity condition",
+                )
+            )
+    return findings
+
+
+# --- Which eye ---------------------------------------------------------------
+
+EYES = ("both", "left", "right")
+
+
+def _eye_faults(trial: Trial) -> list[Finding]:
+    """Per-eye criteria must name an eye, and must name one that can see.
+
+    A window scoring the eye a stimulus is *not* shown to runs, records, and aborts
+    every trial for a reason invisible in the data: the animal was doing the task
+    perfectly with the eye nobody scored.
+    """
+    findings: list[Finding] = []
+    shown_to = {
+        action.stimulus.name: getattr(action.stimulus, "eye", "both")
+        for _, action in actions_of(trial)
+        if isinstance(action, Show)
+    }
+    for window in trial.windows:
+        eye = window.eye
+        name = getattr(window, "name", None) or f"{window.of}.*"
+        if eye not in EYES:
+            findings.append(
+                Finding(
+                    "unknown-eye",
+                    f"window {name!r} scores eye {eye!r}; it must be one of "
+                    f"{', '.join(EYES)}. An unrecognised eye is not a criterion, "
+                    f"it is a guard that is silently never true",
+                )
+            )
+            continue
+        on = getattr(window, "on", None)
+        if not isinstance(on, str):
+            continue
+        stimulus_eye = shown_to.get(on)
+        if stimulus_eye is None or stimulus_eye == "both" or eye == "both":
+            continue
+        if stimulus_eye != eye:
+            findings.append(
+                Finding(
+                    "wrong-eye-criterion",
+                    f"window {name!r} scores the {eye} eye against stimulus "
+                    f"{on!r}, which is shown only to the {stimulus_eye} eye; the "
+                    f"animal can do the task perfectly and abort every trial",
                 )
             )
     return findings

@@ -218,7 +218,7 @@ def test_a_hold_on_an_alias_resolves_to_the_item_it_names():
         def __init__(self, item: str) -> None:
             self.item = item
 
-        def in_window(self, window: str, frame: int) -> bool:
+        def in_window(self, window: str, frame: int, eye: str = "both") -> bool:
             return window == self.item
 
         def happened(self, guard, state: str, frame: int) -> bool:

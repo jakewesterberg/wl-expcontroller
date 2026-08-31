@@ -161,7 +161,7 @@ class Subject:
             ):
                 self._inside.add(window)
 
-    def in_window(self, window: str, frame: int) -> bool:
+    def in_window(self, window: str, frame: int, eye: str = "both") -> bool:
         """Per-window and independent, which is not how an animal looks.
 
         Adequate rather than faithful, and deliberately so (M0 §4): agents model

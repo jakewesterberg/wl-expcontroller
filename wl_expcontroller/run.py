@@ -49,7 +49,15 @@ class World(Protocol):
     different behaviour from the one the animal gets.
     """
 
-    def in_window(self, window: str, frame: int) -> bool: ...
+    def in_window(self, window: str, frame: int, eye: str = "both") -> bool:
+        """Is gaze inside `window`, for the eye the window declares?
+
+        `eye` is `"both"` for an ordinary conjugate criterion, or `"left"`/`"right"`
+        when a window scores one eye. The tracker is binocular, so this is a real
+        primitive; and on a stereoscope it is the *correct* one, because under
+        dichoptic presentation the non-viewing eye drifts and a conjugate estimate
+        averages one eye doing the task with one eye doing nothing.
+        """
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool: ...
 
@@ -74,7 +82,7 @@ class Quiet:
     which is the property S1 §9 check 4 exists to make true.
     """
 
-    def in_window(self, window: str, frame: int) -> bool:
+    def in_window(self, window: str, frame: int, eye: str = "both") -> bool:
         return False
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool:
@@ -98,7 +106,7 @@ class Scripted:
     #: because entering, leaving and holding are the loop's to derive.
     inside: dict[int, str] = field(default_factory=dict)
 
-    def in_window(self, window: str, frame: int) -> bool:
+    def in_window(self, window: str, frame: int, eye: str = "both") -> bool:
         return self.inside.get(frame) == window
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool:
@@ -259,7 +267,10 @@ def run_trial(
     # saccade guard reaches the world directly and worked by accident; membership is
     # derived by the loop, so an unresolved alias is simply never satisfied and the
     # animal fixates the target while the task waits forever.
-    _, aliases = expand_windows(trial, values or {})
+    declared, aliases = expand_windows(trial, values or {})
+    # Which eye each window scores. A window that declares one and is asked about
+    # the conjugate estimate is a criterion nobody applied.
+    eyes = {window.name: window.eye for window in declared}
     asked = {
         name: aliases.get(name, (name,))
         for name in tracked
@@ -284,7 +295,10 @@ def run_trial(
 
         # Membership first, once per frame: entering and leaving are edges against
         # the previous frame, and a hold that lapses restarts rather than pausing.
-        membership = {name: world.in_window(name, frame) for name in tracked}
+        membership = {
+            name: world.in_window(name, frame, eyes.get(name, "both"))
+            for name in tracked
+        }
         inside_now = {
             name: any(membership[concrete] for concrete in concretes)
             for name, concretes in asked.items()

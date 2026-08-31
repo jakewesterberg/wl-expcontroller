@@ -492,6 +492,99 @@ class Blank(Appearance):
 
 
 @dataclass(frozen=True, slots=True)
+class Form:
+    """A disparity field across a patch: depth at every point, not one number.
+
+    `Stimulus.disparity` displaces a whole stimulus, which is position disparity and
+    nothing else. Everything the 3D-shape and surface literature is built on -- a
+    slant, a curvature, a corrugation -- is a *field*, and a patch carrying one has
+    no single disparity to displace by.
+    """
+
+    def range(self, values: dict) -> "tuple[float, float]":
+        """The least and greatest disparity this form reaches, in degrees."""
+        raise NotImplementedError
+
+
+@dataclass(frozen=True, slots=True)
+class Corrugation(Form):
+    """A sinusoidal depth grating: the standard probe for disparity-defined shape.
+
+    `sf` is in cycles per degree of visual angle, `amplitude` the peak disparity in
+    degrees, `orientation` the corrugation's axis in degrees.
+    """
+
+    sf: "float | P" = 0.5
+    amplitude: "float | P" = 0.1
+    orientation: "float | P" = 0.0
+    phase: "float | P" = 0.0
+
+    def range(self, values: dict) -> "tuple[float, float]":
+        peak = abs(float(_value(self.amplitude, values)))
+        return (-peak, peak)
+
+
+@dataclass(frozen=True, slots=True)
+class Slant(Form):
+    """A planar disparity gradient, in degrees of disparity per degree of position.
+
+    The extreme disparity depends on how wide the patch is, so `range` is answered
+    against the aperture rather than reported on its own -- an amplitude quoted
+    without the aperture it spans is not a quantity.
+    """
+
+    gradient: "float | P" = 0.05
+    orientation: "float | P" = 0.0
+
+    def range(self, values: dict, aperture: float = 0.0) -> "tuple[float, float]":
+        reach = abs(float(_value(self.gradient, values))) * aperture / 2.0
+        return (-reach, reach)
+
+
+@dataclass(frozen=True, slots=True)
+class RDS(Appearance):
+    """A random-dot stereogram: form carried by binocular disparity alone.
+
+    **`correlation` is why this is its own appearance.** +1 is an ordinary
+    stereogram, 0 is uncorrelated noise, and **-1 is anticorrelated** -- dots of
+    opposite contrast in the two eyes. That is the control condition every disparity
+    paper is asked for, because V1 responds to it while perceived depth inverts or
+    vanishes, so it separates a correlation-based response from a depth-based one.
+    There is no way to express it by displacing a stimulus, which is all
+    `Stimulus.disparity` can do.
+
+    A parameter, so correlated and anticorrelated conditions interleave within a
+    session. Comparing them across sessions compares two states of the animal.
+
+    `seed` is the stimulus: the dot field is a pure function of parameters, seed and
+    frame index, so a trial reconstructs exactly (S4 §5).
+    """
+
+    correlation: "float | P" = 1.0
+    #: Internal depth structure, or `None` for a frontoparallel patch at whatever
+    #: disparity the stimulus carries.
+    form: "Form | None" = None
+    density: "float | P" = 1.0
+    dot_size: "float | P" = 0.1
+    aperture: "float | P" = 5.0
+    contrast: "float | P" = 1.0
+    seed: int = 0
+    color: "Color | P | None" = None
+
+    def disparity_range(self, values: dict) -> "tuple[float, float]":
+        """The least and greatest disparity anywhere in this patch.
+
+        What check 8 needs: a patch centred safely can still push one eye's image
+        off the panel at the extreme of its corrugation, and only that eye's.
+        """
+        if self.form is None:
+            return (0.0, 0.0)
+        if isinstance(self.form, Slant):
+            return self.form.range(values, float(_value(self.aperture, values)))
+        return self.form.range(values)
+
+
+@dataclass(frozen=True, slots=True)
 class Array(Appearance):
     """`n` items evenly spaced on a ring, one of them the target.
 
