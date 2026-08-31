@@ -17,10 +17,11 @@ here is measured — **it is a drawing to build to and then verify against** (pr
 | Panel | 31.5" 16:9, 69.73 × 39.23 cm, 0.1816 mm pitch | S0 §5.1 | Panel class fixed; tandem model pending |
 | `D` | **57.0 cm** optical path, eye to screen | S0 §5.2 | Ruled 2026-08-31 |
 | `HW`, `HH` | 17.43 cm, 19.61 cm — half-viewport on screen | panel / 4, panel / 2 | Derived |
-| `E` | **1.60 cm** half-IPD (32 mm) | **PLACEHOLDER — must be measured per animal** | **Unverified** |
+| `E` | half-IPD, **variable per animal** | measured per animal | **A build parameter, not a constant** |
 
-**`E` is the only soft number and it drives the whole layout.** Measure it on the actual
-animals before cutting anything; §5 gives the sensitivity.
+**`E` varies by animal, so the rig is adjustable rather than fixed** (PI, 2026-08-31). That is
+not a tolerance on a nominal — it is the design constraint that shapes the mechanics, and §4
+replaces the fixed-distance table with the relationship the adjustment must hold.
 
 ---
 
@@ -82,30 +83,65 @@ enclosure at all.
 
 ---
 
-## 4. The one real trade, and it is science-facing
+## 4. Adjustability: what moves, and the rule it holds
 
-The two eyes are only 3.2 cm apart, so the two M1 mirrors must meet at a ridge on the midline
-and **each eye's nasal field is clipped where its beam would cross that ridge.** The clip angle
-is `atan(E / a)`, where `a` is the eye-to-M1 distance. Moving M1 closer recovers nasal field and
-shrinks the mirrors; moving it away loses nasal field.
+The two eyes are close together, so the M1 mirrors meet at a ridge on the midline and each
+eye's nasal field is clipped where its beam would cross it. The clip angle is `atan(E / a)`.
 
-| M1 at | Nasal field | Temporal | Central dead strip | M1 size | M2 size |
-|---|---|---|---|---|---|
-| 5.2 cm | ±17.0° (symmetric) | ±17.0° | **0 cm** | 45 × 36 mm | 182 × 145 mm |
-| 6.0 cm | 14.9° | 17.0° | 4.5 cm | 49 × 41 mm | 177 × 150 mm |
-| **7.0 cm** | **12.9°** | **17.0°** | **8.8 cm** | **53 × 48 mm** | **173 × 157 mm** |
-| 8.0 cm | 11.3° | 17.0° | 12.1 cm | 57 × 55 mm | 170 × 164 mm |
-| 10.0 cm | 9.1° | 17.0° | 16.6 cm | 66 × 69 mm | 170 × 178 mm |
+**Symmetric field is chosen** (PI, 2026-08-31), which fixes the relationship the adjustment
+must hold rather than a distance:
 
-**The clipped field is not lost screen — it becomes a strip down the centre of the panel that
-neither eye can see.** Which is exactly what §5 needs.
+> **`a = E / tan(17°) = 3.27 · E`**
 
-At 5.2 cm the field is symmetric and there is no dead strip; at 7 cm the nasal field still
-clears a 10° array by 2.9° and the strip is 8.8 cm wide. **7.0 cm is the recommendation**, but
-this is a trade between nasal field and patch placement, and it is yours.
+Set it and nasal equals temporal at ±17°. Set `a` longer and you trade nasal field for an
+unviewed centre strip (§5 fallback); the rig can do either, but symmetric is the default
+because it is the thing least likely to surprise an analysis.
 
-**Sensitivity to `E`.** Because the clip angle is `atan(E/a)`, a 10% error in IPD moves the
-nasal field by about 1.3°. Measure it; do not inherit it from the literature.
+| IPD | `E` | M1 at `a` | Screen at `Z` | Lateral shift |
+|---|---|---|---|---|
+| 30 mm | 1.50 cm | 4.91 cm | 41.07 cm | 15.93 cm |
+| 32 mm | 1.60 cm | 5.23 cm | 41.17 cm | 15.83 cm |
+| 34 mm | 1.70 cm | 5.56 cm | 41.27 cm | 15.73 cm |
+| 36 mm | 1.80 cm | 5.89 cm | 41.37 cm | 15.63 cm |
+| 38 mm | 1.90 cm | 6.21 cm | 41.47 cm | 15.53 cm |
+
+### 4.1 Three things move, and one does not
+
+1. **M1 axial distance**, 4.9 → 6.2 cm. The adjustment that matters.
+2. **M1 lateral position**, ±1.5 → ±1.9 cm, so each near mirror stays centred on its eye. The
+   **ridge stays on the midline at x = 0** for every IPD — that is a property of the symmetric
+   condition, not a coincidence, and it is what lets the roof be a fixed reference.
+3. **M2 axial position**, which must track M1 because the two mirrors have to stay **coplanar**
+   for the translation to be pure. Mechanically: **one axial carriage per eye carrying both
+   mirrors**, with a small lateral slide for M1 alone.
+4. **M2 lateral position does not move.** It sits at x = ∓17.43 cm — the centre of its screen
+   half — for every IPD, because the eye's axis after translation always lands there by
+   construction. It is the fixed datum the whole build can be squared to.
+
+### 4.2 One mirror pair covers the range
+
+**M1: 54 × 38 mm. M2: 188 × 133 mm.** Sized for the largest IPD; smaller animals simply use
+less of the surface. There is no need for per-animal optics, only per-animal positions.
+
+### 4.3 Screen distance is measured, not adjusted
+
+`Z` varies over just 4 mm across the whole IPD range — 0.7% of the optical path. Rather than
+add a fourth adjustment for it, **fix the panel and measure each eye's path per animal**, which
+V9 requires anyway. deg/pixel is then derived from the measurement instead of asserted from a
+nominal.
+
+### 4.4 The consequence for operations
+
+**The optics are now per-animal state, so they are per-session state.** Changing animals means
+re-setting `a` and the M1 slides, which invalidates the previous geometry. Therefore:
+
+- the mirror geometry and both measured optical paths go in **every session's config snapshot**,
+  beside the gaze mapping version;
+- **re-verification moves into the preflight check** (parent §11.1) rather than being a
+  build-time activity — at minimum the Nonius/vernier residual, which is the cheap test that
+  catches a carriage that moved;
+- a geometry change is a **discontinuity of the same class as a parameter change** (P16), and is
+  event-coded and recorded as one.
 
 ---
 
@@ -115,18 +151,27 @@ S3 §8 requires both patches outside **both** viewports, or the flip patch (alte
 refresh) becomes a flickering distractor in one eye's field. Naively that is impossible: two
 viewports tile the panel exactly, so every pixel is seen by one eye.
 
-The nasal clip creates the space. At M1 = 7.0 cm the viewports occupy screen x ∈ [−34.86, −4.41]
-and [+4.41, +34.86], leaving **a central strip 8.8 cm wide that neither eye sees**.
+**Symmetric field means there is no centre strip** — that space is exactly what the symmetric
+condition gives back to the nasal field. So the patches go to a **horizontal strip, created by
+stopping the M2 aperture vertically.**
 
-Three candidate locations, in preference order:
+Vertical field is the surplus dimension: ±19.0° against a ±17.0° horizontal requirement. Stopping
+M2 to ±17.0° vertical costs nothing that matters and yields:
 
-1. **Central strip (recommended).** Free — it is the nasal clip, not a sacrifice. 8.8 cm × full
-   height at M1 = 7 cm. Both patches fit with room to spare, and it is the region furthest from
-   any stimulus.
-2. **Bottom or top strip.** Costs vertical field, which is the field in surplus (±19° against a
-   ±17° horizontal requirement). Created by sizing the M2 aperture to exclude the strip. Use if
-   the central strip is wanted for a septum instead.
-3. **Outer strips.** Costs temporal field, which is the binding dimension. Avoid.
+| Vertical stop | Strip, top and bottom | Full panel width |
+|---|---|---|
+| ±18.0° | 1.09 cm | 69.73 cm |
+| ±17.5° | 1.64 cm | 69.73 cm |
+| **±17.0°** | **2.18 cm** | **69.73 cm** |
+| ±16.5° | 2.73 cm | 69.73 cm |
+
+**Recommended: stop to ±17.0°, put both patches in the bottom strip.** 2.18 cm × 69.73 cm is
+ample for two patches, keeps vertical field equal to horizontal, and puts the flip patch as far
+from any stimulus as the panel allows.
+
+The centre strip remains available as a **fallback**: lengthening `a` beyond `3.27·E` trades
+nasal field for it, at 4.4 cm of strip per 1 cm of extra distance. Use it only if the M2 vertical
+stop turns out to be mechanically awkward.
 
 **Whichever is chosen, the patches must be verified dark to each eye during bring-up**, not
 assumed from geometry — a stray reflection off a mirror edge would put the flip patch back in
@@ -183,8 +228,8 @@ metal, and it makes the two optical paths unequal — which S0's V9 already forb
 
 | # | Item | Owner |
 |---|---|---|
-| 1 | Measure `E` (IPD) on the actual animals | PI — everything in §3 shifts with it |
-| 2 | M1 distance: 5.2 cm (symmetric field, no strip) vs 7.0 cm (12.9° nasal, 8.8 cm strip) | PI — §4 |
-| 3 | Patch location, once §2 is chosen | PI + `wl-sync` |
-| 4 | Whether the chair and head-post allow a mirror 7 cm from the eyes | build |
+| 1 | Measure `E` (IPD) per animal | PI — sets `a` via §4's rule |
+| 2 | ~~M1 distance~~ **Answered: symmetric field, `a = 3.27·E`, adjustable per animal** | — |
+| 3 | Patch location — **bottom strip via a ±17° M2 vertical stop** — confirm with `wl-sync` | PI + `wl-sync` |
+| 4 | Whether the chair and head-post allow a mirror ~5–6 cm from the eyes, and a carriage that moves it | build |
 | 5 | Enclosure and baffling against ambient light | build |

@@ -174,9 +174,9 @@ reach the recorders as edges plus analog copies.
 
 **Placement now has a geometric answer.** Both patches must sit outside both eyes' viewports,
 or the flip patch — alternating every refresh — is a flickering distractor in one eye's field.
-Naively impossible, since two viewports tile the panel exactly. But the stereoscope's roof
-mirrors clip each eye's nasal field, and that clip **is** an unviewed central strip: 8.8 cm wide
-at the recommended 7.0 cm mirror distance. See
+Naively impossible, since two viewports tile the panel exactly. The answer is a **bottom strip
+2.18 cm tall and full panel width**, created by stopping the far-mirror aperture to ±17.0°
+vertical — vertical field is the surplus dimension, so it costs nothing that matters. See
 `2026-08-31-stereoscope-optics-drawing.md` §5, which also gives the fallbacks and the trade
 against nasal field. Confirmed with `wl-sync` before mirrors are mounted, and verified dark to
 each eye at bring-up rather than assumed from geometry.
