@@ -63,6 +63,7 @@ class On:
 @dataclass(frozen=True, slots=True)
 class State:
     name: str
+    enter: list[Action] = field(default_factory=list)
     go: list[On] = field(default_factory=list)
     #: Declared when a state deliberately has no time bound -- free viewing of
     #: natural images is the motivating case (S1 §5.4). The checker refuses an
@@ -91,6 +92,14 @@ class Bounded:
 @dataclass(frozen=True, slots=True)
 class Action:
     """Base for the action vocabulary (S1 §2.3)."""
+
+
+@dataclass(frozen=True, slots=True)
+class Emit(Action):
+    """Strobe an event code. The code is allocated elsewhere (S2, ADR-0007) and
+    validated at load; a task naming an unallocated one is refused."""
+
+    code: int
 
 
 class Reward(Action):
