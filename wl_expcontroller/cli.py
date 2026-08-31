@@ -37,7 +37,7 @@ def _load_trial(path: Path) -> Trial:
     return trials[0]
 
 
-def _load_allocation(path: Path | None) -> Allocation:
+def _load_allocation(path: Path | None) -> Allocation:  # noqa: C901
     """Load the allocation a task is checked against.
 
     Separate from the task on purpose: codes are allocated elsewhere and never
@@ -70,7 +70,46 @@ def main(argv: list[str] | None = None) -> int:
     reviewer.add_argument("task", type=Path)
     reviewer.add_argument("--allocation", type=Path, default=None)
 
+    runner = sub.add_parser("run", help="run a session headless against simulators")
+    runner.add_argument("task", type=Path)
+    runner.add_argument("--allocation", type=Path, default=None)
+    runner.add_argument("--root", type=Path, required=True)
+    runner.add_argument("--session-id", required=True)
+    runner.add_argument("--subject", required=True)
+    runner.add_argument("--trials", type=int, default=1000)
+    runner.add_argument("--seed", type=int, default=1)
+    runner.add_argument("--set", action="append", default=[], metavar="NAME=VALUE")
+
     args = parser.parse_args(argv)
+
+    if args.command == "run":
+        from wl_expcontroller.taskd import Session, SessionSpec
+
+        values: dict[str, object] = {}
+        for assignment in args.set:
+            name, _, raw = assignment.partition("=")
+            try:
+                values[name] = float(raw)
+            except ValueError:
+                values[name] = raw
+        census = Session(
+            SessionSpec(
+                task=str(args.task),
+                allocation=str(args.allocation) if args.allocation else "",
+                root=args.root,
+                session_id=args.session_id,
+                subject=args.subject,
+                trials=args.trials,
+                frame_period=1 / 240,
+                seed=args.seed,
+                values=values,
+            )
+        ).run()
+        total = sum(census.outcomes.values()) or 1
+        for outcome, count in census.outcomes.most_common():
+            print(f"  {outcome.value:18} {count:6}  {100 * count / total:5.1f}%")
+        print(f"  {'hangs':18} {census.hangs:6}")
+        return 1 if census.hangs else 0
 
     if args.command == "review":
         allocation = _load_allocation(args.allocation)

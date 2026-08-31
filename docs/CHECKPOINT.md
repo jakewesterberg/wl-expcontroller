@@ -29,8 +29,8 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | 65, green |
-| CI | pytest on 3.11 and 3.13, plus a **mutation gate over every module** — 56 functions, 0 survivors |
+| Tests | 70, green |
+| CI | pytest on 3.11 and 3.13, plus a **mutation gate over every module** — 60 functions, 0 survivors |
 | Load-time checks | **10 of 10** (S1 §9) |
 | Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
 | Hardware verified | **none** |
@@ -59,8 +59,9 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 ### What does not exist, and matters
 
-- **No `taskd`.** Nothing runs a session end to end yet; `run_session` is the
-  simulator's entry point, not a daemon. This is P3, and it is next.
+- **`taskd` is a spine, not a daemon.** It runs a session end to end and meets M1,
+  but there is no console link, no live parameter path and no preflight. Those are
+  P4 and later.
 - **Parquet is not written.** JSONL is the durable streamed record; the columnar
   table is a derivation at session close that does not exist yet. Deliberate: a
   Parquet file is only valid once closed, so it cannot be the crash-safe record.
@@ -82,9 +83,10 @@ runs out of context before it produces anything.**
 | ~~P0~~ | ~~Make the repo resumable~~ | **done 2026-08-31** | — | — |
 | ~~P1~~ | ~~Finish the task layer~~ | **done 2026-08-31** — 10/10 checks, both reference tasks, `wlx check` and `wlx review` | — | — |
 | ~~P2~~ | ~~Session record~~ | **done 2026-08-31** — streamed JSONL, config snapshot, parameter-change log, and `run_session` writing a real directory | — | — |
-| **P3** | `taskd` skeleton: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
+| ~~P3~~ | ~~`taskd` skeleton~~ | **done 2026-08-31 — roadmap M1 met**: 1,000 deterministic trials, headless, full record, `wlx run` | — | — |
+| **P4** | Demo mode: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
 | | → **roadmap M1** | 1,000 deterministic trials with full outputs | S8, S9 | — |
-| P4 | Demo mode + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | P3 |
+| | + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | — |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics drawing | ADR-0002 ✔ |
 | P6 | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | their reader |
 | P7 | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
