@@ -62,8 +62,14 @@ And one field settles an argument elsewhere: **`subject` is a single string.** A
 describes one subject, so with two animals a day the session id must change when the subject does
 (S3 §2). That is a consequence of their frozen contract, not our preference.
 
-**Who writes the manifest is open** — us, ingest, or wl.works. It sits at the directory root
-rather than under `expcontroller/`, which suggests not us alone.
+**Who writes the manifest is deliberately not ours to decide** (PI, 2026-08-31) and is raised in
+the `wl-preproc` handover. It sits at the directory root rather than under `expcontroller/`, and
+this package is deliberately kept outside `SYSTEMS`, so a file written by us at the root would cut
+across that separation.
+
+**We design to supply our two fields by any of the three routes** — writing the manifest, handing
+them to ingest, or handing them to wl.works at session start — so the decision costs us nothing
+whichever way it goes. What we will not do is assume.
 
 ---
 

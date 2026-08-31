@@ -127,8 +127,20 @@ measured that rather than assumed it.
 
 ## 5. Online saccade detection
 
+**Engbert–Kliegl** (PI, 2026-08-31): velocity-threshold in 2D velocity space with a per-trial
+adaptive threshold. Chosen for a reason beyond its own merits — it is **already in `wl-preproc`'s
+offline suite**, so online-versus-offline agreement measures staleness and latency rather than
+comparing two different algorithms. Picking anything else would have made the disagreement
+uninterpretable.
+
 A **versioned, tested component with logged parameters** — not per-task code, because its
 parameters affect results and a task that re-derives it makes two sessions incomparable.
+
+**The adaptive threshold needs a stall rule.** Engbert–Kliegl's threshold is derived from the
+trial's own velocity distribution, which a tracker stall corrupts: samples spanning a gap produce
+an apparent velocity that is an artifact of the gap, not of the eye. So velocity is computed only
+across consecutive samples within the staleness ceiling, and a saccade whose detection window
+contains a gap is **flagged, not silently reported** (§4.1 item 4).
 
 - Tested against **replayed OpenIrisDPI recordings**, not synthetic traces alone.
 - Its parameters and version are in the trial record; a change is a discontinuity of the same
@@ -224,5 +236,5 @@ the online fit is validated against `validate_map` before an animal depends on i
 | 1 | `wl-preproc` accepting an online-calibration reader for our format | their `ONLINE` source working at all |
 | 2 | Staleness ceiling and grace-period values | frozen only after V3(a) |
 | 3 | ~~Stall policy inside a gaze-contingent epoch~~ **Answered: proceed and mark.** Remaining: whether the per-trial staleness summary reaches `wl-preproc`'s `EyeQuality` | wl-preproc |
-| 4 | Whether both eyes are calibrated independently or a cyclopean map is fitted | S4 disparity work |
-| 5 | Saccade-detection algorithm and its parameters | PI + V3(c) |
+| 4 | ~~Independent per-eye maps or a cyclopean fit~~ **Answered in S4 §3: independent per-eye maps against a shared cyclopean target set at zero disparity** | — |
+| 5 | ~~Saccade-detection algorithm~~ **Answered: Engbert–Kliegl**, matching `wl-preproc`'s offline suite so agreement is interpretable. Remaining: its parameters, from V3(c) | V3(c) |

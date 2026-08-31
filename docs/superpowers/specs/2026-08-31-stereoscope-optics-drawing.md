@@ -231,5 +231,5 @@ metal, and it makes the two optical paths unequal — which S0's V9 already forb
 | 1 | Measure `E` (IPD) per animal | PI — sets `a` via §4's rule |
 | 2 | ~~M1 distance~~ **Answered: symmetric field, `a = 3.27·E`, adjustable per animal** | — |
 | 3 | Patch location — **bottom strip via a ±17° M2 vertical stop** — confirm with `wl-sync` | PI + `wl-sync` |
-| 4 | Whether the chair and head-post allow a mirror ~5–6 cm from the eyes, and a carriage that moves it | build |
+| 4 | ~~Chair and head-post clearance~~ **Build to it and find out** (PI, 2026-08-31). If the muzzle fouls the carriage, symmetric field is unreachable and §4's table is re-derived from the achievable clearance instead of from IPD — moving the near mirrors out trades nasal field for a central strip, which is then where the photodiode patches go instead of the bottom strip | commissioning |
 | 5 | Enclosure and baffling against ambient light | build |

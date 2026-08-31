@@ -7,7 +7,7 @@ spec files — §3 is the part that needs you, and it is fifteen questions.
 **Date:** 2026-08-31. **Specs:** S0–S13 plus the architecture, the spec map and the optics
 drawing. **Open items across them:** 76, of which 6 are already answered, 24 are engineering
 calls I have made (§4), 18 are blocked on other repositories (§5), 13 are blocked on hardware
-that does not exist yet (§6), and **15 need you** (§3) — **four answered 2026-08-31, eleven remain**.
+that does not exist yet (§6), and **15 need you** (§3) — **seven answered 2026-08-31, eight remain**.
 
 ---
 
@@ -50,7 +50,7 @@ Six things that changed the design, all found by reading neighbouring repositori
 |---|---|---|
 | ~~1~~ | ~~MUA feature definition v0~~ **Answered: both types, selectable per experiment** — envelope on the SpikeGLX path, RHX's own threshold crossings on the Intan path. Band, threshold and window stay per-experiment | ✔ |
 | 2 | Are SpikeGLX and Intan features **deliberately matched**, or allowed to differ? | Matched, unless a study never switches source. They compute differently by default — SpikeGLX does CAR server-side, RHX filters on GPU |
-| 3 | **Saccade-detection algorithm** and its parameters for the online detector | Engbert–Kliegl as the default, since `wl-preproc`'s offline suite already includes it and agreement becomes measurable |
+| ~~3~~ | ~~Saccade-detection algorithm~~ **Answered: Engbert–Kliegl**, matching their offline suite so disagreement measures staleness rather than algorithm. Parameters from V3(c) | ✔ |
 | ~~4~~ | ~~Session duration from first trial or first reward~~ **Answered: chair time, from head-fixation.** Needed a console action and two new event codes, since it is the one welfare quantity with no hardware line | ✔ |
 | 5 | Default **re-queue policy** by abort reason | Fixation break re-queued at end of block; wrong choice not re-queued. Both overridable per block |
 | ~~6~~ | ~~Runaway thresholds~~ **Answered: rate window plus session total, numbers from protocol.** Per-delivery charge bounds already exist, so a count bound gives a session charge ceiling implicitly | ✔ numbers pending protocol |
@@ -60,9 +60,9 @@ Six things that changed the design, all found by reading neighbouring repositori
 | # | Question | Note |
 |---|---|---|
 | 7 | **Measure IPD per animal** | Sets the whole stereoscope geometry via `a = 3.27·E` |
-| 8 | **Chair and head-post geometry** — does a mirror carriage 4.9–6.2 cm from the eyes fit? | If not, the symmetric-field condition cannot be met and the trade changes |
+| ~~8~~ | ~~Chair and head-post clearance~~ **Answered: build to it and find out.** Fallback tabulated if the muzzle fouls it | ✔ |
 | 9 | **Photodiode patch placement** confirmed against the real optics | Recommendation: bottom strip, 2.18 cm × full width, via a ±17° vertical stop |
-| 10 | **Tandem panel: is burn-in protection fully defeatable?** | Disqualifying if not — pixel-shift silently corrupts a calibrated gaze mapping |
+| 10 | **Tandem panel: is burn-in protection fully defeatable?** | Disqualifying if not — pixel-shift silently corrupts a calibrated gaze mapping. **More load-bearing now that fixation jitter is rejected**, since mitigation is entirely hardware-side |
 | 11 | **Sustained full-field luminance at 100% APL** for that panel | The number that decides how low we sit, and therefore panel lifetime |
 
 ### 3.3 Kiosk, protocol, and process (4)
