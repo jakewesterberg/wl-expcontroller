@@ -22,13 +22,35 @@ from __future__ import annotations
 
 import argparse
 import re
+import json
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: Written before a file is mutated and removed after it is restored. A `finally`
+#: cannot survive SIGKILL, and a timeout kills -- which once left a neutered
+#: `__exit__` on disk that was then committed and pushed, because the commit did not
+#: re-run the suite. The sentinel makes the damage self-healing rather than silent:
+#: the next run restores from it before doing anything else.
+SENTINEL = ROOT / ".mutate-in-progress.json"
+
+
+def _restore_any_interrupted_run() -> None:
+    """Undo a mutation left behind by a killed process.
+
+    Called before anything else, including the baseline, so a suite that looks red
+    because of a stale mutation is repaired rather than reported.
+    """
+    if not SENTINEL.exists():
+        return
+    saved = json.loads(SENTINEL.read_text())
+    path = Path(saved["path"])
+    path.write_text(saved["original"])
+    SENTINEL.unlink()
+    print(f"restored {path} from an interrupted run\n")
 
 
 def _clear_pycache() -> None:
@@ -92,14 +114,14 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
     if count == 0:
         raise SystemExit(f"could not find {function} in {path}")
 
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as backup:
-        backup.write(original)
+    SENTINEL.write_text(json.dumps({"path": str(path), "original": original}))
     try:
         path.write_text(mutated)
         passed, summary = _run_suite()
         return not passed, summary
     finally:
         path.write_text(original)
+        SENTINEL.unlink(missing_ok=True)
         _clear_pycache()
 
 
@@ -125,6 +147,7 @@ def main() -> int:
             raise SystemExit("give a function name or --all")
         targets = [args.function]
 
+    _restore_any_interrupted_run()
     baseline_ok, baseline = _run_suite()
     if not baseline_ok:
         raise SystemExit(f"suite is not green to begin with: {baseline}")

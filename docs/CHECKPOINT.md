@@ -138,11 +138,18 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    that passed a task emitting an unallocated code, a runner that never resolved
    parameters, and a subject that could not lapse mid-trial. **Write the artifact
    before trusting the machinery that makes it.**
-6. **The mutation harness has been wrong three times, always the same way** — quietly
+6. **A killed mutation run once left a neutered method on disk, and it was committed
+   and pushed** — the timeout bypassed the `finally` that restores, and the commit did
+   not re-run the suite. Fixed both ways: the harness writes a sentinel and heals on
+   its next run, and the rule stands that **nothing is committed without a green
+   suite in the same breath**. `git add -A` after a long-running command is the shape
+   of the mistake.
+7. **The mutation harness has been wrong three times, always the same way** — quietly
    examining nothing and reporting success. It matched only `_`-prefixed names, then
    only module-level `def`, then gave up entirely on a name defined twice. Each time
    it found real gaps once fixed, including a dead `per_eye` method and an untested
    CLI. **If a module reports few functions, distrust the tool before the code.**
-7. **A pure hazard model cannot produce non-engagement.** It fires eventually given
+8. **A pure hazard model cannot produce non-engagement**, and hazards are rates
+   per second — a per-frame number describes a different animal at every refresh rate. It fires eventually given
    enough frames, so `NO_FIXATION` — the commonest real abort — was unreachable in
    every simulated session until engagement became per-trial.
