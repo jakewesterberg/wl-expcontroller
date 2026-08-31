@@ -3,9 +3,11 @@
 These conventions bind every session (human- or AI-driven) working in this repo.
 
 ## Read order before touching code
-1. `docs/design/architecture.md` — topology, contracts, latency budgets
-2. `docs/pitfalls.md` — the failure modes we are designing against
-3. Relevant ADRs in `docs/design/decisions/`
+1. `docs/M0-REVIEW.md` — where the project actually is, and what is still open
+2. `docs/design/architecture.md` — topology, contracts, latency budgets
+3. `docs/pitfalls.md` — the failure modes we are designing against
+4. Relevant ADRs in `docs/design/decisions/`, then the S-spec you are working in
+   (`docs/superpowers/specs/2026-08-31-spec-map.md` says which)
 
 ## Rules
 - **US English** everywhere (code, docs, comments).
@@ -31,6 +33,20 @@ These conventions bind every session (human- or AI-driven) working in this repo.
 - **No fabrication.** If a fact about external software matters (API behavior,
   license, latency), verify against the primary source and cite it with an as-of
   date, or mark it UNVERIFIED.
+- **Read the neighbouring repository's source before specifying against it.** Not its
+  README, not its manifest. This session found the event codec already frozen in
+  `wl-preproc` after `wl-mllib`'s manifest said nothing was allocated, found
+  `expcontroller/` already reserved for us by name, and found the eye-calibration
+  model already fixed — each time while about to design a second one. `wlo validate`
+  cannot catch this class of error: it checks that a published name resolves to one
+  publisher, never that the description is true.
+- **Registry over README for lifecycle.** A package's stage is what
+  `wl-orchestrator/registry/` says. `wl-elab`'s own README still reads as the live ELN
+  and the registry has said `deprecated` for some time.
+- **Ask, do not file.** A decision that is science-facing, animal-facing, or expensive
+  to get wrong goes to the PI as a question at the moment it arises. Recording it in an
+  open-items table is a record, not an ask — and three of the first four decisions
+  revisited that way were changed.
 
 ## Commit style
 Imperative subject line; body explains why when non-obvious. The repo history is part
