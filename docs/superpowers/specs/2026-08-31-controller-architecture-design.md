@@ -229,15 +229,22 @@ boundaries *and* a persistent display layer the per-trial scene does not reset. 
 
 ## 6. Event vocabulary and hardware truth
 
-`wl-mllib` publishes `task-event-vocabulary` and nothing is allocated yet. This is a
-joint contract with `wl-sync` (which routes the codes) and `wl-preproc` (which decodes
-them), and it is a v1 blocker.
+**Corrected 2026-08-31 by S2.** This section originally said nothing was allocated
+anywhere. In fact `wl-preproc/wl_preproc/contracts/events.py` is a **frozen interface**
+carrying the range allocation, the markers, a task-type namespace, four escapes with payload
+framing, an XOR checksum and offset-binary degree encoding. `wl-mllib`'s manifest claimed the
+whole vocabulary and was wrong; ADR-0007 splits ownership on **decodability versus meaning**
+— framing, escapes and `Marker` 1–255 are `wl-preproc`'s; `TaskEvent` 256–4095,
+`TaskTypeCode` 100+ and 4096–32767 are `wl-mllib`'s. See
+`docs/superpowers/specs/2026-08-31-S2-event-vocabulary-design.md`.
 
 Requirements:
 
-1. Codes are **allocated in `wl-mllib`, never invented in a task.** Validation refuses an
-   unregistered code. This is the single cheapest guardrail against model-authored task
-   files, and it is enforced at load time, not at run time.
+1. Codes are **allocated, never invented in a task** — in `wl-mllib` for the ranges it
+   owns, in `wl-preproc` for the frozen protocol layer. Validation refuses an unregistered
+   code **at load time**, not at run time. This is the single cheapest guardrail against
+   model-authored task files. We write no second decoder: conformance is tested by
+   round-tripping our streams through `wl-preproc`'s own `decode_stream`.
 2. 16 data bits plus strobe on P0.8–P0.23. Word semantics, strobe width and settling time
    are part of the contract, verified on the event-path mule before the full board exists
    (breakout spec §10.3).
@@ -246,6 +253,11 @@ Requirements:
 4. Touch events have **no hardware line**; they reach the recording clock only as strobed
    event codes (§8.4). This is a real asymmetry and must be stated wherever touch data is
    analyzed.
+5. **Intan receives the strobe only** — its 16 digital inputs cannot carry 16 data lines plus
+   strobe plus barcode. So analysis in Intan's timebase is blind to event identity until
+   barcode alignment has run, and a real-time client on the Intan host cannot condition on
+   event identity read off that machine's inputs: `taskd` must tell the neural plane the trial
+   state over the message bus. This constrains S7 and was not in the original design.
 
 ---
 
@@ -727,7 +739,7 @@ auditory performance feedback, plus vocalization monitoring.
 | 3 | ~~Display panel, refresh target, panel technology~~ **Answered in S0**: 32-inch-class 16:9 flat OLED, tandem model deferred to late 2026, bench panel bought now, ~50 cm build distance, mode as rig config. Remaining: whether burn-in protection is defeatable, and whether GPU + panel can avoid DSC | S0 | panel purchase only |
 | 4 | Photodiode patch placement against the real optics | PI + `wl-sync` | rig build |
 | 5 | Misc BNC assignment for the audio verification tap | `wl-sync` agreement | S0 |
-| 6 | Event-code vocabulary allocation | joint with `wl-mllib`, `wl-preproc` | v1 |
+| 6 | ~~Event-code vocabulary allocation~~ **Largely answered in S2**: the protocol exists and is frozen; ADR-0007 splits ownership. Remaining: `wl-preproc` agreeing that `TaskEvent` 256–4095 moves, and accepting one new escape | `wl-preproc` | allocation, then S1 |
 | 7 | wl-works amendment for the session-summary contract | drafted here, theirs to accept | S10 |
 | 8 | MUA feature definition v0 (band, rectification, window, CAR) | PI, scientific | S7 |
 | 9 | Console toolkit (PyQtGraph is the working recommendation) | S9 | S9 |
@@ -746,5 +758,6 @@ auditory performance feedback, plus vocalization monitoring.
 | `docs/roadmap.md` | Stim tiers 1–2 move into v1; parity gate M5 loses its comparator; demo mode and preflight become gated deliverables |
 | `docs/validation.md` | V2b, V7, V8, V9 added; V4 widened to both neural paths |
 | `README.md` | Two rigs, not 3–4; bridge language removed |
-| `docs/superpowers/specs/` | **S0** written: `2026-08-31-S0-hosts-and-hardware-design.md` |
+| `docs/superpowers/specs/` | **S0** and **S2** written |
+| `docs/design/decisions/` | **ADR-0007** (event vocabulary ownership) |
 | `docs/design/decisions/` | **ADR-0005** (day-one stack and interchangeability; supersedes ADR-0001 decision 3) and **ADR-0006** (task representation) written. Lab-host protocol adoption (D11) still needs an ADR once S10 is specified. |
