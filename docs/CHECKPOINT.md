@@ -29,8 +29,8 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | 45, green |
-| CI | pytest on 3.11 and 3.13, plus a **mutation gate** |
+| Tests | 65, green |
+| CI | pytest on 3.11 and 3.13, plus a **mutation gate over every module** — 56 functions, 0 survivors |
 | Load-time checks | **10 of 10** (S1 §9) |
 | Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
 | Hardware verified | **none** |
@@ -59,7 +59,11 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 ### What does not exist, and matters
 
-- **No session record.** Nothing is written to disk. This is P2, and it is next.
+- **No `taskd`.** Nothing runs a session end to end yet; `run_session` is the
+  simulator's entry point, not a daemon. This is P3, and it is next.
+- **Parquet is not written.** JSONL is the durable streamed record; the columnar
+  table is a derivation at session close that does not exist yet. Deliberate: a
+  Parquet file is only valid once closed, so it cannot be the crash-safe record.
 - **The round-trip tests skip in CI**, because they need a `wl-preproc` checkout
   beside this repo and CI has none. So **CI cannot currently catch an encoder
   drift** — the strongest test in the suite is the one CI does not run. Fixing it
@@ -77,8 +81,9 @@ runs out of context before it produces anything.**
 |---|---|---|---|---|
 | ~~P0~~ | ~~Make the repo resumable~~ | **done 2026-08-31** | — | — |
 | ~~P1~~ | ~~Finish the task layer~~ | **done 2026-08-31** — 10/10 checks, both reference tasks, `wlx check` and `wlx review` | — | — |
-| **P2** | Session record: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
-| P3 | `taskd` skeleton → **roadmap M1** | 1,000 deterministic trials with full outputs | S8, S9 | P2 |
+| ~~P2~~ | ~~Session record~~ | **done 2026-08-31** — streamed JSONL, config snapshot, parameter-change log, and `run_session` writing a real directory | — | — |
+| **P3** | `taskd` skeleton: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
+| | → **roadmap M1** | 1,000 deterministic trials with full outputs | S8, S9 | — |
 | P4 | Demo mode + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | P3 |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics drawing | ADR-0002 ✔ |
 | P6 | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | their reader |
@@ -131,6 +136,11 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    that passed a task emitting an unallocated code, a runner that never resolved
    parameters, and a subject that could not lapse mid-trial. **Write the artifact
    before trusting the machinery that makes it.**
-6. **A pure hazard model cannot produce non-engagement.** It fires eventually given
+6. **The mutation harness has been wrong three times, always the same way** — quietly
+   examining nothing and reporting success. It matched only `_`-prefixed names, then
+   only module-level `def`, then gave up entirely on a name defined twice. Each time
+   it found real gaps once fixed, including a dead `per_eye` method and an untested
+   CLI. **If a module reports few functions, distrust the tool before the code.**
+7. **A pure hazard model cannot produce non-engagement.** It fires eventually given
    enough frames, so `NO_FIXATION` — the commonest real abort — was unreachable in
    every simulated session until engagement became per-trial.
