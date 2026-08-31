@@ -29,7 +29,7 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | 70, green |
+| Tests | 82, green |
 | CI | pytest on 3.11 and 3.13, plus a **mutation gate over every module** — 60 functions, 0 survivors |
 | Load-time checks | **10 of 10** (S1 §9) |
 | Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
@@ -53,7 +53,11 @@ January validates rather than discovers. Nothing here has touched hardware.
   loop cannot distinguish.
 - `simulate.py` — sessions and the census: outcomes, states visited, hangs, and
   outcomes nothing reached.
-- `cli.py` — `wlx check <task.py>`, exit 1 on a blocking finding.
+- `cli.py` — `wlx check`, `wlx review`, `wlx run`; exit 1 on a blocking finding.
+- **`bounds.py` — the welfare-critical file, and currently the only one.** Ceilings a
+  task cannot express and a console cannot exceed; fluid reconciled against the
+  delivered line rather than what we commanded; an unknown daily total refuses
+  delivery. **Requires human review before merge** (CLAUDE.md).
 - `tools/mutate.py` — proves a test can fail. Read its docstring before trusting a
   mutation result by hand.
 

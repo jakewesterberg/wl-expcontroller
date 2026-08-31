@@ -77,6 +77,11 @@ Welfare-critical modules requiring human review: reward scheduling and limits, f
 session-duration accounting, token-to-fluid conversion, stimulation bounds and gating, and
 the bounded-config loader that enforces them.
 
+**In code, that is `wl_expcontroller/bounds.py` and nothing else yet.** It is kept small
+deliberately: everything in it can hurt an animal if it is wrong, and a small file is one
+a person can actually read before signing it off. A change to it is a change requiring
+review; a change elsewhere is not.
+
 ## The task model
 
 **Within a trial: declarative data.** States, guarded transitions, entry/exit actions,
