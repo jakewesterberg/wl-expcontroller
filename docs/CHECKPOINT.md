@@ -87,13 +87,21 @@ runs out of context before it produces anything.**
 | **P4** | Demo mode: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
 | | → **roadmap M1** | 1,000 deterministic trials with full outputs | S8, S9 | — |
 | | + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | — |
-| P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics drawing | ADR-0002 ✔ |
+| **P4b** | Session management: blocks, scheduler, bounded config, welfare accounting, the live parameter path | A session runs blocks with criterion transitions and enforces its ceilings | S8 | nothing |
+| P4c | Parquet derivation at close; the `labhost` endpoint | Contract-tested against `wl-preproc`'s published schema | S10 | nothing |
+| P4d | The console shell against a fake `taskd` | An operator surface that runs with no rig | S9, S9a | nothing |
+| P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
 | P6 | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | their reader |
 | P7 | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
 
-**P1 through P4 need no hardware and no other repository.** That is four sessions to
-M1, and M1 is what makes everything after it testable.
+**P1–P4 needed no hardware and are done. P4b–P4d need none either**, so the runway
+without a rig is longer than it looked — and it now covers the welfare-critical code,
+which wants human review time more than anything else does.
+
+**ADR-0002 is deferred to V1** (2026-08-31): neither display stack is built properly
+until a rig can measure both. So P5 is hardware-blocked, and the display spike stays a
+spike.
 
 ---
 

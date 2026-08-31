@@ -1,6 +1,6 @@
 # ADR-0002: Display engine
 
-- Status: **Reopened 2026-08-31** — Proposed pending a spike
+- Status: **Proposed. Deferred to V1** (PI, 2026-08-31) — neither stack is built properly until a rig can measure both
 - Date: 2026-08-30
 
 ## Context
@@ -70,3 +70,21 @@ PsychoPy is still there and we have lost days rather than months.
 
 **The seam exists precisely to make this cheap, and accepting the ADR without exercising
 it was the mistake.** The spike is `tools/spike_display.py`, labelled throwaway.
+
+## Ruling 2026-08-31: decide after V1
+
+**Neither stack is built properly yet.** The spike stays a spike, PsychoPy stays
+installed, and the choice is made when a rig exists and V1 can measure both under the
+same photodiode protocol.
+
+The recommendation was to build the thin stack now, on the grounds that we already
+cannot use PsychoPy's units model or its stateful stimuli, so we would be taking 81
+dependencies for stimulus generation we would partly rewrite. **That reasoning is
+unchanged and stands as the case to re-read in January** — what the ruling rejects is
+committing display code before anything can measure it, which is the same discipline
+P1 applies to every other number in this project.
+
+**What it costs:** P5 becomes hardware-blocked, so the run of packages needing nothing
+from anyone ends at P4. **What it buys:** no chance of building the display layer twice,
+and a decision made on a photodiode rather than on a laptop that already produced one
+misleading verdict (P4a).

@@ -12,7 +12,14 @@ M1 is met.** No hardware exists and none is needed for the next package.
 
 ---
 
-## 1. Do P4. It is the last package that needs nothing from anyone.
+> **Amended 2026-08-31.** ADR-0002 is deferred to V1 — neither display stack is built
+> until a rig can measure both — so P5 is hardware-blocked and P4 is *not* the last
+> package needing nothing. **P4b (session management), P4c (outputs and the lab-host
+> endpoint) and P4d (the console against a fake taskd) all need no hardware either.**
+> P4b is the welfare-critical code and wants human review time more than anything else
+> does; if you only do one thing after P4, do that.
+
+## 1. Do P4. Then P4b, which matters more.
 
 **Demo mode and operator documentation.** Read **S9** (`docs/superpowers/specs/
 2026-08-31-S9-operations-console-design.md`) §5 and nothing else from the spec set.
@@ -85,8 +92,10 @@ That list is the design's remaining debt and nothing else measures it.
 
 ## 4. Do not do these, and why
 
-- **Do not start P5.** The panel is not chosen; the tandem OLED ships late 2026 and its
-  two disqualifying questions are unanswered.
+- **Do not start P5, and now for a second reason.** The panel is not chosen, and
+  ADR-0002 is deferred to V1: neither PsychoPy nor the thin stack is built properly
+  until a photodiode on a rig can compare them. `tools/spike_display.py` is a spike and
+  stays one.
 - **Do not implement the wl-works or wl-preproc integrations.** Four handovers are
   outstanding and two block real work. Building against a guess costs more than waiting.
 - **Do not add Parquet.** JSONL is the durable streamed record deliberately (P2); the
