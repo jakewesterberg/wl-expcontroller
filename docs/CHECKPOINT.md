@@ -128,6 +128,17 @@ Neither blocking item stops P1–P4. Both are built around: codes are allocated 
 
 ---
 
+## Open measurements this creates
+
+**A photometer measurement now gates every chromatic task.** `check` refuses colour
+without a `Calibration`, and a real one needs a spectroradiometer or colorimeter on
+the actual panel: primaries and background in CIE xyY, gamma, the reachable cone
+contrast, and **whose luminous efficiency the luminances were measured against** --
+a macaque V(lambda), not a human one, or `lum=0` is isoluminant for nobody in the
+room. Result goes under `docs/measurements/`. Until then chromatic tasks will not
+load, which is the intended failure: the alternative is a task that runs, looks
+convincing, and reports a colour nobody measured.
+
 ## Traps
 
 Things that cost something to learn here. Each is a convention in `CLAUDE.md` now.

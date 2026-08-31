@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.components import Registry
 from wl_expcontroller.geometry import Geometry
+from wl_expcontroller.photometry import DKL, Calibration, Color, unrealizable, xyY
 from wl_expcontroller.task import (
     After,
     Custom,
@@ -43,6 +44,7 @@ def check(
     allocation: Allocation = PROVISIONAL,
     components: Registry | None = None,
     geometry: Geometry | None = None,
+    calibration: Calibration | None = None,
 ) -> list[Finding]:
     return (
         _unreachable_states(trial)
@@ -57,6 +59,7 @@ def check(
         + _undeclared_windows(trial)
         + _uncoupled_windows(trial)
         + _display_faults(trial)
+        + _color_faults(trial, calibration)
     )
 
 
@@ -546,3 +549,86 @@ def _one_action(state: str, action, visible: set[str]) -> list[Finding]:
             )
         return found
     return []
+
+
+# --- Colour ----------------------------------------------------------------
+
+
+def _appearances(trial: Trial):
+    """Every appearance a trial can put on screen, including the ones only a
+    parameter selects.
+
+    **Parameter choices count.** Pop-out is expressed as an appearance parameter --
+    a red target among green distractors is the same task as a circle among squares
+    with a different value -- so an appearance reachable only through `Param.choices`
+    is as real as one written into a `Show`, and checking only the latter would skip
+    exactly the stimuli this vocabulary was extended to express.
+    """
+    from wl_expcontroller.task import Appearance, Show, Update
+
+    seen = []
+    for _, action in actions_of(trial):
+        looks = None
+        if isinstance(action, Show):
+            looks = action.stimulus.looks
+        elif isinstance(action, Update) and not isinstance(action.looks, P):
+            looks = action.looks
+        if isinstance(looks, Appearance):
+            seen.append(looks)
+    for param in trial.params:
+        seen.extend(c for c in param.choices if isinstance(c, Appearance))
+    return seen
+
+
+def _color_faults(trial: Trial, panel: Calibration | None) -> list[Finding]:
+    """Colour checked against a display somebody measured.
+
+    RGB is a set of instructions to one panel, so a colour that is not checked
+    against a measurement is a colour nobody knows. The specific failure this
+    prevents: a monitor asked for a colour outside its gamut clips silently, and a
+    clipped colour has neither the requested chromaticity nor the requested
+    luminance -- so an isoluminant pair stops being isoluminant and a chromatic
+    experiment's control condition quietly becomes a luminance manipulation.
+    """
+    findings: list[Finding] = []
+    for looks in _appearances(trial):
+        color = getattr(looks, "color", None)
+        if color is None or isinstance(color, P):
+            continue
+        what = type(looks).__name__
+        if panel is None:
+            findings.append(
+                Finding(
+                    "uncalibrated-color",
+                    f"{what} asks for {color}, but no display calibration was "
+                    f"supplied; colour is a physical claim and this one is "
+                    f"unmeasured",
+                )
+            )
+            continue
+        if isinstance(color, xyY) and getattr(looks, "contrast", 1.0) != 1.0:
+            findings.append(
+                Finding(
+                    "overspecified-color",
+                    f"{what} sets an absolute colour and a contrast of "
+                    f"{looks.contrast}; both claim to set the same physical "
+                    f"quantity. Use DKL for a modulation, or drop the contrast",
+                )
+            )
+        if isinstance(color, DKL) and color.lum == 0.0 and color.magnitude() > 0.0:
+            if not panel.observer:
+                findings.append(
+                    Finding(
+                        "unstated-observer",
+                        f"{what} claims isoluminance, but the calibration measured "
+                        f"{panel.measured_on} does not say whose luminous efficiency "
+                        f"it used; a human V(lambda) makes a stimulus that is "
+                        f"isoluminant for nobody in the room",
+                    )
+                )
+        why = unrealizable(color, panel)
+        if why is not None:
+            findings.append(
+                Finding("unrealizable-color", f"{what} asks for {color}: {why}")
+            )
+    return findings

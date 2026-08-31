@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from wl_expcontroller.photometry import Color
+
 
 class Outcome(Enum):
     """How a trial ended.
@@ -289,12 +291,22 @@ class Appearance:
 class Disc(Appearance):
     size: "float | P" = 1.0
     contrast: "float | P" = 1.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
 class Square(Appearance):
     size: "float | P" = 1.0
     contrast: "float | P" = 1.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +317,11 @@ class Bar(Appearance):
     width: "float | P" = 0.5
     orientation: "float | P" = 0.0
     contrast: "float | P" = 1.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +335,11 @@ class Gabor(Appearance):
     phase: "float | P" = 0.0
     contrast: "float | P" = 1.0
     sigma: "float | P" = 1.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,6 +353,11 @@ class Dots(Appearance):
     density: "float | P" = 1.0
     aperture: "float | P" = 5.0
     seed: int = 0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,6 +365,11 @@ class Annulus(Appearance):
     inner: "float | P" = 1.0
     outer: "float | P" = 2.0
     contrast: "float | P" = 1.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -347,6 +379,11 @@ class Cross(Appearance):
     size: "float | P" = 0.5
     thickness: "float | P" = 0.1
     contrast: "float | P" = 1.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,6 +395,11 @@ class Polygon(Appearance):
     size: "float | P" = 1.0
     orientation: "float | P" = 0.0
     contrast: "float | P" = 1.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -371,6 +413,11 @@ class Grating(Appearance):
     phase: "float | P" = 0.0
     contrast: "float | P" = 1.0
     aperture: "float | P" = 5.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,6 +429,11 @@ class Plaid(Appearance):
     angle: "float | P" = 90.0
     contrast: "float | P" = 1.0
     aperture: "float | P" = 5.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -391,6 +443,11 @@ class Checkerboard(Appearance):
     check_size: "float | P" = 1.0
     contrast: "float | P" = 1.0
     aperture: "float | P" = 10.0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -403,6 +460,11 @@ class Noise(Appearance):
     aperture: "float | P" = 5.0
     refresh_hz: "float | P" = 0.0
     seed: int = 0
+    #: Device-independent colour, or `None` for achromatic at `contrast`. On the
+    #: appearance rather than the stimulus because colour is a feature: "red among
+    #: green" and "circles among squares" are then the same kind of switch, and both
+    #: are values a parameter can carry (S1a §4).
+    color: "Color | P | None" = None
 
 
 @dataclass(frozen=True, slots=True)
