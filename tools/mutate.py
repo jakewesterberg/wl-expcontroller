@@ -48,14 +48,31 @@ def _run_suite() -> tuple[bool, str]:
 
 
 def _function_names(source: str) -> list[str]:
-    return re.findall(r"^def (_[a-z_]+)\(", source, flags=re.M)
+    """Every module-level function, public ones included.
+
+    This matched only `_`-prefixed names until a run over `simulate.py` -- whose
+    functions are public -- reported nothing to mutate. It exited with a message
+    rather than a false success, which was luck rather than design: a coverage
+    tool that can quietly examine nothing is worse than no tool, so `--all` now
+    refuses an empty target list explicitly.
+    """
+    return re.findall(r"^def ([a-z_][a-z0-9_]*)\(", source, flags=re.M)
 
 
-def mutate(path: Path, function: str) -> bool:
-    """True if neutering `function` makes the suite fail, i.e. it is covered."""
+def mutate(path: Path, function: str, args_returns: str) -> bool:
+    """True if neutering `function` makes the suite fail, i.e. it is covered.
+
+    **What the neutered body returns changes how sharp the answer is.** For the
+    checkers, whose results are concatenated, `return []` fails exactly the tests
+    that cover that check -- so "1 failed" localises the coverage. `return None`
+    breaks the concatenation instead, failing every check test at once: still proof
+    the function is load-bearing, but no longer proof that any single test isolates
+    it. Prefer the value the caller actually composes; the default suits list
+    returns because that is what this codebase's checkers do.
+    """
     original = path.read_text()
     pattern = rf'(def {re.escape(function)}\([^)]*\)[^:]*:\n(?:    """.*?"""\n)?)'
-    mutated, count = re.subn(pattern, r"\1    return []\n", original, flags=re.S)
+    mutated, count = re.subn(pattern, r"\1    return " + args_returns + "\n", original, flags=re.S)
     if count != 1:
         raise SystemExit(f"could not neuter {function} in {path} (matched {count})")
 
@@ -75,12 +92,22 @@ def main() -> int:
     parser.add_argument("path", type=Path)
     parser.add_argument("function", nargs="?")
     parser.add_argument("--all", action="store_true")
+    parser.add_argument(
+        "--returns",
+        default="[]",
+        help="what the neutered body returns; see mutate() on why it matters",
+    )
     args = parser.parse_args()
 
     path = ROOT / args.path
-    targets = _function_names(path.read_text()) if args.all else [args.function]
-    if not targets or targets == [None]:
-        raise SystemExit("give a function name or --all")
+    if args.all:
+        targets = _function_names(path.read_text())
+        if not targets:
+            raise SystemExit(f"--all found no module-level functions in {path}")
+    else:
+        if not args.function:
+            raise SystemExit("give a function name or --all")
+        targets = [args.function]
 
     baseline_ok, baseline = _run_suite()
     if not baseline_ok:
@@ -89,7 +116,7 @@ def main() -> int:
 
     survivors = []
     for name in targets:
-        caught, summary = mutate(path, name)
+        caught, summary = mutate(path, name, args.returns)
         print(f"  {'caught  ' if caught else 'SURVIVED'}  {name:32} {summary}")
         if not caught:
             survivors.append(name)
