@@ -1,11 +1,20 @@
 # Where this build actually is
 
-**Last updated 2026-08-31**, at the commit this file was committed in. Check
+**Last updated 2026-09-01**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
-**The lab opens January 2027.** Everything is being built before any rig exists, so
-January validates rather than discovers. Nothing here has touched hardware.
+**The lab opens January 2027.** Everything is being built before any rig exists.
+
+> **"January validates rather than discovers" was the working assumption and it is
+> false.** Review caught it on 2026-08-31: it is load-bearing, because it justifies
+> spending effort on the task layer instead of on the four things that must work on
+> day one — **DIO out, gaze in, a frame on screen, reward out**. Two of those four now
+> exist and are proven without hardware (`dio.py`, `eye.py`); the other two are
+> genuinely blocked on a card and a panel. Until a rig runs all four end to end,
+> **January discovers.** Sequence accordingly.
+
+Nothing here has touched hardware.
 
 ---
 
@@ -29,12 +38,13 @@ January validates rather than discovers. Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | 96, green |
-| CI | pytest on 3.11 and 3.13, plus a **mutation gate over every module** — 60 functions, 0 survivors |
+| Tests | **194, green** |
+| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors. The only non-caught entries are no-op `display` bodies, where `return None` mutated to `return None` is not a mutation |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12) |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
 | Hardware verified | **none** |
+| Day-one path (DIO out · gaze in · frame on screen · reward out) | **2 of 4 built and proven without hardware**; the display and the real card remain |
 
 ### What exists
 
@@ -86,6 +96,64 @@ January validates rather than discovers. Nothing here has touched hardware.
   repo. Recorded rather than hidden.
 
 ---
+
+## What moved on 2026-09-01
+
+Two external reviews (`nhp-neuroscience-reviewer`, `senior-scientist`) found one
+thing between them, and it is the entry worth reading if you read nothing else here:
+**every load-time check inspected the same object.** Unreachable-state,
+unbounded-wait, no-outcome-path and shadowing are four views of the transition graph,
+so adding checks raised the count without narrowing the residual class — and the
+residual class was tasks whose graph is right and whose *experiment* is wrong. See
+trap 9 and pitfall P18.
+
+Seventeen commits. In dependency order:
+
+1. **A hold clocked from the wrong zero** (`67acf4a`). A memory-guided structure with
+   a declared 0.3 s delay ran it for **one frame, 4.2 ms**, and scored `CORRECT`.
+   Task written correctly, all ten checks passing. Every working-memory delay in the
+   v1 inventory was written that way.
+2. **The display now exists as state** (`284f7f2`). `Show` persists until `Hide`
+   rather than being scoped to its state — the old wording removed a fixation point
+   at the exact frame the animal was asked to hold it. Stimuli have names; `Update`
+   changes a live one without the offset transient `Hide`+`Show` inserts; a `Window`
+   names the stimulus it scores or `REMEMBERED`. Closed **statically and
+   dynamically**: the simulated animal now sees the screen and will not look at a
+   stimulus that is not there.
+3. **Colour** (`045d626`), in CIE xyY and DKL, on the *appearance* so it is a value a
+   parameter can swap. Refused without a measured `Calibration`.
+4. **Set size as a value** (`470bcec`). `Array` as an appearance, `ItemWindows` as one
+   declaration that becomes n windows plus `.target`/`.distractor`.
+   `tasks/visual_search.py` — colour pop-out — was unwritable before this.
+5. **Anticorrelated RDS and disparity-defined form** (`b86e89f`), plus `Window.eye`,
+   which was parsed and dropped.
+6. **Intervals from photodiode onset** (`955a6d8`). `After(0.05,
+   since=Onscreen("task"))`. An `After` with a `since` is deliberately **not** a time
+   bound, and check 4 refuses it as one.
+7. **Five outcomes** (`591ba2c`): `CORRECT_REJECT`, `FALSE_ALARM`, `FAULT`,
+   `BLINK_BREAK`, `TRACKER_LOST`, with independent blink and tracker graces.
+8. **Range-based checks** (`3871a39`): overlapping windows, unreachable timeouts,
+   crowded arrays.
+9. **The review artifact** (`4e3e023`) grew a display timeline and now names the
+   transition that emits each code.
+10. **Gaze ingest** (`532fb54`) and **DIO** (`ae07656`) — the pivot.
+
+### Things that were wrong and are now right
+
+- `tasks/visual_search.py` allowed **twelve items on a 3° ring with 4° windows** —
+  adjacent centres 1.55° apart, 8° of summed window. A saccade to one distractor
+  would have been scored against another. It passed every check that existed the day
+  it was committed. Found only when the crowding check was written a day later.
+- The **review artifact crashed** on any task using `ItemWindows`, because the
+  vocabulary gained a window kind and nothing rendered it.
+- **The event-codec round-trip had never run in CI.** `actions/checkout` fetches this
+  repo alone, so `importorskip` skipped all nine tests into a green build. They pass
+  against `wl-preproc`'s real decoder; nothing was proving it. CI now checks out the
+  sibling and sets `WLX_REQUIRE_PREPROC=1`.
+- The new outcomes were **not in the requeue set**, so a trial lost to a dropped
+  camera left its condition silently one datum short.
+- The **mutation harness aborted `--all`** at the first unmatchable signature and
+  reported a completed sweep. Fourth blind spot of that shape.
 
 ## Work packages
 

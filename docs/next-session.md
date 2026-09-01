@@ -1,107 +1,102 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** `main` @ `b0954c6`, 70 tests passing, working tree clean, nothing
-unpushed. CI runs pytest on 3.11/3.13 plus a mutation gate over every module. **Roadmap
-M1 is met.** No hardware exists and none is needed for the next package.
+**State at handoff:** `main`, **194 tests passing**, working tree clean. CI runs pytest
+on 3.11/3.12/3.13 plus a mutation gate over every module, and now checks out
+`wl-preproc` so the event-codec round-trip actually runs. No hardware exists.
 
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
 > is; this says what to do. There are 25 design documents and **you should read three**:
-> the checkpoint, `docs/M0-REVIEW.md` §3–§4, and the one S-spec named below. Reading more
-> is how a session exhausts its context before producing anything, and that is the
+> the checkpoint, `docs/M0-REVIEW.md` §3–§4, and the one S-spec named below. Reading
+> more is how a session exhausts its context before producing anything, and that is the
 > specific failure this file exists to prevent.
 
 ---
 
-> **Amended 2026-08-31.** ADR-0002 is deferred to V1 — neither display stack is built
-> until a rig can measure both — so P5 is hardware-blocked and P4 is *not* the last
-> package needing nothing. **P4b (session management), P4c (outputs and the lab-host
-> endpoint) and P4d (the console against a fake taskd) all need no hardware either.**
-> P4b is the welfare-critical code and wants human review time more than anything else
-> does; if you only do one thing after P4, do that.
+## 0. The thing that changed the plan
 
-## 1. Do P4. Then P4b, which matters more.
+Two reviews on 2026-08-31 found that **every load-time check inspected the same
+object** — the transition graph — so the residual defect class was tasks whose graph is
+right and whose *experiment* is wrong. Five vocabulary gaps and two framework bugs came
+out of that, all closed on 2026-09-01. Read **trap 9** and **pitfall P18** before adding
+another check; the useful question is what a gate is *looking at*, not how many gates
+there are.
 
-**Demo mode and operator documentation.** Read **S9** (`docs/superpowers/specs/
-2026-08-31-S9-operations-console-design.md`) §5 and nothing else from the spec set.
-
-P5 onward is blocked: the display needs a panel, the eye path needs `wl-preproc` to
-accept a calibration reader, the I/O layer needs an NI card on a bench. **P4 is blocked
-on nothing**, and it closes the argument the whole design rests on.
-
-### Why it matters more than it sounds
-
-ADR-0006 says a task Claude wrote is approved from a rendered diagram, a code table and
-a simulation report — **without reading the source**. Two thirds of that exists:
-`wlx review` renders the artifact and `wlx run` produces the report.
-
-The missing third is a human watching the task actually behave. A diagram proves
-structure and a census proves statistics; neither proves the task *does what was asked*.
-Someone has to drive it for thirty seconds and see a fixation point, a target, and a
-reward. Until that exists, every claim in this repository about model-authored tasks
-being safe rests on two legs of a three-legged argument.
+The same review killed a load-bearing assumption. **"January validates rather than
+discovers" is false.** It justified building the task layer instead of the four things
+that must work on day one: **DIO out, gaze in, a frame on screen, reward out.** Two of
+those four now exist (`dio.py`, `eye.py`) and are proven without hardware. The other two
+are genuinely blocked. Until a rig runs all four end to end, January discovers.
 
 ---
 
-## 2. Steps, in order
+## 1. Do eye calibration. It needs no hardware and it is on the day-one path.
 
-### Step A — keyboard/mouse demo mode *(no hardware)*
+The fixation-grid map from raw DPI signal to degrees, per animal, with drift
+correction. **Ours to build** — OpenIris's own calibration plugins target its display,
+not our task display. Read **S5** (`docs/superpowers/specs/2026-08-31-S5-eye-tracking-design.md`)
+and nothing else from the spec set.
 
-A `World` implementation where the mouse is gaze and keys are responses. **It is a peer
-of `Subject` and hardware, not a special mode** (S6 §6) — the loop must not be able to
-tell them apart, or what a person sees in demo mode is not what an animal will get.
+`eye.py` already gives you samples in camera pixels with `dpi()` as the gaze signal
+(P1 − P4). Calibration is the missing step between that and a `Window` test.
 
-- Mouse position → gaze; `Entered`/`Exited`/`Hold`/`SaccadeTo` resolve against the
-  declared windows, in cyclopean degrees, through `Geometry`.
-- Keys → `Pressed`/`Released`/`Touched`. Mouse click stands in for touch, which is what
-  makes the same mode serve the S13 kiosk.
-- **It needs a window on screen.** That is the first thing in this repo that touches a
-  display library, so it is where ADR-0002 stops being a decision and starts being a
-  dependency. Keep it behind `DisplayAdapter` (S4 §4) even though P5 has not built one
-  — a demo mode that reaches PsychoPy directly will have to be unpicked.
+**Two things already established, which will cost you a day each if rediscovered:**
 
-### Step B — the operator document *(no hardware)*
+- **A ring of calibration targets is degenerate** on the second-order basis. Points on
+  a circle make `constant`, `dx²` and `dy²` linearly dependent, so the fit is singular.
+  Use a grid, or a ring plus centre, and **assert the conditioning** in a test.
+- **The model is already fixed** by `wl-preproc` — read their source, not their README.
+  We supply the map; the functional form is not ours to choose. See ADR-0007 and the
+  cross-repo table below.
 
-P8 was sharpened on 2026-08-31: **people arrive with or before the animals, and a tech
-or student runs the rigs day to day.** So this is an M1 deliverable, not a later one.
-
-Not a design doc. A *how to run a session* document, written for someone who has never
-read a spec: what to type, what a failure means, what to do about it. If a sentence
-needs the design to be understood, it is wrong.
-
-### Step C — the acceptance test, run for real
-
-Take a task **you did not write** — generate one, or take `adaptive_detection` cold —
-and approve it from the artifact and the demo alone. Write down what you could not tell.
-That list is the design's remaining debt and nothing else measures it.
+**Exit condition:** replayed OpenIrisDPI samples map to degrees, the fit refuses a
+degenerate target set with a named finding rather than a singular matrix, and a
+calibration map serialises in a form `wl-preproc` can read.
 
 ---
 
-## 3. Traps specific to P4
+## 2. Then saccade detection, and then the World adapter
 
-1. **Demo mode must not become a second runner.** If it grows its own loop, the thing a
-   person validates is not the thing an animal gets, and the whole exercise proves
-   nothing. It is a `World`.
-2. **Mouse gaze is not eye data.** It has no staleness, never stalls, and lands exactly
-   where aimed. Do not let it become the thing saccade detection is tested against — S5
-   §5 says replayed OpenIrisDPI recordings, and it means it.
-3. **The operator document will drift.** Everything in this repo does; that is why
-   CLAUDE.md requires the checkpoint updated at session end. Put the document's own
-   commands in a test if you can.
+- **Saccade detection** is the versioned Engbert–Kliegl component (S5 §5), never
+  re-derived per task. It is what `SaccadeTo` and `SaccadeOnset` ride on, and both
+  currently reach the world as bare `happened()` calls that nothing implements.
+- **The World adapter** is the join: `eye.Tracker` + calibration + `dio.Card` behind
+  the `World` protocol in `run.py`, so a trial loop can run against real ingest. That
+  turns four modules into one working path, and it is the last piece before the display.
+
+---
+
+## 3. Traps specific to this work
+
+- **`Tracker.state` before the first sample returns `"lost"`, never `"ok"`.** A tracker
+  reporting (0, 0) at startup puts gaze exactly on the fixation point and scores a hold
+  against an empty chair. Keep it that way.
+- **What OpenIris emits when one eye's tracking fails is UNVERIFIED.** It is recorded as
+  such in `eye.py`. Do not invent a validity rule — it decides whether an animal is
+  looking. It is a bench measurement (V3).
+- **Do not re-derive the staleness policy per world.** It lives in `Tracker` and the
+  trial loop, once, for the same reason `Entered`/`Exited`/`Hold` do.
+- **Never `git add` after a mutation run that did not print `restored:`.** Trap 12: a
+  run hung, an outer timeout killed the harness past its `finally`, and left a neutered
+  `scheduler.py` on disk. The sentinel healed it; the tool now has its own timeout.
 
 ---
 
 ## 4. Do not do these, and why
 
-- **Do not start P5, and now for a second reason.** The panel is not chosen, and
-  ADR-0002 is deferred to V1: neither PsychoPy nor the thin stack is built properly
-  until a photodiode on a rig can compare them. `tools/spike_display.py` is a spike and
-  stays one.
+- **Do not start the display (P5).** The panel is not chosen and ADR-0002 is deferred to
+  V1: neither PsychoPy nor the thin stack is built properly until a photodiode on a rig
+  can compare them. `tools/spike_display.py` is a spike and stays one.
+- **Do not write a `nidaqmx` implementation you cannot run.** `dio.py`'s interface is
+  the deliverable; the real card is a day's work once one exists, and guessing at
+  DAQmx semantics now means rewriting it then.
 - **Do not implement the wl-works or wl-preproc integrations.** Four handovers are
-  outstanding and two block real work. Building against a guess costs more than waiting.
+  outstanding and two block real work.
 - **Do not add Parquet.** JSONL is the durable streamed record deliberately (P2); the
-  columnar table is a derivation at session close and belongs with the S10 work.
+  columnar table is a derivation at session close, with the S10 work.
 - **Do not allocate event codes outside 4096–32767.** `TaskEvent` 256–4095 is still
-  pending `wl-preproc`'s agreement, and allocating there means rework if they decline.
+  pending `wl-preproc`'s agreement.
+- **Do not add a fourteenth load-time check before reading P18.** More gates over the
+  same object is what produced the problem the reviews found.
 
 ---
 
@@ -110,23 +105,42 @@ That list is the design's remaining debt and nothing else measures it.
 | Who | What | Blocks |
 |---|---|---|
 | `wl-sync` | Session id readable by a rig host; a subject change mints `_02` | naming our own output directory |
-| `wl-preproc` | A reader for our online calibration map | `CalibrationSource.ONLINE`, every session |
+| `wl-preproc` | A reader for our online calibration map | **§1 of this document** |
 | `wl-preproc` | `PARAM_CHANGE` escape; ownership split; codec as an artifact | P16's guarantee |
 | `wl-works` | `prepare-session`, calibration block per session, alerting | ELN autopopulation |
-| PI | IPD per animal; tandem panel's two questions; the RDS decision (S1a §10) | optics, panel, stereo vocabulary |
+| PI | **A photometer measurement of the panel** | every chromatic task (P19) |
+| PI | IPD per animal; the tandem panel's two questions | optics, panel |
 
 Handovers are `HANDOVER-wl-expcontroller.md` in each repo — **committed in `wl-sync`,
 written but uncommitted in the other two**, because one was on a feature branch with
 work in flight and the other is owned by another worker including its remote.
 
+**Settled since the last version of this file:** the RDS decision (S1a §10 — both, split
+by what they describe) and binocular eye tracking (already in the architecture: 500 Hz
+binocular dDPI; the gap was that the *vocabulary* could not use it, now closed by
+`Window.eye`).
+
 ---
 
-## 6. If you have time after P4
+## 6. The blocking measurement
+
+**No display calibration exists, and chromatic tasks will not load without one.** That
+is intended — the alternative is a task that runs, looks convincing, and reports a
+colour nobody measured, which reaches a methods section. What is needed is a
+spectroradiometer or colorimeter on the actual panel: primaries and background in CIE
+xyY, gamma, reachable cone contrast, and **whose luminous efficiency** the luminances
+were measured against — a macaque V(λ), not a human one, or `lum=0` is isoluminant for
+nobody in the room. Result goes under `docs/measurements/`.
+
+`tasks/visual_search.py` is the task waiting on it.
+
+---
+
+## 7. If you have time after the eye work
 
 In order: the derived Parquet table at session close (S10), then the `labhost` endpoint
-(S10 §4) which can be built and contract-tested against `wl-preproc`'s published schema
-without them answering anything.
+(S10 §4), which can be built and contract-tested against `wl-preproc`'s published schema
+without them answering anything. Then P4d, the console shell against a fake `taskd`.
 
 **Do not skip ahead to hardware work to feel productive.** Everything on that side is
-gated on measurements that cannot be taken until January, and building it now means
-building it twice.
+blocked on a card, a panel, or a photometer, and none of the three is ours to hurry.
