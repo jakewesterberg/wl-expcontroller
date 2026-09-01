@@ -29,7 +29,7 @@ ALLOCATION: Allocation = replace(
         4102: "REWARD_COMMANDED",
         4103: "ARRAY_ON",
         4104: "DISTRACTOR_ACQUIRED",
-        # Outcome reasons. Thirteen outcomes share five markers, so these are what
+        # Outcome reasons. Eighteen outcomes share five markers, so these are what
         # distinguish them in a recording -- strobed immediately before the marker.
         4110: "OUTCOME_CORRECT",
         4111: "OUTCOME_EARLY_RESPONSE",
@@ -44,5 +44,10 @@ ALLOCATION: Allocation = replace(
         4120: "OUTCOME_TARGET_BREAK",
         4121: "OUTCOME_CATCH_BREAK",
         4122: "OUTCOME_MOTION_BREAK",
+        4123: "OUTCOME_CORRECT_REJECT",
+        4124: "OUTCOME_FALSE_ALARM",
+        4125: "OUTCOME_BLINK_BREAK",
+        4126: "OUTCOME_TRACKER_LOST",
+        4127: "OUTCOME_FAULT",
     },
 )

@@ -74,6 +74,16 @@ class Subject:
     engagement: float = 0.9
     #: Per-frame probability of giving up part-way through a trial.
     lapse: float = 0.0
+    #: Blinks and tracker stalls, as rates per second with a mean duration in
+    #: seconds. **Zero by default and that is a real limitation**: a subject that
+    #: never blinks makes `BLINK_BREAK` and `TRACKER_LOST` unreachable in every
+    #: simulated session, so a task's handling of them would go untested while the
+    #: report claimed a clean run -- the failure that produced traps 8 and 9. A
+    #: session meant to exercise them sets these.
+    blinks: float = 0.0
+    blink_seconds: float = 0.25
+    stalls: float = 0.0
+    stall_seconds: float = 0.03
     _rng: random.Random = field(init=False, repr=False)
     _engaged: bool = field(init=False, default=True, repr=False)
     _inside: set = field(init=False, default_factory=set, repr=False)
@@ -83,6 +93,8 @@ class Subject:
     #: The second is set by `simulate` from the trial, so a subject need not be
     #: constructed knowing the task.
     _visible: set = field(init=False, default_factory=set, repr=False)
+    _interrupted: str = field(init=False, default="ok", repr=False)
+    _interrupted_until: int = field(init=False, default=0, repr=False)
     _scores: dict = field(init=False, default_factory=dict, repr=False)
     #: Set by `simulate`, so a subject need not be constructed knowing the rig.
     _frame_period: float = field(init=False, default=1 / 240, repr=False)
@@ -94,7 +106,33 @@ class Subject:
         self._engaged = self._rng.random() < self.engagement
         self._inside = set()
         self._visible = set()
+        self._interrupted = "ok"
+        self._interrupted_until = 0
         self._frame = 0
+
+    def signal(self, frame: int) -> str:
+        """Whether the gaze signal is available this frame.
+
+        Two independent interruptions, because they are two phenomena: the animal
+        blinks, and the tracker stalls. Durations are geometric about their declared
+        mean, which is the same rate-based reasoning `hazards` uses and for the same
+        reason -- a per-frame number describes a different animal at every refresh
+        rate.
+        """
+        self._tick(frame)
+        if frame < self._interrupted_until:
+            return self._interrupted
+        for kind, rate, mean in (
+            ("blink", self.blinks, self.blink_seconds),
+            ("lost", self.stalls, self.stall_seconds),
+        ):
+            if rate > 0.0 and self._rng.random() < self._per_frame(rate):
+                frames = max(1, int(self._rng.expovariate(1.0 / mean) / self._frame_period))
+                self._interrupted = kind
+                self._interrupted_until = frame + frames
+                return kind
+        self._interrupted = "ok"
+        return "ok"
 
     def display(self, visible, frame: int) -> None:
         """See the screen.

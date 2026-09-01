@@ -57,7 +57,7 @@ _TRIAL_NO_RESPONSE = 38
 
 
 def _standing_outcomes() -> dict[object, int]:
-    """Thirteen outcomes onto five markers.
+    """Eighteen outcomes onto five markers.
 
     **The marker gives the class; the reason travels as a `TaskEvent` strobed just
     before it** -- the rule S2 §4 already established for `NO_FIXATION`. So four
@@ -75,6 +75,10 @@ def _standing_outcomes() -> dict[object, int]:
 
     return {
         Outcome.CORRECT: _TRIAL_CORRECT,
+        # A correct rejection *is* a correct trial: it is the hit on the no-signal
+        # side of the matrix, and an analysis counting correct trials should count it.
+        Outcome.CORRECT_REJECT: _TRIAL_CORRECT,
+        Outcome.FALSE_ALARM: _TRIAL_ERROR,
         # Right thing, wrong time: still not a correct trial.
         Outcome.EARLY_RESPONSE: _TRIAL_ERROR,
         Outcome.LATE_RESPONSE: _TRIAL_ERROR,
@@ -89,6 +93,14 @@ def _standing_outcomes() -> dict[object, int]:
         Outcome.MOTION_BREAK: _TRIAL_ABORT,
         Outcome.NO_FIXATION: _TRIAL_ABORT,
         Outcome.ABORT: _TRIAL_ABORT,
+        # A blink break is structurally a fixation break, so it takes that marker;
+        # which *kind* travels as the `TaskEvent` strobed just before it, the rule
+        # this module already applies to `NO_FIXATION`.
+        Outcome.BLINK_BREAK: _TRIAL_FIXATION_BREAK,
+        # Equipment marks as an abort and never as a fixation break, so a session's
+        # break rate stays a number about the animal.
+        Outcome.TRACKER_LOST: _TRIAL_ABORT,
+        Outcome.FAULT: _TRIAL_ABORT,
     }
 
 

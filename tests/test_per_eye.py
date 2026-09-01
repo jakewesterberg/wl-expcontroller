@@ -40,6 +40,10 @@ class PerEye:
     def happened(self, guard, state: str, frame: int) -> bool:
         return False
 
+    def signal(self, frame: int) -> str:
+        """Always available: these tests are not about signal loss."""
+        return "ok"
+
     def display(self, visible, frame: int) -> None:
         pass
 

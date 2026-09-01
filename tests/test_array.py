@@ -227,6 +227,9 @@ def test_a_hold_on_an_alias_resolves_to_the_item_it_names():
         def display(self, visible, frame: int) -> None:
             pass
 
+        def signal(self, frame: int) -> str:
+            return "ok"
+
     assert run_trial(trial, OnItem("search.1"), 0.01).outcome is Outcome.CORRECT
     assert run_trial(trial, OnItem("search.2"), 0.01).outcome is Outcome.NO_RESPONSE
 

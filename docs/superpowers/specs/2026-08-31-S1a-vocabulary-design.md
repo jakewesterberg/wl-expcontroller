@@ -296,3 +296,38 @@ window scoring the eye its stimulus is not shown to is refused.
 what a real display would carry, and a subject will not acquire a window whose
 coupled stimulus is absent. Without it the subject responded to the transition graph
 alone, so every defect in this section simulated perfectly.
+
+
+## 13. Outcomes extended 2026-09-01 — signal detection, and the rig
+
+Five outcomes, on the PI's decision after review.
+
+**`CORRECT_REJECT` and `FALSE_ALARM`.** Without all four cells of the matrix, d' and
+criterion are not computable — and not recoverable offline, because a correct
+rejection was previously indistinguishable from an animal that did nothing.
+`CORRECT_REJECT` marks `TRIAL_CORRECT`: it is the hit on the no-signal side, and an
+analysis counting correct trials should count it.
+
+**`FAULT` split from `ABORT`.** `ABORT` means the animal went somewhere that was
+neither target nor distractor. A dropped frame is not that, and mixing them makes a
+session's abort rate a number about two unrelated things, with no way to tell whether
+to fix the animal or the camera.
+
+**`BLINK_BREAK` and `TRACKER_LOST`, with independent graces.** They look identical in
+the data — gaze leaves the window — and they are different events: a blink is the
+animal, tracker loss is the rig. `Tolerances(blink=0.0, tracker_lost=0.05)`: blinks
+are not tolerated unless a task says so, because the other way round a task inherits
+a tolerance nobody chose; tracker loss always gets a brief grace, defaulting to P6's
+**measured** stall maximum for OpenIrisDPI (~2% of frames >= 10 ms, max ~50 ms),
+which is the tracker's behaviour rather than the animal's. `None` switches
+enforcement off explicitly, for a joystick-only task with no gaze criterion to
+protect.
+
+An interruption inside its grace **freezes** the trial's view of gaze rather than
+lapsing it: the blind frames are not counted toward a hold, so a hold spanning a
+forgiven stall completes later than an uninterrupted one. Counting them would report
+a hold nobody observed (S5 §4.1); restarting would punish the animal for the camera.
+
+The simulator models both as rates per second, because a subject that never blinks
+makes these outcomes unreachable in every simulated session — the failure that
+produced traps 8 and 9.

@@ -38,6 +38,12 @@ class Outcome(Enum):
     EARLY_ERROR = "early_error"
     LATE_ERROR = "late_error"
 
+    # Correctly withholding, and failing to. **Without both, d' and criterion are
+    # not computable** -- and not recoverable offline either, because a correct
+    # rejection was previously indistinguishable from an animal that did nothing.
+    CORRECT_REJECT = "correct_reject"
+    FALSE_ALARM = "false_alarm"
+
     # Nothing at all
     NO_FIXATION = "no_fixation"
     NO_RESPONSE = "no_response"
@@ -48,6 +54,16 @@ class Outcome(Enum):
     TARGET_BREAK = "target_break"
     CATCH_BREAK = "catch_break"
     MOTION_BREAK = "motion_break"
+    #: A blink longer than the task tolerates. Behaviour, and separable from a
+    #: fixation break because some tasks must not tolerate blinks at all.
+    BLINK_BREAK = "blink_break"
+
+    # The rig, not the animal. Kept apart from `ABORT` -- which means the animal
+    # went somewhere that was neither target nor distractor -- because mixing them
+    # makes a session's abort rate a number about two unrelated things, with no way
+    # to tell whether to fix the animal or the camera.
+    TRACKER_LOST = "tracker_lost"
+    FAULT = "fault"
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,6 +284,31 @@ class State:
 
 
 @dataclass(frozen=True, slots=True)
+class Tolerances:
+    """How long the gaze signal may be interrupted before the trial ends.
+
+    **Two graces, because they are two phenomena.** A blink is the animal; tracker
+    loss is the rig. They look identical in the data -- gaze leaves the window -- so
+    scoring both as fixation breaks inflates a session's break rate with equipment
+    failure, invisibly, and an animal looks worse than it is.
+
+    `blink` defaults to zero: a task that tolerates blinks says so, because the other
+    way round a task inherits a tolerance nobody chose and reports holds that were
+    never observed. `tracker_lost` defaults to 50 ms, which is P6's **measured**
+    stall maximum for OpenIrisDPI (~2% of frames >= 10 ms, max ~50 ms) -- that is the
+    tracker's behaviour, not the animal's, and blaming the animal for it would cost
+    roughly one trial in every few.
+
+    `None` switches enforcement off, explicitly: a joystick-only task has no gaze
+    criterion to protect and should not abort because a camera nobody is using
+    dropped out.
+    """
+
+    blink: "float | P | None" = 0.0
+    tracker_lost: "float | P | None" = 0.05
+
+
+@dataclass(frozen=True, slots=True)
 class Trial:
     start: str
     states: list[State]
@@ -276,6 +317,7 @@ class Trial:
     #: window whether an author typed it or an array generated it, and keeping them
     #: apart would mean every check that walks windows had to walk two lists.
     windows: "list[Window | ItemWindows]" = field(default_factory=list)
+    tolerances: "Tolerances" = field(default_factory=lambda: Tolerances())
 
 
 @dataclass(frozen=True, slots=True)

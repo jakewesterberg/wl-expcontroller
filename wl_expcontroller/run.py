@@ -30,6 +30,7 @@ from wl_expcontroller.task import (
     Score,
     Show,
     Stimulus,
+    Tolerances,
     Trial,
     Update,
     expand_windows,
@@ -62,6 +63,16 @@ class World(Protocol):
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool: ...
 
+    def signal(self, frame: int) -> str:
+        """The state of the gaze signal: `"ok"`, `"blink"` or `"lost"`.
+
+        Told apart because they are different events with the same appearance in the
+        data -- a blink is the animal, tracker loss is the rig -- and scoring both as
+        fixation breaks inflates a session's break rate with equipment failure,
+        invisibly.
+        """
+        return "ok"
+
     def display(self, visible: Mapping[str, Stimulus], frame: int) -> None:
         """What is on the screen this frame.
 
@@ -89,6 +100,9 @@ class Quiet:
     def happened(self, guard: Guard, state: str, frame: int) -> bool:
         return False
 
+    def signal(self, frame: int) -> str:
+        return "ok"
+
     def display(self, visible: Mapping[str, Stimulus], frame: int) -> None:
         return None
 
@@ -112,6 +126,9 @@ class Scripted:
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool:
         return self.at_frame.get(guard) == frame
+
+    def signal(self, frame: int) -> str:
+        return "ok"
 
     def display(self, visible: Mapping[str, Stimulus], frame: int) -> None:
         return None
@@ -308,10 +325,53 @@ def run_trial(
     changed: list[Changed] = []
     _apply(current.enter, visible, shown, open_at, changed, 1)
 
+    # Two independent graces, in frames. `None` is enforcement switched off.
+    def _grace(value) -> "int | None":
+        if value is None:
+            return None
+        return _resolve(value, values or {}) / frame_period
+
+    graces = {
+        "blink": (_grace(trial.tolerances.blink), Outcome.BLINK_BREAK),
+        "lost": (_grace(trial.tolerances.tracker_lost), Outcome.TRACKER_LOST),
+    }
+    interrupted_for = 0
+    interruption = "ok"
+
     for frame in range(1, max_frames + 1):
         world.display(visible, frame)
         elapsed = (frame - entered_at) * frame_period
         bound = values or {}
+
+        # The gaze signal, before anything reads membership. An interruption within
+        # its grace **freezes** the trial's view of gaze rather than lapsing it: the
+        # blind frames are not counted toward a hold, so a hold spanning a forgiven
+        # stall completes later than an uninterrupted one. Counting them would report
+        # a hold nobody observed (S5 4.1); restarting would punish the animal for the
+        # camera.
+        state_of_signal = world.signal(frame)
+        if state_of_signal == "ok":
+            interrupted_for = 0
+            interruption = "ok"
+        else:
+            interrupted_for = interrupted_for + 1 if interruption == state_of_signal else 1
+            interruption = state_of_signal
+            allowed, ends_as = graces.get(state_of_signal, (None, None))
+            if allowed is not None and interrupted_for > allowed:
+                return Result(
+                    ends_as,
+                    frame,
+                    tuple(visited),
+                    tuple(scored),
+                    tuple(shown),
+                    tuple(changed),
+                    tuple(confirmed),
+                )
+            # Frozen: hold clocks do not advance and no edges are derived.
+            holding_since = {
+                name: since + 1 for name, since in holding_since.items()
+            }
+            continue
 
         # Membership first, once per frame: entering and leaving are edges against
         # the previous frame, and a hold that lapses restarts rather than pausing.
