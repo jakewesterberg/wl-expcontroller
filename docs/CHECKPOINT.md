@@ -44,8 +44,17 @@ January validates rather than discovers. Nothing here has touched hardware.
 - `geometry.py` — the split-screen field, derived from S0 §5.2's formula with tests
   asserting agreement with the optics drawing.
 - `review.py` + `wlx review` — the artifact a task is approved from: Mermaid diagram,
-  event-code table, parameter ranges, what needs human review, stimuli.
-- `tasks/` — the two reference tasks and the reference allocation. `wl-mllib`'s to
+  event-code table **named by transition**, a **display timeline**, window coupling
+  and eye, parameter ranges, what needs human review, stimuli.
+- `photometry.py` — colour as a physical claim: CIE xyY and DKL cone contrast,
+  checked against a measured `Calibration`. **No calibration for our panels exists**,
+  so chromatic tasks will not load until one is committed under `docs/measurements/`.
+- `eye.py` — OpenIrisDPI's UDP protocol (`WAITFORDATA` on 9003), P1−P4 as the gaze
+  signal, hold-last with a 50 ms staleness ceiling. Tested over a loopback socket.
+- `dio.py` — the breakout's pin map: 16 event bits on **P0.8–P0.23**, strobe, reward,
+  stim trigger, four inputs. `Absent`, `Simulated` and the real card as peers.
+- `tasks/` — three reference tasks (`fixation_detection`, `adaptive_detection`,
+  `visual_search`) and the reference allocation. `wl-mllib`'s to
   own eventually; here until it exists.
 - `encode.py` — the 16-bit strobed word stream. Round-trips through `wl-preproc`'s
   own `decode_stream` and matches their `encode_payload` exactly across the uint32
@@ -96,8 +105,10 @@ runs out of context before it produces anything.**
 | P4c | Parquet derivation at close; the `labhost` endpoint | Contract-tested against `wl-preproc`'s published schema | S10 | nothing |
 | P4d | The console shell against a fake `taskd` | An operator surface that runs with no rig | S9, S9a | nothing |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
-| P6 | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | their reader |
-| P7 | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
+| **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | their reader |
+| | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested; calibration and saccade detection remain | — | — |
+| **P7** | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
+| | → the interface | **done 2026-09-01** — pin map, refusing `Absent`, recording `Simulated`; the `nidaqmx` implementation needs a card | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
 
 **P1–P4 needed no hardware and are done. P4b–P4d need none either**, so the runway
