@@ -100,7 +100,12 @@ def test_a_later_after_that_can_never_fire_first_is_refused():
             ),
         ],
     )
-    assert "unreachable-timeout" in codes(trial)
+    findings = [f for f in check(trial) if f.code == "unreachable-timeout"]
+    assert findings
+    # The message must name *which* timeout is dead. A finding that says a state has
+    # an unreachable timeout, without saying which, sends the reader back to the
+    # source -- which is the thing these findings exist to replace.
+    assert "ABORT" in findings[0].detail
 
 
 def test_two_after_bounds_whose_ranges_cross_are_allowed():
