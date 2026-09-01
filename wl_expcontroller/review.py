@@ -13,15 +13,19 @@ at 8am.
 from __future__ import annotations
 
 from wl_expcontroller.task import (
+    arrays_of,
     After,
     Custom,
     Mark,
     Guard,
     Outcome,
     P,
+    Hide,
+    ItemWindows,
     Reward,
     Show,
     Trial,
+    Update,
     actions_of,
 )
 
@@ -65,8 +69,59 @@ def _guard_label(guard: Guard) -> str:
     return label
 
 
+def _scores_label(on: object) -> str:
+    """What a window scores. `REMEMBERED` is spelled out, because a window with
+    deliberately nothing in it is a claim the reviewer should see made."""
+    if on is None:
+        return "**nothing declared**"
+    if isinstance(on, str):
+        return f"`{on}`"
+    return "*remembered location*"
+
+
 def _target_label(target: object) -> str:
     return target.name if isinstance(target, Outcome) else str(target)
+
+
+def _timeline(trial: Trial) -> list[str]:
+    """When each stimulus is on the display, and what happens to it.
+
+    **Position and disparity are not enough.** Every defect the 2026-08-31 reviews
+    found was about *when* something was on screen -- a fixation point removed at the
+    moment fixation was asked for, an SOA timed from the wrong zero -- so an artifact
+    showing only position is a picture a reviewer trusts of the half of the task that
+    was never the problem.
+
+    States are listed in declaration order, which is the order a reader follows; it
+    is not an execution order, and a branching task has none.
+    """
+    events: dict[str, list[str]] = {}
+    for state in trial.states:
+        for action in list(state.enter) + [a for e in state.go for a in e.do]:
+            if isinstance(action, Show):
+                events.setdefault(action.stimulus.name, []).append(
+                    f"shown in `{state.name}`"
+                )
+            elif isinstance(action, Hide):
+                events.setdefault(action.stimulus, []).append(
+                    f"hidden in `{state.name}`"
+                )
+            elif isinstance(action, Update):
+                changed = ", ".join(sorted(action.changes()))
+                events.setdefault(action.stimulus, []).append(
+                    f"changed in `{state.name}` ({changed})"
+                )
+    if not events:
+        return []
+    lines = ["## Display timeline", "", "| Stimulus | On screen |", "|---|---|"]
+    for name, happenings in events.items():
+        if not any(step.startswith("hidden") for step in happenings):
+            # Said explicitly rather than left blank: an empty cell reads as missing
+            # information, and "never taken down" is a decision worth seeing.
+            happenings = happenings + ["**until the trial ends**"]
+        lines.append(f"| `{name}` | {' \u2192 '.join(happenings)} |")
+    lines.append("")
+    return lines
 
 
 def render(trial: Trial, allocation_names: dict[int, str] | None = None) -> str:
@@ -81,25 +136,55 @@ def render(trial: Trial, allocation_names: dict[int, str] | None = None) -> str:
             )
     lines += ["```", ""]
 
-    lines += ["## Event codes", "", "| Code | Meaning | Emitted by |", "|---|---|---|"]
-    for name, action in actions_of(trial):
-        if isinstance(action, Mark):
-            lines.append(
-                f"| {action.code} | {names.get(action.code, '**UNALLOCATED**')} "
-                f"| `{name}` |"
-            )
+    # **Named by transition, not only by state.** A state can strobe one code on
+    # entry and another on each outgoing edge, and an artifact attributing them all
+    # to the state cannot be checked against a recording -- which is the one thing
+    # this table is for.
+    lines += ["## Event codes", "", "| Code | Meaning | Emitted by | When |",
+              "|---|---|---|---|"]
+    for state in trial.states:
+        for action in state.enter:
+            if isinstance(action, Mark):
+                lines.append(
+                    f"| {action.code} | {names.get(action.code, '**UNALLOCATED**')} "
+                    f"| `{state.name}` | on entry |"
+                )
+        for edge in state.go:
+            for action in edge.do:
+                if isinstance(action, Mark):
+                    lines.append(
+                        f"| {action.code} "
+                        f"| {names.get(action.code, '**UNALLOCATED**')} "
+                        f"| `{state.name}` | on \u2192 {_target_label(edge.to)} |"
+                    )
     lines.append("")
 
+    lines += _timeline(trial)
+
     if trial.windows:
-        lines += ["## Windows", "", "| Name | Centre | Radius |", "|---|---|---|"]
+        lines += ["## Windows", "", "| Name | Centre | Radius | Scores | Eye |",
+                  "|---|---|---|---|---|"]
+        arrays = arrays_of(trial)
         for window in trial.windows:
+            if isinstance(window, ItemWindows):
+                # A family, described as one: how many members it has is a
+                # parameter, so listing them would be listing one configuration.
+                array = arrays.get(window.of)
+                count = _value_label(array.n) if array is not None else "?"
+                lines.append(
+                    f"| `{window.of}.*` | {count} items on a ring "
+                    f"| {_value_label(window.radius)} | `{window.of}` "
+                    f"| {window.eye} |"
+                )
+                continue
             centre = (
                 f"({_value_label(window.at[0])}, {_value_label(window.at[1])})"
                 if isinstance(window.at, tuple)
                 else _value_label(window.at)
             )
             lines.append(
-                f"| `{window.name}` | {centre} | {_value_label(window.radius)} |"
+                f"| `{window.name}` | {centre} | {_value_label(window.radius)} "
+                f"| {_scores_label(window.on)} | {window.eye} |"
             )
         lines.append("")
 
