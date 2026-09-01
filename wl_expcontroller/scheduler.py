@@ -59,10 +59,25 @@ class Counting:
 #: Retained for readers of older commits; `Counting.RESPONDED` is the name now.
 COMPLETED = Counting.RESPONDED
 
-#: Aborts that say the animal failed to engage rather than chose wrongly, so the
-#: condition still owes a datum and the trial comes back.
+#: The default requeue policy: outcomes where the condition still owes a datum, so
+#: the trial comes back. Two families.
+#:
+#: **The animal failed to engage** rather than choosing wrongly -- it did not answer,
+#: so nothing was measured.
+#:
+#: **The rig failed**, which is not the animal's doing at all. These were added on
+#: 2026-09-01 with the outcomes themselves; without them a condition that lost a
+#: trial to a dropped camera would be silently one datum short, and the shortfall
+#: appears nowhere because a block ends when every condition is owed nothing.
 REQUEUED = frozenset(
-    {Outcome.FIXATION_BREAK, Outcome.NO_FIXATION, Outcome.TARGET_BREAK}
+    {
+        Outcome.FIXATION_BREAK,
+        Outcome.NO_FIXATION,
+        Outcome.TARGET_BREAK,
+        Outcome.BLINK_BREAK,
+        Outcome.TRACKER_LOST,
+        Outcome.FAULT,
+    }
 )
 
 
@@ -125,6 +140,12 @@ class Block:
     #: performance only on completed choices, and conflating the two makes a
     #: criterion track engagement rather than what the animal can do.
     criterion_over: frozenset | None = None
+    #: Which outcomes send the condition back into the queue. **Declared per block**,
+    #: because which aborts owe a datum is a task's judgement rather than the
+    #: framework's: a block training an animal to hold fixation may treat a fixation
+    #: break as a real error that pays its debt, while a block measuring a
+    #: psychometric function must not.
+    requeue_on: frozenset = REQUEUED
     order: Order = field(default_factory=Shuffled)
 
 
@@ -234,7 +255,7 @@ class Scheduler:
             if self.block.criterion is not None:
                 while len(self._window) > self.block.criterion[1]:
                     self._window.popleft()
-        if outcome not in self.block.counts_toward and outcome in REQUEUED:
+        if outcome not in self.block.counts_toward and outcome in self.block.requeue_on:
             # End of the block, not immediately: an animal must not be able to make
             # an easy condition repeat by breaking on the hard one.
             self.requeued.append(condition)

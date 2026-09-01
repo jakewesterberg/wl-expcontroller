@@ -82,15 +82,29 @@ def _clear_pycache() -> None:
         shutil.rmtree(cache, ignore_errors=True)
 
 
+#: A mutated suite may not terminate. Neutering `Scheduler.record` stops the counts
+#: advancing, so a test running a block to completion never sees it finish -- and the
+#: suite hung until an outer timeout killed the whole harness, past its `finally`,
+#: stranding a neutered module on disk. The sentinel healed that, but the hang is the
+#: cause and this is the fix: a mutation that hangs counts as *caught*, since a suite
+#: that no longer terminates has certainly noticed the mutation.
+SUITE_TIMEOUT_SECONDS = 300
+
+
 def _run_suite() -> tuple[bool, str]:
     _clear_pycache()
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0, result.stdout.strip().splitlines()[-1]
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=SUITE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {SUITE_TIMEOUT_SECONDS}s (mutation hangs)"
+    output = result.stdout.strip().splitlines()
+    return result.returncode == 0, output[-1] if output else "no output"
 
 
 def _function_names(source: str) -> list[str]:

@@ -211,3 +211,13 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
     `AttributeError` on any task using `ItemWindows`, because the vocabulary gained a
     window kind and nothing rendered it, and no test rendered a task with an array.
     **When you extend the vocabulary, extend the artifact in the same commit.**
+
+
+12. **The mutation harness can hang, and a hang is how the sentinel gets used.**
+    Neutering `Scheduler.record` stops the counts advancing, so a test running a
+    block to completion never finishes; the suite hung, an outer timeout killed the
+    harness past its `finally`, and a neutered `scheduler.py` was left on disk. The
+    sentinel restored it correctly on the next check — it works — but the fix is a
+    per-run timeout in the tool, and a mutation that hangs now counts as caught,
+    because a suite that no longer terminates has certainly noticed it.
+    **Never `git add` immediately after a mutation run that did not print `restored:`.**

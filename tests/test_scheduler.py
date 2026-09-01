@@ -221,3 +221,41 @@ def test_with_replacement_respects_weights():
     drawn = [scheduler.next_trial().name for _ in range(2000)]
 
     assert 0.05 < drawn.count("rare") / len(drawn) < 0.15
+
+
+def test_a_trial_lost_to_equipment_still_owes_its_datum():
+    """The rig failing is not the animal declining.
+
+    `TRACKER_LOST`, `BLINK_BREAK` and `FAULT` were added to the outcome vocabulary on
+    2026-09-01 and were not in the requeue set, so a condition that lost a trial to a
+    dropped camera would have been silently one datum short -- and the shortfall
+    appears nowhere, because the block ends when every condition is owed nothing.
+    """
+    block = Block(
+        name="b",
+        conditions=[Condition(name="a", values={}, target=2)],
+    )
+    scheduler = Scheduler(blocks=[block], seed=1)
+
+    scheduler.record(scheduler.next_trial().name, Outcome.TRACKER_LOST)
+    assert scheduler.requeued == ["a"]
+
+    scheduler.record(scheduler.next_trial().name, Outcome.FAULT)
+    assert scheduler.requeued == ["a", "a"]
+
+
+def test_requeue_policy_is_declared_per_block():
+    """Which aborts owe a datum is a task's judgement, not the framework's.
+
+    A block training an animal to hold fixation may treat a fixation break as a real
+    error that pays its debt; a block measuring a psychometric function must not.
+    """
+    strict = Block(
+        name="strict",
+        conditions=[Condition(name="a", values={}, target=1)],
+        requeue_on=frozenset(),
+    )
+    scheduler = Scheduler(blocks=[strict], seed=1)
+    scheduler.record(scheduler.next_trial().name, Outcome.FIXATION_BREAK)
+
+    assert scheduler.requeued == []
