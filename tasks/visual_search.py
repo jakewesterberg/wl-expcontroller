@@ -77,8 +77,14 @@ search = Trial(
         Param("response_window", unit="s", low=0.1, high=3.0),
         Param("target_hold", unit="s", low=0.05, high=1.0),
         Param("fix_window", unit="deg", low=0.5, high=5.0),
-        Param("item_window", unit="deg", low=0.5, high=4.0),
-        Param("eccentricity", unit="deg", low=3.0, high=12.0),
+        # Bounded so that twelve items on the smallest legal ring still cannot
+        # crowd: adjacent centres are 2 R sin(pi/n) = 2.59° apart at n=12, R=5, and
+        # two 1° windows sum to 2°. The first version of this task allowed 4°
+        # windows on a 3° ring, where adjacent windows overlapped by more than their
+        # own width -- so a saccade to one distractor would have been scored against
+        # another. It passed every check that existed at the time.
+        Param("item_window", unit="deg", low=0.5, high=1.0),
+        Param("eccentricity", unit="deg", low=5.0, high=14.0),
         # The manipulation. A value, not a structure -- which is the entire point.
         Param("set_size", unit="items", low=2, high=12),
         # `high` is one below `set_size`'s *lowest* legal value, because the checker

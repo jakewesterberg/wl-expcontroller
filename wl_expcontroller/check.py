@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from dataclasses import dataclass
 
 from wl_expcontroller.codes import PROVISIONAL, Allocation
@@ -67,6 +68,9 @@ def check(
         + _array_faults(trial)
         + _stereogram_faults(trial)
         + _eye_faults(trial)
+        + _overlapping_windows(trial)
+        + _unreachable_timeouts(trial)
+        + _crowded_arrays(trial)
     )
 
 
@@ -846,6 +850,152 @@ def _eye_faults(trial: Trial) -> list[Finding]:
                     f"window {name!r} scores the {eye} eye against stimulus "
                     f"{on!r}, which is shown only to the {stimulus_eye} eye; the "
                     f"animal can do the task perfectly and abort every trial",
+                )
+            )
+    return findings
+
+
+# --- Reasoning over the whole parameter space ---------------------------------
+#
+# A task with live parameters is not one configuration, it is a space of them. A
+# check against current values proves the task happens not to be broken today; a
+# check against declared ranges proves an experimenter cannot break it from the
+# console between two trials.
+
+
+def _closest_approach(a: Window, b: Window, ranges) -> tuple[float, float]:
+    """Least possible centre separation, and greatest possible summed radius."""
+    a_x, a_y = a.at
+    b_x, b_y = b.at
+    gaps = [
+        math.hypot(ax - bx, ay - by)
+        for ax in _extremes(a_x, ranges)
+        for ay in _extremes(a_y, ranges)
+        for bx in _extremes(b_x, ranges)
+        for by in _extremes(b_y, ranges)
+    ]
+    reach = max(_extremes(a.radius, ranges)) + max(_extremes(b.radius, ranges))
+    return (min(gaps), reach)
+
+
+def _overlapping_windows(trial: Trial) -> list[Finding]:
+    """No two windows a state scores can contain the same point.
+
+    A gaze position inside both satisfies both guards, and the loop takes whichever
+    transition is listed first -- so which one scores is decided by editing order.
+    That silently relabels errors as correct trials or the reverse, in a task where
+    nothing reads as wrong.
+
+    Only windows scored by the *same state* are compared: two windows in different
+    states are never both live, and a task that reuses a position across states is
+    doing something ordinary.
+    """
+    ranges = _ranges(trial)
+    by_name = {w.name: w for w in trial.windows if not isinstance(w, ItemWindows)}
+    findings: list[Finding] = []
+    seen: set[tuple[str, str]] = set()
+    for state in trial.states:
+        scored = [
+            name
+            for edge in state.go
+            for name in _window_refs(edge.guard)
+            if name in by_name
+        ]
+        for i, first in enumerate(scored):
+            for second in scored[i + 1 :]:
+                pair = tuple(sorted((first, second)))
+                if first == second or pair in seen:
+                    continue
+                seen.add(pair)
+                gap, reach = _closest_approach(by_name[first], by_name[second], ranges)
+                if gap < reach:
+                    findings.append(
+                        Finding(
+                            "overlapping-windows",
+                            f"state {state.name!r} scores {first!r} and {second!r}, "
+                            f"which can come within {gap:.2f}° while their radii "
+                            f"sum to {reach:.2f}°; a gaze position inside both "
+                            f"satisfies both guards, and which one scores is decided "
+                            f"by the order the transitions happen to be written in",
+                        )
+                    )
+    return findings
+
+
+def _unreachable_timeouts(trial: Trial) -> list[Finding]:
+    """A time bound that another always beats is dead code.
+
+    It reads as a safety net, so the case it was meant to catch goes unprotected and
+    nobody notices -- the line is right there. Ranges again: two bounds whose ranges
+    cross are both live, because either can win depending on the setting.
+    """
+    ranges = _ranges(trial)
+    findings: list[Finding] = []
+    for state in trial.states:
+        bounds = [
+            (edge, _widest(edge.guard.seconds, ranges))
+            for edge in state.go
+            if isinstance(edge.guard, After) and edge.guard.since is None
+        ]
+        for index, (edge, (low, _high)) in enumerate(bounds):
+            beaten = [
+                other
+                for position, (other, (_o_low, o_high)) in enumerate(bounds)
+                if position != index and o_high < low
+            ]
+            if beaten:
+                findings.append(
+                    Finding(
+                        "unreachable-timeout",
+                        f"state {state.name!r} can never reach its "
+                        f"{_target_name(edge.to)} timeout: another `After` on the "
+                        f"same state always fires first, for every legal setting",
+                    )
+                )
+    return findings
+
+
+def _target_name(target: object) -> str:
+    return target.name if isinstance(target, Outcome) else repr(target)
+
+
+def _crowded_arrays(trial: Trial) -> list[Finding]:
+    """An array's own items must not overlap, for any legal setting.
+
+    Set size, eccentricity and window radius are all live, so crowding is something
+    an experimenter dials in between two trials: twelve items on a small ring with
+    generous windows overlap, and a saccade to one distractor is then scored against
+    another, or against the target. **Nobody ever reads these windows** -- they are
+    generated, which is the whole point of `ItemWindows` and the reason this needs a
+    check rather than an author's eye.
+
+    The worst case is the most items on the smallest ring with the largest windows:
+    adjacent centres are `2 R sin(pi/n)` apart, and two windows touch when that
+    falls below their summed radius.
+    """
+    arrays = arrays_of(trial)
+    ranges = _ranges(trial)
+    findings: list[Finding] = []
+    for declared in trial.windows:
+        if not isinstance(declared, ItemWindows):
+            continue
+        array = arrays.get(declared.of)
+        if array is None:
+            continue
+        most = max(_extremes(array.n, ranges))
+        tightest = min(_extremes(array.radius, ranges))
+        widest = max(_extremes(declared.radius, ranges))
+        if most < 2:
+            continue
+        spacing = 2.0 * tightest * math.sin(math.pi / most)
+        if spacing < 2.0 * widest:
+            findings.append(
+                Finding(
+                    "crowded-array",
+                    f"array {declared.of!r} can put {int(most)} items on a "
+                    f"{tightest:g}° ring, {spacing:.2f}° apart, with windows of "
+                    f"{widest:g}° radius; adjacent items would overlap and a "
+                    f"saccade to one would be scored against another",
                 )
             )
     return findings
