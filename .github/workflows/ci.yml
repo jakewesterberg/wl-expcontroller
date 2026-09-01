@@ -52,6 +52,6 @@ jobs:
       - run: python tools/mutate.py --all wl_expcontroller/check.py
       - run: python tools/mutate.py --all wl_expcontroller/encode.py
       - run: |
-          for module in run simulate review record geometry task codes components cli taskd photometry eye; do
+          for module in run simulate review record geometry task codes components cli taskd photometry eye dio; do
             python tools/mutate.py --all --returns None "wl_expcontroller/$module.py"
           done
