@@ -31,6 +31,7 @@ January validates rather than discovers. Nothing here has touched hardware.
 |---|---|
 | Tests | 96, green |
 | CI | pytest on 3.11 and 3.13, plus a **mutation gate over every module** — 60 functions, 0 survivors |
+| Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12) |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
 | Hardware verified | **none** |
@@ -193,3 +194,20 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    (`nothing-to-look-at`) and a dynamic one (a simulated animal will not look at a
    stimulus that is not there). Found by review 2026-08-31.
    **The general lesson: ask what a gate is looking at, not how many gates there are.**
+
+
+10. **A feature that stops a human writing something out also stops a human reviewing
+    it.** `Array` and `ItemWindows` exist so set size is a value rather than a
+    structure — which means the items and their windows are never typed and never
+    read. `tasks/visual_search.py` shipped allowing twelve items on a 3° ring with 4°
+    windows: adjacent centres 1.55° apart, 8° of summed window, so a saccade to one
+    distractor would have been scored against another. It passed every check that
+    existed the day it was committed. Found only when the crowding check was written.
+    See P20.
+
+11. **The review artifact is the review, so what it omits is unreviewed.** It rendered
+    stimulus position and disparity and nothing about time — while every defect the
+    reviews found was about *when* something was on screen. It also raised
+    `AttributeError` on any task using `ItemWindows`, because the vocabulary gained a
+    window kind and nothing rendered it, and no test rendered a task with an array.
+    **When you extend the vocabulary, extend the artifact in the same commit.**

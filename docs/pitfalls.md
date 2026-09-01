@@ -22,6 +22,9 @@ the moment it becomes someone's active job. Review this file at every milestone 
 | **P15** | **Model-authored tasks are plausibly wrong** | **High** | Declarative within-trial layer; allocated-not-invented codes; simulated sessions; demo mode; review by rendered diagram |
 | **P16** | **Live parameter change becomes an undocumented discontinuity** | **High** | Full per-trial parameter snapshot; event-coded changes; atomic ITI application; provenance on every write |
 | **P17** | **Our fluid total is a lower bound, not a total** | Medium | Reconcile against the sync box's record of the delivered line, never against commanded |
+| **P18** | **Correct graph, wrong experiment** | **High** | Gates must inspect different *objects*, not the same one three ways — see expanded note |
+| **P19** | **A colour nobody measured reaches a methods section** | **High** | Device-independent colour only; refuse it without a photometer calibration naming its observer |
+| **P20** | **Generated structure nobody reads** | Medium | Anything a parameter generates — array items, their windows — needs a check, because no author will ever look at it |
 
 ## Expanded notes
 
@@ -153,3 +156,50 @@ Our commanded total is therefore a lower bound on fluid delivered. Welfare accou
 reconciles against the sync box's record of the delivered line. Recording commanded and
 delivered separately is what makes a hand-delivered reward countable at all, and training
 days are exactly when an unlogged one would become a silent confound.
+
+
+**P18 — Correct graph, wrong experiment.** For a long stretch every load-time check
+inspected the same object: unreachable-state, unbounded-wait, no-outcome-path and
+shadowing are four views of the transition graph. Adding more of them raised the
+count without narrowing the residual class, and the residual class was tasks whose
+graph is right and whose *experiment* is wrong — nothing modelled what was on the
+screen, when, or for how long. The first reference task carried one: `Show` was
+scoped to its state, so the fixation point was removed at the exact frame the animal
+was asked to hold it. It read correctly, passed all ten checks, and simulated 2,000
+trials clean.
+
+The mitigation is not more checks, it is checks over **more objects**: the display
+timeline, the photometry, the parameter space, the eye. And it applies to the
+simulator equally — a subject that responds to the transition graph alone reproduces
+every defect of this kind perfectly, which is why the simulated animal now sees the
+screen and will not look at a stimulus that is not there.
+
+**The general form: ask what a gate is looking at, not how many gates there are.**
+
+**P19 — A colour nobody measured.** RGB is a set of instructions to one panel, so a
+colour written in a task file is a different stimulus on every monitor and describes
+nothing reproducible in a methods section. The specific damage is quiet: a monitor
+asked for a colour outside its gamut clips, and a clipped colour has neither the
+requested chromaticity nor the requested luminance — so an isoluminant pair stops
+being isoluminant and a chromatic experiment's control condition becomes a luminance
+manipulation, in a task that runs and looks convincing. Mitigation: colour is
+specified in CIE xyY or DKL cone contrast, checked against a measured `Calibration`,
+and refused without one. The calibration must name **whose luminous efficiency** it
+was measured against, because a human V(lambda) makes a stimulus that is isoluminant
+for nobody in the room.
+
+*As of 2026-09-01 no calibration for our panels exists.* Chromatic tasks will not
+load until a photometer measurement is committed under `docs/measurements/`.
+
+**P20 — Generated structure nobody reads.** The point of `Array` and `ItemWindows` is
+that set size is a value, so the individual items and their windows are never written
+down and never read. That removes the author's eye from exactly the structure most
+likely to be wrong: `tasks/visual_search.py` shipped allowing twelve items on a 3°
+ring with 4° windows — adjacent centres 1.55° apart with 8° of summed window, so a
+saccade to one distractor would have been scored against another. It passed every
+check that existed when it was committed, and the defect was found only when the
+crowding check was written a day later.
+
+Mitigation: anything a parameter generates gets a check reasoning over the declared
+ranges, not the current values. The rule generalises — **when a feature exists to
+stop a human writing something out, it also stops a human reviewing it.**
