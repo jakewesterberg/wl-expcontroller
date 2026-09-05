@@ -23,3 +23,14 @@ coupling via the DisplayAdapter seam and decide at release.
 ## Consequences meanwhile
 Dependency additions require a license entry here (CLAUDE.md policy). No LICENSE file
 in the repo until this ADR is Accepted; repo stays private.
+
+## Dependency inventory
+
+Maintained per CLAUDE.md's dependency policy: a new dependency needs a one-line
+justification and a license entry here.
+
+| Dependency | License | Why |
+|---|---|---|
+| `pydantic` >= 2 | MIT | Bounded configuration and session-snapshot validation |
+| `numpy` >= 1.24 | BSD-3-Clause | Least squares for the gaze calibration fit, and the SVD behind its conditioning gate. The gate is `wl-preproc`'s and is computed with numpy on their side; agreeing with their numerics on a refusal threshold is worth more than saving the dependency. Fitting only -- applying a map in the trial loop is plain float arithmetic (`calibration.EyeMap.degrees`) |
+| `pytest` >= 8 (dev) | MIT | Test runner |

@@ -7,7 +7,10 @@ name = "wl-expcontroller"
 version = "0.0.1"
 description = "Behavioural task controller for closed-loop NHP neurophysiology"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2"]
+# numpy: least squares and the SVD behind the conditioning gate. The gate is
+# wl-preproc's, computed with numpy on their side, and matching their numerics
+# matters more than saving the dependency (ADR-0004 inventory).
+dependencies = ["pydantic>=2", "numpy>=1.24"]
 
 [project.scripts]
 wlx = "wl_expcontroller.cli:main"

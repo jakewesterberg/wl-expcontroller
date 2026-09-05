@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from dataclasses import dataclass
 
 from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.components import Registry
+from wl_expcontroller.findings import Finding
 from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.photometry import DKL, Calibration, Color, unrealizable, xyY
 from wl_expcontroller.task import (
@@ -33,15 +33,6 @@ from wl_expcontroller.task import (
     actions_of,
     arrays_of,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class Finding:
-    code: str
-    detail: str
-    #: Whether this refuses the load. A non-blocking finding still surfaces -- a
-    #: `Custom` component is legitimate and still belongs on the review list.
-    blocking: bool = True
 
 
 def check(

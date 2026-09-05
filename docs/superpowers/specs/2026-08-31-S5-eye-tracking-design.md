@@ -53,8 +53,37 @@ and no amount of points on that circle separates them.
 **Consequence for the calibration procedure: present a grid, never a ring.** A ring is the
 intuitive pattern and it silently forecloses the second-order rung — which S3 §7 already
 established is what decides whether a session reaches second-order calibration at all. The
-calibration block presents a **3×3 grid**, and the procedure **computes conditioning online and
-refuses to advance on a degenerate constellation** rather than discovering it in preprocessing.
+procedure **computes conditioning online and refuses to advance on a degenerate constellation**
+rather than discovering it in preprocessing.
+
+**Amended 2026-09-05**, against
+`docs/measurements/dev-machine/2026-09-05-calibration-constellation.md`. Three corrections,
+each of which this section previously got wrong or left open:
+
+- **The constellation is thirteen targets, not nine** — a 3×3 grid at 75% of the per-eye
+  field, plus four intermediates on the diagonals at half that. Coordinates in
+  `calibration.constellation`. At equal animal cost nine, thirteen and twenty-five targets are
+  indistinguishable for accuracy; what thirteen buys is **survival**. Nine points fitting six
+  parameters has three to spare, so losing four makes the second-order fit not
+  ill-conditioned but *impossible*, and the session drops to affine at roughly double the
+  error. Thirteen survive losing five, 95% of the time.
+- **A ring plus a centre is not an acceptable substitute**, and this section implied it was by
+  ruling out only the bare ring. Ring-8 plus a centre scores **0.1697** — it passes the 0.10
+  gate — while leaving the quadratic radial term resting on a single contrast between two
+  radii. It is worse than it looks rather than degenerate, which is the harder failure to see.
+- **Conditioning is necessary and not sufficient.** It is scale-invariant *by construction*
+  (their `_conditioning` docstring is explicit about why), so **it cannot see how far the
+  targets reach**: a 3×3 shrunk to 60% of the field scores 0.2277, identical to one spanning
+  it, and then understates its own error by 3.0× against 1.5×. The acceptance criterion
+  therefore gains a second clause — the constellation is compared against the eccentricity the
+  session will actually test, and extrapolation beyond it is reported
+  (`constellation-inside-tested-region`). Reported, not refused: the measurement supports
+  "reach matters", and inventing a refusal threshold it does not support would be fabrication.
+
+**How far out is not obvious, and the intuitive answer is wrong.** 75% of the field beat 60%,
+70%, 85% and 100% under every optics assumption swept. Pushing targets to the panel edge is
+*worse than* pulling them in: the corners sit near 21° eccentricity, outside the disc any task
+uses, and their leverage drags the quadratic away from where stimuli actually go.
 
 ---
 
@@ -183,7 +212,7 @@ Two mechanisms, both, per S3 §7 — `wl-preproc` calls them *"complementary, no
 
 **Planned calibration block, at session start.** Emits `TaskTypeCode.CALIBRATION` in its
 `BLOCK_START` payload, planned by wl.works' session planner so ingest does not quarantine it.
-Presents a **3×3 grid** (§2), gathers fixations at each target, computes conditioning online, and
+Presents the **thirteen-target constellation** (§2), gathers fixations at each target, computes conditioning online, and
 refuses to complete on a degenerate constellation. This is the block that reliably supplies the
 six well-spread targets the second-order rung requires.
 
@@ -212,6 +241,34 @@ compute or consume.
 
 **Drafted as an amendment** at `docs/pending-wl-preproc-amendments.md`.
 
+**Accepted and built, verified 2026-09-05 against `wl-preproc` at `c3f6c5e`.** This is no
+longer a proposal: `wl_preproc/eye/expcontroller.py::read_expcontroller_map` exists, and
+reading it settles the format rather than leaving it to us. **The ask is closed and the
+schema is theirs**, which means the fields below are a contract and not a suggestion —
+their models forbid unrecognised keys at both levels, so a field we invent is a declined
+file rather than an ignored one.
+
+| | Field | Notes |
+|---|---|---|
+| file-wide | `mapping_version` | int. Read and required; nothing branches on it yet |
+| file-wide | `raw_definition` | Must be the literal `"CR1 - CR4"` — their names for our P1 and P4. **They refuse any other value**, so coefficients honestly labelled for a different feature can never be silently applied to their CR1−CR4 difference |
+| file-wide | `targets` | Degrees. The constellation *presented*, not the subset an eye worked |
+| per eye | `model` | `affine` or `second_order`, validated against their enum |
+| per eye | `coefficients.x` / `.y` | **In `basis()` column order.** They do no re-ordering here, unlike the `.bhv2` path, because this format is theirs to define and ours to write to |
+| per eye | `conditioning`, `rms_residual_deg` | Required, validated, then deliberately discarded — their `CalibrationMap` reserves those columns for fits *they* performed and will not misreport ours into them |
+
+**Per eye, independently.** `left:` and `right:` are validated separately, and a file offering
+a usable map for one eye is an ordinary outcome rather than a broken file — tracking is
+often better on one side. A malformed `right` declines only `right`.
+
+**Wire format is YAML**, matching every other cross-repo file that pipeline reads. We write
+it by hand (`calibration.GazeCalibration.to_yaml`) rather than take a YAML dependency onto a
+task PC, for the reason `encode.py` gives about the codec, and
+`tests/test_calibration.py` round-trips it through their real reader. One trap found doing
+so and worth not rediscovering: **PyYAML resolves `1e-17` to the string `'1e-17'`**, because
+YAML 1.1's float pattern requires a decimal point before the exponent — and a quadratic
+coefficient that small is entirely ordinary.
+
 ---
 
 ## 9. Measurement
@@ -233,7 +290,7 @@ the online fit is validated against `validate_map` before an animal depends on i
 
 | # | Item | Blocks |
 |---|---|---|
-| 1 | `wl-preproc` accepting an online-calibration reader for our format | their `ONLINE` source working at all |
+| 1 | ~~`wl-preproc` accepting an online-calibration reader for our format~~ **Closed 2026-09-05: they built it** (`eye/expcontroller.py::read_expcontroller_map`, at `c3f6c5e`), and its source fixes the schema — see §8 | — |
 | 2 | Staleness ceiling and grace-period values | frozen only after V3(a) |
 | 3 | ~~Stall policy inside a gaze-contingent epoch~~ **Answered: proceed and mark.** Remaining: whether the per-trial staleness summary reaches `wl-preproc`'s `EyeQuality` | wl-preproc |
 | 4 | ~~Independent per-eye maps or a cyclopean fit~~ **Answered in S4 §3: independent per-eye maps against a shared cyclopean target set at zero disparity** | — |

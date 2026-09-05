@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** `main`, **194 tests passing**, working tree clean. CI runs pytest
+**State at handoff:** `main`, **222 tests passing**, working tree clean. CI runs pytest
 on 3.11/3.12/3.13 plus a mutation gate over every module, and now checks out
 `wl-preproc` so the event-codec round-trip actually runs. No hardware exists.
 
@@ -29,28 +29,35 @@ are genuinely blocked. Until a rig runs all four end to end, January discovers.
 
 ---
 
-## 1. Do eye calibration. It needs no hardware and it is on the day-one path.
+## 1. Eye calibration: the fit is done. The block that feeds it is not.
 
-The fixation-grid map from raw DPI signal to degrees, per animal, with drift
-correction. **Ours to build** — OpenIris's own calibration plugins target its display,
-not our task display. Read **S5** (`docs/superpowers/specs/2026-08-31-S5-eye-tracking-design.md`)
-and nothing else from the spec set.
+**Done 2026-09-05** — `wl_expcontroller/calibration.py`, 28 tests, mutation-clean:
 
-`eye.py` already gives you samples in camera pixels with `dpi()` as the gaze signal
-(P1 − P4). Calibration is the missing step between that and a `Window` test.
+- The thirteen-target constellation, **measured rather than chosen**
+  (`docs/measurements/dev-machine/2026-09-05-calibration-constellation.md`,
+  regenerate with `tools/calibration_design.py`).
+- The fit, per eye and independently, reaching for second-order and falling back to
+  affine with a **reported** finding rather than silently.
+- Three refusals in a deliberate order: count, then conditioning, then extent.
+- Serialisation to the file `wl-preproc` actually reads, round-tripped through their
+  real `read_expcontroller_map` in CI.
 
-**Two things already established, which will cost you a day each if rediscovered:**
+**Still missing, and it is the larger half:**
 
-- **A ring of calibration targets is degenerate** on the second-order basis. Points on
-  a circle make `constant`, `dx²` and `dy²` linearly dependent, so the fit is singular.
-  Use a grid, or a ring plus centre, and **assert the conditioning** in a test.
-- **The model is already fixed** by `wl-preproc` — read their source, not their README.
-  We supply the map; the functional form is not ours to choose. See ADR-0007 and the
-  cross-repo table below.
+- **The calibration block itself.** Nothing presents a target, waits for a fixation,
+  or decides which fixations to accept. `fit_eye` takes one averaged raw vector per
+  target and something has to produce those. This is a task in the S1 vocabulary, so
+  it also tests whether that vocabulary can express its own calibration.
+- **The versioned mapping object** (S5 §6): recentering, drift correction, the
+  calibration button and mid-session recalibration are four faces of one thing, and
+  every trial cites the mapping version in force. None of that exists.
+- **The join to replayed gaze.** `eye.Replay` produces samples and `EyeMap.degrees`
+  consumes a raw vector; nothing connects them, so no test yet drives degrees from a
+  recorded session.
 
-**Exit condition:** replayed OpenIrisDPI samples map to degrees, the fit refuses a
-degenerate target set with a named finding rather than a singular matrix, and a
-calibration map serialises in a form `wl-preproc` can read.
+**Exit condition for the rest of P6:** replayed OpenIrisDPI samples reach a `Window`
+test in degrees, through a versioned map, with the calibration block that produced it
+runnable headless.
 
 ---
 
@@ -78,6 +85,14 @@ calibration map serialises in a form `wl-preproc` can read.
 - **Never `git add` after a mutation run that did not print `restored:`.** Trap 12: a
   run hung, an outer timeout killed the harness past its `finally`, and left a neutered
   `scheduler.py` on disk. The sentinel healed it; the tool now has its own timeout.
+- **Conditioning cannot see how far the targets reach**, being scale-invariant by
+  construction. A grid shrunk to 60% of the field scores identically to one spanning
+  it and then understates its own error. Do not treat the gate as an acceptance
+  criterion on its own; see trap 13.
+- **PyYAML reads `1e-17` as a string**, not a float — YAML 1.1 wants a decimal point
+  before the exponent. `calibration._yaml_float` handles it and a test proves it end
+  to end through their reader. Any other hand-written YAML in this repo needs the
+  same care.
 
 ---
 
@@ -105,7 +120,7 @@ calibration map serialises in a form `wl-preproc` can read.
 | Who | What | Blocks |
 |---|---|---|
 | `wl-sync` | Session id readable by a rig host; a subject change mints `_02` | naming our own output directory |
-| `wl-preproc` | A reader for our online calibration map | **§1 of this document** |
+| ~~`wl-preproc`~~ | ~~A reader for our online calibration map~~ | **Closed 2026-09-05: they built it.** `eye/expcontroller.py::read_expcontroller_map` at `c3f6c5e`, and its source fixes the schema |
 | `wl-preproc` | `PARAM_CHANGE` escape; ownership split; codec as an artifact | P16's guarantee |
 | `wl-works` | `prepare-session`, calibration block per session, alerting | ELN autopopulation |
 | PI | **A photometer measurement of the panel** | every chromatic task (P19) |

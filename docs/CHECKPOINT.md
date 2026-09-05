@@ -1,6 +1,6 @@
 # Where this build actually is
 
-**Last updated 2026-09-01**, at the commit this file was committed in. Check
+**Last updated 2026-09-05**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
@@ -38,13 +38,13 @@ Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | **194, green** |
-| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors. The only non-caught entries are no-op `display` bodies, where `return None` mutated to `return None` is not a mutation |
+| Tests | **225, green** |
+| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors; `calibration` added 2026-09-05, 0 survivors over all nine functions. The only non-caught entries are no-op `display` bodies, where `return None` mutated to `return None` is not a mutation |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12) |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
-| Cross-repo asks outstanding | **4 documents, 3 repos** — see below |
+| Cross-repo asks outstanding | **4 documents, 3 repos**; one blocking ask closed 2026-09-05 — see below |
 | Hardware verified | **none** |
-| Day-one path (DIO out · gaze in · frame on screen · reward out) | **2 of 4 built and proven without hardware**; the display and the real card remain |
+| Day-one path (DIO out · gaze in · frame on screen · reward out) | **2 of 4 built and proven without hardware**; the display and the real card remain. Gaze now reaches degrees as well as pixels |
 
 ### What exists
 
@@ -78,8 +78,17 @@ Nothing here has touched hardware.
   task cannot express and a console cannot exceed; fluid reconciled against the
   delivered line rather than what we commanded; an unknown daily total refuses
   delivery. **Requires human review before merge** (CLAUDE.md).
+- `calibration.py` — raw Purkinje vector to degrees, per eye. The model and the file
+  are both **wl-preproc's**, read from their source; ours is the procedure. Thirteen
+  targets (measured, not chosen), three refusals in a deliberate order — count, then
+  conditioning, then extent — and a YAML file round-tripped through their real reader
+  in CI. `EyeMap.degrees` is the trial-loop path and allocates nothing.
+- `findings.py` — the `Finding` dataclass, lifted out of `check.py` so `calibration`
+  can report refusals in the same words without a circular import.
 - `tools/mutate.py` — proves a test can fail. Read its docstring before trusting a
   mutation result by hand.
+- `tools/calibration_design.py` — which constellation the block should present, and
+  why. Results in `docs/measurements/dev-machine/2026-09-05-calibration-constellation.md`.
 
 ### What does not exist, and matters
 
@@ -89,11 +98,56 @@ Nothing here has touched hardware.
 - **Parquet is not written.** JSONL is the durable streamed record; the columnar
   table is a derivation at session close that does not exist yet. Deliberate: a
   Parquet file is only valid once closed, so it cannot be the crash-safe record.
-- **The round-trip tests skip in CI**, because they need a `wl-preproc` checkout
-  beside this repo and CI has none. So **CI cannot currently catch an encoder
-  drift** — the strongest test in the suite is the one CI does not run. Fixing it
-  needs `wl-preproc` pinned as a git dependency, which needs a token for a private
-  repo. Recorded rather than hidden.
+- ~~**The round-trip tests skip in CI**~~ **Fixed 2026-09-01** and this entry
+  contradicted the "things that were wrong and are now right" list below for four
+  days. CI checks out the sibling and sets `WLX_REQUIRE_PREPROC=1`, so a skip is now
+  a failure. **The mutation job did not get the same treatment until 2026-09-05** —
+  it ran without the sibling, so contract tests skipped inside it and a mutation only
+  the round-trip could catch would have survived into a green gate. Same hole, one
+  job over.
+
+---
+
+## What moved on 2026-09-05
+
+**Eye calibration, and a cross-repo blocker that was already unblocked.**
+
+`wl-preproc` had written `eye/expcontroller.py::read_expcontroller_map` — a reader
+built for us, in answer to our own handover — and this file still listed the ask as
+blocking. **Reading their source rather than our note about it is what found it**,
+which is trap 1 for the fourth time. Their reader fixes the schema, so most of what
+looked like design work was already decided.
+
+- **The constellation is measured, not chosen** (`tools/calibration_design.py`,
+  results under `docs/measurements/dev-machine/`). Thirteen targets: a 3×3 grid at 75%
+  of the per-eye field plus four intermediates on the diagonals at half that.
+- **75% reach beat 60%, 70%, 85% and 100%** under every optics assumption swept, and
+  the intuitive answer — span the whole field — was the *worst* of the five. The panel
+  corners sit near 21° eccentricity, outside the disc any task uses, and their leverage
+  drags the quadratic away from where stimuli go.
+- **Thirteen points buy survival, not accuracy.** At equal animal cost 9, 13 and 25 are
+  indistinguishable. Nine points fitting six parameters has three to spare, so losing
+  four makes the second-order fit impossible rather than merely poor; thirteen survive
+  losing five 95% of the time.
+- **`calibration.py`**: per-eye fit, second-order reaching down to affine with a
+  reported fallback, three refusals ordered count → conditioning → extent, and the YAML
+  file round-tripped through their real reader.
+- **`findings.py`**: `Finding` lifted out of `check.py`, because the extent check will
+  eventually run the other way round and a circular import was waiting.
+- **The CI mutation job now checks out `wl-preproc`.** It did not, so contract tests
+  skipped inside the gate that exists to prove tests can fail.
+
+### Two ideas measured down, recorded so they are not proposed again
+
+**Holding four targets out as a validation set.** Attractive, and wrong at this budget:
+four points at ten fixations each carry a noise floor the size of the error being
+estimated, so the held-out number overstates true error by 34–51% *whether the model
+fits or not*, with a ±0.05° spread between identical sessions. It cannot estimate
+accuracy and it cannot detect misfit, which were the two reasons to want it.
+
+**A ring plus a centre as an acceptable constellation.** `docs/next-session.md` offered
+it as equivalent to a grid. It scores 0.1697 — it *passes* the 0.10 gate — while
+leaving the quadratic radial term resting on a single contrast between two radii.
 
 ---
 
@@ -173,8 +227,10 @@ runs out of context before it produces anything.**
 | P4c | Parquet derivation at close; the `labhost` endpoint | Contract-tested against `wl-preproc`'s published schema | S10 | nothing |
 | P4d | The console shell against a fake `taskd` | An operator surface that runs with no rig | S9, S9a | nothing |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
-| **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | their reader |
-| | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested; calibration and saccade detection remain | — | — |
+| **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |
+| | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested | — | — |
+| | → the calibration fit and its file | **done 2026-09-05** — constellation, per-eye fit, three refusals, round-tripped through their reader | — | — |
+| | → the calibration *block*, drift correction, saccade detection | **not started.** Nothing presents a target or gathers a fixation; the versioned mapping object of S5 §6 does not exist | S5 | nothing |
 | **P7** | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
 | | → the interface | **done 2026-09-01** — pin map, refusing `Absent`, recording `Simulated`; the `nidaqmx` implementation needs a card | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
@@ -199,7 +255,7 @@ by another worker including its remote.
 | Repo | Blocking? | Ask |
 |---|---|---|
 | `wl-sync` | **yes** | The session id is unreadable by a rig host, so `taskd` cannot name its own output directory. And two animals a day means a subject change must mint `_02` |
-| `wl-preproc` | **yes** | `read_online_map` reads a `.bhv2` that will not exist, so `CalibrationSource.ONLINE` is unavailable for every session |
+| ~~`wl-preproc`~~ | ~~**yes**~~ | ~~`read_online_map` reads a `.bhv2` that will not exist~~ **Closed 2026-09-05: they built the second reader** (`eye/expcontroller.py::read_expcontroller_map`, at `c3f6c5e`). Its source fixes the schema, and `tests/test_calibration.py` round-trips against it |
 | `wl-preproc` | no | `PARAM_CHANGE` escape; ownership split recorded; codec declared as an artifact; per-trial gaze staleness |
 | `wl-works` | no | `prepare-session`, a planned calibration block per session, alerting on bad readings |
 
@@ -300,3 +356,29 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
     per-run timeout in the tool, and a mutation that hangs now counts as caught,
     because a suite that no longer terminates has certainly noticed it.
     **Never `git add` immediately after a mutation run that did not print `restored:`.**
+
+13. **A gate can be blind to the thing that matters most, by design, and still read
+    as passing.** `wl-preproc`'s conditioning metric is scale-invariant on purpose --
+    without it, an ordinary grid reads as degenerate for no reason but where the
+    screen origin sits. The cost is that **it cannot see how far the targets reach**:
+    a 3×3 shrunk to 60% of the field scores 0.2277, *identical* to one spanning it,
+    then understates its own error by 3.0× against 1.5×. The calibration procedure had
+    conditioning as its only acceptance criterion, so this was the whole gate. Same
+    lesson as trap 9 from the other direction: ask what a gate is looking at, and then
+    ask what it was deliberately built not to look at.
+
+14. **PyYAML reads `1e-17` as a string.** YAML 1.1's float pattern requires a decimal
+    point before the exponent, so `yaml.safe_load("a: 1e-17")` returns `'1e-17'`, and
+    a quadratic calibration coefficient small enough to render that way is entirely
+    ordinary. The file would have been declined, or silently rescued by pydantic's
+    coercion, depending on the reader's mood. `calibration._yaml_float` inserts the
+    point; a test proves it end to end through their reader rather than only against
+    the helper. **Any hand-written YAML in this repo needs the same care.**
+
+15. **The four calibration decisions that looked like design were already made.**
+    The model, the basis column order, the conditioning thresholds, and the entire
+    file schema all live in `wl-preproc`'s source -- including a reader written
+    specifically for us that this checkpoint still listed as an outstanding blocking
+    ask. Trap 1, fourth occurrence. The pattern is now specific enough to state as a
+    rule: **before designing anything that crosses a repo boundary, grep their source
+    for our own name.**
