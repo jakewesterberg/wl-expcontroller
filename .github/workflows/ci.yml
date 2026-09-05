@@ -45,7 +45,7 @@ jobs:
         with:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,contract]"
       - run: pytest -q
         env:
           WLX_REQUIRE_PREPROC: "1"
@@ -67,7 +67,7 @@ jobs:
         with:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,contract]"
       # Every module, methods included. The harness exits non-zero on a survivor,
       # so a test that cannot fail fails the build.
       - run: python tools/mutate.py --all wl_expcontroller/check.py

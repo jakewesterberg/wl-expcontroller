@@ -69,3 +69,4 @@ justification and a license entry here.
 | `pydantic` >= 2 | MIT | Bounded configuration and session-snapshot validation |
 | `numpy` >= 1.24 | BSD-3-Clause | Least squares for the gaze calibration fit, and the SVD behind its conditioning gate. The gate is `wl-preproc`'s and is computed with numpy on their side; agreeing with their numerics on a refusal threshold is worth more than saving the dependency. Fitting only -- applying a map in the trial loop is plain float arithmetic (`calibration.EyeMap.degrees`) |
 | `pytest` >= 8 (dev) | MIT | Test runner |
+| `pyyaml` >= 6 (contract extra) | MIT | Only so `wl-preproc`'s own `eye/expcontroller.py` can be imported by the contract tests, which read YAML. Never installed on a rig, and deliberately not `pip install -e ./wl-preproc`, which would pull DataJoint, Kilosort and SpikeInterface |

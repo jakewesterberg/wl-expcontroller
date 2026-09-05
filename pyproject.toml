@@ -20,9 +20,22 @@ wlx = "wl_expcontroller.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# What the CONTRACT tests need in order to import wl-preproc's own modules -- not
+# what this package needs. Their `eye/expcontroller.py` reads YAML, so proving our
+# writer against their reader means having their reader importable. Deliberately the
+# minimum: `pip install -e ./wl-preproc` would pull DataJoint, Kilosort and
+# SpikeInterface, which is exactly the pipeline stack `tests/conftest.py` says has no
+# business near a task PC. numpy and pydantic are already here.
+contract = ["pyyaml>=6"]
 
 [tool.setuptools.packages.find]
 include = ["wl_expcontroller*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `tasks/` is reference material, not part of the installed package
+# (`packages.find` includes only `wl_expcontroller*`), and `tests/test_gaze.py`
+# imports a task from it. Without this, `python -m pytest` passes -- it puts the
+# working directory on `sys.path` -- and bare `pytest` fails, which is how a green
+# local run and a red CI run came from identical code.
+pythonpath = ["."]
