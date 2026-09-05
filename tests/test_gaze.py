@@ -10,6 +10,7 @@ or a clock can be wrong without any single module being wrong.
 from __future__ import annotations
 
 import json
+import random
 
 import pytest
 
@@ -29,7 +30,7 @@ from wl_expcontroller.gaze import Tracked
 from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.run import run_trial
 from wl_expcontroller.scheduler import Block, Scheduler
-from wl_expcontroller.task import Outcome, SaccadeTo
+from wl_expcontroller.task import Outcome, SaccadeOnset, SaccadeTo
 from tasks.calibration import calibration
 
 GEOMETRY = Geometry(panel_diagonal_cm=80.01, viewing_distance_cm=57.0)
@@ -172,13 +173,101 @@ def test_version_zero_maps_nothing():
     assert not world.in_window("cal", frame=0)
 
 
-def test_a_saccade_guard_refuses_rather_than_scoring_a_miss():
-    """There is no saccade detector yet. `False` would be indistinguishable from an
-    animal that did not saccade, and every saccade-contingent trial would score as a
-    miss that reads as behaviour."""
-    world = Tracked(_tracker_at(0.0, 0.0), _fitted_mapping(), calibration, 0.008)
-    with pytest.raises(NotImplementedError, match="S5"):
-        world.happened(SaccadeTo("cal"), state="hold", frame=3)
+def _saccade_source(dwell: int, steps: int, to: tuple[float, float], tail: int = 200,
+                    noise: float = 0.02, seed: int = 5):
+    """Payloads that fixate at the origin, saccade linearly to `to`, then hold.
+
+    **With fixational noise, and that is not decoration.** Engbert-Kliegl's threshold
+    is estimated from the trace's own velocity distribution, so a perfectly still eye
+    gives a scale of exactly zero and the detector refuses to fire at all -- which is
+    what `wl-preproc`'s does too (`if eta_x <= 0 or eta_y <= 0: return []`). A
+    noiseless trace tests a case no eye produces.
+    """
+    rng = random.Random(seed)
+    frames = [(0.0, 0.0)] * dwell
+    frames += [((to[0] * k) / steps, (to[1] * k) / steps) for k in range(1, steps + 1)]
+    frames += [to] * tail
+    return Replay(payloads=[
+        (0.0, _payload(x + rng.gauss(0, noise), y + rng.gauss(0, noise), frame=n))
+        for n, (x, y) in enumerate(frames)
+    ])
+
+
+def _drive(world, frames: int, frame_period: float = 0.002):
+    """Pump the world's own per-frame hook, which is where gaze is polled."""
+    for frame in range(frames):
+        world.display({}, frame)
+        yield frame
+
+
+def test_a_saccade_onset_is_reported_once_and_only_once():
+    """One saccade is one response. A guard that stayed true would turn a single
+    saccade into a stream of them for as long as the state lasted."""
+    world = Tracked(
+        Tracker(), _fitted_mapping(), calibration, 0.002,
+        source=_saccade_source(dwell=120, steps=10, to=(8.0, 0.0)),
+    )
+    fired = [f for f in _drive(world, 320) if world.happened(SaccadeOnset(), "s", f)]
+    assert len(fired) == 1, f"fired on frames {fired}"
+
+
+def test_saccade_to_waits_for_the_eye_to_land():
+    """At confirmation the eye is still in flight and has landed nowhere. Firing
+    `SaccadeTo` then would report a saccade heading somewhere as having arrived."""
+    values = {"target_x": 8.0, "target_y": 0.0, "cal_window": 2.0,
+              "fix_timeout": 3.0, "cal_hold": 0.2}
+    world = Tracked(
+        Tracker(), _fitted_mapping(), calibration, 0.002, values,
+        source=_saccade_source(dwell=120, steps=10, to=(8.0, 0.0)),
+    )
+    onset_frame = landed_frame = None
+    for frame in _drive(world, 320):
+        if onset_frame is None and world.detector.onset is not None:
+            onset_frame = frame
+        if world.happened(SaccadeTo("cal"), "s", frame):
+            landed_frame = frame
+            break
+    assert onset_frame is not None, "no saccade was detected at all"
+    assert landed_frame is not None, "the saccade never landed in the window"
+    assert landed_frame > onset_frame
+    # The load-bearing part: the eye is not still moving when the landing is
+    # reported. `landed > onset` alone is satisfied by firing one frame later.
+    assert not world.detector.in_flight
+    assert world.gaze_cyclopean(landed_frame) == pytest.approx((8.0, 0.0), abs=0.5)
+
+
+def test_saccade_to_does_not_fire_when_the_saccade_lands_elsewhere():
+    """The distinction between `SaccadeTo` and 'a saccade happened'. A saccade away
+    from the target must not satisfy a guard naming the target."""
+    values = {"target_x": 8.0, "target_y": 0.0, "cal_window": 2.0,
+              "fix_timeout": 3.0, "cal_hold": 0.2}
+    world = Tracked(
+        Tracker(), _fitted_mapping(), calibration, 0.002, values,
+        source=_saccade_source(dwell=120, steps=10, to=(-9.0, 4.0)),
+    )
+    fired = [f for f in _drive(world, 320) if world.happened(SaccadeTo("cal"), "s", f)]
+    assert fired == []
+
+
+def test_a_saccade_is_consumed_by_whichever_guard_takes_it():
+    """Otherwise one saccade satisfies `SaccadeTo` on every later frame gaze stays in
+    the window, which is indistinguishable from saccading there over and over."""
+    values = {"target_x": 8.0, "target_y": 0.0, "cal_window": 2.0,
+              "fix_timeout": 3.0, "cal_hold": 0.2}
+    world = Tracked(
+        Tracker(), _fitted_mapping(), calibration, 0.002, values,
+        source=_saccade_source(dwell=120, steps=10, to=(8.0, 0.0)),
+    )
+    fired = [f for f in _drive(world, 400) if world.happened(SaccadeTo("cal"), "s", f)]
+    assert len(fired) == 1, f"fired on frames {fired}"
+
+
+def test_a_still_eye_produces_no_saccade():
+    world = Tracked(
+        Tracker(), _fitted_mapping(), calibration, 0.002,
+        source=Replay(payloads=[(0.0, _payload(1.0, 1.0, frame=n)) for n in range(400)]),
+    )
+    assert [f for f in _drive(world, 350) if world.happened(SaccadeOnset(), "s", f)] == []
 
 
 # ---------------------------------------------------------------------------

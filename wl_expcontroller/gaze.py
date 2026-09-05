@@ -11,12 +11,20 @@ once, and a world that re-derived them would let the simulator and the rig disag
 about what a hold is. It does not implement staleness either: `Tracker.state` owns
 that, and this reports it.
 
-**`happened` answers nothing yet, and says so.** `SaccadeTo` and `SaccadeOnset` ride
-on the versioned Engbert-Kliegl component that does not exist (S5 §5). Returning
-`False` for a saccade guard is not "the saccade did not happen", it is "nothing here
-can tell you" -- so the guards that need it raise rather than quietly scoring every
-trial as a miss. A task using them against this world fails loudly at the frame it
-would have mattered.
+**Saccades arrive from `saccade.Detector`, and the two guards are different events.**
+`SaccadeOnset` fires on the frame a saccade is *confirmed* -- which trails its true
+onset, by arithmetic the detector's docstring sets out. `SaccadeTo(window)` cannot fire
+then, because at confirmation the eye is still in flight and has not landed anywhere;
+it fires once the saccade has ended and gaze is inside the named window. Conflating the
+two would make `SaccadeTo` fire on a saccade heading somewhere else entirely.
+
+**A saccade is consumed by whichever guard takes it.** Without that, one saccade
+satisfies `SaccadeTo` on every subsequent frame gaze stays in the window, which is
+indistinguishable from the animal saccading there repeatedly and turns one response
+into a stream of them.
+
+**The detector is per trial** (S5 §5), so a world is reset per trial; a threshold
+carried across would let a quiet trial set a noisy one's sensitivity.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ from typing import Mapping as MappingType
 
 from wl_expcontroller.calibration import Mapping
 from wl_expcontroller.eye import Tracker
+from wl_expcontroller.saccade import Detector, Saccade
 from wl_expcontroller.task import (
     Guard,
     P,
@@ -63,6 +72,7 @@ class Tracked:
         values: dict[str, float] | None = None,
         started_at: float = 0.0,
         source=None,
+        detector: Detector | None = None,
     ) -> None:
         self.tracker = tracker
         self.mapping = mapping
@@ -72,6 +82,13 @@ class Tracked:
         #: a test can drive the tracker directly, but on a rig this is how gaze
         #: arrives, and it is polled in `display` for the reason given there.
         self.source = source
+        #: Per trial, per S5 §5. Supplied rather than created when a caller wants to
+        #: log its parameters and version alongside the mapping version.
+        self.detector = detector if detector is not None else Detector()
+        #: The most recent confirmed saccade not yet claimed by a guard, and whether
+        #: it has landed. A saccade in flight cannot have landed in anything.
+        self._pending: Saccade | None = None
+        self._in_flight = False
         self._values = values or {}
         declared, _aliases = expand_windows(trial, self._values)
         self._windows = {window.name: window for window in declared}
@@ -98,6 +115,19 @@ class Tracked:
             return None
         return self.mapping.degrees(which, getattr(sample, which).dpi())
 
+    def gaze_cyclopean(self, frame: int) -> tuple[float, float] | None:
+        """Both eyes averaged, which is what the detector runs on. A per-eye detector
+        would need a per-eye threshold and would answer a question no guard asks:
+        `SaccadeOnset` is about the animal, not about one of its eyes."""
+        positions = [self.gaze(side, frame) for side in ("left", "right")]
+        usable = [p for p in positions if p is not None]
+        if not usable:
+            return None
+        return (
+            sum(p[0] for p in usable) / len(usable),
+            sum(p[1] for p in usable) / len(usable),
+        )
+
     def in_window(self, window: str, frame: int, eye: str = "both") -> bool:
         declared = self._windows.get(window)
         if declared is None:
@@ -121,12 +151,19 @@ class Tracked:
         return math.hypot(x - cx, y - cy) <= radius
 
     def happened(self, guard: Guard, state: str, frame: int) -> bool:
-        if isinstance(guard, (SaccadeTo, SaccadeOnset)):
-            raise NotImplementedError(
-                f"{type(guard).__name__} needs the saccade detector of S5 §5, which "
-                f"does not exist yet. Returning False here would score every "
-                f"saccade-contingent trial as a miss and read as behaviour"
-            )
+        if isinstance(guard, SaccadeOnset):
+            found = self._pending is not None and self._in_flight
+            if found:
+                self._pending = None
+            return found
+        if isinstance(guard, SaccadeTo):
+            if self._pending is None or self._in_flight:
+                return False
+            if not self.in_window(guard.window, frame, self._windows[guard.window].eye
+                                  if guard.window in self._windows else "both"):
+                return False
+            self._pending = None
+            return True
         return False
 
     def signal(self, frame: int) -> str:
@@ -152,3 +189,13 @@ class Tracked:
         """
         if self.source is not None:
             self.tracker.accept(self.source.poll(self.when(frame)))
+        # Feed the detector from the same sample the window tests will read, so a
+        # saccade and the gaze that guards see cannot come from different frames.
+        now = self.when(frame)
+        confirmed = self.detector.accept(now, self.gaze_cyclopean(frame))
+        if confirmed is not None:
+            self._pending = confirmed
+            self._in_flight = True
+        elif self._in_flight and not self.detector.in_flight:
+            # The run closed: the eye has landed, so `SaccadeTo` can now ask where.
+            self._in_flight = False

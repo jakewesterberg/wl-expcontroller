@@ -46,6 +46,7 @@ RETURNS: dict[str, str] = {
     "encode": "[]",
     "calibration": "[]",
     "gaze": "[]",
+    "saccade": "None",
     "run": "None",
     "simulate": "None",
     "review": "None",

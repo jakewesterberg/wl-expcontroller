@@ -38,7 +38,7 @@ Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | **280, green** |
+| Tests | **307, green** |
 | CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
@@ -86,12 +86,20 @@ Nothing here has touched hardware.
   in CI. `EyeMap.degrees` is the trial-loop path and allocates nothing.
 - `findings.py` — the `Finding` dataclass, lifted out of `check.py` so `calibration`
   can report refusals in the same words without a circular import.
+- `saccade.py` — online Engbert-Kliegl, and the batch form it is checked against.
+  The algorithm is **`wl-preproc`'s**, chosen by S5 §5 precisely so online-versus-
+  offline disagreement measures staleness and latency rather than two methods — and
+  a contract test proves ours finds *the same intervals theirs finds*, which is what
+  that argument actually rests on. Per-trial adaptive threshold, the S5 §5 stall rule,
+  and a detection whose window touched a gap is flagged rather than dropped.
 - `gaze.py` — **the join**: `eye.Tracker` + a versioned `Mapping` + a trial's windows,
   behind `run.World`. Replayed OpenIrisDPI payloads reach a `Window` test in degrees,
   which is P6's exit condition. Polls the tracker in `display`, the loop's only
-  per-frame call that lands before the frame's guards. A saccade guard **raises**
-  rather than returning `False`, because there is no detector yet and a `False` reads
-  as an animal that did not saccade.
+  per-frame call that lands before the frame's guards. `SaccadeOnset` and `SaccadeTo`
+  are **different events**: onset fires at confirmation, while the eye is still in
+  flight and has landed nowhere; `SaccadeTo` waits for the run to close and then asks
+  where. A saccade is consumed by whichever guard takes it, or one saccade becomes a
+  stream of them.
 - `tasks/calibration.py` — the calibration block, written in the ordinary task
   vocabulary. It passes every load-time check with zero findings, which is the
   finding: the vocabulary can express its own calibration.
@@ -341,7 +349,8 @@ runs out of context before it produces anything.**
 | | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested | — | — |
 | | → the calibration fit and its file | **done 2026-09-05** — constellation, per-eye fit, three refusals, round-tripped through their reader | — | — |
 | | → the block, the versioned map, the join | **done 2026-09-05** — `tasks/calibration.py`, `Mapping`/`MappingLog`/`Collector`, and `gaze.Tracked`. A whole block runs from scheduled targets to an installed map | — | — |
-| | → saccade detection, and wiring the block into `taskd` | **not started.** Engbert–Kliegl (S5 §5) does not exist, so `SaccadeTo`/`SaccadeOnset` raise against a real tracker. The block composes in a test; no session runs one | S5 | nothing |
+| | → saccade detection | **done 2026-09-05** — online Engbert–Kliegl, contract-tested to find the same intervals `wl-preproc`'s offline detector finds, wired to both saccade guards | — | — |
+| | → wiring the calibration block into `taskd` | **not started.** The block composes in a test and that test is the driver's shape; no *session* runs one, and nothing writes the map at session close. Overlaps P4b | S5, S8 | nothing |
 | **P7** | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
 | | → the interface | **done 2026-09-01** — pin map, refusing `Absent`, recording `Simulated`; the `nidaqmx` implementation needs a card | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
