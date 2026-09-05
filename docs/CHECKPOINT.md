@@ -98,13 +98,25 @@ Nothing here has touched hardware.
 - **Parquet is not written.** JSONL is the durable streamed record; the columnar
   table is a derivation at session close that does not exist yet. Deliberate: a
   Parquet file is only valid once closed, so it cannot be the crash-safe record.
-- ~~**The round-trip tests skip in CI**~~ **Fixed 2026-09-01** and this entry
-  contradicted the "things that were wrong and are now right" list below for four
-  days. CI checks out the sibling and sets `WLX_REQUIRE_PREPROC=1`, so a skip is now
-  a failure. **The mutation job did not get the same treatment until 2026-09-05** —
-  it ran without the sibling, so contract tests skipped inside it and a mutation only
-  the round-trip could catch would have survived into a green gate. Same hole, one
-  job over.
+- **CI is red, has been since 2026-08-31, and nothing since has been pushed.**
+  Established 2026-09-05 by reading the runs rather than the workflow file. Three
+  facts, each of which was believed otherwise:
+  - The last pushed run (`33439705522`) fails with **three survivors in the mutation
+    gate** — `words_for`, `words_for_code` and `_checksum`. They are caught by the
+    codec round-trip alone, and the round-trip was skipping (`1 skipped`) because
+    that job had no `wl-preproc`. A mutation gate running without its contract tests
+    reports that tests can fail while the ones that would have failed did not run.
+  - **`main` is 18 commits ahead of `origin/main`.** Everything from 2026-09-01 and
+    2026-09-05 — including the 09-01 fix that added the checkout to the test job —
+    has never run in CI at all. The fix was believed to be in force for four days.
+  - **That fix would not have worked.** It used `path: ../wl-preproc`, and
+    `actions/checkout` resolves `path` against `$GITHUB_WORKSPACE` and **throws** on
+    anything that escapes it (verified 2026-09-05 against `src/input-helper.ts`
+    lines 40–53 in `actions/checkout`, not against its README). Corrected to a path
+    inside the workspace, with `tests/conftest.py` searching both locations.
+
+  **None of this is verified until it is pushed.** The claim in this file is that the
+  configuration is now right, not that CI is green.
 
 ---
 

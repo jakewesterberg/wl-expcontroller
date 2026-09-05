@@ -36,12 +36,14 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-#: Same sibling checkout `tests/conftest.py` relies on, for the same reason: the
+#: The same two locations `tests/conftest.py` searches, for the same reason: the
 #: metric that gates a session is theirs, and a second copy of it here would be a
-#: second definition free to drift.
-_SIBLING = _ROOT.parent / "wl-preproc"
-if _SIBLING.is_dir() and str(_SIBLING) not in sys.path:
-    sys.path.insert(0, str(_SIBLING))
+#: second definition free to drift. Beside the repo locally; inside it under CI,
+#: which cannot place a checkout outside its workspace.
+for _candidate in (_ROOT.parent / "wl-preproc", _ROOT / "wl-preproc"):
+    if _candidate.is_dir() and str(_candidate) not in sys.path:
+        sys.path.insert(0, str(_candidate))
+        break
 
 try:
     from wl_preproc.eye.calibration import (

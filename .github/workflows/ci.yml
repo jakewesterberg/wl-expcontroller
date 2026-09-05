@@ -25,10 +25,15 @@ jobs:
         # repository alone -- so those tests were skipping silently into a green
         # build. WLX_REQUIRE_PREPROC turns the skip into a failure, so a checkout
         # that stops working is loud instead of invisible.
+        #
+        # `path` is INSIDE the workspace, not `../wl-preproc`. actions/checkout
+        # resolves `path` against $GITHUB_WORKSPACE and throws on anything that
+        # escapes it, so the sibling layout that works on a laptop fails the step
+        # here. tests/conftest.py searches both.
         uses: actions/checkout@v4
         with:
           repository: jakewesterberg/wl-preproc
-          path: ../wl-preproc
+          path: wl-preproc
       - run: pip install -e ".[dev]"
       - run: pytest -q
         env:
@@ -46,21 +51,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      # The mutation job needs the sibling too. Without it the contract tests skip,
-      # and a mutation to `calibration.basis_row` or `conditioning` that only the
-      # round-trip would have caught survives into a green mutation gate -- the same
-      # shape of hole `actions/checkout` left in the codec tests, which read as
-      # passing for weeks while fetching this repository alone.
-      - name: Check out wl-preproc beside this repo
+      # The mutation job needs it too, and not having it is why this job was RED
+      # from 2026-08-31 to 2026-09-05 with three survivors: `words_for`,
+      # `words_for_code` and `_checksum` are caught by the round-trip alone, and the
+      # round-trip was skipping. A mutation gate running without its contract tests
+      # reports that tests can fail while the ones that would have failed did not run.
+      - name: Check out wl-preproc inside the workspace
         uses: actions/checkout@v4
         with:
           repository: jakewesterberg/wl-preproc
-          path: ../wl-preproc
+          path: wl-preproc
       - run: pip install -e ".[dev]"
       # Every module, methods included. The harness exits non-zero on a survivor,
       # so a test that cannot fail fails the build.
       - run: python tools/mutate.py --all wl_expcontroller/check.py
       - run: python tools/mutate.py --all wl_expcontroller/encode.py
+        env:
+          WLX_REQUIRE_PREPROC: "1"
       - run: python tools/mutate.py --all wl_expcontroller/calibration.py
         env:
           WLX_REQUIRE_PREPROC: "1"

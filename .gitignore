@@ -6,4 +6,5 @@
 .ruff_cache/
 .venv-spike/
 .venv/
+/wl-preproc/
 __pycache__/
