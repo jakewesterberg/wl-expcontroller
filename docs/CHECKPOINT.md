@@ -147,6 +147,17 @@ Nothing here has touched hardware.
   because a category of exemption anyone can open with a comment is this tool's
   sixth failure waiting to happen.
 
+- **CI green with the selective gate, 2026-09-05.** `bounds` and `scheduler` have
+  now been mutation-tested in CI for the first time, and the run that did it
+  escalated to all nineteen modules because the workflow itself had changed --
+  which is the escalation rule working rather than a coincidence.
+
+  **A full sweep costs 47-61 minutes** (read off GitHub's own run durations for runs
+  `33963919596`, `33966768083`, `33971576019`, `33972113194` on 2026-09-05 -- not a
+  claim about the rig, and not from `tools/`). That is per push, and it grows with
+  every module and every test, which is why the gate became selective rather than
+  merely faster.
+
 - **Three modules were never in the CI mutation gate at all**, found when the
   hand-maintained list in the workflow was replaced by one derived from disk:
   `bounds` — **the welfare-critical module** — plus `scheduler` and `findings`. This
