@@ -30,6 +30,12 @@ from wl_expcontroller.task import (
 )
 
 
+#: The separator in every sequence this artifact renders. A named constant
+#: because it is a non-ASCII escape and `review.py` is the one module where such an
+#: escape reached an f-string expression and broke Python 3.11.
+ARROW = " \u2192 "
+
+
 def _value_label(value: object) -> str:
     """A parameter reference by name, a literal duration with its unit.
 
@@ -119,7 +125,14 @@ def _timeline(trial: Trial) -> list[str]:
             # Said explicitly rather than left blank: an empty cell reads as missing
             # information, and "never taken down" is a decision worth seeing.
             happenings = happenings + ["**until the trial ends**"]
-        lines.append(f"| `{name}` | {' \u2192 '.join(happenings)} |")
+        # Joined outside the f-string: a backslash inside an f-string *expression*
+        # is a syntax error before Python 3.12 (PEP 701 relaxed it), and this
+        # package declares >=3.11. The 3.11 CI job is the only thing that can catch
+        # that -- a 3.12+ interpreter parses it happily, so it cannot be found
+        # locally, and it made `wlx review` unimportable on the declared floor for
+        # four days while nothing was pushed.
+        sequence = ARROW.join(happenings)
+        lines.append(f"| `{name}` | {sequence} |")
     lines.append("")
     return lines
 
@@ -155,7 +168,7 @@ def render(trial: Trial, allocation_names: dict[int, str] | None = None) -> str:
                     lines.append(
                         f"| {action.code} "
                         f"| {names.get(action.code, '**UNALLOCATED**')} "
-                        f"| `{state.name}` | on \u2192 {_target_label(edge.to)} |"
+                        f"| `{state.name}` | on {ARROW.strip()} {_target_label(edge.to)} |"
                     )
     lines.append("")
 

@@ -38,8 +38,8 @@ Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | **249, green** |
-| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors; `calibration` and `gaze` added 2026-09-05, 0 survivors. The only non-caught entries are no-op `display` bodies, where `return None` mutated to `return None` is not a mutation |
+| Tests | **261, green** |
+| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors; `calibration` and `gaze` added 2026-09-05, 0 survivors. Functions that already return immediately are now reported `NOT MUTABLE` by the harness rather than counted as survivors — see trap 7 |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos**; one blocking ask closed 2026-09-05 — see below |
@@ -374,7 +374,19 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    its next run, and the rule stands that **nothing is committed without a green
    suite in the same breath**. `git add -A` after a long-running command is the shape
    of the mistake.
-7. **The mutation harness has been wrong four times, always the same way** — quietly
+7. **The mutation harness has now been wrong five times, and the fifth broke the
+    other way.** The first four were false *clean* -- quietly examining nothing and
+    reporting success. The fifth was a false *alarm*: neutering inserts
+    `return None` at the top of a function whose body was already `return None`,
+    which changes nothing, so the suite passed and the harness called it a SURVIVOR.
+    Three no-op `display` bodies meant **the mutation gate could never go green**,
+    and this file carried the discrepancy as a footnote instead of a bug. Now proved
+    from the AST and reported as `NOT MUTABLE`, with `tests/test_mutate.py` testing
+    the narrowness rather than the feature -- a category that does not fail the build
+    is precisely the shape of the first four, so what is tested is that it refuses
+    every case but the one. Original entry follows.
+
+    **The mutation harness has been wrong four times, always the same way** — quietly
    examining nothing and reporting success. It matched only `_`-prefixed names, then
    only module-level `def`, then gave up entirely on a name defined twice, then
    **aborted the whole `--all` sweep at the first signature it could not match** --
@@ -453,3 +465,19 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
     ask. Trap 1, fourth occurrence. The pattern is now specific enough to state as a
     rule: **before designing anything that crosses a repo boundary, grep their source
     for our own name.**
+
+16. **A backslash inside an f-string expression is a syntax error before 3.12, and
+    only CI can see it.** `review.py` had `f"...{' \u2192 '.join(x)}..."`, which PEP
+    701 legalised in 3.12 -- so every local interpreter here parses it happily, and
+    `ast.parse(..., feature_version=(3, 11))` does **not** reproduce the error. This
+    package declares `requires-python = ">=3.11"`, so `wlx review` was unimportable on
+    its own declared floor for four days. **The 3.11 CI job is the only detector**,
+    which is worth knowing the next time it is tempting to trim the matrix.
+
+17. **Nothing was pushed for four days, and every claim about CI was therefore
+    unverified.** The 09-01 checkout fix, the 3.11 syntax error, the pytest
+    invocation difference and the mutation gate's false alarm were all sitting in
+    unpushed commits. The first push found four bugs in two runs. **A green local
+    suite says nothing about CI, and `git log origin/main..main` is the check** --
+    a checkpoint that says "CI does X" when X has never executed is the same class of
+    error as a stale checkpoint, and harder to see.

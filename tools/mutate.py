@@ -21,6 +21,7 @@ depend on anyone remembering to clear a cache.
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import json
 import shutil
@@ -123,6 +124,69 @@ def _function_names(source: str) -> list[str]:
     return re.findall(r"^ *def ([a-z_][a-z0-9_]*)\(", source, flags=re.M)
 
 
+#: Returned by `mutate` when the neutered body is the body it already had.
+INERT = "inert"
+
+
+def _already_inert(source: str, function: str, returns: str) -> bool:
+    """True when inserting `return {returns}` at the top of `function` changes nothing.
+
+    **A function that already returns immediately cannot be neutered, because it is
+    already neutral.** `Quiet.display` and `Scripted.display` are `return None`;
+    `World.display` is a docstring. Neutering inserts `return None` above a body that
+    was `return None`, the suite passes because nothing changed, and the harness
+    called that a SURVIVOR -- so the mutation gate could never go green, and the
+    build failed on three functions that are not defects. `docs/CHECKPOINT.md` had
+    been carrying the discrepancy as a footnote ("the only non-caught entries are
+    no-op display bodies") rather than as the tool bug it is.
+
+    **This must stay narrow.** It is the fifth time this harness has been changed,
+    and the previous four were all it quietly examining nothing and reporting
+    success -- so a category that does not fail the build is exactly the shape of the
+    recurring bug. The condition is therefore proved from the AST, not guessed: every
+    definition of the name must already begin (after any docstring) with the very
+    statement the mutation would insert, or be empty where the insertion is
+    `return None`. If any one definition would really be changed, this is False and a
+    survivor is a real survivor.
+    """
+    try:
+        tree = ast.parse(source)
+        wanted = ast.dump(ast.parse(f"return {returns}").body[0])
+    except SyntaxError:
+        return False
+
+    found = False
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name != function:
+            continue
+        found = True
+        body = list(node.body)
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            body = body[1:]  # the docstring is not a statement the mutation displaces
+        neutral_already = returns.strip() == "None" and (
+            not body
+            or isinstance(body[0], ast.Pass)
+            or (
+                isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and body[0].value.value is Ellipsis
+            )
+        )
+        if neutral_already:
+            continue
+        if body and ast.dump(body[0]) == wanted:
+            continue
+        return False
+    return found
+
+
 def mutate(path: Path, function: str, args_returns: str) -> bool:
     """True if neutering `function` makes the suite fail, i.e. it is covered.
 
@@ -140,6 +204,8 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
     returns because that is what this codebase's checkers do.
     """
     original = path.read_text()
+    if _already_inert(original, function, args_returns):
+        return INERT, f"body is already `return {args_returns}`; nothing to neuter"
     pattern = (
         # `[^\n]*` after the colon so a trailing comment does not defeat the match.
         # `def __repr__(self) -> str:  # pragma: no cover` did, and under `--all`
@@ -205,11 +271,16 @@ def main() -> int:
 
     survivors = []
     skipped = []
+    inert = []
     for name in targets:
         caught, summary = mutate(path, name, args.returns)
         if caught is None:
             skipped.append(name)
             print(f"  SKIPPED   {name:32} {summary}")
+            continue
+        if caught is INERT:
+            inert.append(name)
+            print(f"  inert     {name:32} {summary}")
             continue
         print(f"  {'caught  ' if caught else 'SURVIVED'}  {name:32} {summary}")
         if not caught:
@@ -217,6 +288,10 @@ def main() -> int:
 
     ok, summary = _run_suite()
     print(f"\nrestored: {summary}")
+    if inert:
+        # Printed, never fatal, and never silent: these are functions no mutation
+        # can reach, and a reader has to be able to tell that from coverage.
+        print(f"\nNOT MUTABLE (already returns immediately): {', '.join(inert)}")
     if skipped:
         print(f"\nNOT MUTATED (signature not matched): {', '.join(skipped)}")
     if survivors:
