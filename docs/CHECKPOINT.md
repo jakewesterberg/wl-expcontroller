@@ -124,8 +124,23 @@ Nothing here has touched hardware.
     lines 40–53 in `actions/checkout`, not against its README). Corrected to a path
     inside the workspace, with `tests/conftest.py` searching both locations.
 
-  **None of this is verified until it is pushed.** The claim in this file is that the
-  configuration is now right, not that CI is green.
+  **Pushed and watched, 2026-09-05.** Run `33956427875`: the path fix was correct and
+  a **third**, independent fault was underneath it. `GITHUB_TOKEN` is scoped to this
+  repository, so checking out a second private one returns `Not Found` — which is the
+  token problem this file recorded in the abstract ("needs a token for a private
+  repo") without connecting it to the checkout that was believed to work.
+
+  **CI is red now and stays red until someone creates a secret.** It needs a
+  fine-grained PAT with `Contents: read` on `jakewesterberg/wl-preproc`, added as the
+  repository secret `WL_PREPROC_TOKEN`. A step before each checkout says exactly that
+  rather than letting the failure surface as `Not Found` from an action that cannot
+  explain itself. **Red is the correct state**, not a thing to route around: the
+  round-trip and the calibration contract are the only checks that we emit their
+  protocol and fit their model rather than our idea of either, and a contract test
+  that is allowed to not run is not a contract test.
+
+  Three ways of getting one checkout wrong, each of which looked fixed: no checkout,
+  a path outside the workspace, and no credentials for it.
 
 ---
 

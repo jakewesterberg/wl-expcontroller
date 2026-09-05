@@ -2,6 +2,23 @@ name: ci
 
 on: [push, pull_request]
 
+# Both jobs need a `wl-preproc` checkout, and getting one has failed three different
+# ways. Recorded here because each looked fixed and was not:
+#
+#   1. No checkout at all (until 2026-09-01). The codec round-trip skipped silently
+#      into a green build -- `actions/checkout` fetches this repository alone.
+#   2. `path: ../wl-preproc` (2026-09-01). Never ran, because nothing was pushed for
+#      four days; it would have thrown anyway, since actions/checkout resolves `path`
+#      against $GITHUB_WORKSPACE and refuses anything escaping it.
+#   3. No token (2026-09-05). `GITHUB_TOKEN` is scoped to THIS repository, so
+#      checking out a second private one returns `Not Found`.
+#
+# The round-trip and the calibration contract are the only checks that we emit
+# wl-preproc's protocol and fit their model rather than our idea of either. They are
+# not allowed to skip, so `WLX_REQUIRE_PREPROC=1` turns a skip into a failure -- which
+# means this workflow is RED until the secret below exists. That is the intended
+# state: a contract test that is allowed to not run is not a contract test.
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -19,21 +36,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Check out wl-preproc beside this repo
-        # The event-codec round-trip is the only check that we emit *their*
-        # protocol rather than our idea of it, and `actions/checkout` fetches this
-        # repository alone -- so those tests were skipping silently into a green
-        # build. WLX_REQUIRE_PREPROC turns the skip into a failure, so a checkout
-        # that stops working is loud instead of invisible.
-        #
-        # `path` is INSIDE the workspace, not `../wl-preproc`. actions/checkout
-        # resolves `path` against $GITHUB_WORKSPACE and throws on anything that
-        # escapes it, so the sibling layout that works on a laptop fails the step
-        # here. tests/conftest.py searches both.
+      - name: Require the wl-preproc token
+        # Before the checkout, so the failure names the cause instead of surfacing
+        # as `Not Found` from an action that cannot say why it was refused.
+        env:
+          TOKEN: ${{ secrets.WL_PREPROC_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::WL_PREPROC_TOKEN is not set, so wl-preproc cannot be checked out and the contract tests cannot run. Create a fine-grained personal access token with Contents:read on jakewesterberg/wl-preproc and add it to this repository as the secret WL_PREPROC_TOKEN."
+            exit 1
+          fi
+      - name: Check out wl-preproc inside the workspace
         uses: actions/checkout@v4
         with:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
+          token: ${{ secrets.WL_PREPROC_TOKEN }}
       - run: pip install -e ".[dev]"
       - run: pytest -q
         env:
@@ -51,16 +69,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      # The mutation job needs it too, and not having it is why this job was RED
-      # from 2026-08-31 to 2026-09-05 with three survivors: `words_for`,
-      # `words_for_code` and `_checksum` are caught by the round-trip alone, and the
-      # round-trip was skipping. A mutation gate running without its contract tests
-      # reports that tests can fail while the ones that would have failed did not run.
+      - name: Require the wl-preproc token
+        env:
+          TOKEN: ${{ secrets.WL_PREPROC_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::WL_PREPROC_TOKEN is not set. Without it the contract tests skip INSIDE the mutation gate, and mutations only they can catch survive into a green result -- which is how words_for, words_for_code and _checksum survived from 2026-08-31."
+            exit 1
+          fi
       - name: Check out wl-preproc inside the workspace
         uses: actions/checkout@v4
         with:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
+          token: ${{ secrets.WL_PREPROC_TOKEN }}
       - run: pip install -e ".[dev]"
       # Every module, methods included. The harness exits non-zero on a survivor,
       # so a test that cannot fail fails the build.
