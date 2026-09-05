@@ -548,3 +548,14 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
     exempt list**, so a new module is a build failure rather than a silent omission.
     The same shape as trap 7: the question is not whether the gate passes, it is
     whether the gate is looking at everything it claims to.
+
+19. **A contract test's counterparty moves while you work, and the two halves fail
+    differently.** On 2026-09-05 the local `wl-preproc` checkout advanced onto a
+    feature branch where `detect_engbert_kliegl` had gained an `fs_hz` argument, while
+    `origin/main` -- **which is what CI checks out** -- still had the older signature.
+    The saccade contract test therefore failed locally and passed in CI, for a change
+    to neither detector's behaviour. Two lessons, and the second is the useful one.
+    A signature is not the contract; the intervals are, so the test adapts its *call*
+    and keeps asserting the behaviour on both. And **a local sibling checkout is not
+    the version CI tests against** -- it can be ahead, behind, or on a branch -- so a
+    green local contract test and a green CI contract test are different claims.

@@ -11,6 +11,7 @@ expectation, so the online path is only ever compared with the shared algorithm.
 
 from __future__ import annotations
 
+import inspect
 import math
 import os
 import random
@@ -331,9 +332,21 @@ def test_our_detector_finds_the_intervals_theirs_finds():
     array = np.array(gaze)
     their_v = their_velocity.velocity(array, FS)
     available = [None] * len(gaze)
-    their_runs = theirs.detect_engbert_kliegl(
-        array, their_v, available, theirs.DEFAULT_EK_PARAMS
-    )
+
+    # **Their signature is not the contract; the intervals are.** On 2026-09-05 the
+    # sibling checkout moved onto a feature branch where `detect_engbert_kliegl` had
+    # gained an `fs_hz` argument -- "accepted and unused", for uniformity across
+    # detectors -- while `origin/main`, which CI checks out, still had the four-argument
+    # form. So this test failed locally and passed in CI, for a change to neither
+    # detector's behaviour. Adapting the CALL keeps the behavioural assertion below
+    # running against both, which is the thing worth protecting; a signature mismatch
+    # would otherwise present as a detection disagreement, which is what this test is
+    # supposed to mean.
+    parameters = inspect.signature(theirs.detect_engbert_kliegl).parameters
+    arguments = [array, their_v, available]
+    if "fs_hz" in parameters:
+        arguments.append(FS)
+    their_runs = theirs.detect_engbert_kliegl(*arguments, theirs.DEFAULT_EK_PARAMS)
 
     assert [(s.start, s.stop) for s in mine] == [(r.start, r.stop) for r in their_runs]
 
