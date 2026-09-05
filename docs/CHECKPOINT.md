@@ -112,7 +112,14 @@ Nothing here has touched hardware.
 
 - **`taskd` is a spine, not a daemon.** It runs a session end to end and meets M1,
   but there is no console link, no live parameter path and no preflight. Those are
-  P4 and later.
+  P4 and later. **It also never imports `scheduler.py`**, so blocks, quotas and
+  criterion transitions exist as a mutation-clean component that nothing drives.
+- **`bounds.check_delivery` is called by nothing outside its own tests.** The
+  welfare-critical module enforces no ceiling today, because no code path consults it:
+  `run.py` resolves a `Reward` action into nothing, its comment noting that `Mark` and
+  `Reward` "belong to the I/O layer, which has no simulator yet". **A bound nothing
+  calls reads as present and is not**, which is the same shape as trap 7's checker and
+  trap 18's gate. It is the first thing P4b should fix.
 - **Parquet is not written.** JSONL is the durable streamed record; the columnar
   table is a derivation at session close that does not exist yet. Deliberate: a
   Parquet file is only valid once closed, so it cannot be the crash-safe record.
