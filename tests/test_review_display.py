@@ -2,7 +2,7 @@
 
 from wl_expcontroller.review import render
 from wl_expcontroller.task import (
-    After, Disc, Entered, Hide, Hold, Mark, On, Outcome, Show, State,
+    After, Disc, Entered, Hide, Hold, Mark, On, Outcome, REMEMBERED, Show, State,
     Stimulus, Trial, Update, Window,
 )
 
@@ -111,3 +111,55 @@ def test_an_array_task_renders():
     # The family is described as a family, since how many there are is a parameter.
     assert "search.*" in artifact
     assert "set_size items" in artifact
+
+
+def _window_row(artifact: str, name: str) -> str:
+    """The window table's row for `name`, as a reviewer reads it."""
+    for line in artifact.splitlines():
+        if line.startswith(f"| `{name}` |"):
+            return line
+    raise AssertionError(f"no window row for {name!r} in the artifact")
+
+
+def test_the_artifact_names_the_stimulus_each_window_scores():
+    """Trap 11: the artifact *is* the review, so what it omits is unreviewed. Window
+    coupling is the specific thing that check `nothing-to-look-at` exists to enforce,
+    and a reviewer can only confirm it if the artifact says it."""
+    artifact = render(TRIAL)
+    assert "`fix`" in _window_row(artifact, "fix")
+    assert "`target`" in _window_row(artifact, "target")
+
+
+def test_a_window_scoring_a_remembered_location_says_so():
+    """`REMEMBERED` is a claim someone made -- that nothing is displayed there on
+    purpose -- and it has to be legible as one. Rendered identically to an ordinary
+    stimulus it would read as a coupling the task does not have."""
+    trial = Trial(
+        start="hold",
+        windows=[Window("recalled", at=(6.0, 0.0), radius=2.0, on=REMEMBERED)],
+        states=[
+            State("hold", enter=[Show(FIX)],
+                  go=[On(Hold("recalled", 0.2), Outcome.CORRECT),
+                      On(After(1.0), Outcome.NO_RESPONSE)]),
+        ],
+    )
+    row = _window_row(render(trial), "recalled")
+    assert "remembered" in row.lower()
+    assert "`" + "REMEMBERED" + "`" not in row, "it is a claim, not a stimulus name"
+
+
+def test_a_window_coupled_to_nothing_is_called_out_rather_than_left_blank():
+    """An empty cell reads as missing information. `on` unset is refused at load, so
+    the only way a reviewer sees this is a task that skipped the checker -- which is
+    exactly when the artifact has to be loudest."""
+    trial = Trial(
+        start="hold",
+        windows=[Window("orphan", at=(6.0, 0.0), radius=2.0)],
+        states=[
+            State("hold", enter=[Show(FIX)],
+                  go=[On(Hold("orphan", 0.2), Outcome.CORRECT),
+                      On(After(1.0), Outcome.NO_RESPONSE)]),
+        ],
+    )
+    row = _window_row(render(trial), "orphan")
+    assert "nothing declared" in row

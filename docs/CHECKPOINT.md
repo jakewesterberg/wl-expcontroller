@@ -38,7 +38,7 @@ Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | **261, green** |
+| Tests | **264, green** |
 | CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors; `calibration` and `gaze` added 2026-09-05, 0 survivors. Functions that already return immediately are now reported `NOT MUTABLE` by the harness rather than counted as survivors — see trap 7 |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
@@ -124,6 +124,15 @@ Nothing here has touched hardware.
     anything that escapes it (verified 2026-09-05 against `src/input-helper.ts`
     lines 40–53 in `actions/checkout`, not against its README). Corrected to a path
     inside the workspace, with `tests/conftest.py` searching both locations.
+
+  **Green, 2026-09-05**, verified by watching the runs rather than by reading the
+  workflow. The three encoder mutations that had been surviving since 2026-08-31 --
+  `words_for`, `words_for_code`, `_checksum` -- are caught now that the round-trip
+  actually executes, which is the first evidence that gate ever worked. One further
+  survivor surfaced with it: **`review._scores_label` was covered by no test**, so
+  the artifact's window-coupling column -- which stimulus each window scores, and
+  whether it is `REMEMBERED` or nothing at all -- rendered unchecked. Trap 11 again,
+  and found only because the gate finally ran.
 
   **Pushed and watched, 2026-09-05.** Run `33956427875`: the path fix was correct and
   a **third**, independent fault was underneath it. `GITHUB_TOKEN` is scoped to this
