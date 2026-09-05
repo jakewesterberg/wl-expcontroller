@@ -108,7 +108,13 @@ Nothing here has touched hardware.
 - **Parquet is not written.** JSONL is the durable streamed record; the columnar
   table is a derivation at session close that does not exist yet. Deliberate: a
   Parquet file is only valid once closed, so it cannot be the crash-safe record.
-- **CI is red, has been since 2026-08-31, and nothing since has been pushed.**
+- **CI is green, 2026-09-05 — for the first time ever.** Of 28 runs in this
+  repository's history, exactly one has passed, and it is the one after the fixes
+  below. Everything in this entry was found in five runs on one afternoon, after
+  four days in which nothing was pushed and every claim about CI was therefore
+  about a thing that had never executed.
+
+- ~~**CI is red, has been since 2026-08-31, and nothing since has been pushed.**~~
   Established 2026-09-05 by reading the runs rather than the workflow file. Three
   facts, each of which was believed otherwise:
   - The last pushed run (`33439705522`) fails with **three survivors in the mutation
