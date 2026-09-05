@@ -54,10 +54,17 @@ as of 2026-09-05. Dependency additions still require a license entry in the inve
 below (CLAUDE.md policy), and an added dependency under a copyleft license is now a
 decision that reopens this ADR rather than a routine addition.
 
-**Not settled here: who the copyright holder is.** No `wl-*` repository states one --
-`wl-sync` is public with the stock placeholder -- and the answer depends on KU Leuven's
-IP terms for software written by lab staff. It is one line in each repo whenever it is
-decided, and worth deciding once across the family rather than per repo.
+**The copyright holder is Jacob A. Westerberg**, decided 2026-09-05 and applied
+across the family in the same pass: `wl-expcontroller`, `wl-preproc`, `wl-sync`,
+`wl-stack`, `wl-expviz`, `wl-shook`, `wl-style`, `wl-orchestrator`. Every one shipped
+the Apache-2.0 appendix with its placeholder unfilled, so none of them asserted an
+owner at all. The year is 2026, which is the first commit year in all ten repositories
+that carry a licence.
+
+Two are deliberately not done and are not oversights. **`wl-works`** is owned by
+another worker including its remote, so its licence line is theirs to fill.
+**`wl-trajectortree`** had eighteen modified files in its working tree; a licence
+change does not belong in the middle of someone's uncommitted work.
 
 ## Dependency inventory
 
