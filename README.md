@@ -77,5 +77,10 @@ reasoning, and `docs/design/architecture.md` for the summary.
 
 ## License
 
-Not yet chosen — see ADR-0004 (`docs/design/decisions/`). Repo stays private until that
-decision is made.
+**Apache-2.0** — see `LICENSE`, and ADR-0004 (`docs/design/decisions/`) for why. In
+short: nothing here imposes copyleft (there is no PsychoPy import, and OpenIris talks
+over UDP as a separate process), and `tasks/` is destined for `wl-mllib` under
+ADR-0007, which a GPL-3 core would have made impossible.
+
+This is research software for a lab that does not exist yet — **no part of it has run
+on hardware.** Read `docs/CHECKPOINT.md` before assuming any of it works.

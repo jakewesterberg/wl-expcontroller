@@ -6,6 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "wl-expcontroller"
 version = "0.0.1"
 description = "Behavioural task controller for closed-loop NHP neurophysiology"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 # numpy: least squares and the SVD behind the conditioning gate. The gate is
 # wl-preproc's, computed with numpy on their side, and matching their numerics
