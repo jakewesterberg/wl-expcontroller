@@ -37,11 +37,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from wl_expcontroller.findings import Finding
 from wl_expcontroller.geometry import Geometry
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle avoided at runtime
+    from wl_expcontroller.scheduler import Condition as SchedulerCondition
 
 #: What `raw_definition` must say in the file. Their reader refuses any other value
 #: rather than silently misapplying coefficients fit against a different feature --
@@ -397,3 +401,315 @@ def constellation(
         (sx * inner_x, sy * inner_y) for sx in (-1.0, 1.0) for sy in (-1.0, 1.0)
     ]
     return tuple(targets)
+
+
+# ---------------------------------------------------------------------------
+# The map as it exists during a session
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Mapping:
+    """The map in force, at one version.
+
+    S5 §6: recentering, drift correction, the calibration button and mid-session
+    recalibration are **four faces of one thing** -- the map changes during a
+    session -- so they are one versioned object rather than four mechanisms. Every
+    trial cites `version`, which is what makes an offline reconstruction able to say
+    which map was in force when a window was scored.
+
+    **The offset is stored beside the coefficients, never folded into them.** An
+    additive offset could be absorbed into each constant term exactly, and
+    `as_calibration` does precisely that when writing the file, because their schema
+    has nowhere else to put it. Keeping the two apart *here* is what makes a
+    correction reversible offline, which S5 §6 requires: a folded constant is
+    indistinguishable from a fit that happened to land there, and a silent
+    correction is indistinguishable from an artifact.
+    """
+
+    version: int
+    #: The constellation the fit was made against. File-wide in their schema.
+    targets: tuple[tuple[float, float], ...]
+    left: EyeMap | None = None
+    right: EyeMap | None = None
+    #: Recentering, in degrees, added after the polynomial. Per eye, because the
+    #: animal settles in the chair once and each eye's optics differ.
+    offsets: tuple[tuple[float, float], tuple[float, float]] = ((0.0, 0.0), (0.0, 0.0))
+    #: Why this version exists. Read by a human reconstructing a session.
+    why: str = "fitted"
+
+    def _for(self, which: str) -> tuple[EyeMap | None, tuple[float, float]]:
+        if which == "left":
+            return self.left, self.offsets[0]
+        if which == "right":
+            return self.right, self.offsets[1]
+        raise ValueError(f"{which!r} is not an eye; expected 'left' or 'right'")
+
+    def degrees(self, which: str, raw: tuple[float, float]) -> tuple[float, float] | None:
+        """Raw Purkinje vector to degrees for one eye, or `None` if that eye has no
+        map. **Trial-loop path**: one polynomial and two adds."""
+        eye_map, (ox, oy) = self._for(which)
+        if eye_map is None:
+            return None
+        x, y = eye_map.degrees(raw)
+        return (x + ox, y + oy)
+
+    def as_calibration(self) -> GazeCalibration:
+        """The file, with offsets folded into the constant terms.
+
+        Exact for an additive offset -- `(c0 + o) + c1·dx + ...` is the corrected
+        map term for term -- and necessary because their schema forbids fields it
+        does not declare, so there is nowhere to write an offset separately. What
+        is lost in the file is *that a recentering happened*; that survives in this
+        session's `MappingLog`, which is where a reconstruction looks anyway.
+        """
+        folded = []
+        for which in ("left", "right"):
+            eye_map, (ox, oy) = self._for(which)
+            if eye_map is None:
+                folded.append(None)
+                continue
+            folded.append(
+                EyeMap(
+                    model=eye_map.model,
+                    x=(eye_map.x[0] + ox,) + tuple(eye_map.x[1:]),
+                    y=(eye_map.y[0] + oy,) + tuple(eye_map.y[1:]),
+                    conditioning=eye_map.conditioning,
+                    rms_residual_deg=eye_map.rms_residual_deg,
+                    n_points=eye_map.n_points,
+                )
+            )
+        return GazeCalibration(
+            mapping_version=self.version,
+            targets=self.targets,
+            left=folded[0],
+            right=folded[1],
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Change:
+    """One entry in the change log: which version, why, and when."""
+
+    version: int
+    why: str
+    at: float
+
+
+class MappingLog:
+    """A session's mapping history. Session-scoped, versioned, appended to.
+
+    Nothing here mutates a `Mapping`; a change produces a new version and keeps the
+    old one, so "which map was in force at trial 412" is answerable after the fact
+    rather than only during. Version 0 exists from the start and maps nothing --
+    **a session before its calibration block has no map, and a trial loop asking it
+    for degrees gets `None` rather than zeros.** A tracker reporting (0, 0) puts
+    gaze exactly on the fixation point and scores a hold against an empty chair,
+    which is the same defect `eye.Tracker.state` refuses at the other end.
+    """
+
+    def __init__(self, targets: tuple[tuple[float, float], ...] = ()) -> None:
+        self._versions: list[Mapping] = [Mapping(version=0, targets=targets, why="no map yet")]
+        self._log: list[Change] = []
+
+    @property
+    def current(self) -> Mapping:
+        return self._versions[-1]
+
+    @property
+    def version(self) -> int:
+        """What a trial cites."""
+        return self.current.version
+
+    @property
+    def changes(self) -> tuple[Change, ...]:
+        return tuple(self._log)
+
+    def at_version(self, version: int) -> Mapping | None:
+        """The map that was in force at `version`, for offline reconstruction."""
+        for mapping in self._versions:
+            if mapping.version == version:
+                return mapping
+        return None
+
+    def install(
+        self,
+        at: float,
+        targets: tuple[tuple[float, float], ...],
+        left: EyeMap | None = None,
+        right: EyeMap | None = None,
+        why: str = "fitted",
+    ) -> Mapping:
+        """A newly fit map. Offsets reset: a recentering describes a chair position
+        under the *previous* fit, and carrying it across a refit would apply a
+        correction twice."""
+        mapping = Mapping(
+            version=self.current.version + 1,
+            targets=targets,
+            left=left,
+            right=right,
+            why=why,
+        )
+        self._versions.append(mapping)
+        self._log.append(Change(mapping.version, why, at))
+        return mapping
+
+    def recenter(
+        self,
+        at: float,
+        left: tuple[float, float] = (0.0, 0.0),
+        right: tuple[float, float] = (0.0, 0.0),
+        why: str = "recentered",
+    ) -> Mapping:
+        """A single-point offset on the existing map -- the cheap operation an
+        experimenter runs when the animal has settled differently in the chair.
+
+        Offsets **replace** rather than accumulate. Two recenterings in a session
+        are two statements about where the animal is now, not a running total; the
+        second measured the residual error of the map as originally fit, having been
+        made against the corrected gaze the first one produced.
+        """
+        previous = self.current
+        if previous.left is None and previous.right is None:
+            raise ValueError(
+                "there is no map to recenter; recentering is an offset on an "
+                "existing fit, not a substitute for one"
+            )
+        mapping = Mapping(
+            version=previous.version + 1,
+            targets=previous.targets,
+            left=previous.left,
+            right=previous.right,
+            offsets=(left, right),
+            why=why,
+        )
+        self._versions.append(mapping)
+        self._log.append(Change(mapping.version, why, at))
+        return mapping
+
+
+# ---------------------------------------------------------------------------
+# Gathering what the fit consumes
+# ---------------------------------------------------------------------------
+
+
+class Collector:
+    """Held fixations into the pairs `fit_eye` consumes, per eye.
+
+    **Only trials the task paid for.** `accept` is called for a target the
+    calibration trial scored `CORRECT`; a fixation the task would not reward is not
+    one to calibrate against, and letting a `FIXATION_BREAK` contribute its samples
+    would put the moment the animal looked away into the map.
+
+    **No validity rule is invented here.** What OpenIris emits when one eye's
+    tracking fails is UNVERIFIED (`eye.py`), and inventing a rule in the component
+    that decides where the animal is looking is the specific mistake that file
+    refuses to make. The caller filters; this averages what it is given, and
+    declines a target that arrived with too few samples to average.
+    """
+
+    def __init__(self, minimum_samples: int = 1) -> None:
+        self._minimum = minimum_samples
+        self._raw: dict[str, dict[tuple[float, float], list[tuple[float, float]]]] = {
+            "left": {},
+            "right": {},
+        }
+
+    def accept(self, target: tuple[float, float], samples) -> bool:
+        """One target's worth of held gaze. `False` if it was declined."""
+        samples = tuple(samples)
+        if len(samples) < self._minimum:
+            return False
+        for which in ("left", "right"):
+            readings = [getattr(sample, which).dpi() for sample in samples]
+            mean = (
+                sum(r[0] for r in readings) / len(readings),
+                sum(r[1] for r in readings) / len(readings),
+            )
+            self._raw[which].setdefault(target, []).append(mean)
+        return True
+
+    def fixations(self, which: str) -> tuple[Fixation, ...]:
+        """One pairing per target, averaged over however many times it was worked.
+
+        A target the scheduler presented twice contributes once, because `fit_eye`
+        weights by target and a repeated target would otherwise pull the fit toward
+        wherever the animal happened to be asked twice.
+        """
+        if which not in self._raw:
+            raise ValueError(f"{which!r} is not an eye; expected 'left' or 'right'")
+        out = []
+        for target, means in self._raw[which].items():
+            out.append(
+                Fixation(
+                    raw=(
+                        sum(m[0] for m in means) / len(means),
+                        sum(m[1] for m in means) / len(means),
+                    ),
+                    target=target,
+                )
+            )
+        return tuple(out)
+
+    def fit(
+        self, tested_eccentricity_deg: float | None = None
+    ) -> tuple[EyeMap | None, EyeMap | None, list[Finding]]:
+        """Both eyes, independently, with each eye's findings tagged by eye.
+
+        Independent because a session whose right eye tracked badly and whose left
+        tracked well is an ordinary outcome, and gating both on the worse one throws
+        away a usable map. Their reader takes the file that way for the same reason.
+        """
+        maps: list[EyeMap | None] = []
+        findings: list[Finding] = []
+        for which in ("left", "right"):
+            eye_map, eye_findings = fit_eye(
+                self.fixations(which), tested_eccentricity_deg=tested_eccentricity_deg
+            )
+            maps.append(eye_map)
+            findings.extend(
+                Finding(f"{f.code}:{which}", f.detail, f.blocking) for f in eye_findings
+            )
+        return maps[0], maps[1], findings
+
+
+def conditions(
+    geometry: Geometry,
+    *,
+    window_deg: float,
+    hold_s: float,
+    timeout_s: float,
+    repeats: int = 1,
+    targets: tuple[tuple[float, float], ...] | None = None,
+) -> list["SchedulerCondition"]:
+    """The constellation as a scheduler block's conditions -- one per target.
+
+    Presenting the thirteen targets is then the ordinary business of a block: the
+    scheduler shuffles them, counts what each is owed, and an animal that refuses one
+    simply leaves that condition short. Nothing about calibration needs a bespoke
+    sequencer, which is the same finding as `tasks/calibration.py` being expressible
+    in the ordinary task vocabulary.
+
+    `repeats` is the target count per condition, not a number of fixations: more
+    presentations of the same target is how a block buys down fixation noise, and the
+    measurement puts the knee at about ten (`docs/measurements/dev-machine/`).
+    **`Collector` averages repeats of a target into one pairing**, because `fit_eye`
+    weights by target and a target worked twice would otherwise pull the fit.
+    """
+    from wl_expcontroller.scheduler import Condition as SchedulerCondition
+
+    chosen = constellation(geometry) if targets is None else targets
+    return [
+        SchedulerCondition(
+            name=f"target_{index:02d}",
+            values={
+                "target_x": x,
+                "target_y": y,
+                "cal_window": window_deg,
+                "cal_hold": hold_s,
+                "fix_timeout": timeout_s,
+            },
+            target=repeats,
+        )
+        for index, (x, y) in enumerate(chosen)
+    ]

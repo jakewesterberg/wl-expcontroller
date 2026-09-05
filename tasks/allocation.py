@@ -29,6 +29,14 @@ ALLOCATION: Allocation = replace(
         4102: "REWARD_COMMANDED",
         4103: "ARRAY_ON",
         4104: "DISTRACTOR_ACQUIRED",
+        # The calibration block (S5 sec 7). START/END bound the block; the per-trial
+        # pair marks each target. `TaskEvent.CALIBRATION_START` is what S5 names, but
+        # 256-4095 is not ours to allocate into until wl-preproc agrees ADR-0007, so
+        # these live in the undisputed range like everything else here.
+        4105: "CALIBRATION_TARGET_ON",
+        4106: "CALIBRATION_TARGET_HELD",
+        4107: "CALIBRATION_START",
+        4108: "CALIBRATION_END",
         # Outcome reasons. Eighteen outcomes share five markers, so these are what
         # distinguish them in a recording -- strobed immediately before the marker.
         4110: "OUTCOME_CORRECT",

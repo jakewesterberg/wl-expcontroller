@@ -431,3 +431,34 @@ def test_they_decline_a_file_claiming_a_different_raw_feature(tmp_path):
     path.write_text(text)
 
     assert read_expcontroller_map(path) is None
+
+
+def test_the_constellation_becomes_one_scheduler_condition_per_target():
+    """Presenting the targets is ordinary block business -- no bespoke sequencer --
+    so this asserts the translation rather than the sequencing."""
+    from wl_expcontroller.calibration import conditions
+
+    built = conditions(GEOMETRY, window_deg=3.0, hold_s=0.15, timeout_s=2.0, repeats=4)
+    targets = constellation(GEOMETRY)
+
+    assert len(built) == len(targets) == 13
+    assert len({c.name for c in built}) == 13, "conditions are counted by name"
+    assert [c.target for c in built] == [4] * 13
+    assert [(c.values["target_x"], c.values["target_y"]) for c in built] == list(targets)
+    for condition in built:
+        assert condition.values["cal_window"] == 3.0
+        assert condition.values["cal_hold"] == 0.15
+        assert condition.values["fix_timeout"] == 2.0
+
+
+def test_every_condition_supplies_every_parameter_the_task_declares():
+    """A missing value is a task the runner cannot resolve, and the runner resolves
+    lazily -- so the gap would surface as a trial that behaves oddly rather than one
+    that refuses. Asserted against the task's own declarations so adding a parameter
+    to the task without adding it here fails here."""
+    from tasks.calibration import calibration as calibration_task
+    from wl_expcontroller.calibration import conditions
+
+    declared = {param.name for param in calibration_task.params}
+    for condition in conditions(GEOMETRY, window_deg=3.0, hold_s=0.15, timeout_s=2.0):
+        assert declared == set(condition.values), f"{condition.name} does not match"

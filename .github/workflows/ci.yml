@@ -71,6 +71,7 @@ jobs:
       - run: python tools/mutate.py --all wl_expcontroller/calibration.py
         env:
           WLX_REQUIRE_PREPROC: "1"
+      - run: python tools/mutate.py --all wl_expcontroller/gaze.py
       - run: |
           for module in run simulate review record geometry task codes components cli taskd photometry eye dio; do
             python tools/mutate.py --all --returns None "wl_expcontroller/$module.py"

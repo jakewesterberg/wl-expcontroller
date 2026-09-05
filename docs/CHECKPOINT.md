@@ -38,9 +38,9 @@ Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | **225, green** |
-| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors; `calibration` added 2026-09-05, 0 survivors over all nine functions. The only non-caught entries are no-op `display` bodies, where `return None` mutated to `return None` is not a mutation |
-| Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12) |
+| Tests | **249, green** |
+| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors; `calibration` and `gaze` added 2026-09-05, 0 survivors. The only non-caught entries are no-op `display` bodies, where `return None` mutated to `return None` is not a mutation |
+| Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos**; one blocking ask closed 2026-09-05 — see below |
 | Hardware verified | **none** |
@@ -85,6 +85,15 @@ Nothing here has touched hardware.
   in CI. `EyeMap.degrees` is the trial-loop path and allocates nothing.
 - `findings.py` — the `Finding` dataclass, lifted out of `check.py` so `calibration`
   can report refusals in the same words without a circular import.
+- `gaze.py` — **the join**: `eye.Tracker` + a versioned `Mapping` + a trial's windows,
+  behind `run.World`. Replayed OpenIrisDPI payloads reach a `Window` test in degrees,
+  which is P6's exit condition. Polls the tracker in `display`, the loop's only
+  per-frame call that lands before the frame's guards. A saccade guard **raises**
+  rather than returning `False`, because there is no detector yet and a `False` reads
+  as an animal that did not saccade.
+- `tasks/calibration.py` — the calibration block, written in the ordinary task
+  vocabulary. It passes every load-time check with zero findings, which is the
+  finding: the vocabulary can express its own calibration.
 - `tools/mutate.py` — proves a test can fail. Read its docstring before trusting a
   mutation result by hand.
 - `tools/calibration_design.py` — which constellation the block should present, and
@@ -148,6 +157,39 @@ looked like design work was already decided.
   eventually run the other way round and a circular import was waiting.
 - **The CI mutation job now checks out `wl-preproc`.** It did not, so contract tests
   skipped inside the gate that exists to prove tests can fail.
+
+**The rest of P6, later the same day.** The fit had no producer and no consumer;
+both now exist.
+
+- **`tasks/calibration.py`** — the block as an ordinary task. It passes all load-time
+  checks with **zero findings**, which is the result worth recording: the previous
+  four times a real artifact was written against this vocabulary it exposed a gap
+  (trap 5), and this time it did not.
+- **The map is one versioned object** (S5 §6). `MappingLog` is session-scoped and
+  append-only; `Mapping` carries the recentering offset **beside** the coefficients
+  rather than folded into them, because a folded constant is indistinguishable from a
+  fit that landed there and S5 requires the correction be reversible offline. The file
+  folds it, since their schema has nowhere else to put it, and the change log is what
+  survives.
+- **Version 0 maps nothing.** A session before its calibration block answers `None`
+  for degrees rather than zeros — the same refusal `eye.Tracker.state` makes at the
+  other end, for the same reason: a tracker reporting the origin scores a hold against
+  an empty chair.
+- **`gaze.Tracked` joins four modules** and P6's exit condition is met — replayed
+  payloads reach a `Window` test in degrees, and a whole thirteen-target block runs
+  from scheduled conditions to an installed map.
+- **A recentering replaces rather than accumulates**, and a refit drops it. The second
+  recentering was measured against gaze the first had already corrected, and an offset
+  describes a chair position under the map it was measured against.
+
+### One bug the join found immediately
+
+**Polling gaze in `in_window` kills the trial at frame 7.** `World.display` is the
+loop's only per-frame call that lands *before* the frame's guards; `signal` runs next
+and `in_window` last. With the poll in `in_window`, `signal` saw a sample nothing had
+refreshed, the staleness ceiling expired mid-hold, and the trial scored
+`TRACKER_LOST`. It looked exactly like a dropped camera. **Anything a world needs to
+do once per frame belongs in `display`**, whose docstring already said so.
 
 ### Two ideas measured down, recorded so they are not proposed again
 
@@ -242,7 +284,8 @@ runs out of context before it produces anything.**
 | **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |
 | | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested | — | — |
 | | → the calibration fit and its file | **done 2026-09-05** — constellation, per-eye fit, three refusals, round-tripped through their reader | — | — |
-| | → the calibration *block*, drift correction, saccade detection | **not started.** Nothing presents a target or gathers a fixation; the versioned mapping object of S5 §6 does not exist | S5 | nothing |
+| | → the block, the versioned map, the join | **done 2026-09-05** — `tasks/calibration.py`, `Mapping`/`MappingLog`/`Collector`, and `gaze.Tracked`. A whole block runs from scheduled targets to an installed map | — | — |
+| | → saccade detection, and wiring the block into `taskd` | **not started.** Engbert–Kliegl (S5 §5) does not exist, so `SaccadeTo`/`SaccadeOnset` raise against a real tracker. The block composes in a test; no session runs one | S5 | nothing |
 | **P7** | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
 | | → the interface | **done 2026-09-01** — pin map, refusing `Absent`, recording `Simulated`; the `nidaqmx` implementation needs a card | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |

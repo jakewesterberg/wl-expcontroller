@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** `main`, **222 tests passing**, working tree clean. CI runs pytest
+**State at handoff:** `main`, **249 tests passing**, working tree clean. **CI is red at `origin` and `main` is 20 commits ahead of it** — see the checkpoint; the configuration is believed fixed and is unverified until pushed. CI runs pytest
 on 3.11/3.12/3.13 plus a mutation gate over every module, and now checks out
 `wl-preproc` so the event-codec round-trip actually runs. No hardware exists.
 
@@ -29,35 +29,30 @@ are genuinely blocked. Until a rig runs all four end to end, January discovers.
 
 ---
 
-## 1. Eye calibration: the fit is done. The block that feeds it is not.
+## 1. P6 is done except saccade detection and the `taskd` wiring.
 
-**Done 2026-09-05** — `wl_expcontroller/calibration.py`, 28 tests, mutation-clean:
+**Done 2026-09-05.** Replayed OpenIrisDPI payloads reach a `Window` test in degrees,
+through a versioned map, and a whole thirteen-target block runs from scheduled
+conditions to an installed `Mapping` (`tests/test_gaze.py`). `calibration.py` fits and
+serialises; `gaze.py` joins tracker, map and windows behind `run.World`;
+`tasks/calibration.py` is the block, and it passes every load-time check with zero
+findings.
 
-- The thirteen-target constellation, **measured rather than chosen**
-  (`docs/measurements/dev-machine/2026-09-05-calibration-constellation.md`,
-  regenerate with `tools/calibration_design.py`).
-- The fit, per eye and independently, reaching for second-order and falling back to
-  affine with a **reported** finding rather than silently.
-- Three refusals in a deliberate order: count, then conditioning, then extent.
-- Serialisation to the file `wl-preproc` actually reads, round-tripped through their
-  real `read_expcontroller_map` in CI.
+**What is left, in order:**
 
-**Still missing, and it is the larger half:**
-
-- **The calibration block itself.** Nothing presents a target, waits for a fixation,
-  or decides which fixations to accept. `fit_eye` takes one averaged raw vector per
-  target and something has to produce those. This is a task in the S1 vocabulary, so
-  it also tests whether that vocabulary can express its own calibration.
-- **The versioned mapping object** (S5 §6): recentering, drift correction, the
-  calibration button and mid-session recalibration are four faces of one thing, and
-  every trial cites the mapping version in force. None of that exists.
-- **The join to replayed gaze.** `eye.Replay` produces samples and `EyeMap.degrees`
-  consumes a raw vector; nothing connects them, so no test yet drives degrees from a
-  recorded session.
-
-**Exit condition for the rest of P6:** replayed OpenIrisDPI samples reach a `Window`
-test in degrees, through a versioned map, with the calibration block that produced it
-runnable headless.
+- **Saccade detection** (S5 §5): the versioned Engbert–Kliegl component, never
+  re-derived per task. `gaze.Tracked.happened` currently **raises** for `SaccadeTo`
+  and `SaccadeOnset` rather than returning `False`, deliberately — a `False` is
+  indistinguishable from an animal that did not saccade, and would score every
+  saccade-contingent trial as a miss that reads as behaviour. `fixation_detection`
+  uses `SaccadeTo`, so it cannot run against a real tracker until this exists.
+- **Wiring the calibration block into `taskd`.** The pieces compose in a test, and
+  that test is the shape the driver takes; no *session* runs a calibration block, and
+  nothing writes the map to `expcontroller/*.yaml` at session close. This overlaps
+  P4b, which owns session management.
+- **Drift correction as a policy.** `MappingLog.recenter` is the mechanism. *When* to
+  recenter — automatically on a drift estimate, or only on the calibration button —
+  is not decided, and S5 §6 requires that toggling it be a logged parameter change.
 
 ---
 
