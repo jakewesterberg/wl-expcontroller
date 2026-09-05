@@ -1,6 +1,14 @@
 name: ci
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  schedule:
+    # The full sweep, nightly. Not decoration: the per-push gate selects on changed
+    # files, which cannot see a test deleted from `test_a.py` that was the only thing
+    # covering a function in `b.py`. Nothing in a diff makes that visible, and this
+    # is what catches it.
+    - cron: "17 3 * * *"
 
 # Both jobs need a `wl-preproc` checkout, and getting one has failed three different
 # ways. Recorded here because each looked fixed and was not:
@@ -51,14 +59,26 @@ jobs:
           WLX_REQUIRE_PREPROC: "1"
 
   mutation:
-    # A green suite proves the tests pass. This proves they can fail: every
-    # load-time check and every encoder function is neutered in turn, and the job
-    # fails if any survives. A test that cannot fail reports safety it does not
-    # provide, which for a checker whose whole job is refusing bad tasks would be
-    # worse than having no checker (pitfalls P15).
+    # A green suite proves the tests pass. This proves they can fail: every function
+    # is neutered in turn and the job fails if any survives. A test that cannot fail
+    # reports safety it does not provide, which for a checker whose whole job is
+    # refusing bad tasks would be worse than having no checker (pitfalls P15).
+    #
+    # **Selective since 2026-09-05**, because the full sweep re-runs the whole suite
+    # once per function and had reached twenty-five minutes. `tools/mutation_gate.py`
+    # picks the modules a change can have affected and escalates to everything on
+    # anything structural. It also refuses to run at all if a module in
+    # `wl_expcontroller/` appears in neither its gated nor its exempt list -- which
+    # is the real fix here, since the hand-maintained list this replaces had silently
+    # omitted `bounds` (the welfare-critical module), `scheduler` and `findings`
+    # while CHECKPOINT described "a mutation gate over every module".
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The gate diffs against the previous commit or the PR base, so the
+          # shallow default clone is not enough.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -68,17 +88,17 @@ jobs:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
       - run: pip install -e ".[dev,contract]"
-      # Every module, methods included. The harness exits non-zero on a survivor,
-      # so a test that cannot fail fails the build.
-      - run: python tools/mutate.py --all wl_expcontroller/check.py
-      - run: python tools/mutate.py --all wl_expcontroller/encode.py
+      - name: Mutation gate
+        # WLX_REQUIRE_PREPROC applies to every sweep now, not just the two that named
+        # it: each sweep runs the whole suite as its baseline, and a baseline with the
+        # contract tests skipped is a baseline that proves less than it appears to.
         env:
           WLX_REQUIRE_PREPROC: "1"
-      - run: python tools/mutate.py --all wl_expcontroller/calibration.py
-        env:
-          WLX_REQUIRE_PREPROC: "1"
-      - run: python tools/mutate.py --all wl_expcontroller/gaze.py
-      - run: |
-          for module in run simulate review record geometry task codes components cli taskd photometry eye dio; do
-            python tools/mutate.py --all --returns None "wl_expcontroller/$module.py"
-          done
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            python tools/mutation_gate.py --all
+          elif [ -n "${{ github.base_ref }}" ]; then
+            python tools/mutation_gate.py --base "origin/${{ github.base_ref }}"
+          else
+            python tools/mutation_gate.py --base "${{ github.event.before }}"
+          fi

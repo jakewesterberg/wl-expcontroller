@@ -38,8 +38,8 @@ Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | **265, green** |
-| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate over every module**. Verified by sweep on 2026-09-01: `check`, `task`, `run`, `scheduler`, `photometry`, `eye`, `dio` — 0 survivors; `calibration` and `gaze` added 2026-09-05, 0 survivors. Functions that already return immediately are now reported `NOT MUTABLE` by the harness rather than counted as survivors — see trap 7 |
+| Tests | **280, green** |
+| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos**; one blocking ask closed 2026-09-05 — see below |
@@ -146,6 +146,13 @@ Nothing here has touched hardware.
   testing the sentinel rather than by teaching the harness to honour the pragma,
   because a category of exemption anyone can open with a comment is this tool's
   sixth failure waiting to happen.
+
+- **Three modules were never in the CI mutation gate at all**, found when the
+  hand-maintained list in the workflow was replaced by one derived from disk:
+  `bounds` — **the welfare-critical module** — plus `scheduler` and `findings`. This
+  file has said "a mutation gate over every module" since M0. Both `bounds` and
+  `scheduler` pass a sweep, so nothing was actually wrong with them; what was wrong
+  was the claim. See trap 18.
 
   **Pushed and watched, 2026-09-05.** Run `33956427875`: the path fix was correct and
   a **third**, independent fault was underneath it. `GITHUB_TOKEN` is scoped to this
@@ -503,3 +510,14 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
     suite says nothing about CI, and `git log origin/main..main` is the check** --
     a checkpoint that says "CI does X" when X has never executed is the same class of
     error as a stale checkpoint, and harder to see.
+
+18. **A hand-maintained list of things to check is a list that is wrong.** The CI
+    mutation gate enumerated its modules in YAML, so a module joined the gate only if
+    someone remembered to add it. Three never were -- `bounds`, `scheduler`,
+    `findings` -- and `bounds` is the welfare-critical file, the one CLAUDE.md
+    requires a human to review before merge. Nothing detected it for a week, because
+    nothing compared the list against the directory. `tools/mutation_gate.py` now
+    derives the set from disk and **fails if a module is in neither its gated nor its
+    exempt list**, so a new module is a build failure rather than a silent omission.
+    The same shape as trap 7: the question is not whether the gate passes, it is
+    whether the gate is looking at everything it claims to.
