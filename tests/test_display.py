@@ -24,6 +24,7 @@ from wl_expcontroller.task import (
     Trial,
     Update,
     Window,
+    UNCHANGED,
 )
 
 FIX = Stimulus("fix", at=(0.0, 0.0), looks=Disc(size=0.3))
@@ -155,3 +156,19 @@ def test_updating_a_stimulus_that_is_not_up_is_refused():
     )
     with pytest.raises(ValueError, match="not on the display"):
         run_trial(trial, Quiet(), frame_period=0.01)
+
+
+def test_the_unchanged_sentinel_identifies_itself():
+    """`UNCHANGED` is a sentinel, and a sentinel's whole job in a traceback, a diff or
+    a debugger is to be recognisable. Degraded to the default
+    `<Unchanged object at 0x...>` it becomes noise in exactly the situation it exists
+    to clarify -- which field of an `Update` was deliberately left alone.
+
+    A thin test, and named honestly as one. It was written because the mutation gate
+    reported `Unchanged.__repr__` uncovered once the harness's pattern was fixed
+    enough to reach it. The alternative was to teach the harness to honour
+    `# pragma: no cover`, and that was rejected: five of this tool's five failures
+    have been it being too permissive, and an escape hatch anyone can open with a
+    comment is the sixth waiting to happen.
+    """
+    assert repr(UNCHANGED) == "UNCHANGED"

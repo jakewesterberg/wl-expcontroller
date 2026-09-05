@@ -800,7 +800,9 @@ class Unchanged:
     would make "set it to nothing" and "do not touch it" the same instruction.
     """
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
+        # No longer `# pragma: no cover`: the sentinel's legibility in a traceback
+        # is a small contract and `tests/test_display.py` now holds it.
         return "UNCHANGED"
 
 
