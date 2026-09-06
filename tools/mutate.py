@@ -127,6 +127,22 @@ def _function_names(source: str) -> list[str]:
 #: Returned by `mutate` when the neutered body is the body it already had.
 INERT = "inert"
 
+#: The signature a mutation inserts a statement after. Format with `name=` already
+#: `re.escape`d. Two clauses earn their keep, and both were bugs first:
+#:
+#: `[^:\n]*` for the return annotation, then a **comment-only** tail. A trailing
+#: comment must not defeat the match -- `def __repr__(self) -> str:  # pragma: no
+#: cover` did, and under `--all` that aborted the whole sweep at that line (trap 7).
+#: But a *body* on the signature's own line must not match at all: inserting a
+#: statement after `def deliver(self, ml: float) -> None: ...` produces a
+#: `SyntaxError`, the suite reports collection errors, and `mutate` reads any
+#: non-zero exit as the mutation being caught -- so a function nothing covers is
+#: reported as covered. The earlier `[^\n]*` swallowed both cases alike.
+#:
+#: The optional docstring line after it is skipped so the insertion lands below it
+#: rather than displacing it.
+_PATTERN = r'( *def {name}\([^)]*\)[^:\n]*:[ \t]*(?:#[^\n]*)?\n(?: *""".*?"""\n)?)'
+
 
 def _already_inert(source: str, function: str, returns: str) -> bool:
     """True when inserting `return {returns}` at the top of `function` changes nothing.
@@ -206,12 +222,7 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
     original = path.read_text()
     if _already_inert(original, function, args_returns):
         return INERT, f"body is already `return {args_returns}`; nothing to neuter"
-    pattern = (
-        # `[^\n]*` after the colon so a trailing comment does not defeat the match.
-        # `def __repr__(self) -> str:  # pragma: no cover` did, and under `--all`
-        # that aborted the sweep at that line.
-        rf'( *def {re.escape(function)}\([^)]*\)[^:]*:[^\n]*\n(?: *""".*?"""\n)?)'
-    )
+    pattern = _PATTERN.format(name=re.escape(function))
     def _neuter(match: re.Match) -> str:
         head = match.group(0)
         indent = " " * (len(head) - len(head.lstrip(" ")))

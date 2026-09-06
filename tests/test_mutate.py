@@ -13,6 +13,7 @@ this suite inside itself.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 from pathlib import Path
 
@@ -119,3 +120,73 @@ def test_the_real_no_op_displays_are_inert_and_the_real_one_is_not():
 
     assert _already_inert(run_py, "display", "None"), "Quiet/Scripted display are no-ops"
     assert not _already_inert(gaze_py, "display", "None"), "Tracked.display polls gaze"
+
+
+# ---------------------------------------------------------------------------
+# The sixth failure: a mutation that does not parse reports itself as caught
+# ---------------------------------------------------------------------------
+
+
+def _neutered(source: str, function: str, returns: str = "None") -> str:
+    """Apply the tool's substitution to `source` without running any suite."""
+    import re
+
+    pattern = mutate_tool._PATTERN.format(name=re.escape(function))
+
+    def _fill(match):
+        head = match.group(0)
+        indent = " " * (len(head) - len(head.lstrip(" ")))
+        return f"{head}{indent}    return {returns}\n"
+
+    return re.subn(pattern, _fill, source, flags=re.S)[0]
+
+
+def test_a_one_line_body_is_left_alone_rather_than_made_unparseable():
+    """`def f(self) -> None: ...` puts the body on the signature's own line, so
+    inserting a statement after it produces a `SyntaxError`. The suite then reports
+    **collection errors**, `mutate` reads any non-zero exit as the mutation being
+    caught, and a function nothing covers is reported as covered.
+
+    That is the sixth time this harness has been wrong and the second that broke
+    toward a false *clean* by way of an invalid mutation rather than an unexamined
+    one. It mattered here because the name in question was `deliver` -- the
+    welfare-critical path from a task to the pump."""
+    source = (
+        "class Pump:\n"
+        "    def deliver(self, ml: float) -> None: ...\n"
+        "\n"
+        "class Real:\n"
+        "    def deliver(self, ml: float) -> None:\n"
+        "        self.log.append(ml)\n"
+    )
+
+    mutated = _neutered(source, "deliver")
+
+    ast.parse(mutated)  # the whole point: it still parses
+    assert "return None" in mutated, "the real implementation is still neutered"
+    assert mutated.count("return None") == 1, "and only that one"
+
+
+def test_a_trailing_comment_still_does_not_defeat_the_match():
+    """The fix must not undo trap 7's: `def __repr__(self) -> str:  # pragma: no cover`
+    is what aborted a whole sweep, and a comment is not a body."""
+    source = (
+        "class W:\n"
+        "    def __repr__(self) -> str:  # pragma: no cover\n"
+        '        return "W()"\n'
+    )
+
+    mutated = _neutered(source, "__repr__")
+
+    ast.parse(mutated)
+    assert "return None" in mutated
+
+
+def test_the_shipped_one_line_stubs_are_the_ones_this_protects():
+    """Against the real source, so this fails the day another one appears somewhere
+    the exemption has not been thought about."""
+    root = Path(__file__).resolve().parents[1] / "wl_expcontroller"
+    for module, name in (("run.py", "happened"), ("welfare.py", "deliver")):
+        source = (root / module).read_text()
+        assert f"-> None: ...\n" in source or "-> bool: ...\n" in source
+        ast.parse(_neutered(source, name))
