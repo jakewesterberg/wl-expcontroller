@@ -57,5 +57,20 @@ ALLOCATION: Allocation = replace(
         4125: "OUTCOME_BLINK_BREAK",
         4126: "OUTCOME_TRACKER_LOST",
         4127: "OUTCOME_FAULT",
+        # Session control. `HEAD_FIXED`/`HEAD_RELEASED` are S2's own names for the
+        # restraint pair, and they are the *only* record of chair time: it is the one
+        # welfare quantity with no hardware line, so a restart reconstructs the clock
+        # from the sync box's capture of these (S8 sec 5.2).
+        4128: "HEAD_FIXED",
+        4129: "HEAD_RELEASED",
+        # A live parameter change. **Not the thing S2 sec 5.2 asks wl-preproc for**:
+        # that is a `PARAM_CHANGE` *escape* carrying a uint32 sequence number, so the
+        # stream and the session record join exactly. This code carries no payload,
+        # so it puts the discontinuity's timing on the recording clock and nothing
+        # more -- which is strictly better than the silence P16 warns about, and
+        # strictly worse than the escape. Two changes in one interval are told apart
+        # by their order alone, and a dropped code desynchronises that ordering in a
+        # way a sequence number would survive.
+        4130: "PARAM_CHANGED",
     },
 )

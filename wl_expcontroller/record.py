@@ -40,7 +40,14 @@ class SessionRecord:
             _trials=(directory / "trials.jsonl").open("a", encoding="utf-8"),
         )
 
-    def trial(self, index: int, outcome: str, params: dict) -> None:
+    def trial(
+        self,
+        index: int,
+        outcome: str,
+        params: dict,
+        block: str = "",
+        condition: str = "",
+    ) -> None:
         """One trial's record, flushed before returning.
 
         **The whole resolved parameter set, per trial** -- not a pointer to "the
@@ -60,6 +67,8 @@ class SessionRecord:
                     "subject": self.subject,
                     "outcome": outcome,
                     "params": params,
+                    "block": block,
+                    "condition": condition,
                 },
                 sort_keys=True,
             )

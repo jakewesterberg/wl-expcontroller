@@ -15,6 +15,7 @@ import pytest
 from wl_expcontroller.check import check
 from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.photometry import Calibration, xyY
+from wl_expcontroller.run import Recorded
 from wl_expcontroller.simulate import Subject, simulate
 from wl_expcontroller.task import (
     Entered,
@@ -74,6 +75,7 @@ def test_simulation_reaches_every_outcome_the_reference_task_declares(detection)
         trials=5_000,
         frame_period=1 / 240,
         values=VALUES,
+        effects=Recorded(),
     )
 
     assert census.hangs == 0
@@ -191,6 +193,7 @@ def test_set_size_is_a_value_this_task_can_be_run_at_several_of(search):
             trials=120,
             frame_period=1 / 240,
             values={**SEARCH_VALUES, "set_size": n, "target_index": 0},
+            effects=Recorded(),
         )
         assert census.hangs == 0
         assert census.outcomes.total() == 120
@@ -208,6 +211,7 @@ def test_simulation_reaches_every_outcome_the_search_task_declares(search):
         trials=1500,
         frame_period=1 / 240,
         values=SEARCH_VALUES,
+        effects=Recorded(),
     )
 
     assert census.hangs == 0

@@ -1,7 +1,14 @@
-"""The bounded config: ceilings a task cannot express and a console cannot exceed.
+"""The bounded config: what a task cannot express and a console cannot exceed.
 
 S8 §4 and §7. This is welfare-critical code and requires human review before merge
-(CLAUDE.md). It is deliberately small, and everything in it fails closed.
+(CLAUDE.md). It is deliberately small.
+
+**Fluid has a floor, not a ceiling** (PI, 2026-09-06). Everything else here is a
+ceiling; the daily fluid figure is a *minimum the animal must reach*, topped up by
+hand after the session if the work did not earn it. The tests below that used to
+assert a refusal past a daily total are gone, and their absence is the point: a
+delivery refused on volume withholds fluid an animal earned, which is the opposite of
+what the daily figure protects.
 """
 
 from __future__ import annotations
@@ -12,7 +19,7 @@ from wl_expcontroller.bounds import (
     Bounds,
     Ceiling,
     Exceeded,
-    Unknown,
+    Floor,
     reconcile,
     reconcile_report,
 )
@@ -23,9 +30,9 @@ def _bounds() -> Bounds:
         subject="A",
         ceilings={
             "reward_correct": Ceiling(value=0.15, maximum=0.40, unit="mL"),
-            "daily_fluid": Ceiling(value=250.0, maximum=250.0, unit="mL"),
             "chair_time": Ceiling(value=14_400.0, maximum=14_400.0, unit="s"),
         },
+        minima={"daily_fluid": Floor(value=250.0, unit="mL")},
     )
 
 
@@ -58,47 +65,47 @@ def test_a_name_with_no_ceiling_is_refused_rather_than_created():
         bounds.set("rewrd_correct", 0.2, by="console")
 
 
-def test_delivering_against_an_unknown_daily_total_is_refused():
-    """S8 §5.2, the one place the design deliberately fails closed. A ceiling that
-    cannot be computed cannot be enforced, and continuing on an unknown total is
-    the one failure whose cost is not ours to absorb."""
+def test_a_days_shortfall_is_what_still_has_to_be_supplemented():
+    """The daily fluid figure is a **floor** (PI, 2026-09-06): an animal that did not
+    earn it in the chair is topped up afterwards. So the question this answers is not
+    "may I deliver" but "how much is still owed"."""
     bounds = _bounds()
 
-    with pytest.raises(Unknown, match="daily total"):
-        bounds.check_delivery("reward_correct", delivered_today=None)
+    assert bounds.shortfall("daily_fluid", delivered_today=100.0) == 150.0
 
 
-def test_delivery_is_refused_once_the_daily_total_reaches_its_ceiling():
+def test_a_day_that_reached_its_floor_owes_nothing():
     bounds = _bounds()
 
-    bounds.check_delivery("reward_correct", delivered_today=100.0)
+    assert bounds.shortfall("daily_fluid", delivered_today=250.0) == 0.0
+
+
+def test_earning_past_the_floor_is_not_an_error_and_owes_nothing():
+    """There is no ceiling. An animal that worked well and earned 300 mL has earned
+    300 mL, and a session that refused the last of it would have withheld fluid to
+    satisfy a limit nobody set."""
+    bounds = _bounds()
+
+    assert bounds.shortfall("daily_fluid", delivered_today=300.0) == 0.0
+
+
+def test_an_unknown_daily_total_leaves_the_shortfall_unknown():
+    """Not a refusal to deliver -- a refusal to *claim*. Nobody can say what to
+    supplement without knowing what the animal has already had, and answering zero
+    would say the day was fine when nothing knows whether it was."""
+    bounds = _bounds()
+
+    assert bounds.shortfall("daily_fluid", delivered_today=None) is None
+
+
+def test_a_floor_that_is_not_declared_is_refused_rather_than_assumed():
+    """A subject with no daily minimum is a bounded config nobody finished, and a
+    missing floor reads identically to a floor of zero to anything that does not
+    check."""
+    bounds = Bounds(subject="A", ceilings=dict(_bounds().ceilings))
 
     with pytest.raises(Exceeded, match="daily_fluid"):
-        bounds.check_delivery("reward_correct", delivered_today=249.95)
-
-
-def test_the_ceiling_is_checked_against_what_this_delivery_would_make_the_total():
-    """Not against the total so far. A delivery that starts inside the ceiling and
-    ends outside it is the whole case -- checking before rather than after is how a
-    limit gets exceeded by exactly one reward, every session."""
-    bounds = _bounds()
-
-    with pytest.raises(Exceeded):
-        bounds.check_delivery("reward_correct", delivered_today=249.90)
-
-
-def test_fluid_reconciles_against_delivered_not_against_commanded():
-    """P17. The panel's manual reward button bypasses our software entirely --
-    debounced, monostabled, OR'd with our commanded line, and recorded as
-    *delivered*. So our commanded total is a lower bound, and a session that
-    enforced against it would let every hand-delivered reward past the ceiling."""
-    bounds = _bounds()
-
-    # We commanded 100 mL. The delivered line says 180: someone used the panel.
-    with pytest.raises(Exceeded):
-        bounds.check_delivery(
-            "reward_correct", delivered_today=reconcile(commanded=100.0, delivered=249.9)
-        )
+        bounds.shortfall("daily_fluid", delivered_today=100.0)
 
 
 def test_reconciliation_reports_the_divergence_rather_than_absorbing_it():

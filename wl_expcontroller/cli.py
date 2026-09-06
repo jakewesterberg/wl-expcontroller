@@ -13,6 +13,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from wl_expcontroller.bounds import Bounds
 from wl_expcontroller.check import check
 from wl_expcontroller.review import render
 from wl_expcontroller.codes import PROVISIONAL, Allocation
@@ -57,6 +58,26 @@ def _load_allocation(path: Path | None) -> Allocation:  # noqa: C901
     return found
 
 
+def _load_bounds(path: Path):
+    """Load a subject's bounded config. **Welfare-critical input** (S8 §4).
+
+    A separate file from the task and from the allocation, arriving by its own route,
+    because a task may name how reward is configured and must never be able to say
+    how much it is. A file that does not define `BOUNDS` is refused rather than
+    treated as an empty config -- an empty one has no ceilings, and `Welfare` would
+    refuse it a moment later anyway with a message about the wrong thing.
+    """
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    found = vars(module).get("BOUNDS")
+    if not isinstance(found, Bounds):
+        raise SystemExit(f"{path} must define BOUNDS")
+    return found
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wlx")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -79,11 +100,27 @@ def main(argv: list[str] | None = None) -> int:
     runner.add_argument("--trials", type=int, default=1000)
     runner.add_argument("--seed", type=int, default=1)
     runner.add_argument("--set", action="append", default=[], metavar="NAME=VALUE")
+    runner.add_argument(
+        "--bounds",
+        type=Path,
+        required=True,
+        help="the subject's bounded config: a Python file defining BOUNDS",
+    )
+    runner.add_argument(
+        "--delivered-today",
+        type=float,
+        default=None,
+        help="mL already delivered to this subject today, from wl-works. Omitted "
+        "means unknown, and the day's shortfall is then unreportable -- reward is "
+        "still delivered, because the daily figure is a floor and not a ceiling",
+    )
 
     args = parser.parse_args(argv)
 
     if args.command == "run":
+        from wl_expcontroller.dio import Simulated as SimulatedCard
         from wl_expcontroller.taskd import Session, SessionSpec
+        from wl_expcontroller.welfare import Simulated as SimulatedPump
 
         values: dict[str, object] = {}
         for assignment in args.set:
@@ -92,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
                 values[name] = float(raw)
             except ValueError:
                 values[name] = raw
-        census = Session(
+        session = Session(
             SessionSpec(
                 task=str(args.task),
                 allocation=str(args.allocation) if args.allocation else "",
@@ -103,12 +140,39 @@ def main(argv: list[str] | None = None) -> int:
                 frame_period=1 / 240,
                 seed=args.seed,
                 values=values,
-            )
-        ).run()
+                bounds=_load_bounds(args.bounds),
+                already_delivered_today=args.delivered_today,
+            ),
+            # Simulators, because that is what this subcommand is for. The refusing
+            # implementations are the defaults everywhere else, and a headless run
+            # that silently used a real card would be the worse surprise.
+            card=SimulatedCard(),
+            pump=SimulatedPump(),
+        )
+        # Headless: nothing puts an animal in a chair, so the restraint clock starts
+        # with the session. On a rig this is the console's action, and the difference
+        # is the whole reason S8 makes it an explicit one.
+        session.head_fixed(at=0.0)
+        census = session.run()
         total = sum(census.outcomes.values()) or 1
         for outcome, count in census.outcomes.most_common():
             print(f"  {outcome.value:18} {count:6}  {100 * count / total:5.1f}%")
         print(f"  {'hangs':18} {census.hangs:6}")
+        print(f"  ended: {session.stopped_because}")
+        print(
+            f"  fluid: {session.welfare.commanded:.2f} mL commanded over "
+            f"{session.welfare.deliveries} deliveries"
+        )
+        # The number a person acts on: how much of the day's minimum is still owed,
+        # to be supplemented after the session (PI, 2026-09-06). `None` means the
+        # day cannot be counted, which is a louder result than any number.
+        owed = session.welfare.shortfall()
+        print(
+            "  supplement: UNKNOWN -- the day's prior total was not supplied, so "
+            "nothing can say what is still owed"
+            if owed is None
+            else f"  supplement: {owed:.2f} mL to reach the day's floor"
+        )
         return 1 if census.hangs else 0
 
     if args.command == "review":

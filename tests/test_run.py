@@ -9,16 +9,18 @@ from __future__ import annotations
 
 import pytest
 
-from wl_expcontroller.run import Quiet, Scripted, run_trial
+from wl_expcontroller.run import Quiet, Recorded, Scripted, run_trial
 from wl_expcontroller.task import (
     After,
     Entered,
+    Mark,
     Exited,
     Hold,
     On,
     Outcome,
     P,
     Param,
+    Reward,
     SaccadeTo,
     Score,
     State,
@@ -298,3 +300,94 @@ def test_a_hold_is_measured_from_state_entry_not_from_when_gaze_arrived():
     assert result.outcome is Outcome.CORRECT
     # 0.3 s to satisfy the first hold, then a further 0.3 s inside `delay`.
     assert result.frames == 60, f"the delay ran {(result.frames - 30) / 100:.2f} s"
+
+
+# --- the I/O layer: marks and rewards leaving the loop -----------------------
+#
+# Until 2026-09-06 `_apply` executed the display actions and silently dropped the
+# rest, its comment saying `Mark` and `Reward` "belong to the I/O layer, which has
+# no simulator yet". `dio.Simulated` had existed for five days. So the M1 gate ran a
+# thousand trials, scored them correct, strobed **no event codes at all** and
+# delivered **no reward** -- a session that cannot be aligned to any recording and an
+# animal that worked for nothing, both reported clean.
+
+
+def _rewarding_trial() -> Trial:
+    """One frame, one mark, one reward. Small on purpose: these tests are about
+    whether an action leaves the loop, not about how a trial reaches its outcome."""
+    return Trial(
+        start="go",
+        states=[
+            State(
+                "go",
+                go=[
+                    On(
+                        After(0.0),
+                        Outcome.CORRECT,
+                        do=[Mark(4102), Reward("reward_correct")],
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_a_mark_reaches_the_effects_port_with_its_code():
+    effects = Recorded()
+
+    run_trial(_rewarding_trial(), Quiet(), frame_period=0.01, effects=effects)
+
+    assert ("mark", 4102) in effects.log
+
+
+def test_a_reward_reaches_the_effects_port_by_name():
+    """By name, never by magnitude. The task said which bounded entry; what that
+    entry is worth is the bounded config's to say and the task's never."""
+    effects = Recorded()
+
+    run_trial(_rewarding_trial(), Quiet(), frame_period=0.01, effects=effects)
+
+    assert ("reward", "reward_correct") in effects.log
+
+
+def test_the_code_is_strobed_before_the_valve_opens():
+    """Declared order, and it is the order that matters: `REWARD_COMMANDED` says a
+    reward was commanded, so a stream where it trails the delivery describes a
+    different sequence of events from the one that happened."""
+    effects = Recorded()
+
+    run_trial(_rewarding_trial(), Quiet(), frame_period=0.01, effects=effects)
+
+    assert effects.log == [("mark", 4102), ("reward", "reward_correct")]
+
+
+def test_a_reward_with_no_effects_port_refuses_rather_than_being_dropped():
+    """`dio.Absent`'s argument, and the reason this whole section exists. A loop that
+    silently discards a `Reward` is indistinguishable, from every test and every
+    record, from one that delivered it."""
+    with pytest.raises(RuntimeError, match="no I/O"):
+        run_trial(_rewarding_trial(), Quiet(), frame_period=0.01)
+
+
+def test_an_entry_action_can_mark_too():
+    """Entry actions are where `FIX_ON` and `ARRAY_ON` live, so a loop that only
+    walked transitions would emit half the stream."""
+    effects = Recorded()
+    trial = Trial(
+        start="go",
+        states=[
+            State("go", enter=[Mark(4096)], go=[On(After(0.0), Outcome.CORRECT)])
+        ],
+    )
+
+    run_trial(trial, Quiet(), frame_period=0.01, effects=effects)
+
+    assert effects.log == [("mark", 4096)]
+
+
+def test_a_task_that_commands_nothing_needs_no_io_port():
+    """Most tests in this file run tasks with no actions at all, and a loop that
+    demanded a port regardless would be enforcing a rule about the wrong thing."""
+    trial = Trial(start="go", states=[State("go", go=[On(After(0.0), Outcome.CORRECT)])])
+
+    assert run_trial(trial, Quiet(), frame_period=0.01).outcome is Outcome.CORRECT

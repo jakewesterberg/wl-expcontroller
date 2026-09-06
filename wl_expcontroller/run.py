@@ -24,9 +24,11 @@ from wl_expcontroller.task import (
     Guard,
     Hide,
     Hold,
+    Mark,
     Onscreen,
     Outcome,
     P,
+    Reward,
     Score,
     Show,
     Stimulus,
@@ -84,6 +86,73 @@ class World(Protocol):
         inspected the transition graph and none could see that a task was holding
         fixation on a point it had taken down.
         """
+
+
+class Effects(Protocol):
+    """What a trial *does*, as against what a `World` tells it.
+
+    Deliberately not part of `World`. A world answers questions -- where gaze is,
+    whether an event happened -- and a task's actions answer none: they strobe a code
+    onto the recording clock and open a valve. Folding them together would let a
+    world implementation report signals *and* deliver fluid, and the simulator would
+    then be one edit away from being able to reward an animal.
+
+    Two methods, matching the two actions the vocabulary has that leave the machine.
+    `Score` stays the loop's, because it changes no state outside the trial.
+    """
+
+    def mark(self, code: int) -> None:
+        """Strobe an event code. **Now, not on the next flip** -- see `_emit`."""
+
+    def reward(self, ref: str) -> None:
+        """Deliver the reward the bounded config calls `ref`.
+
+        By name, because the task named a *configuration entry* and never a
+        magnitude (S8 §4). Whatever implements this is what asks the ceiling.
+        """
+
+
+@dataclass(frozen=True, slots=True)
+class Unwired:
+    """No I/O. **Refuses, rather than dropping the action.**
+
+    The default, and the reason it is the default: for five days `_apply` executed
+    the display actions and silently discarded `Mark` and `Reward`, so the M1 gate
+    ran a thousand trials, strobed no codes and delivered no fluid, and every test
+    passed. A dropped action is invisible in exactly the two records that would show
+    it -- the recording has no codes to be missing from, and the animal cannot say.
+    """
+
+    def _refuse(self, what: str) -> None:
+        raise RuntimeError(
+            f"a task commanded {what} and no I/O is wired to this trial; the loop "
+            f"refuses rather than discarding it. Pass effects=Recorded() for a test, "
+            f"or the session's own port for a run"
+        )
+
+    def mark(self, code: int) -> None:
+        self._refuse(f"event code {code}")
+
+    def reward(self, ref: str) -> None:
+        self._refuse(f"reward {ref!r}")
+
+
+@dataclass
+class Recorded:
+    """Marks and rewards in the order they left the loop.
+
+    `log` keeps the order for `dio.Simulated`'s reason: the order *is* the contract.
+    A `REWARD_COMMANDED` code trailing its own delivery describes a different
+    sequence of events from the one that happened.
+    """
+
+    log: list = field(default_factory=list)
+
+    def mark(self, code: int) -> None:
+        self.log.append(("mark", code))
+
+    def reward(self, ref: str) -> None:
+        self.log.append(("reward", ref))
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,8 +300,8 @@ def _apply(
     duration this system reports, and reporting durations honestly is most of why it
     exists.
 
-    Non-display actions are not this function's business: `Score` is the loop's, and
-    `Mark` and `Reward` belong to the I/O layer, which has no simulator yet.
+    Non-display actions are not this function's business: `Score` is the loop's and
+    `Mark` and `Reward` are `_emit`'s, on a different clock -- see there.
     """
     for action in actions:
         if isinstance(action, Show):
@@ -266,12 +335,35 @@ def _apply(
             changed.append(Changed(action.stimulus, frame))
 
 
+def _emit(actions: "list[Action]", effects: "Effects") -> None:
+    """Execute the actions that leave the machine, **on this frame, not the next**.
+
+    The one-frame rule `_apply` follows is a fact about a display: what the loop
+    decides during frame N is carried by the flip that ends it. It is not a fact
+    about a digital line. A strobe written while frame N is processed is on the wire
+    during frame N, so recording it as N+1 would be a lie in the opposite direction
+    from the one `_apply` exists to prevent.
+
+    That the two differ is not a wrinkle to smooth over -- it is the gap the
+    photodiode measures and `After(since=Onscreen(...))` exposes. `FIX_ON` strobed at
+    N with the point visible at N+1 is what actually happens, and a system reporting
+    them as simultaneous would be hiding its own display latency inside its own
+    event stream.
+    """
+    for action in actions:
+        if isinstance(action, Mark):
+            effects.mark(action.code)
+        elif isinstance(action, Reward):
+            effects.reward(action.ref.name)
+
+
 def run_trial(
     trial: Trial,
     world: World,
     frame_period: float,
     max_frames: int = 100_000,
     values: dict[str, float] | None = None,
+    effects: "Effects | None" = None,
 ) -> Result:
     """Run one trial to its outcome.
 
@@ -279,7 +371,12 @@ def run_trial(
     because check 3 proves every state reaches an outcome and check 4 proves every
     wait is bounded. It exists so a task that skipped the checker fails a test
     rather than a session.
+
+    `effects` is where marks and rewards go. It defaults to `Unwired`, which refuses:
+    a task that commands neither never touches it, and one that does may not have the
+    command quietly dropped.
     """
+    effects = Unwired() if effects is None else effects
     by_name = {state.name: state for state in trial.states}
     current = by_name[trial.start]
     entered_at = 0
@@ -324,6 +421,7 @@ def run_trial(
     open_at: dict[str, int] = {}
     changed: list[Changed] = []
     _apply(current.enter, visible, shown, open_at, changed, 1)
+    _emit(current.enter, effects)
 
     # Two independent graces, in frames. `None` is enforcement switched off.
     def _grace(value) -> "int | None":
@@ -436,6 +534,7 @@ def run_trial(
             )
             if isinstance(edge.to, Outcome):
                 _apply(edge.do, visible, shown, open_at, changed, frame + 1)
+                _emit(edge.do, effects)
                 return Result(
                     edge.to,
                     frame,
@@ -447,7 +546,9 @@ def run_trial(
                 )
             current, entered_at = by_name[edge.to], frame
             _apply(edge.do, visible, shown, open_at, changed, frame + 1)
+            _emit(edge.do, effects)
             _apply(current.enter, visible, shown, open_at, changed, frame + 1)
+            _emit(current.enter, effects)
             # **Entering a state clears every hold.** A hold declared in a state
             # means held continuously *since that state began*. Carrying the window's
             # own entry frame across a transition let a later state's hold be

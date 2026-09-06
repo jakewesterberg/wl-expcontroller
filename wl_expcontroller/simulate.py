@@ -257,6 +257,52 @@ class Census:
         return declared - set(self.outcomes)
 
 
+@dataclass
+class Tally:
+    """A census being accumulated, trial by trial.
+
+    Extracted so `simulate` and a real session count the same things the same way.
+    They run different loops -- one walks a task exhaustively, the other walks a
+    session's blocks under its ceilings -- and two hand-written accumulators would be
+    two definitions of what a census *is*, drifting the first time one gains a field.
+    """
+
+    outcomes: Counter = field(default_factory=Counter)
+    responses: Counter = field(default_factory=Counter)
+    visited: set = field(default_factory=set)
+    hangs: int = 0
+
+    def add(self, result: Result) -> None:
+        self.visited.update(result.visited)
+        for scored in result.scored:
+            self.responses[(scored.window, scored.scored_as)] += 1
+        if result.outcome is None:
+            self.hangs += 1
+        else:
+            self.outcomes[result.outcome] += 1
+
+    def census(self) -> Census:
+        return Census(
+            outcomes=self.outcomes,
+            states_visited=self.visited,
+            hangs=self.hangs,
+            responses=self.responses,
+        )
+
+
+def prepare(subject: Subject, trial: Trial, frame_period: float, values: dict) -> None:
+    """Tell a subject the rig's frame period and which stimulus each window scores.
+
+    Per trial rather than per session, because an array's per-item windows are not
+    known until `n` is bound and `n` can be a condition's value: a session running
+    set size 2 and set size 12 in one block has a different window set on alternate
+    trials. Between-trial code, so the work is free (ADR-0006).
+    """
+    subject._frame_period = frame_period
+    declared, _ = expand_windows(trial, values or {})
+    subject._scores = {window.name: window.on for window in declared}
+
+
 def run_session(
     trial: Trial,
     subject: Subject,
@@ -264,6 +310,7 @@ def run_session(
     frame_period: float,
     values: dict[str, float] | None = None,
     record: "SessionRecord | None" = None,
+    effects=None,
 ) -> Census:
     """Run a session, optionally writing the record a rig would write.
 
@@ -272,7 +319,7 @@ def run_session(
     separate "simulation output" path would be free to differ from the real one in
     exactly the ways that matter, and nobody would find out until January.
     """
-    census = simulate(trial, subject, trials, frame_period, values, record)
+    census = simulate(trial, subject, trials, frame_period, values, record, effects)
     return census
 
 
@@ -283,43 +330,32 @@ def simulate(
     frame_period: float,
     values: dict[str, float] | None = None,
     record: "SessionRecord | None" = None,
+    effects=None,
 ) -> Census:
     """Run `trials` trials and report what happened.
 
     A trial that reaches `max_frames` without an outcome counts as a **hang**
     rather than raising: one pathological path should not stop a run that exists
     to find pathological paths.
+
+    `effects` is the port a task's marks and rewards leave through, and a census of a
+    rewarding task needs one -- `run.Unwired` refuses rather than dropping them. A
+    census wants `run.Recorded`, not a rig: it is an exhaustive walk of a task's
+    outcomes, so it runs far past any daily ceiling on purpose, and enforcing one
+    would turn an exploration into a session that stopped early.
     """
-    outcomes: Counter = Counter()
-    responses: Counter = Counter()
-    visited: set[str] = set()
-    hangs = 0
-    subject._frame_period = frame_period
-    # Expanded, because an array's per-item windows are not in `trial.windows` --
-    # how many there are is not known until `n` is bound.
-    declared, _ = expand_windows(trial, values or {})
-    subject._scores = {window.name: window.on for window in declared}
+    tally = Tally()
+    prepare(subject, trial, frame_period, values or {})
     for index in range(trials):
         subject.new_trial()
         result: Result = run_trial(
-            trial, subject, frame_period, values=values or {}
+            trial, subject, frame_period, values=values or {}, effects=effects
         )
-        visited.update(result.visited)
-        for scored in result.scored:
-            responses[(scored.window, scored.scored_as)] += 1
-        if result.outcome is None:
-            hangs += 1
-        else:
-            outcomes[result.outcome] += 1
+        tally.add(result)
         if record is not None:
             record.trial(
                 index=index,
                 outcome=result.outcome.value if result.outcome else "hang",
                 params=dict(values or {}),
             )
-    return Census(
-        outcomes=outcomes,
-        states_visited=visited,
-        hangs=hangs,
-        responses=responses,
-    )
+    return tally.census()

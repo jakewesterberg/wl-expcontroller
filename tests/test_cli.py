@@ -69,3 +69,48 @@ def test_an_allocation_file_must_define_ALLOCATION(tmp_path):
 
     with pytest.raises(SystemExit, match="must define ALLOCATION"):
         main(["check", GOOD, "--allocation", str(bad)])
+
+
+def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
+    """`wlx run` had no test at all until 2026-09-06, which is how a subcommand ends
+    up unable to construct the object it exists to construct."""
+    exit_code = main(
+        [
+            "run",
+            "tasks/fixation_detection.py",
+            "--allocation", "tasks/allocation.py",
+            "--bounds", "tasks/reference_bounds.py",
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_01",
+            "--subject", "REFERENCE",
+            "--delivered-today", "0",
+            "--trials", "20",
+            "--set", "fix_timeout=4.0",
+            "--set", "fix_hold=0.3",
+            "--set", "response_window=0.6",
+            "--set", "target_hold=0.2",
+            "--set", "fix_window=2.0",
+            "--set", "target_window=3.0",
+            "--set", "target_position=10.0",
+        ]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "correct" in out
+    assert (tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl").exists()
+
+
+def test_wlx_run_without_a_bounded_config_refuses(tmp_path, capsys):
+    """A session with no ceilings is a session with no limits, and the CLI is where
+    a person would most plausibly leave one off."""
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+            ]
+        )

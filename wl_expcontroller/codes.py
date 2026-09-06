@@ -37,6 +37,23 @@ class Allocation:
     def __contains__(self, code: int) -> bool:
         return code in self.task_events
 
+    def code_for(self, name: str) -> int:
+        """The code allocated to `name`, or a refusal.
+
+        The framework needs this for the events it emits itself -- head-fixation, a
+        parameter change -- which a task never declares and so never names. Looking
+        a name up is not allocating one: an allocation that does not carry the name
+        refuses here rather than having a number invented for it, which is the whole
+        rule this module exists to hold.
+        """
+        for code, allocated in self.task_events.items():
+            if allocated == name:
+                return code
+        raise KeyError(
+            f"no code is allocated for {name!r}; the framework does not invent one. "
+            f"Add it to the allocation (4096-32767 while ADR-0007 is open)"
+        )
+
 
 #: `Marker` values transcribed from `wl-preproc/wl_preproc/contracts/events.py`,
 #: which is frozen and carries an explicit warning that renumbering silently

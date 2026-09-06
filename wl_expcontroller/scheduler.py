@@ -229,6 +229,39 @@ class Scheduler:
         return list(self._queue)
 
     @property
+    def done(self) -> bool:
+        """Every block finished, which is when the *session* runs out of plan.
+
+        Separate from `finished`, which has always been about the current block
+        alone. Nothing advanced past a block until 2026-09-06, so a two-block
+        scheduler ran its first block forever -- and nothing noticed, because
+        `taskd` never imported this module.
+        """
+        return self._index >= len(self.blocks) - 1 and self.finished
+
+    def advance(self) -> Block:
+        """Move to the next block, and start it empty.
+
+        **Counters and the criterion window are reset**, because they are properties
+        of a block and not of a session: a criterion carried across would be met
+        before its own block had run a trial, on evidence from a different task
+        configuration entirely. `requeued` is not reset -- it is the session's log of
+        what had to be run again, and that reads across blocks.
+        """
+        if self._index >= len(self.blocks) - 1:
+            raise IndexError(
+                f"block {self.block.name!r} is the last block; a session that ran "
+                f"off the end of its plan would draw from a block that does not exist"
+            )
+        self._index += 1
+        self._counts = {c.name: Counts() for c in self.block.conditions}
+        self._queue.clear()
+        self._window.clear()
+        self._drawn.clear()
+        self._refill()
+        return self.block
+
+    @property
     def finished(self) -> bool:
         if self.block.criterion is not None:
             proportion, window = self.block.criterion

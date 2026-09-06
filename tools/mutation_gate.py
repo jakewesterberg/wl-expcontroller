@@ -61,6 +61,7 @@ RETURNS: dict[str, str] = {
     "eye": "None",
     "dio": "None",
     "bounds": "None",
+    "welfare": "None",
     "scheduler": "None",
 }
 

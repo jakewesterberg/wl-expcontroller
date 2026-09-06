@@ -30,13 +30,16 @@ carried across would let a quiet trial set a noisy one's sensitivity.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Mapping as MappingType
 
-from wl_expcontroller.calibration import Mapping
-from wl_expcontroller.eye import Tracker
+from wl_expcontroller.calibration import Collector, Mapping, MappingLog
+from wl_expcontroller.eye import Replay, Tracker
 from wl_expcontroller.saccade import Detector, Saccade
 from wl_expcontroller.task import (
     Guard,
+    Outcome,
     P,
     SaccadeOnset,
     SaccadeTo,
@@ -199,3 +202,121 @@ class Tracked:
         elif self._in_flight and not self.detector.in_flight:
             # The run closed: the eye has landed, so `SaccadeTo` can now ask where.
             self._in_flight = False
+
+
+@dataclass
+class Calibrating:
+    """A session's calibration block, from replayed or live gaze to a written map.
+
+    **The driver, not a composition.** Every piece existed before this -- the
+    scheduler walks the constellation, `tasks/calibration.py` scores each target,
+    `Collector` averages, `fit_eye` fits, `MappingLog.install` versions, and
+    `GazeCalibration.to_yaml` writes the bytes `wl-preproc` reads -- and none of them
+    ran inside a session. A test composed them by hand and its docstring said it was
+    "the shape the driver has to take", which is a different claim from a session
+    producing the file.
+
+    Plugs into `taskd.Session` through its two hooks: `world` makes the trial's
+    world, `observe` decides what that trial contributed. Neither knows about
+    calibration, which is the point -- a session runs blocks, and what a particular
+    block is *for* is not the session's business.
+    """
+
+    #: The map the block itself is scored through. Version 0 maps nothing, so a
+    #: session's first calibration needs one from somewhere: yesterday's file, or a
+    #: rough one from an operator. The window is sized to admit gaze that is wrong by
+    #: the amount calibration is about to correct, which is what makes that workable.
+    bootstrap: Mapping
+    log: MappingLog
+    frame_period: float
+    #: `(target) -> [(offset, payload)]`. A replay for a test or a bench run; on a
+    #: rig this is `None` and `source` is the live socket.
+    replay: object = None
+    source: object = None
+    collector: Collector = field(default_factory=Collector)
+    #: How many trials contributed a fixation. Not the same as how many ran.
+    collected: int = 0
+    _world: "Tracked | None" = field(default=None, repr=False)
+    _seen: list = field(default_factory=list, repr=False)
+
+    def world(self, trial, values: dict, index: int) -> "Tracked":
+        self._seen = []
+        source = self.source if self.replay is None else Replay(
+            payloads=list(self.replay((values["target_x"], values["target_y"])))
+        )
+        self._world = Tracked(
+            Tracker(),
+            self.bootstrap,
+            trial,
+            self.frame_period,
+            values,
+            source=_Watched(source, self._seen),
+        )
+        return self._world
+
+    def observe(self, condition, values: dict, result) -> None:
+        """Collect what the trial actually held, if the task paid for it.
+
+        **The hold, not the trial.** A calibration trial begins with the animal
+        looking somewhere else -- that is what `Entered("cal")` is waiting for -- so
+        averaging the whole trial's samples would drag every target toward wherever
+        the animal happened to be looking beforehand, by an amount that depends on
+        how long it took to acquire. The hold's duration is the task's own
+        `cal_hold`, and the hold ended on the frame the trial did.
+        """
+        if result.outcome is not Outcome.CORRECT:
+            return
+        end = result.frames * self.frame_period
+        began = end - _resolve(values["cal_hold"], values)
+        held = [sample for at, sample in self._seen if at >= began]
+        target = (values["target_x"], values["target_y"])
+        if self.collector.accept(target, held):
+            self.collected += 1
+
+    def install(self, at: float, tested_eccentricity_deg: float):
+        """Fit both eyes and install the result as the next mapping version."""
+        left, right, findings = self.collector.fit(
+            tested_eccentricity_deg=tested_eccentricity_deg
+        )
+        if [f for f in findings if f.blocking]:
+            return None, findings
+        mapping = self.log.install(
+            at=at,
+            targets=self.log.current.targets,
+            left=left,
+            right=right,
+            why="calibration block",
+        )
+        return mapping, findings
+
+    def write(self, directory) -> "Path":
+        """The file, beside the record it came from.
+
+        Named `eye_calibration.yaml` rather than anything session-specific: the
+        session directory already carries the identity, and a name that repeats it is
+        a second place for it to disagree.
+        """
+        path = Path(directory) / "eye_calibration.yaml"
+        path.write_text(
+            self.log.current.as_calibration().to_yaml(), encoding="utf-8"
+        )
+        return path
+
+
+@dataclass
+class _Watched:
+    """A gaze source that keeps what it handed out.
+
+    So `observe` can average the samples the *trial* saw rather than re-deriving
+    them: a second copy of the replay would be a second animal, differing from the
+    first wherever the poll schedule did.
+    """
+
+    source: object
+    seen: list
+
+    def poll(self, at: float):
+        sample = self.source.poll(at) if self.source is not None else None
+        if sample is not None:
+            self.seen.append((at, sample))
+        return sample

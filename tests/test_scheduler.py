@@ -7,6 +7,8 @@ dropped frame.
 
 from __future__ import annotations
 
+import pytest
+
 from wl_expcontroller.scheduler import (
     Block,
     Condition,
@@ -259,3 +261,79 @@ def test_requeue_policy_is_declared_per_block():
     scheduler.record(scheduler.next_trial().name, Outcome.FIXATION_BREAK)
 
     assert scheduler.requeued == []
+
+
+# --- block progression ------------------------------------------------------
+#
+# `finished` has always been about the current block. Nothing advanced `_index`, so
+# a `Scheduler` built with two blocks ran the first one forever -- which nothing
+# noticed, because `taskd` never imported this module at all.
+
+
+def _two_blocks() -> list[Block]:
+    return [
+        Block(name="first", conditions=[Condition("a", {}, target=2)]),
+        Block(name="second", conditions=[Condition("b", {}, target=3)]),
+    ]
+
+
+def test_a_scheduler_is_not_done_while_a_later_block_is_owed_trials():
+    scheduler = Scheduler(blocks=_two_blocks(), seed=1)
+    for _ in range(2):
+        scheduler.record(scheduler.next_trial().name, Outcome.CORRECT)
+
+    assert scheduler.finished, "the first block is"
+    assert not scheduler.done, "the session is not"
+
+
+def test_advancing_moves_to_the_next_block_and_its_own_conditions():
+    scheduler = Scheduler(blocks=_two_blocks(), seed=1)
+    for _ in range(2):
+        scheduler.record(scheduler.next_trial().name, Outcome.CORRECT)
+
+    scheduler.advance()
+
+    assert scheduler.block.name == "second"
+    assert scheduler.next_trial().name == "b"
+
+
+def test_a_new_block_starts_its_counters_and_its_criterion_window_empty():
+    """Otherwise a block inherits the previous block's performance, and a criterion
+    can be met before its own block has run a trial."""
+    blocks = [
+        Block(name="first", conditions=[Condition("a", {}, target=2)]),
+        Block(
+            name="second",
+            conditions=[Condition("b", {}, target=100)],
+            criterion=(0.9, 2),
+        ),
+    ]
+    scheduler = Scheduler(blocks=blocks, seed=1)
+    for _ in range(2):
+        scheduler.record(scheduler.next_trial().name, Outcome.CORRECT)
+
+    scheduler.advance()
+
+    assert not scheduler.finished, "two correct trials belonged to the block before"
+    assert scheduler.counts("b").attempted == 0
+
+
+def test_advancing_past_the_last_block_is_refused():
+    """A session that ran off the end of its plan would draw from a block that does
+    not exist, and the failure would surface as an index error mid-trial."""
+    scheduler = Scheduler(blocks=_two_blocks(), seed=1)
+    scheduler.advance()
+
+    with pytest.raises(IndexError, match="last block"):
+        scheduler.advance()
+
+
+def test_a_single_block_scheduler_is_done_when_that_block_is():
+    scheduler = Scheduler(
+        blocks=[Block(name="only", conditions=[Condition("a", {}, target=1)])], seed=1
+    )
+
+    assert not scheduler.done
+    scheduler.record(scheduler.next_trial().name, Outcome.CORRECT)
+
+    assert scheduler.done

@@ -10,6 +10,7 @@ or a clock can be wrong without any single module being wrong.
 from __future__ import annotations
 
 import json
+import os
 import random
 
 import pytest
@@ -25,16 +26,41 @@ from wl_expcontroller.calibration import (
     constellation,
     fit_eye,
 )
+from wl_expcontroller.bounds import Bounds, Ceiling, Floor
+from wl_expcontroller.dio import Simulated as Card
 from wl_expcontroller.eye import Replay, Tracker, parse
-from wl_expcontroller.gaze import Tracked
+from wl_expcontroller.gaze import Calibrating, Tracked
 from wl_expcontroller.geometry import Geometry
-from wl_expcontroller.run import run_trial
+from wl_expcontroller.run import Recorded, run_trial
 from wl_expcontroller.scheduler import Block, Scheduler
+from wl_expcontroller.taskd import Session, SessionSpec
+from wl_expcontroller.welfare import Simulated as Pump
 from wl_expcontroller.task import Outcome, SaccadeOnset, SaccadeTo
 from tasks.calibration import calibration
 
 GEOMETRY = Geometry(panel_diagonal_cm=80.01, viewing_distance_cm=57.0)
 TARGETS = constellation(GEOMETRY)
+
+#: Their reader, or a refusal. **`importorskip` is wrong here**: a contract test that is
+#: allowed not to run is not a contract test, and the whole point of writing this file is
+#: that *they* accept it. So a missing checkout skips locally and **fails** under
+#: `WLX_REQUIRE_PREPROC=1`, which is what CI sets. Same guard as `test_calibration.py`.
+_REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
+try:
+    from wl_preproc.eye.expcontroller import read_expcontroller_map as _read_their_map
+except ImportError as exc:  # pragma: no cover - exercised by the CI job
+    if _REQUIRED:
+        raise AssertionError(
+            f"WLX_REQUIRE_PREPROC=1 but wl-preproc is not importable ({exc}). The "
+            f"session's calibration file is only useful if their reader accepts it, "
+            f"and skipping that check reports a compatibility nobody verified"
+        ) from exc
+    _read_their_map = None
+
+_contract = pytest.mark.skipif(
+    _read_their_map is None,
+    reason="wl-preproc checkout not beside this repo; the contract cannot run",
+)
 
 #: A camera whose raw vector is a plain affine function of gaze, so a test can state
 #: where the animal is looking in degrees and know what the tracker would report.
@@ -290,7 +316,8 @@ def test_a_calibration_trial_is_scored_from_replayed_gaze():
         source=Replay(payloads=[(0.0, _payload(6.0, -4.0, frame=n)) for n in range(400)]),
     )
 
-    result = run_trial(calibration, world, frame_period, values=values)
+    result = run_trial(calibration, world, frame_period, values=values,
+                       effects=Recorded())
     assert result.outcome is Outcome.CORRECT
 
 
@@ -310,7 +337,8 @@ def test_a_calibration_trial_aborts_when_the_animal_looks_elsewhere():
         source=Replay(payloads=[(0.0, _payload(-6.0, 6.0, frame=n)) for n in range(400)]),
     )
 
-    result = run_trial(calibration, world, frame_period, values=values)
+    result = run_trial(calibration, world, frame_period, values=values,
+                       effects=Recorded())
     assert result.outcome is Outcome.NO_FIXATION
 
 
@@ -330,7 +358,8 @@ def test_a_tracker_that_stops_delivering_is_equipment_not_behaviour():
         source=Replay(payloads=[(0.0, _payload(6.0, -4.0, frame=n)) for n in range(20)]),
     )
 
-    result = run_trial(calibration, world, frame_period, values=values)
+    result = run_trial(calibration, world, frame_period, values=values,
+                       effects=Recorded())
     assert result.outcome is Outcome.TRACKER_LOST
 
 
@@ -504,7 +533,8 @@ def test_a_whole_calibration_block_produces_an_installed_map():
             condition.values,
             source=Replay(payloads=[(0.0, _payload(*target, frame=n)) for n in range(400)]),
         )
-        result = run_trial(calibration, world, frame_period, values=condition.values)
+        result = run_trial(calibration, world, frame_period, values=condition.values,
+                           effects=Recorded())
         scheduler.record(condition.name, result.outcome)
 
         # Only trials the task paid for contribute. A fixation the task would not
@@ -530,3 +560,181 @@ def test_a_whole_calibration_block_produces_an_installed_map():
     scored = Tracked(_tracker_at(6.0, -4.0), log.current, calibration, frame_period)
     assert scored.mapping_version == 1
     assert scored.gaze("left", 0) == pytest.approx((6.0, -4.0), abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# A whole session, not a composition test
+# ---------------------------------------------------------------------------
+#
+# The test above composes every piece by hand and its docstring says it is "the
+# shape the `taskd` driver has to take". That was true and it is not a driver: a
+# session never ran a calibration block, and nothing wrote the map at close, so the
+# artifact `wl-preproc` reads existed only as bytes a test could produce.
+
+
+def _calibration_bounds() -> Bounds:
+    return Bounds(
+        subject="REFERENCE",
+        ceilings={
+            "reward_correct": Ceiling(value=0.05, maximum=0.20, unit="mL"),
+            "chair_time": Ceiling(value=3_600.0, maximum=3_600.0, unit="s"),
+            "max_trials": Ceiling(value=200.0, maximum=200.0, unit="trials"),
+        },
+        minima={"daily_fluid": Floor(value=20.0, unit="mL")},
+    )
+
+
+def _calibration_session(tmp_path, repeats: int = 2):
+    frame_period = 0.008
+    block = Block(
+        name="calibration",
+        conditions=conditions(
+            GEOMETRY, window_deg=3.0, hold_s=0.1, timeout_s=1.0, repeats=repeats
+        ),
+    )
+    driver = Calibrating(
+        bootstrap=_fitted_mapping(),
+        log=MappingLog(TARGETS),
+        frame_period=frame_period,
+        replay=lambda target: [
+            (0.0, _payload(*target, frame=n)) for n in range(400)
+        ],
+    )
+    spec = SessionSpec(
+        task="tasks/calibration.py",
+        allocation="tasks/allocation.py",
+        root=tmp_path,
+        session_id="2027-01-14_01",
+        subject="REFERENCE",
+        trials=0,
+        frame_period=frame_period,
+        seed=11,
+        values={"cal_window": 3.0, "fix_timeout": 1.0, "cal_hold": 0.1},
+        bounds=_calibration_bounds(),
+        already_delivered_today=0.0,
+        blocks=[block],
+    )
+    session = Session(
+        spec,
+        card=Card(),
+        pump=Pump(),
+        world=driver.world,
+        observe=driver.observe,
+    )
+    session.head_fixed(at=0.0)
+    return session, driver
+
+
+def test_a_session_runs_the_calibration_block_and_installs_the_map(tmp_path):
+    """The exit condition P6 left open. A session -- with its ceilings, its record
+    and its event stream -- walks the constellation and ends with a map installed."""
+    session, driver = _calibration_session(tmp_path)
+
+    session.run()
+    mapping, findings = driver.install(at=42.0, tested_eccentricity_deg=16.0)
+
+    assert session.stopped_because == "every block is finished"
+    assert [f for f in findings if f.blocking] == []
+    assert mapping.version == 1
+    assert mapping.left is not None and mapping.left.n_points == 13
+
+
+@_contract
+def test_a_calibration_session_writes_the_file_wl_preprocs_reader_accepts(tmp_path):
+    """`GazeCalibration.to_yaml` already produced the right bytes; nothing put them
+    on disk under a session. Round-tripped through their real reader below, because a
+    file we believe is readable is not the claim worth making."""
+    session, driver = _calibration_session(tmp_path)
+    session.run()
+    driver.install(at=42.0, tested_eccentricity_deg=16.0)
+
+    written = driver.write(session.directory)
+
+    assert written == tmp_path / "2027-01-14_01" / "expcontroller" / "eye_calibration.yaml"
+    assert _read_their_map(written) is not None
+
+
+def test_only_trials_the_task_paid_for_reach_the_fit(tmp_path):
+    """A fixation the task would not reward is not one to calibrate against, and the
+    session is now what enforces that rather than a test doing it by hand."""
+    session, driver = _calibration_session(tmp_path)
+
+    census = session.run()
+
+    assert driver.collected == census.outcomes[Outcome.CORRECT]
+    assert driver.collected > 0
+
+
+def test_a_calibration_session_is_paid_and_counted_like_any_other(tmp_path):
+    """Calibration is a block, not an exception. The animal works and is paid, and
+    the day's total counts it -- so calibration work counts toward the day's floor
+    rather than being unpaid setup."""
+    session, _ = _calibration_session(tmp_path)
+
+    census = session.run()
+
+    assert session.welfare.deliveries == census.outcomes[Outcome.CORRECT]
+    assert session.welfare.total_today() > 0.0
+
+
+def test_the_fit_uses_the_hold_and_not_the_whole_trial(tmp_path):
+    """A calibration trial *begins* with the animal looking somewhere else -- that is
+    what `Entered("cal")` waits for. Averaging every sample the trial saw would drag
+    each target toward wherever gaze happened to start, by an amount that depends on
+    how long acquisition took, and the resulting map would be wrong in a way no
+    conditioning or extent check can see."""
+    frame_period = 0.008
+    hold_s = 0.1
+
+    def replay(target):
+        """Fifty frames looking 8.5 deg off this target, then at it.
+
+        Relative to the target rather than at a fixed point, because a fixed one
+        lands inside *some* target's 3 deg window and that trial's hold would then
+        be satisfied by gaze that never moved -- which would make this test pass for
+        a reason that has nothing to do with the slice under test.
+        """
+        away = (target[0] + 6.0, target[1] + 6.0)
+        payloads = [(0.0, _payload(*away, frame=n)) for n in range(50)]
+        payloads += [(0.0, _payload(*target, frame=n)) for n in range(50, 400)]
+        return payloads
+
+    driver = Calibrating(
+        bootstrap=_fitted_mapping(),
+        log=MappingLog(TARGETS),
+        frame_period=frame_period,
+        replay=replay,
+    )
+    spec = SessionSpec(
+        task="tasks/calibration.py",
+        allocation="tasks/allocation.py",
+        root=tmp_path,
+        session_id="2027-01-14_01",
+        subject="REFERENCE",
+        trials=0,
+        frame_period=frame_period,
+        seed=11,
+        values={"cal_window": 3.0, "fix_timeout": 1.0, "cal_hold": hold_s},
+        bounds=_calibration_bounds(),
+        already_delivered_today=0.0,
+        blocks=[
+            Block(
+                name="calibration",
+                conditions=conditions(
+                    GEOMETRY, window_deg=3.0, hold_s=hold_s, timeout_s=1.0, repeats=1
+                ),
+            )
+        ],
+    )
+    session = Session(spec, card=Card(), pump=Pump(), world=driver.world,
+                      observe=driver.observe)
+    session.head_fixed(at=0.0)
+
+    session.run()
+    mapping, findings = driver.install(at=1.0, tested_eccentricity_deg=16.0)
+
+    assert [f for f in findings if f.blocking] == []
+    # The camera is affine, so a map fit from the held samples alone recovers gaze
+    # exactly. Samples from before acquisition would show up here as error.
+    world = Tracked(_tracker_at(6.0, -4.0), mapping, calibration, frame_period)
+    assert world.gaze("left", 0) == pytest.approx((6.0, -4.0), abs=1e-6)
