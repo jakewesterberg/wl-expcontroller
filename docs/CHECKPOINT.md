@@ -1,6 +1,6 @@
 # Where this build actually is
 
-**Last updated 2026-09-05**, at the commit this file was committed in. Check
+**Last updated 2026-09-06**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
@@ -9,10 +9,14 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > **"January validates rather than discovers" was the working assumption and it is
 > false.** Review caught it on 2026-08-31: it is load-bearing, because it justifies
 > spending effort on the task layer instead of on the four things that must work on
-> day one — **DIO out, gaze in, a frame on screen, reward out**. Two of those four now
-> exist and are proven without hardware (`dio.py`, `eye.py`); the other two are
-> genuinely blocked on a card and a panel. Until a rig runs all four end to end,
-> **January discovers.** Sequence accordingly.
+> day one — **DIO out, gaze in, a frame on screen, reward out**. Two exist and are
+> proven without hardware (`dio.py`, `eye.py`); **reward out is now built up to the
+> pump** (`welfare.py`: a task's `Reward` reaches a delivery, the day is accounted, the
+> shortfall against its floor is reported) and stops there, because turning millilitres
+> into solenoid open time is a calibration nobody has measured. The display is blocked
+> on a panel, the real card on a card, and the last inch of the reward line on a
+> measurement. Until a rig runs all four end to end, **January discovers.** Sequence
+> accordingly.
 
 Nothing here has touched hardware.
 
@@ -20,7 +24,9 @@ Nothing here has touched hardware.
 
 ## Read this much, and no more
 
-24 design documents exist. **Do not read them all.** In order:
+**19 specs, 8 ADRs and 13 other documents exist. Do not read them all.** Counted from
+disk on 2026-09-06; the previous two figures here and in `next-session.md` disagreed with
+each other and with the directory. In order:
 
 1. **This file** — where things are.
 2. **`CLAUDE.md`** — the conventions, including three that were learned the hard way.
@@ -38,14 +44,16 @@ Nothing here has touched hardware.
 
 | | |
 |---|---|
-| Tests | **307, green** |
+| Tests | **375, green.** `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth entry for why that qualifier is load-bearing |
 | CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
+| Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the restraint clock, the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7) |
+| Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. Chair time and trial count are ceilings and do end a session. S8 §4–§5 were written the other way round and now carry the correction |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos**; one blocking ask closed 2026-09-05 — see below |
 | Hardware verified | **none** |
 | License | **Apache-2.0**, ADR-0004 accepted 2026-09-05. Repository public |
-| Day-one path (DIO out · gaze in · frame on screen · reward out) | **2 of 4 built and proven without hardware**; the display and the real card remain. Gaze now reaches degrees as well as pixels |
+| Day-one path (DIO out · gaze in · frame on screen · reward out) | **2 of 4 built and proven without hardware, and the third built up to the pump**; the display and the real card remain. Reward out runs end to end against a simulated pump, with the day's total accounted and the shortfall against its floor reported at close. What is missing on that leg is a **pump calibration** — millilitres per second of open time — which nobody has measured |
 
 ### What exists
 
@@ -71,14 +79,38 @@ Nothing here has touched hardware.
   own `decode_stream` and matches their `encode_payload` exactly across the uint32
   range. **We deliberately write no decoder.**
 - `run.py` — the trial loop. Hardware, behaviour agents and demo mode are peers the
-  loop cannot distinguish.
-- `simulate.py` — sessions and the census: outcomes, states visited, hangs, and
-  outcomes nothing reached.
+  loop cannot distinguish. **`Effects` is the outbound half**, added 2026-09-06: a
+  world answers questions, and marks and rewards answer none, so they leave through a
+  separate port. The default `Unwired` **refuses**, because for five days `_apply`
+  executed the display actions and silently discarded the other two.
+- `simulate.py` — the census: outcomes, states visited, hangs, and outcomes nothing
+  reached. `Tally` is shared with `taskd`, so a census counts the same things whether
+  it came from an exhaustive walk of a task or from a session under its ceilings.
 - `cli.py` — `wlx check`, `wlx review`, `wlx run`; exit 1 on a blocking finding.
-- **`bounds.py` — the welfare-critical file, and currently the only one.** Ceilings a
-  task cannot express and a console cannot exceed; fluid reconciled against the
-  delivered line rather than what we commanded; an unknown daily total refuses
-  delivery. **Requires human review before merge** (CLAUDE.md).
+  `wlx run` needs `--bounds` and reports what it commanded and why it stopped. It had
+  **no test at all** until 2026-09-06, which is how a subcommand ends up unable to
+  construct the object it exists to construct.
+- `taskd.py` — **the session**: blocks from `scheduler`, criterion transitions,
+  ceilings that end a run, one validated path for live parameter writes, and the
+  world as an injectable seam. A flat run of N trials is the block session with one
+  block, not a second loop.
+- `tasks/reference_bounds.py` — a bounded config for `wlx run` and for reading.
+  **Every number in it is a placeholder**; its subject is `REFERENCE`, and a session
+  refuses a bounded config belonging to another subject, so it cannot quietly become
+  a real one.
+- **`bounds.py` — welfare-critical, and pure.** Ceilings a task cannot express and a
+  console cannot exceed, **and a daily fluid floor** — a minimum, not a budget. Fluid
+  reconciled against the delivered line rather than what we commanded. No clock, no
+  hardware, no state that outlives a question. `Floor` and `Ceiling` are different
+  types so the two cannot be confused at a call site, which is exactly how the daily
+  figure came to be compared with `>`. **Requires human review before merge**.
+- **`welfare.py` — welfare-critical, and the caller.** The day's fluid total including
+  what another deployment already delivered, the restraint clock started by
+  head-fixation, the `Pump` port, and **`Rig` — the object a task's `Reward` action
+  actually reaches.** `shortfall()` is what a session hands a person at close: how much
+  of the day's minimum is still owed. The whole route from a task's declaration to fluid
+  is readable in this one file, which is the property to keep. Added 2026-09-06 because
+  limits alone were not enough. **Requires human review before merge.**
 - `calibration.py` — raw Purkinje vector to degrees, per eye. The model and the file
   are both **wl-preproc's**, read from their source; ours is the procedure. Thirteen
   targets (measured, not chosen), three refusals in a deliberate order — count, then
@@ -104,22 +136,41 @@ Nothing here has touched hardware.
   vocabulary. It passes every load-time check with zero findings, which is the
   finding: the vocabulary can express its own calibration.
 - `tools/mutate.py` — proves a test can fail. Read its docstring before trusting a
-  mutation result by hand.
+  mutation result by hand, and **read its output rather than its exit code**: it has
+  been wrong six times, and the sixth reported `caught` on the strength of a syntax
+  error (trap 7).
 - `tools/calibration_design.py` — which constellation the block should present, and
   why. Results in `docs/measurements/dev-machine/2026-09-05-calibration-constellation.md`.
 
 ### What does not exist, and matters
 
-- **`taskd` is a spine, not a daemon.** It runs a session end to end and meets M1,
-  but there is no console link, no live parameter path and no preflight. Those are
-  P4 and later. **It also never imports `scheduler.py`**, so blocks, quotas and
-  criterion transitions exist as a mutation-clean component that nothing drives.
-- **`bounds.check_delivery` is called by nothing outside its own tests.** The
-  welfare-critical module enforces no ceiling today, because no code path consults it:
-  `run.py` resolves a `Reward` action into nothing, its comment noting that `Mark` and
-  `Reward` "belong to the I/O layer, which has no simulator yet". **A bound nothing
-  calls reads as present and is not**, which is the same shape as trap 7's checker and
-  trap 18's gate. It is the first thing P4b should fix.
+- ~~**`taskd` is a spine, not a daemon**, and never imports `scheduler.py`~~ and
+  ~~**`bounds.check_delivery` is called by nothing outside its own tests**~~ —
+  **both closed 2026-09-06**, and what they were is now pitfall P21. See "What moved"
+  below.
+- **`taskd` is still not a daemon.** There is no console link over a socket and no
+  preflight beyond two refusals. `Session.set` is the validated write path a console
+  will hold; nothing yet connects one to it. That is P4d.
+- **Nothing converts millilitres to solenoid open time.** `welfare.Pump` takes
+  millilitres because that is what the ceilings are denominated in; the conversion is
+  a **per-rig pump calibration that has never been measured**, so the driver that
+  opens copper does not exist and would be inventing a dose if it did. `wl-sync`'s
+  board one-shots the *manual* button at ~199 ms and passes our commanded line through
+  its OR gate untouched (their `hardware/README.md`, 2026-08-15 entry), so the pulse
+  width is ours to choose — which is exactly why the number matters. New open
+  measurement; see below.
+- **A live parameter change is not on the recording clock**, only in the session
+  record. `PARAM_CHANGE` is an *escape* carrying a uint32 sequence number and
+  `wl-preproc` has not agreed the amendment, so `PARAM_CHANGED` (4130) marks the
+  timing in our own range and the values sit beside it in
+  `parameter_changes.jsonl`. Strictly better than the silence P16 warns about and
+  strictly worse than the escape: two changes in one interval are told apart by order
+  alone, and a dropped code desynchronises that ordering in a way a sequence number
+  would survive.
+- **Calibration is a whole session, not an interlude.** S8 §1 wants sub-tasks a
+  session enters and leaves without ending; `gaze.Calibrating` drives a session whose
+  *task* is the calibration block. Switching task mid-session is the interlude, and it
+  does not exist.
 - **Parquet is not written.** JSONL is the durable streamed record; the columnar
   table is a derivation at session close that does not exist yet. Deliberate: a
   Parquet file is only valid once closed, so it cannot be the crash-safe record.
@@ -197,6 +248,160 @@ Nothing here has touched hardware.
 
   Three ways of getting one checkout wrong, each of which looked fixed: no checkout,
   a path outside the workspace, and no credentials for it.
+
+---
+
+## What moved on 2026-09-06
+
+### The thing worth reading first: fluid has a floor, not a ceiling
+
+**Asked of the PI on 2026-09-06 and answered:** *"there is never a ceiling for fluid
+reward. only a floor (which can be supplemented after the training/rec session to
+reach)."*
+
+Every fluid limit in this repository was built the wrong way round. `bounds` refused a
+delivery that would put the day past its "budget", `welfare` stopped the session on
+that refusal, and S8 §4 said *"daily fluid budget"* — which is the phrase that made the
+reading available and is now corrected in place. Under this lab's protocol a fluid
+ceiling **withholds fluid an animal earned in order to satisfy a limit nobody set**,
+and stops the session partway through doing it.
+
+What replaced it:
+
+- **`bounds.Floor` is a different type from `bounds.Ceiling`**, and the daily figure
+  lives in `Bounds.minima` rather than `Bounds.ceilings`. Same type for both is exactly
+  how a minimum came to be compared with `>`: a floor stored as a ceiling reads as one
+  at every call site.
+- **`bounds.shortfall(name, delivered_today)`** replaces `check_delivery`. It answers
+  *how much is still owed*, never *may I deliver*.
+- **Nothing refuses a delivery on volume.** The per-delivery magnitude keeps its
+  ceiling, enforced when a console *sets* it — which is the right place, since the
+  magnitude is a configuration decision and a task can only name it.
+- **An unknown day no longer refuses reward.** S8 §5.2's fail-closed rule followed from
+  a ceiling; under a floor the argument runs the other way, and the one thing an
+  uncountable day must not do is stop paying an animal that is working. `shortfall()`
+  answers `None` rather than zero, because a day nobody measured is not a day that went
+  well, and `wlx run` prints that as `supplement: UNKNOWN`.
+
+**This is what "ask, do not file" is for.** The question was put to the PI as a
+question at the moment the code forced it, and the answer overturned a model that had
+been in the spec since M0, had passed its own tests, and had just been wired into every
+session. An open-items table would have recorded it and the wrong model would have
+shipped.
+
+---
+
+**P4b: the session, and the two guardrails that were not wired to anything.**
+
+The headline is not a feature. `bounds`' fluid check — the welfare-critical one — was
+called by nothing outside its own tests, and `run.py` resolved both
+`Mark` and `Reward` into nothing at all, behind a comment saying they "belong to the
+I/O layer, which has no simulator yet". **`dio.Simulated` had existed for five days.**
+So the M1 gate ran a thousand trials, scored them correct, **strobed no event codes
+and delivered no reward**, and 307 tests passed. A session with no codes cannot be
+aligned to any recording; an animal that is not paid cannot say so. Both failures are
+invisible in every artifact the session produces. Now pitfall **P21**.
+
+- **`welfare.py`, the second welfare-critical module.** The day's fluid total
+  (including what another deployment already delivered — S8 §5.2b), the restraint
+  clock, the `Pump` port, and **`Rig`, which is what a `Reward` action reaches**. The
+  split from `bounds.py` is what keeps each reviewable: `bounds` is pure limits with
+  no clock and no hardware, and `welfare` is the one file that has to be read to
+  answer *can anything deliver reward without the day's accounting seeing it*.
+- **`run.Effects`.** A world answers questions; a mark and a reward answer none, so
+  they leave through a separate port. **The default refuses.** Wiring it turned 12
+  green tests red, and every one of those was a test running a rewarding task whose
+  rewards went nowhere — which is the clearest possible statement of the bug.
+- **A pump fault is not absorbed.** A solenoid that will not answer is a broken rig,
+  and swallowing it would produce a session's worth of correct trials nobody was paid
+  for. `Rig` had a second branch catching a fluid ceiling and stopping the session at
+  the next trial boundary; the PI's correction removed the premise, and the shape is
+  recorded in its docstring because it is the right shape for any *future* stopping
+  condition that arrives mid-trial: never raise out of the frame loop, because that
+  aborts a trial the animal completed.
+- **`taskd` runs blocks.** `scheduler.py` was mutation-clean, handled quotas, requeue
+  and criterion transitions, and nothing imported it — so nothing ever advanced past
+  the first block, and `_index` was never incremented in the module's whole life.
+  `advance()`/`done` exist now and reset the counters and the criterion window,
+  because a criterion carried across a block boundary is met on evidence from a
+  different task configuration.
+- **A flat run of N trials is the block session with one block.** Not a second loop: a
+  second loop is a second place for the ceilings to be checked differently.
+- **Two ceilings end a session** — chair time and trials — and chair time runs
+  **from head-fixation**, which a session now refuses to start without. **Fluid is not
+  one of them.** The session
+  clock is derived from frames rather than the wall, which is what keeps "stops at its
+  restraint ceiling" deterministic; on a rig frames *are* the clock, so it is the
+  honest choice there too.
+- **`HEAD_FIXED`/`HEAD_RELEASED` are strobed** (4128/4129). Chair time is the one
+  welfare quantity with no hardware line, so the codes *are* its durable record.
+- **The terminal `Marker` is emitted by the framework**, not the task: a task declares
+  an `Outcome` and never a marker. Without it a recording has no trial boundaries at
+  all, whatever else is in the stream.
+- **One validated write path for live parameters.** Validated when offered, applied
+  atomically at the next trial boundary, recorded with its origin. A welfare-bounded
+  name goes through `bounds.set` and its ceiling; an ordinary one through the task's
+  own `Param` declaration — so the console can move reward volume and cannot move it
+  past the ceiling, by the same call.
+- **Every trial records its block and condition**, not only its resolved parameters.
+  Two conditions can resolve to identical values — a catch trial and a signal trial
+  differing only in what the task does with them — and an analysis grouping by
+  parameters would silently merge them.
+- **A session refuses a bounded config belonging to another subject.** Running A
+  against B's ceilings is a dose error with a plausible-looking session behind it, and
+  nothing downstream compares the two.
+- **`wlx run` had no test**, and could not construct a `SessionSpec` after the above.
+  It now takes `--bounds` and `--delivered-today`, and reports what it commanded.
+
+**P6's last piece, closed with it.** `gaze.Calibrating` drives a *session* through the
+calibration block: it makes each trial's world, collects the fixation from the trials
+the task paid for, fits, installs a new mapping version, and writes
+`<session>/expcontroller/eye_calibration.yaml` — round-tripped through `wl-preproc`'s
+real reader. The composition test that used to stand in for this said in its own
+docstring that it was "the shape the driver has to take"; it was, and it was not one.
+
+**The fit averages the hold, not the trial.** A calibration trial *begins* with the
+animal looking somewhere else — that is what `Entered("cal")` waits for — so averaging
+every sample the trial saw drags each target toward wherever gaze happened to start,
+by an amount that depends on how long acquisition took. The resulting map is wrong in
+a way neither the conditioning check nor the extent check can see (trap 13's shape
+again).
+
+### And the harness was wrong again, in the file it matters most in
+
+`welfare.py`'s first mutation sweep reported every `deliver` **caught**. It was not: the
+`Pump` protocol's one-line body (`def deliver(self, ml: float) -> None: ...`) makes the
+mutation a `SyntaxError`, every definition of that name is neutered together, so the run
+reported collection errors and `mutate` reads any non-zero exit as caught. **The
+welfare-critical path from a task's `Reward` to the pump was reported mutation-clean on
+the strength of a syntax error.**
+
+Caught by reading the output rather than the exit code: `caught deliver  3 errors in
+0.60s` is not the shape of a test failing. With the fix, the same function reports
+**16 failed** and `welfare.py` is genuinely mutation-clean. Sixth failure of this tool,
+and the second that broke toward a false clean by way of an invalid mutation. Trap 7
+carries it.
+
+**And the same class of hole, caught in the new contract test.** The calibration-file
+test was written with `pytest.importorskip`, which skips silently — including in CI,
+where `WLX_REQUIRE_PREPROC=1` exists precisely to turn a missing `wl-preproc` into a
+failure. It now uses `test_calibration.py`'s guard. A contract test that is allowed not
+to run is not a contract test, which is the same sentence `tests/conftest.py` has
+carried since the codec round-trip skipped into a green build.
+
+### Two things this created
+
+**A pump calibration is now an open measurement**, in the same class as the photometer
+one. `welfare.Pump` takes millilitres; nothing converts them to solenoid open time, and
+`wl-sync`'s board makes clear that the pulse width is ours to choose — it one-shots the
+*manual* button at ~199 ms and passes our commanded line straight through the reward-OR
+gate. So the number is a per-rig measurement of the pump, and until it exists the real
+driver is not written rather than guessed.
+
+**The session grew a world seam.** `Session(world=...)` is where hardware plugs in. It
+had to exist for the calibration driver, and it is the first time the claim that "the
+loop cannot tell a rig from a simulator" has been exercisable at the session level
+rather than the trial level.
 
 ---
 
@@ -344,11 +549,11 @@ runs out of context before it produces anything.**
 | ~~P0~~ | ~~Make the repo resumable~~ | **done 2026-08-31** | — | — |
 | ~~P1~~ | ~~Finish the task layer~~ | **done 2026-08-31** — checks, both reference tasks, `wlx check` and `wlx review`. Reopened the same day: review found the display was modelled nowhere | — | — |
 | ~~P2~~ | ~~Session record~~ | **done 2026-08-31** — streamed JSONL, config snapshot, parameter-change log, and `run_session` writing a real directory | — | — |
-| ~~P3~~ | ~~`taskd` skeleton~~ | **done 2026-08-31 — roadmap M1 met**: 1,000 deterministic trials, headless, full record, `wlx run` | — | — |
+| ~~P3~~ | ~~`taskd` skeleton~~ | **done 2026-08-31.** ~~roadmap M1 met~~ — **that claim was wrong and is withdrawn 2026-09-06**: M1 also names fake I/O (nothing was strobed or delivered until P4b), demo mode, and an operator document. The first is fixed; the other two are P4 | — | — |
 | **P4** | Demo mode: JSONL events, parquet behaviour, config snapshot, directory layout | A simulated session writes a real session directory | S10, S3, S8 | nothing |
 | | → **roadmap M1** | 1,000 deterministic trials with full outputs | S8, S9 | — |
 | | + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | — |
-| **P4b** | Session management: blocks, scheduler, bounded config, welfare accounting, the live parameter path | A session runs blocks with criterion transitions and enforces its ceilings | S8 | nothing |
+| ~~P4b~~ | ~~Session management: blocks, scheduler, bounded config, welfare accounting, the live parameter path~~ | **done 2026-09-06** — a session runs blocks with criterion transitions, enforces its chair-time and trial ceilings, and reports the day's fluid shortfall at close; `welfare.py` is the second welfare-critical module and **wants human review** | — | — |
 | P4c | Parquet derivation at close; the `labhost` endpoint | Contract-tested against `wl-preproc`'s published schema | S10 | nothing |
 | P4d | The console shell against a fake `taskd` | An operator surface that runs with no rig | S9, S9a | nothing |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
@@ -357,14 +562,15 @@ runs out of context before it produces anything.**
 | | → the calibration fit and its file | **done 2026-09-05** — constellation, per-eye fit, three refusals, round-tripped through their reader | — | — |
 | | → the block, the versioned map, the join | **done 2026-09-05** — `tasks/calibration.py`, `Mapping`/`MappingLog`/`Collector`, and `gaze.Tracked`. A whole block runs from scheduled targets to an installed map | — | — |
 | | → saccade detection | **done 2026-09-05** — online Engbert–Kliegl, contract-tested to find the same intervals `wl-preproc`'s offline detector finds, wired to both saccade guards | — | — |
-| | → wiring the calibration block into `taskd` | **not started.** The block composes in a test and that test is the driver's shape; no *session* runs one, and nothing writes the map at session close. Overlaps P4b | S5, S8 | nothing |
+| | → wiring the calibration block into `taskd` | **done 2026-09-06** — `gaze.Calibrating` drives a session through the block, fits from the *hold*, installs a version and writes the file `wl-preproc`'s reader accepts | — | — |
 | **P7** | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
 | | → the interface | **done 2026-09-01** — pin map, refusing `Absent`, recording `Simulated`; the `nidaqmx` implementation needs a card | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
 
-**P1–P4 needed no hardware and are done. P4b–P4d need none either**, so the runway
-without a rig is longer than it looked — and it now covers the welfare-critical code,
-which wants human review time more than anything else does.
+**P1–P4b needed no hardware and are done. P4c and P4d need none either.** The
+welfare-critical surface is now two files, `bounds.py` and `welfare.py`, and **both
+want a human before merge** — that is the thing on this list that cannot be done by
+another session.
 
 **ADR-0002 is deferred to V1** (2026-08-31): neither display stack is built properly
 until a rig can measure both. So P5 is hardware-blocked, and the display spike stays a
@@ -392,6 +598,18 @@ Neither blocking item stops P1–P4. Both are built around: codes are allocated 
 ---
 
 ## Open measurements this creates
+
+**A pump calibration gates real reward delivery** (new 2026-09-06). `welfare.Pump`
+takes millilitres because the ceilings are denominated in millilitres; nothing
+converts them to solenoid open time, and that conversion is a per-rig measurement of
+the pump and line. `wl-sync`'s board one-shots the **manual** button at ~199 ms and
+passes our commanded line straight through the reward-OR gate untouched (their
+`hardware/README.md`, 2026-08-15 panel-instrumentation entry), so the pulse width is
+ours to choose and the volume it yields is ours to measure. Until it is measured the
+real pump driver is **not written**, on the same rule as `nidaqmx`: guessing at it now
+means a dose nobody measured. **Protocol V10** in `docs/validation.md`; result goes under
+`docs/measurements/`.
+
 
 **A photometer measurement now gates every chromatic task.** `check` refuses colour
 without a `Calibration`, and a real one needs a spectroradiometer or colorimeter on
@@ -430,7 +648,27 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    its next run, and the rule stands that **nothing is committed without a green
    suite in the same breath**. `git add -A` after a long-running command is the shape
    of the mistake.
-7. **The mutation harness has now been wrong five times, and the fifth broke the
+7. **The mutation harness has now been wrong six times, and the sixth is the one that
+    matters most.** A body written on the signature's own line -- `def deliver(self,
+    ml: float) -> None: ...` -- cannot have a statement inserted after it, so the
+    mutation produced a **`SyntaxError`**. The suite then reported *collection errors*,
+    `mutate` reads any non-zero exit as the mutation being caught, and every definition
+    sharing that name was reported covered without a single test being consulted.
+
+    The name in question was `deliver`, in `welfare.py`: **the welfare-critical path
+    from a task's `Reward` action to the pump**, reported as mutation-clean on the
+    strength of a syntax error. Found by reading the output rather than the exit code
+    -- `caught deliver  3 errors in 0.60s` is not the shape of a test failing, and four
+    identical lines for four different definitions is not the shape of four tests
+    failing either.
+
+    The offending clause was itself a fix: `[^\n]*` after the colon was added so a
+    trailing comment could not defeat the match (see the fifth failure, below), and it
+    swallowed a same-line body with the same appetite. Now `[ \t]*(?:#[^\n]*)?` --
+    a comment is not a body -- with `tests/test_mutate.py` asserting that both cases
+    still behave and that the mutation **parses**. Original entry follows.
+
+    **The mutation harness has now been wrong five times, and the fifth broke the
     other way.** The first four were false *clean* -- quietly examining nothing and
     reporting success. The fifth was a false *alarm*: neutering inserts
     `return None` at the top of a function whose body was already `return None`,
@@ -559,3 +797,54 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
     and keeps asserting the behaviour on both. And **a local sibling checkout is not
     the version CI tests against** -- it can be ahead, behind, or on a branch -- so a
     green local contract test and a green CI contract test are different claims.
+
+20. **A "not yet" comment is the one claim nothing can check, and it goes stale in
+    silence.** `run.py`'s `_apply` executed the display actions and dropped `Mark` and
+    `Reward`, saying they "belong to the I/O layer, which has no simulator yet".
+    `dio.Simulated` landed five days later and that sentence became false with nothing
+    to notice: it is a claim about the *rest of the repository*, and a test suite can
+    only check claims about the code under it. The cost was the M1 gate running a
+    thousand trials, scoring them correct, strobing no codes and delivering no reward,
+    with every test green — and `bounds`' fluid check, the welfare-critical one,
+    called by nothing outside its own tests for a week. `scheduler.py` was the same
+    shape without the animal: mutation-clean, and `taskd` never imported it, so
+    `_index` was never incremented in the module's whole life.
+
+    Three rules, and the first is the one that would have caught it: **a safety
+    component ships with its consumer in the same commit, or its absence fails.**
+    `run.Unwired` now refuses a mark or a reward it cannot deliver, the way
+    `dio.Absent` and `welfare.Absent` refuse. **Test the path, not the piece** — every
+    link of that chain was individually tested while the chain was broken. And write
+    what a "not yet" is waiting for **by name**, so the next reader can grep it rather
+    than believe it. Same family as traps 7 and 18: the question is never whether a
+    guardrail passes, it is whether anything reaches it. Now pitfall P21.
+
+21. **A test fixture can satisfy the thing it is meant to violate.** The test that the
+    calibration fit uses the *hold* rather than the whole trial put the animal at a
+    fixed wrong position first -- and that position sat inside some target's 3° window,
+    so on that trial the hold completed from gaze that never moved and the test passed
+    for a reason unrelated to the slice under test. Fixed by making the wrong position
+    relative to each target. **Watched it fail before trusting it** (`began = 0.0` in
+    `Calibrating.observe`), which is what found the fixture bug rather than shipping a
+    test that could not fail.
+
+22. **A limit built the wrong way round passes every test it has.** Fluid was modelled
+    as a ceiling from M0 until 2026-09-06: `bounds` refused a delivery past a daily
+    "budget", `welfare` stopped the session on it, and both were thoroughly tested,
+    mutation-clean and internally consistent. **The PI's protocol has no fluid ceiling
+    at all** -- only a daily floor, supplemented by hand afterwards -- so all of that
+    correctness was in service of withholding fluid an animal had earned.
+
+    Nothing in the repository could have caught it. The tests asserted the model, the
+    mutation gate proved the tests could fail, and S8 §4's phrase *"daily fluid
+    budget"* is what made the wrong reading available in the first place. What caught
+    it was **asking the PI a direct question at the moment the code forced one**
+    (CLAUDE.md, "ask, do not file"), on a decision that was animal-facing and expensive
+    to get wrong.
+
+    Two durable changes came out of it. `Floor` and `Ceiling` are **different types**,
+    because a minimum stored as a maximum reads as a maximum at every call site --
+    which is precisely how a floor came to be compared with `>`. And a limit whose
+    *direction* is load-bearing now says which it is in its own name: `minima` beside
+    `ceilings`, `shortfall` rather than `check_delivery`.
+

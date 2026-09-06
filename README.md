@@ -4,9 +4,14 @@ Research and design repository for a lab-built experiment controller for closed-
 nonhuman primate neurophysiology: a Python, Linux-first replacement for NIMH MonkeyLogic
 on the Westerberg lab rigs (KU Leuven). Part of the `wl-*` repo family.
 
-**Status: design phase. No code yet — deliberately.** This repo holds the software
-landscape survey, the architecture, the risk register, and the validation plan. Code lands
-only after the contracts in `docs/design/` are settled (roadmap milestone M0).
+**Status: M0 signed off 2026-08-31; code since.** The contracts in `docs/design/` are
+settled and the package exists — a declarative task model with load-time checks, a trial
+loop, gaze ingest and calibration, event encoding, a session record, and sessions that run
+blocks under welfare bounds. **Nothing has touched hardware**, and the display and the real
+DAQ card are the two legs of the day-one path that are still blocked on it.
+
+`docs/CHECKPOINT.md` is where this repository says what is actually true; this file is a
+summary and goes stale faster.
 
 ## Why this exists
 
@@ -69,8 +74,16 @@ docs/pitfalls.md         risk register with mitigations
 docs/roadmap.md          milestones with measurable acceptance gates
 docs/validation.md       measurement protocols
 docs/measurements/       per-rig measured results (committed artifacts)
+docs/CHECKPOINT.md       where the build actually is -- read this first
+wl_expcontroller/        the package
+tasks/                   reference tasks, the event allocation, a reference bounded config
+tools/                   the mutation harness and the gate that selects for it
 CLAUDE.md                working conventions for AI-assisted development
 ```
+
+Two files are **welfare-critical and require human review before merge**:
+`wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`. They are kept small so
+that a person can actually read them before signing one off.
 
 Start with `docs/superpowers/specs/2026-08-31-controller-architecture-design.md` for the
 reasoning, and `docs/design/architecture.md` for the summary.

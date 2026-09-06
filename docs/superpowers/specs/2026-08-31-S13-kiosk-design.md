@@ -61,7 +61,8 @@ Two consequences that matter more than the numbers:
 - The precedence chain gains a layer: **deployment → rig → subject → task → session → live
   edits**, still under one ceiling.
 
-**Kiosk fluid counts against the same daily budget as rig work** (PI, 2026-08-31), so the two
+**Kiosk fluid counts toward the same daily figure as rig work** (PI, 2026-08-31; that figure is
+a **floor** rather than a budget — PI, 2026-09-06, see S8's head), so the two
 deployments share a total neither can see directly — the kiosk has no sync box. wl-works holds the
 ledger and pushes the day's already-delivered figure in `prepare-session`; each deployment enforces
 `ceiling − already_delivered_today` (S8 §5.2b). Sequential use is the only real case, since an
@@ -121,4 +122,4 @@ it to.
 | 2 | Kiosk hardware: panel, touch sensor, reward mechanism, host | S0-equivalent |
 | 3 | Whether the kiosk shares the stimulus vocabulary or a subset | S4 |
 | 4 | ~~Supervision model~~ **Answered: both — readings on the dashboard, and an active alert.** See §4.1 for how, given the kiosk cannot initiate a connection | wl-works |
-| 5 | ~~Whether kiosk fluid counts against the rig's daily budget~~ **Answered: yes, one budget.** Remaining: wl.works holding the ledger | wl-works |
+| 5 | ~~Whether kiosk fluid counts against the rig's daily budget~~ **Answered: yes, one daily figure — and it is a floor, not a budget** (PI, 2026-09-06). Remaining: wl.works holding the ledger | wl-works |

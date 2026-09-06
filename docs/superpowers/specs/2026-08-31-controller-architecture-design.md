@@ -292,8 +292,13 @@ what makes it work for model-authored tasks.
 
 Welfare-critical parameters are **live-editable by a human through the console, bounded by
 ceilings in the rig/subject config that the console cannot exceed and the task cannot
-touch.** Covers reward volume and rate, daily fluid budget, session duration, token
+touch.** Covers reward volume per delivery and rate, session duration, token
 conversion, and every stimulation bound in §10.4.
+
+**Fluid has a floor, not a ceiling** (PI, 2026-09-06; this paragraph said "daily fluid
+budget" until then). The daily figure is a *minimum* the animal must reach, supplemented
+by hand after the session — so no delivery is ever refused on volume, and only the
+per-delivery magnitude is bounded above. S8's head carries the full correction.
 
 Precedence: **rig defaults -> subject defaults -> task defaults -> session overrides ->
 live edits**, with the bounded config as a ceiling over all of it. The resolved set is

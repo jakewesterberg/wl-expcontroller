@@ -73,7 +73,7 @@ Six things that changed the design, all found by reading neighbouring repositori
 
 | # | Question | Note |
 |---|---|---|
-| ~~12~~ | ~~Kiosk fluid against the daily budget~~ **Answered: yes, one budget.** wl-works holds the ledger and pushes the day's total in `prepare-session`; an unknown prior total fails closed | ✔ |
+| ~~12~~ | ~~Kiosk fluid against the daily budget~~ **Answered: yes, one daily figure.** wl-works holds the ledger and pushes the day's total in `prepare-session`. ~~an unknown prior total fails closed~~ — **corrected 2026-09-06: the daily figure is a *floor*, not a budget**, so an unknown prior total leaves the shortfall unreportable and does **not** stop reward | ✔ |
 | ~~13~~ | ~~Kiosk supervision~~ **Answered: both readings and an active alert.** The alert must originate at wl.works, because the host that faults cannot initiate a connection | ✔ |
 | 14 | **Kiosk recording model** | Recommendation: a lighter record of its own, not the session directory — minting a synthetic session id would create the second identity authority S3 spent its length deleting |
 | ~~15~~ | ~~Push the repository~~ **Done 2026-08-31** — created private, `main` pushed and tracking | ✔ |
@@ -100,9 +100,11 @@ reaction times, not realistic gaze traces; replayed recordings cover what a synt
 cannot.
 
 **Data:** the session record is streamed, not accumulated · fluid reconciles against the sync
-box's delivered line, and reward is refused if the daily total cannot be reconstructed after a
-restart. That last one is the only place in the design that deliberately fails closed, and it is
-welfare-critical rather than an engineering call — flagged here so it is not missed.
+box's delivered line. ~~and reward is refused if the daily total cannot be reconstructed after a
+restart~~ — **withdrawn 2026-09-06 by the PI: fluid has a floor, not a ceiling.** Refusing
+delivery on an uncountable day would stop paying an animal that is working; the day's
+*shortfall* becomes unreportable instead, and a person supplies the figure. The design now
+fails closed nowhere on fluid, and that is deliberate rather than an oversight.
 
 ---
 

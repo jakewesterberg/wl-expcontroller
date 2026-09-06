@@ -49,7 +49,7 @@ the project: it prevents the two-hours-recorded-with-no-eye-data class of loss.
 | Display at expected mode and refresh | S0 §5.3 — mode is rig configuration and V1 is per mode |
 | `stimulus_calibration_id` current | S4 §9 — invalid if anything feeding it changed |
 | **Daily fluid total reconstructable** | S8 §5.2 — if it is not, reward is refused and preflight must say so *before* the animal is in the chair |
-| **Day's prior fluid known** | S8 §5.2b — one budget spans rig and kiosk, so the ceiling is `ceiling − already_delivered_today` and an unknown prior total fails closed |
+| **Day's prior fluid known** | S8 §5.2b — one daily figure spans rig and kiosk. **Corrected 2026-09-06: it is a floor**, so this preflight item is what makes the end-of-session supplement computable, and an unknown prior total makes that unreportable rather than stopping reward |
 | **Head-fixation recorded** | S8 §5.2 — session duration is chair time, and the clock cannot start without it |
 | Pump primed, calibration in date | S6 §4 — an uncalibrated pump makes fluid numbers fiction |
 | Disk space for a full session | |

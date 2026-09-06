@@ -73,14 +73,35 @@ are detected at the display surface.
 | `labhost` | Task PC | Python | The pull-only endpoint wl-works polls | Contract tests |
 | `openiris` | OpenIris PC | (existing C#) | dDPI tracking; UDP 9003; remote API; analog out | UDP replay server |
 
-Welfare-critical modules requiring human review: reward scheduling and limits, fluid and
-session-duration accounting, token-to-fluid conversion, stimulation bounds and gating, and
-the bounded-config loader that enforces them.
+Welfare-critical modules requiring human review: reward scheduling and per-delivery limits,
+fluid and session-duration accounting (a fluid **floor**, a restraint **ceiling**),
+token-to-fluid conversion, stimulation bounds and gating, and the bounded-config loader.
 
-**In code, that is `wl_expcontroller/bounds.py` and nothing else yet.** It is kept small
-deliberately: everything in it can hurt an animal if it is wrong, and a small file is one
-a person can actually read before signing it off. A change to it is a change requiring
-review; a change elsewhere is not.
+**In code, that is `wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`, and
+nothing else.** Both are kept small deliberately: everything in them can hurt an animal if
+it is wrong, and a small file is one a person can actually read before signing it off. A
+change to either is a change requiring review; a change elsewhere is not.
+
+The split between the two is what keeps each reviewable. `bounds.py` is **pure** — the
+ceilings, the daily *floor*, and the arithmetic of whether a number is past one or short of
+it, with no clock, no hardware and no state outliving a question. **Fluid has a floor, not a
+ceiling** (PI, 2026-09-06): the daily figure is a minimum the animal must reach, supplemented
+by hand after the session, so a delivery is never refused on volume and `Floor` is a different
+type from `Ceiling` precisely so the two cannot be confused at a call site. Chair time and
+trial count are genuine ceilings and do end a session. `welfare.py` has all three: the day's running total, the
+restraint clock started by head-fixation, the pump, and `Rig`, which is what a task's
+`Reward` action actually reaches. **The whole route from a task's declaration to fluid is
+readable in `welfare.py` alone**, which is the property to preserve — "can anything deliver
+reward without asking the ceiling" should stay a question one file answers.
+
+Added 2026-09-06, because ceilings alone were not enough: `bounds.check_delivery` was called
+by nothing outside its own tests for a week, so a task could command reward, a session could
+run to completion, and no ceiling was ever asked. A bound nothing calls reads as present and
+is not.
+
+**Not yet welfare-critical, because they do not exist:** token-to-fluid conversion (no token
+vocabulary) and stimulation bounds and gating (no `Stim` action). Both belong on this list
+the day they are written.
 
 ## The task model
 

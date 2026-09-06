@@ -23,6 +23,14 @@ student runs the rigs day to day (P8), so a "how to run a session" document is a
 rather than a later one. Gate: recorded sim session artifact committed; a generated task reviewed
 from its rendered diagram and its simulation report alone (the D4 acceptance test).
 
+**Status, corrected 2026-09-06: M1 is not met, and `docs/CHECKPOINT.md` claimed it was from
+2026-08-31.** Three parts of the sentence above were outstanding when it was claimed.
+*Fake I/O* was not wired at all — the 1,000-trial session strobed no event codes and delivered
+no reward, which is not "against simulators" but "against nothing"; that half is fixed
+(`dio.Simulated`, `welfare.Simulated`, and a session that refuses to run without them).
+**Demo mode and the operator document do not exist**, and both are named here as M1
+deliverables. They are P4.
+
 ## M2 — Display validated on rig hardware
 Protocol V1 on at least one rig: photodiode-measured onset lag and variability, dropped-frame
 rate over a 2 h stress run; protocol **V9** for split-panel per-half photometry and stereo

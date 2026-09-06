@@ -21,10 +21,11 @@ the moment it becomes someone's active job. Review this file at every milestone 
 | **P14** | **RHX TCP backpressure halts acquisition** | **High** | Bounded dedicated reader; drop-oldest; budgeted channel/rate; falling-behind is a loud alarm |
 | **P15** | **Model-authored tasks are plausibly wrong** | **High** | Declarative within-trial layer; allocated-not-invented codes; simulated sessions; demo mode; review by rendered diagram |
 | **P16** | **Live parameter change becomes an undocumented discontinuity** | **High** | Full per-trial parameter snapshot; event-coded changes; atomic ITI application; provenance on every write |
-| **P17** | **Our fluid total is a lower bound, not a total** | Medium | Reconcile against the sync box's record of the delivered line, never against commanded |
+| **P17** | **Our fluid total is a lower bound, not a total** | Medium | Reconcile against the sync box's record of the delivered line, never against commanded — under a floor this is what stops a top-up being asked for fluid already given by hand |
 | **P18** | **Correct graph, wrong experiment** | **High** | Gates must inspect different *objects*, not the same one three ways — see expanded note |
 | **P19** | **A colour nobody measured reaches a methods section** | **High** | Device-independent colour only; refuse it without a photometer calibration naming its observer |
 | **P20** | **Generated structure nobody reads** | Medium | Anything a parameter generates — array items, their windows — needs a check, because no author will ever look at it |
+| **P21** | **A guardrail nothing calls, behind a comment that went stale** | **High** | A safety component needs a *consumer* in the same commit, and a test that the consumer is on the only path — see expanded note |
 
 ## Expanded notes
 
@@ -157,6 +158,13 @@ reconciles against the sync box's record of the delivered line. Recording comman
 delivered separately is what makes a hand-delivered reward countable at all, and training
 days are exactly when an unlogged one would become a silent confound.
 
+*Corrected 2026-09-06.* This note is titled "accounting floor" and meant it in the sense of a
+lower bound on a number. It is now a floor in the other sense too: the daily fluid figure is a
+**minimum the animal must reach**, supplemented by hand after the session, and there is no
+ceiling on earned reward (PI). The reconciliation matters just as much under a floor and in
+the same direction — a shortfall computed from what we *commanded* would ask for a top-up the
+animal has already had from the panel button.
+
 
 **P18 — Correct graph, wrong experiment.** For a long stretch every load-time check
 inspected the same object: unreachable-state, unbounded-wait, no-outcome-path and
@@ -203,3 +211,47 @@ crowding check was written a day later.
 Mitigation: anything a parameter generates gets a check reasoning over the declared
 ranges, not the current values. The rule generalises — **when a feature exists to
 stop a human writing something out, it also stops a human reviewing it.**
+
+**P21 — A guardrail nothing calls, behind a comment that went stale.** Two instances,
+found together on 2026-09-06 and both a week old.
+
+`bounds.check_delivery` — the welfare-critical ceiling on fluid delivery — was called
+by nothing outside its own tests. `run.py` resolved a `Reward` action into nothing at
+all, its comment saying `Mark` and `Reward` "belong to the I/O layer, which has no
+simulator yet". `dio.Simulated` had existed for five days by then. So the M1 gate ran
+a thousand trials, scored them correct, **strobed no event codes and delivered no
+reward**, and every test passed. A session that emits no codes cannot be aligned to
+any recording; an animal that is not paid cannot say so. Both failures are invisible
+in every artifact the session produces.
+
+`scheduler.py` was the same shape without the animal: mutation-clean, handling blocks,
+quotas, requeue and criterion transitions, and `taskd.py` never imported it. Nothing
+advanced past the first block, because nothing ever ran a second one.
+
+The mechanism is worth naming, because it is not carelessness. Both components were
+written correctly, tested thoroughly, and left unwired **on purpose**, with a comment
+saying why. A comment saying "X does not exist yet" is a claim about the rest of the
+repository, and it is the only kind of claim nothing in a test suite can check — so it
+goes stale in silence while reading exactly as it did when it was true.
+
+Mitigation, and it is a rule about commits rather than about code:
+
+- **A safety component ships with its consumer**, in the same commit. If the consumer
+  cannot exist yet, the component's absence must *fail* rather than be noted: `run.py`
+  now refuses a `Mark` or `Reward` it has nowhere to send, and `welfare.Absent` and
+  `dio.Absent` refuse rather than quietly doing nothing.
+- **Test the path, not the piece.** `test_a_session_delivers_reward_and_the_ceiling_is_asked_every_time`
+  asserts the whole chain — task action, effects port, ceiling, pump — because every
+  link of it was individually tested while the chain was broken.
+- **A "not yet" comment is a dated claim.** Write what it is waiting for by name, so
+  the next reader can check it in one grep rather than believing it.
+
+Same family as trap 7's mutation harness and trap 18's ungated modules: the question
+is never whether a guardrail passes, it is whether anything reaches it.
+
+*And the harness said the same thing about itself.* Wiring the reward path meant
+mutation-testing `welfare.py`, and the sweep reported every `deliver` caught — from a
+`SyntaxError`, because the `Pump` protocol's one-line body cannot have a statement
+inserted after it and every definition of a name is neutered together. So the
+welfare-critical route from a task to the pump was reported covered without one test
+being consulted. Read a gate's *output*, not its exit code.

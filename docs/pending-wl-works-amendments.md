@@ -121,7 +121,7 @@ A `prepare-session` action carrying the existing `MetadataBundle`, plus the sess
 
 | Field | Source | Rig use |
 |---|---|---|
-| `subject` | ELN | Selects the subject's bounded config — fluid ceiling, session duration, stim limits |
+| `subject` | ELN | Selects the subject's bounded config — per-delivery reward volume, the daily fluid **floor**, session duration, stim limits |
 | `probes[]` with `serial`, `insertion_number`, `trajectory_id` | ELN, existing shape | Recorded in the session config snapshot so electrode -> trajectory -> coregistration closes from the behavioural record too |
 | `planned_task` | ELN | Preselects the task; the operator confirms rather than chooses |
 | `session_intent` | ELN | Free text into the session record and the ELN entry |

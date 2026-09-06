@@ -59,7 +59,21 @@ These conventions bind every session (human- or AI-driven) working in this repo.
 - **Prove a test can fail.** `python3 tools/mutate.py --all <module>` before trusting
   a new check. CI gates on it. A test that cannot fail reports safety it does not
   provide, and for a checker whose whole job is refusing bad tasks that is worse than
-  having no checker.
+  having no checker. **Read the harness's output, not its exit code** — it has been
+  wrong six times, most recently reporting `caught` from a `SyntaxError` on the
+  welfare-critical reward path. `N failed` is a test noticing; `N errors in 0.6s` is
+  not. And never run the suite, edit a test, or `git add` while a sweep is in flight:
+  the module on disk is neutered and the suite it is measuring must not move.
+- **A safety component ships with its consumer, or its absence fails.** Writing the
+  guardrail and wiring it later is how `bounds`' fluid check went a week called by
+  nothing, and how `Mark` and `Reward` were silently dropped by the trial loop while
+  1,000-trial sessions reported clean. If the consumer cannot exist yet, make the
+  missing wiring *raise* — `dio.Absent`, `welfare.Absent` and `run.Unwired` all refuse
+  rather than quietly doing nothing. And **test the path, not the piece**: every link of
+  that chain was individually tested while the chain was broken.
+- **A "not yet" comment is a dated claim about the rest of the repo**, and it is the one
+  kind of claim no test can check. Name what it is waiting for, so the next reader can
+  grep it instead of believing it.
 
 ## Commit style
 Imperative subject line; body explains why when non-obvious. The repo history is part

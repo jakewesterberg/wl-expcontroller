@@ -1,6 +1,14 @@
 # S8 — Session and experiment management
 
 - **Status:** proposed, for PI review
+- **Corrected 2026-09-06 by the PI, and the correction is welfare-critical:** §4 and §5
+  are written as though fluid had a ceiling. **It does not. Fluid has a floor** — the
+  daily figure is a *minimum* the animal must reach, topped up by hand after the
+  session if the work did not earn it. There is no upper limit on earned reward and a
+  delivery is never refused on volume. Every "budget", "ceiling" and "refuses
+  delivery" below that concerns *fluid* reads the wrong way round; the code
+  (`bounds.Floor`, `Welfare.shortfall`) is correct and this text is not yet rewritten.
+  Chair time and trial count are genuine ceilings and are unaffected.
 - **Date:** 2026-08-31
 - **Parent:** `2026-08-31-controller-architecture-design.md` §5.5, §7
 - **Welfare-critical.** Most of this file requires human review before merge (CLAUDE.md).
@@ -87,7 +95,7 @@ ceilings the console cannot exceed and the task cannot touch.**
 
 | Bounded | Covers |
 |---|---|
-| Reward | Volume per delivery, rate, daily fluid budget |
+| Reward | Volume per delivery, rate. **Not a daily total** — see the correction at the head of this file: the daily fluid figure is a floor, and only the per-delivery volume is a ceiling |
 | Session | Duration, maximum trials, mandatory breaks |
 | Tokens | Token-to-fluid conversion, maximum accumulation |
 | Stimulation | Amplitude, pulse width, frequency, train duration, duty cycle, charge per phase and charge density, refractory, deliveries per session |
@@ -116,17 +124,21 @@ reconciled away.
 ### 5.2 A restart must not reset the day
 
 `taskd` crashing mid-session is the case that turns an accounting bug into a welfare event: a
-naive restart begins the daily fluid total at zero and the ceiling stops meaning anything.
+naive restart begins the daily fluid total at zero, and the day's shortfall — the amount to
+supplement afterwards — is then computed against a figure that describes half a day.
 
 1. **The session record is streamed, not accumulated.** A crash loses the tail, not the session.
    This is the lesson `wl-sync` learned when its own recorder held a whole day in memory.
 2. **On restart, the daily total is reconstructed from the sync box's delivered-line record**,
    which survives our crash independently. That is the whole reason the reconciliation in §5.1
    exists rather than being a nicety.
-3. **If it cannot be reconstructed, reward is refused until a human confirms a figure.** A
-   ceiling that cannot be computed cannot be enforced, and continuing on an unknown total is the
-   one failure mode with a cost that is not ours to absorb. This is the single place in the
-   design that deliberately fails closed.
+3. ~~**If it cannot be reconstructed, reward is refused until a human confirms a figure.**~~
+   **Reversed 2026-09-06.** That rule follows from a ceiling, and there is no ceiling. Under a
+   floor the argument runs the other way: an unknown day leaves the *shortfall* unreportable, and
+   the one thing it must not do is stop paying an animal that is working. So the session
+   delivers, reports the day as uncountable, and a human supplies the figure —
+   `Welfare.shortfall()` answers `None` rather than zero, because a day nobody measured is not a
+   day that went well.
 4. **Session duration is chair time, from head-fixation** (PI, 2026-08-31) — not from the first
    trial and not from the first reward. The limit is on restraint, not on work, so setup,
    calibration and unrewarded shaping all count.
@@ -145,29 +157,31 @@ naive restart begins the daily fluid total at zero and the ceiling stops meaning
 
 ### 5.2b One fluid budget across rig and kiosk
 
-**Kiosk fluid counts against the same daily budget as rig work** (PI, 2026-08-31). Neither
+**Kiosk fluid counts toward the same daily figure as rig work** (PI, 2026-08-31). Neither
 deployment can see the other's record — the kiosk has no sync box at all — so a shared total has
 to live somewhere neither owns.
 
 **wl-works holds the ledger and pushes the day's already-delivered total in `prepare-session`.**
 It is the ELN, it already keys on subject and session, and the network topology permits a push in
-but no pull out. Each deployment then enforces `ceiling − already_delivered_today` rather than the
-raw ceiling, and its own finished total reaches wl-works by the normal path.
+but no pull out. Each deployment then reports `floor − already_delivered_today − earned_here` as
+the amount still to supplement, and its own finished total reaches wl-works by the normal path.
+(Written as `ceiling − already_delivered_today` before the 2026-09-06 correction.)
 
 - **A start-time figure is sufficient**, because an animal cannot be in the chair and at the cage
   kiosk simultaneously — the deployments are sequential, so the one that starts second gets a
   current number.
-- **The fail-closed rule of §5.2 now bites more often.** A deployment that cannot learn the day's
-  prior total cannot compute its ceiling, so it refuses reward until a human confirms. That is
-  more likely cage-side, where the ELN link is the only source, and it is the correct behaviour
-  rather than a degradation.
+- ~~**The fail-closed rule of §5.2 now bites more often.**~~ **Reversed 2026-09-06 with §5.2
+  item 3.** A deployment that cannot learn the day's prior total cannot report what to
+  supplement; it still pays the animal. Cage-side, where the ELN link is the only source, that
+  is the difference between an unreportable day and an unrewarded one.
 - Added to the wl-works handover as a field on `prepare-session`.
 
 ### 5.3 Tokens
 
 Token state is session-scoped cross-trial state (S1 §5.6), recorded in every per-trial snapshot
 and in the event stream. Conversion to fluid is bounded config, so a token economy cannot exceed
-a fluid ceiling by accumulating past it.
+a *per-delivery* reward ceiling by accumulating past it. (There is no daily fluid ceiling to
+exceed — see the correction at the head of this file.)
 
 ---
 
@@ -204,7 +218,8 @@ Everything else may change without a welfare review. These four may not.
 | # | Item | Blocks |
 |---|---|---|
 | 1 | Arbitration rule between console and control-API writers (§3.3) | S9 |
-| 2 | Whether the sync box's delivered-line record is readable by us live, or only at session end | §5.1's "continuously" |
+| 2 | Whether the sync box's delivered-line record is readable by us live, or only at session end | §5.1's "continuously" — **less urgent since 2026-09-06**: with a floor rather than a ceiling nothing in-session depends on it, and session-end is enough to compute a supplement |
+| 6 | **Is a runaway-fluid fault limit wanted?** Not a protocol ration — a sanity bound that catches a software fault delivering litres, reported as a fault rather than as a limit. `Bounds` has no such entry and nothing enforces one | welfare review |
 | 3 | ~~Default re-queue policy~~ **Answered: fixation break re-queued at end of block, wrong choice not, overridable per block** | — |
 | 4 | ~~Session duration from first reward or first trial~~ **Answered: chair time, from head-fixation.** Remaining: whether a hardware head-fix signal is ever worth adding beside the console action | welfare review |
 | 5 | Who plans blocks when wl.works is unreachable | S3 §7's quarantine risk |

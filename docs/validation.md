@@ -93,3 +93,28 @@ and onset **in every display mode the rig will use**; and sustained full-field l
 at 100% APL. Re-run in full on any panel change, including between units of one model --
 the JOV study this derives from states performance "cannot be assumed or guaranteed"
 across identical models.
+
+## V10 — Pump calibration (millilitres per second of open time)
+New (2026-09-06). **Nothing in this repository converts a reward volume into a solenoid
+open time**, and until this is measured the real pump driver is deliberately not written
+(`welfare.Pump` takes millilitres; the drive that opens copper is P7's).
+
+The pulse width is genuinely ours to choose: `wl-sync`'s board one-shots the **manual**
+button at ~199 ms and passes our commanded line (`RWD_CMD`, active-HIGH) straight through
+the reward-OR gate untouched (their `hardware/README.md`, 2026-08-15 panel-instrumentation
+entry). So there is no fixed quantum to discover, only a rate to measure.
+
+Procedure: with the line and spout as the rig will run them, command a fixed open time and
+collect the delivery into a tared vessel over **N ≥ 50 repeats**, by gravimetry (1 mL of
+water ≈ 1 g) rather than by eye. Repeat across the open times a session actually uses, and
+across reservoir levels from full to near-empty, because head pressure changes the rate and
+a session drains the reservoir as it runs.
+
+Report: millilitres per second and its variability; linearity against open time (a fixed
+per-delivery dead time shows up as a non-zero intercept); the drift across reservoir level;
+and the smallest open time that still delivers a repeatable drop. Re-run after any change to
+the pump, the tubing, the spout or the reservoir geometry.
+
+**Welfare-relevant, so the number is a committed artifact and not a note.** Every reward
+volume in a bounded config is expressed in millilitres, and this measurement is the only
+thing that makes those numbers mean anything at the animal's mouth.
