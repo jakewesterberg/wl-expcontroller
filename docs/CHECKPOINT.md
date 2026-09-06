@@ -4,6 +4,13 @@
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
+> **This file describes `p4b-session-management`, not `main`.** P4b is three unpushed
+> commits on that branch; `main` is still at `300d7d1` and knows none of it. The branch
+> exists because `bounds.py` and `welfare.py` are welfare-critical and want a human
+> before they merge (CLAUDE.md). **`git branch --show-current` before believing
+> anything below** — on `main` this file does not describe the tree you are looking at.
+> Nothing in P4b has run in CI either, so every claim here about the gate is local.
+
 **The lab opens January 2027.** Everything is being built before any rig exists.
 
 > **"January validates rather than discovers" was the working assumption and it is
@@ -29,7 +36,9 @@ disk on 2026-09-06; the previous two figures here and in `next-session.md` disag
 each other and with the directory. In order:
 
 1. **This file** — where things are.
-2. **`CLAUDE.md`** — the conventions, including three that were learned the hard way.
+2. **`CLAUDE.md`** — the conventions. Sixteen, and the ones that cost the most to
+   learn are near the bottom: prove a test can fail, ship a safety component with its
+   consumer, and treat a "not yet" comment as a dated claim nothing can check.
 3. **`docs/M0-REVIEW.md`** §3 and §4 — what is still open, and the 24 engineering
    calls made without asking.
 4. **The one S-spec your package names**, from the table below. Not the others.
@@ -45,7 +54,7 @@ each other and with the directory. In order:
 | | |
 |---|---|
 | Tests | **375, green.** `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth entry for why that qualifier is load-bearing |
-| CI | pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
+| CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b's three commits have not run in CI at all** — they are unpushed, and the gate will escalate to a full sweep (47–61 min) because `tasks/` and `tools/mutate.py` both changed. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the restraint clock, the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7) |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. Chair time and trial count are ceilings and do end a session. S8 §4–§5 were written the other way round and now carry the correction |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
@@ -237,14 +246,23 @@ each other and with the directory. In order:
   token problem this file recorded in the abstract ("needs a token for a private
   repo") without connecting it to the checkout that was believed to work.
 
-  **CI is red now and stays red until someone creates a secret.** It needs a
-  fine-grained PAT with `Contents: read` on `jakewesterberg/wl-preproc`, added as the
-  repository secret `WL_PREPROC_TOKEN`. A step before each checkout says exactly that
-  rather than letting the failure surface as `Not Found` from an action that cannot
-  explain itself. **Red is the correct state**, not a thing to route around: the
-  round-trip and the calibration contract are the only checks that we emit their
-  protocol and fit their model rather than our idea of either, and a contract test
-  that is allowed to not run is not a contract test.
+  ~~**CI is red now and stays red until someone creates a secret.**~~ **Resolved, and
+  this file said otherwise for a day.** It needed a fine-grained PAT with
+  `Contents: read` on `jakewesterberg/wl-preproc` as the repository secret
+  `WL_PREPROC_TOKEN`; that secret exists and works.
+
+  **Verified 2026-09-06 by reading the runs, not the workflow** (`gh run list`): the
+  last six runs on `main` all succeeded, and run `33984657820`'s log shows the
+  `wl-preproc` checkout syncing from the remote and `307 passed` with no skips. Both
+  jobs set `WLX_REQUIRE_PREPROC=1`, so a missing checkout would have *failed* rather
+  than skipped — which is what makes that green mean the contract tests actually ran.
+  Left as a struck-through entry rather than deleted, because "CI is red and needs a
+  person" was a live ask in this file and someone should be able to see that it closed.
+
+  The reasoning behind it stands and is why the guard is worth keeping: the round-trip
+  and the calibration contract are the only checks that we emit their protocol and fit
+  their model rather than our idea of either, and **a contract test that is allowed
+  not to run is not a contract test.**
 
   Three ways of getting one checkout wrong, each of which looked fixed: no checkout,
   a path outside the workspace, and no credentials for it.
@@ -366,6 +384,19 @@ every sample the trial saw drags each target toward wherever gaze happened to st
 by an amount that depends on how long acquisition took. The resulting map is wrong in
 a way neither the conditioning check nor the extent check can see (trap 13's shape
 again).
+
+### One ask closed by looking rather than by doing
+
+This file said **"CI is red now and stays red until someone creates a secret"** and
+named a PAT only the PI could create. It is not red: `gh run list` shows six
+consecutive successes on `main`, and run `33984657820` logs the `wl-preproc` checkout
+syncing and `307 passed` with no skips under `WLX_REQUIRE_PREPROC=1`. The secret exists
+and the contract tests run.
+
+Same shape as trap 1, one repo in: **a live ask stayed live because nothing re-read the
+thing it was about.** The cost here was small — a person's attention, aimed at a job
+already done — but this file is where the next session learns what is blocked, and a
+blocker that has cleared is exactly as misleading as one that has not been noticed.
 
 ### And the harness was wrong again, in the file it matters most in
 
@@ -554,7 +585,7 @@ runs out of context before it produces anything.**
 | | → **roadmap M1** | 1,000 deterministic trials with full outputs | S8, S9 | — |
 | | + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | — |
 | ~~P4b~~ | ~~Session management: blocks, scheduler, bounded config, welfare accounting, the live parameter path~~ | **done 2026-09-06** — a session runs blocks with criterion transitions, enforces its chair-time and trial ceilings, and reports the day's fluid shortfall at close; `welfare.py` is the second welfare-critical module and **wants human review** | — | — |
-| P4c | Parquet derivation at close; the `labhost` endpoint | Contract-tested against `wl-preproc`'s published schema | S10 | nothing |
+| **P4c** | Parquet derivation at close; the `labhost` endpoint | Contract-tested against `wl-preproc`'s published schema | S10 | nothing. **This is next**; `trials.jsonl` now carries block and condition per row, so the derivation has what it needs |
 | P4d | The console shell against a fake `taskd` | An operator surface that runs with no rig | S9, S9a | nothing |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
 | **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |
@@ -563,8 +594,9 @@ runs out of context before it produces anything.**
 | | → the block, the versioned map, the join | **done 2026-09-05** — `tasks/calibration.py`, `Mapping`/`MappingLog`/`Collector`, and `gaze.Tracked`. A whole block runs from scheduled targets to an installed map | — | — |
 | | → saccade detection | **done 2026-09-05** — online Engbert–Kliegl, contract-tested to find the same intervals `wl-preproc`'s offline detector finds, wired to both saccade guards | — | — |
 | | → wiring the calibration block into `taskd` | **done 2026-09-06** — `gaze.Calibrating` drives a session through the block, fits from the *hold*, installs a version and writes the file `wl-preproc`'s reader accepts | — | — |
-| **P7** | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | hardware to verify |
+| **P7** | I/O behind interfaces: NI DIO, reward, comparator inputs | Absent, simulated and hardware as peers | S6 | a card **and, for reward, a pump calibration** — protocol V10, never measured |
 | | → the interface | **done 2026-09-01** — pin map, refusing `Absent`, recording `Simulated`; the `nidaqmx` implementation needs a card | — | — |
+| | → the reward path above the pump | **done 2026-09-06** — a task's `Reward` reaches a ceiling-checked delivery and a `Pump` port; the driver that opens copper needs V10 | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
 
 **P1–P4b needed no hardware and are done. P4c and P4d need none either.** The

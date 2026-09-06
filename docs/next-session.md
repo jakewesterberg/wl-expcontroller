@@ -1,35 +1,65 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **375 tests passing**, working tree clean. No hardware
-exists.
+**State at handoff:** **375 tests passing**, working tree clean, **and the work is on
+`p4b-session-management`, not on `main`.** Three commits, unpushed. `main` still points
+at `300d7d1`, so a check that looks only at `main` will report that nothing happened.
+The branch exists rather than merging straight in because `bounds.py` and `welfare.py`
+are welfare-critical and want a human before they merge (§1). No hardware exists.
 
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
-> is; this says what to do. There are 19 specs and 8 ADRs, and **you should read three
-> documents**:
-> the checkpoint, `docs/M0-REVIEW.md` §3–§4, and the S-spec your package names.
-> Reading more is how a session exhausts its context before producing anything, and
-> that is the specific failure this file exists to prevent.
+> is; this says what to do. There are 19 specs and 8 ADRs, and **you should read the
+> four the checkpoint's "Read this much" names** — itself, `CLAUDE.md`,
+> `docs/M0-REVIEW.md` §3–§4, and the one S-spec your package names. Reading more is how
+> a session exhausts its context before producing anything, and that is the specific
+> failure this file exists to prevent.
 
 ---
 
 ## 0. Check this before believing anything below
 
 ```
-git log --oneline -1 && git status --short && git log --oneline origin/main..main
+git branch --show-current && git log --oneline -3 && git status --short
+git log --oneline origin/main..HEAD        # what has never been pushed
+git log --oneline main..HEAD               # what is not on main yet
 ```
+
+**Check the branch first, and it is not `main`.** P4b sits on
+`p4b-session-management`; a session that checks out `main` and reads this file will find
+a handoff describing work its tree does not contain.
 
 **Trap 17, learned expensively on 2026-09-05.** Nothing was pushed for four days while
 this file and the checkpoint both described CI behaviour that had never executed. The
 first push found seven bugs in five runs. **A green local suite says nothing about
-CI**, and unpushed commits are how every one of those hid.
+CI**, and unpushed commits are how every one of those hid. Three commits are unpushed
+now, so **nothing in P4b has run in CI** — including the mutation gate, which will
+escalate to a full sweep because `tasks/` and `tools/mutate.py` both changed.
+
+---
+
+## 0b. The first thing to do
+
+**Push the branch and watch the runs.** Three commits have never executed in CI, and
+trap 17 is the entry in this repo's history that cost the most: four days of unpushed
+work while both this file and the checkpoint described CI behaviour that had never run,
+and the first push found seven bugs in five runs.
+
+Expect the mutation gate to escalate to a **full sweep (47–61 minutes)** — `tasks/`
+gained `reference_bounds.py` and `tools/mutate.py` changed, and both escalate by rule.
+That is the point: the harness fix means every module's previous result was measured
+with a tool that could report `caught` from a syntax error.
+
+CI itself is green and needs nothing from anyone — the `WL_PREPROC_TOKEN` ask this file
+carried is closed, verified 2026-09-06 by reading the runs.
 
 ---
 
 ## 1. The thing that needs a person, not a session
 
 **`bounds.py` and `welfare.py` want human review before they merge** (CLAUDE.md, S8
-§7). They are the only two welfare-critical files and they are deliberately small —
-191 and 311 lines, most of it argument — so that this is a job someone can actually do.
+§7), and that review is what `p4b-session-management` is waiting on. They are the only
+two welfare-critical files and they are deliberately small — 191 and 311 lines, most of
+it argument — so that this is a job someone can actually do. `git diff main..HEAD --
+wl_expcontroller/bounds.py wl_expcontroller/welfare.py` is the whole of it.
 
 What a reviewer has to check, stated so the ask is concrete:
 
