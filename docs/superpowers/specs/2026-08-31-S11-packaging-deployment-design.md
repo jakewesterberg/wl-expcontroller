@@ -15,7 +15,7 @@
   `wlo stack` needs and cannot recover elsewhere.
 
 **The remote now exists** — created private and pushed 2026-08-31, `main` tracking. The manifest
-and registry entries resolve. Private until ADR-0004 settles the licence, as the README says.
+and registry entries resolve. Public as of 2026-09-05, when ADR-0004 settled the licence (§5).
 
 ---
 
@@ -64,10 +64,10 @@ rather than build a second one** (S3 §8).
 
 ## 5. License
 
-**ADR-0004 is Open.** The dependency inventory is maintained meanwhile, and no `LICENSE` file
-exists. The lean is GPL-3, honest given a PsychoPy import, and common in this niche — but S13's
-kiosk is a second deployment and a possible reuse story, which is exactly the "concrete reuse
-scenario" ADR-0004 said would reopen the question. **Revisit at M10, with S13 as input.**
+**ADR-0004 accepted 2026-09-05: Apache-2.0**, superseding the GPL-3 lean this section recorded.
+`LICENSE` exists and matches `wl-preproc`'s byte for byte; the reasoning, including why the lean
+was wrong, is in the ADR. *(Corrected 2026-09-13. This section previously read "ADR-0004 is
+Open", with no `LICENSE` file and a revisit planned at M10 with S13 as input.)*
 
 ---
 

@@ -42,7 +42,10 @@ recoverable situation rather than a crash.
 - **Touch as the primary response.** No hardware line exists for it even on the rig, so touch
   events reach any record only as event codes (S2 §5.1) — here, they are the only response
   modality.
-- **Reward**, on whatever local mechanism the cage uses.
+- **Reward, through `wl-juicer`** (PI, 2026-09-13). Its spec wires both of its lines to the sync
+  box — the dose input from `wl-sync` `J6`, the witness line back to `J5B` — and the kiosk has
+  none (§2), so the host has to drive the one and read the other. That interface is
+  `wl-touchtrain`'s, the package that owns the kiosk hardware (§6 item 2).
 - **The same task model.** A task written for the rig runs here if its declared device
   requirements are met; one that needs gaze or stimulation does not, and says so at load.
 
@@ -119,7 +122,7 @@ it to.
 | # | Item | Owner |
 |---|---|---|
 | 1 | Recording model (§5) | PI + `wl-preproc` |
-| 2 | Kiosk hardware: panel, touch sensor, reward mechanism, host | S0-equivalent |
+| 2 | Kiosk hardware: panel, touch sensor, reward mechanism (`wl-juicer`, §3), host | `wl-touchtrain`, registered 2026-09-13 |
 | 3 | Whether the kiosk shares the stimulus vocabulary or a subset | S4 |
 | 4 | ~~Supervision model~~ **Answered: both — readings on the dashboard, and an active alert.** See §4.1 for how, given the kiosk cannot initiate a connection | wl-works |
 | 5 | ~~Whether kiosk fluid counts against the rig's daily budget~~ **Answered: yes, one daily figure — and it is a floor, not a budget** (PI, 2026-09-06). Remaining: wl.works holding the ledger | wl-works |

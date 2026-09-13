@@ -2,8 +2,9 @@ schema: 1
 slug: wl-expcontroller
 class: application
 lifecycle: scaffolded
-visibility: private
-# Created private and pushed 2026-08-31. Private until ADR-0004 settles the licence.
+visibility: public
+# Created private and pushed 2026-08-31; public as of 2026-09-05, when ADR-0004
+# settled the licence as Apache-2.0.
 remote: https://github.com/jakewesterberg/wl-expcontroller.git
 
 summary: >-
