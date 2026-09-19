@@ -35,12 +35,26 @@ def _session_with(delivered_ml: float, already_today: float | None):
     `link.py`). `.staged` is supplied directly as a plain tuple -- the public
     property of the same name on the real `Session` belongs to a later piece of this
     slice, and this fixture does not need to wait for it to exist.
+
+    `delivered_ml` becomes `welfare.delivered` -- the sync box's delivered-line
+    figure -- rather than `welfare.commanded`, with `commanded` pinned to a small
+    fixed value distinct from it. **This distinction is load-bearing.** Once
+    `.delivered` is set, `session_total()` reconciles to `max(commanded, delivered)`
+    (`bounds.reconcile`), so with `commanded` small and `delivered` the larger figure
+    -- never the reverse, which `reconcile_report` treats as a pump fault rather than
+    a smaller total -- `session_total()` lands on `delivered_ml`, distinct from
+    `commanded`. Set `commanded=delivered_ml` instead (an earlier version of this
+    fixture did, and left `.delivered` at its default `None`) and `session_total()`
+    returns exactly `commanded` -- indistinguishable from a `Telemetry.of` that read
+    `welfare.commanded` directly instead of calling `.session_total()`, which is the
+    one bug S9a §9 exists to catch.
     """
     welfare = Welfare(
         bounds=_bounds(),
         pump=Simulated(),
         already_today=already_today,
-        commanded=delivered_ml,
+        commanded=0.1,
+        delivered=delivered_ml,
     )
     return SimpleNamespace(
         spec=SimpleNamespace(session_id="2027-01-14_01", subject="A"),

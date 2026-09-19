@@ -7,10 +7,11 @@ this same slice add `Link`, the port a session publishes `Telemetry` through, an
 wire encoding (`encode`/`decode` in a transport module); grep this file for `Link` to
 see whether they have landed yet.
 
-**Not welfare-critical, and it must not become one.** `docs/design/architecture.md`
-names `wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py` as the two
-modules requiring human review before merge, "and nothing else" (CLAUDE.md). This file
-carries no ceiling, no clock and no pump, and is deliberately not a third. It reads
+**Not welfare-critical, and it must not become one.** CLAUDE.md requires human review
+before merge for welfare-critical code; `docs/design/architecture.md` names
+`wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py` as the two such
+modules, "and nothing else." This file carries no ceiling, no clock and no pump, and
+is deliberately not a third. It reads
 `welfare`; it never decides anything on its own about what `welfare` reports -- a
 limit enforced twice, once in `welfare` and once in a console message, is a limit that
 can disagree with itself.
