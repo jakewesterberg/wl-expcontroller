@@ -61,15 +61,14 @@ class Ceiling:
     not: an experimenter moves reward volume between sessions without ceremony, and
     the maximum is not theirs to move while a session runs.
 
-    **A maximum is not always a protocol figure, and reward is the one that is
-    not** (PI, 2026-09-19). For `chair_time` it is: restraint time is a number a
-    protocol states, and it changes only when the protocol does. For
-    `reward_correct` the maximum is 10 mL, which is not a dose anyone would write
-    into a protocol -- it is a **runaway-fluid fault bound**, the size of delivery
-    that happens only when software is broken, refused so that a fault is caught
-    rather than a ration enforced. Both are enforced identically here; what differs
-    is what a refusal *means*, and `tasks/reference_bounds.py` says which each entry
-    is at the entry itself.
+    **A maximum is one of two kinds of limit and this type does not distinguish
+    them** (PI, 2026-09-19). It may be a **protocol figure** -- a number a protocol
+    states, changing only when the protocol does, which is what a restraint ceiling
+    is. Or it may be a **fault bound** -- set far above anything a protocol would
+    ask for, so that what it refuses is software commanding an impossible quantity
+    rather than an animal earning a ration. Both are enforced identically here; what
+    differs is what a refusal *means*, so a bounded config is expected to say at each
+    entry which kind its maximum is.
     """
 
     value: float
@@ -105,30 +104,18 @@ class Bounds:
         """Would this value be refused? Raises `Exceeded` if so, and **moves
         nothing**.
 
-        **Separate from `set` because checking and moving happen at two different
-        moments** (PI, 2026-09-19). An offer from a console is checked the instant
-        it arrives, so a person hears "no" while still looking at the screen; the
-        assignment waits for the next trial boundary, where `taskd` applies every
-        staged change at once.
-
-        **What went wrong when it was one call.** `taskd.Session.set` had no way to
-        check a welfare-bounded value without also applying it, so it applied it as
-        the command was drained. The ceiling still held -- this was never
-        over-delivery -- but the reporting was welfare reporting and it was wrong
-        twice: the new reward volume was live for the trial that ran later in that
-        same pass while every console displayed it as `staged`, and its
-        `PARAM_CHANGED` strobe and `parameter_changes.jsonl` row landed one pass
-        later still, so an offline reconciliation of commanded fluid attributed one
-        trial's delivery to the wrong value.
+        **Separate from `set` because a change is checked when a console offers it
+        and applied a trial boundary later** (PI, 2026-09-19). While they were one
+        call a welfare-bounded value could not be checked without being moved, so it
+        went live a trial before the record said it had; **S9a §8.1** has that
+        account, and it is about `taskd`, not about this file.
 
         An unknown name is **refused rather than created**: a typo must not silently
         become an unbounded parameter that is then used. `rewrd_correct` set to 5.0
         would otherwise be accepted, bounded by nothing.
 
-        **No actor here.** A refusal does not depend on who asked, and every caller
-        already carries the actor beside the refusal it raises -- `link.Refused.by`
-        on the console feed and the `by` column of `refusals.jsonl` in the session
-        record. Taking one here would be a second copy of it to keep in step.
+        No actor: a refusal does not depend on who asked, and every caller records
+        the actor beside the refusal it raises.
         """
         ceiling = self.ceilings.get(name)
         if ceiling is None:
@@ -146,10 +133,8 @@ class Bounds:
         """Move a bounded value, within its ceiling.
 
         **Validated through `validate`, never by a second copy of the rule here.**
-        Two copies of a ceiling check are two places for it to drift, and the one
-        that drifts silently is whichever a console happens to offer a value
-        against. `by` is the actor the caller records; the refusal itself does not
-        depend on who asked.
+        Two copies of a ceiling check are two places for it to drift. `by` is the
+        actor the caller records; the refusal itself does not depend on who asked.
         """
         self.validate(name, value)
         ceiling = self.ceilings[name]

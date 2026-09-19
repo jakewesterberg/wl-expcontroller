@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **447 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **452 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
@@ -111,7 +111,9 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   Since 2026-09-19 `taskd`'s loop boundary publishes one telemetry frame naming the
   fault before the exception propagates; it does not catch it.
 - **`chair_time` runs from head-fixation**, and a session refuses to start without it.
-  That and `max_trials` are the two real ceilings.
+  That and `max_trials` are the two ceilings that end a session today. **The PI has
+  ruled there is no session-length maximum** (§6), so `max_trials` is pending removal,
+  behind an open question about which clock the surviving duration limit uses.
 - **The numbers in `tasks/reference_bounds.py` are placeholders and its subject is
   `REFERENCE`.** No protocol figure exists in this repository for reward volume, daily
   fluid floor, restraint time or trial count — the PI has said to keep it that way
@@ -313,6 +315,7 @@ Three things S9a §6–§10 depends on that nobody has built:
 | PI | **A pump calibration: millilitres per second of open time** — protocol **V10**, `docs/validation.md` | real reward delivery (new 2026-09-06) |
 | PI | **The real bounded-config numbers** — reward volume per delivery, the daily fluid **floor**, chair time, trial cap. Asked 2026-09-06; answer was *keep the placeholder until there are animals* | every session that is not a simulation |
 | ~~PI~~ | ~~**Is a runaway-fluid *fault* limit wanted?**~~ **Answered 2026-09-19: yes.** `reward_correct`'s maximum is 10 mL — far above any dose, so refusing it catches software delivering litres rather than enforcing a ration. It is a **fault bound**, and `tasks/reference_bounds.py`, `bounds.Ceiling` and S8 open item 6 all say so at the entry. The *value* beside it stays a placeholder | ✔ (S8 open item 6) |
+| PI | **Which clock is the twelve-hour out-of-cage limit measured on?** The PI has ruled there is no session-length maximum (§6); the one welfare duration limit is 12 h out of cage to back in cage. `welfare.chair_seconds` runs from head-fixation, which is a different clock — transport and chairing sit between them. Welfare-critical, and it blocks removing `max_trials` | `welfare.must_stop` (new 2026-09-19) |
 | PI | IPD per animal; the tandem panel's two questions | optics, panel |
 
 ---
@@ -344,15 +347,39 @@ nothing in P4d-1 assumed a terminal client, so `ZmqConsole` (or a thin wrapper a
 it) should be reusable from the server rather than needing a second console-side
 implementation.
 
+**One PI ruling to carry forward, not to act on yet.**
+
+> ### There is no session-length maximum, and `max_trials` goes
+>
+> **PI, 2026-09-19:** *"There is no session length max. Sessions will be comprised of
+> multiple tasks with perhaps multiple blocks of the same tasks. Each task, depending on
+> its config, will have a target number of trials (likely per condition within the
+> task). But the max trials idea makes no sense to me. The only limit we have welfare
+> wise is that a session from out of cage to back into cage cannot be longer than 12
+> hours."*
+>
+> Most of what replaces it already exists: per-condition targets are `scheduler`'s
+> `owed()`, `Counts` and `upcoming()`, and the console already renders them as *still
+> needed by condition*. It was the session-level cap that made no sense.
+>
+> **Do not implement the removal yet.** It changes what `welfare.must_stop` is, and
+> there is an open question with the PI first: the surviving welfare limit is a
+> **twelve-hour out-of-cage-to-back-in-cage** duration, while the code measures
+> `chair_seconds` **from head-fixation** (`welfare.head_fixed`, which a session refuses
+> to start without). Those are not the same clock — transport and chairing sit between
+> them — and resolving it is welfare-critical. The full instruction comes once the
+> clock is settled.
+
 **Three things this slice found and deliberately left open, for whoever picks up
 P4d-2 or later:**
 
-1. **A pump fault publishes nothing.** `welfare.deliver` raises, `Rig` deliberately
-   does not swallow it (P21's shape — never absorb a broken rig), and the exception
-   propagates past `Session.run`'s `finally` with no final `Telemetry` frame and no
-   `stopped_because`. A console watching a rig break, unattended, cage-side, sees only
-   silence. What a console should show when the rig itself is faulty is a design
-   question for this package, not a bolt-on inside P4d-1.
+1. ~~**A pump fault publishes nothing.**~~ **Closed 2026-09-19 by the PI's second
+   decision** (§1). `welfare.deliver` still raises and `Rig` still deliberately does
+   not swallow it (P21's shape — never absorb a broken rig), but `Session.run`'s loop
+   boundary now names the fault in `stopped_because`, publishes one final `Telemetry`
+   frame, and re-raises unchanged. What a console should *do* with that frame — beyond
+   printing the reason, which `cli.render` already does — is still a design question
+   for P4d-2.
 2. **A change staged on a session's literal last pass is never applied.**
    `_apply_staged()` gets no further pass once the loop decides to stop (a welfare
    ceiling, every block finished, or a console `Stop`), so a `SetParameter` drained
@@ -370,6 +397,20 @@ P4d-2 or later:**
    residual risk is a `SetParameter` that happens to land on whichever pass a
    *different* stop condition (a welfare ceiling, or every block finishing)
    resolves on — a matter of timing, not of anything an operator does.
+
+   > **Widened on 2026-09-19, and it is now on the reward path.** Before the PI's
+   > first decision this could not touch a welfare-bounded name, because `Session.set`
+   > moved the ceiling at drain time and only the *record* row was lost. Now the value
+   > is staged too, so a `SetParameter(reward_correct, …)` landing on the stopping pass
+   > is shown as `staged` on the final frame and then dropped entirely: **no ceiling
+   > move, no `parameter_changes.jsonl` row**. Animal risk is low — the session is
+   > ending, so no further trial runs at either value, and the ceiling that was in
+   > force is the one every trial actually ran under. It is a *record* gap on the fluid
+   > path, and it is the price of the deferral. A *refused* command is unaffected:
+   > refusals are recorded at drain time
+   > (`test_a_recorded_refusal_says_where_in_the_session_it_happened` pins a row landing
+   > on that very pass). Whoever closes this item should close it for both kinds at
+   > once.
 3. **`wlx console --set reward_correct=...` is now a person-invocable path to a
    reward limit** — recorded in §1 above, beside the `bounds.py`/`welfare.py` review
    already waiting.

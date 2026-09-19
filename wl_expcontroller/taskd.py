@@ -230,6 +230,14 @@ class Session:
         delivery to the wrong value. Deferring costs an operator who has just lowered
         a volume one more trial at the old one, which the PI weighed and chose.
         `bounds.validate` carries the welfare-side account of the same change.
+
+        **`was` is the value before this ITI, not before this row.** Two sets of one
+        name in a single drain both record the same `was`, because neither has been
+        applied when the second is staged -- so the rows read `0.15 -> 0.30` and
+        `0.15 -> 0.20` and the second wins (S9a §8's last-write-wins, both actors
+        recorded). A reader must take the last row's `now` for the interval and must
+        not chain or sum them; a bounded name is the one where doing so would
+        mis-attribute fluid, which is the thing this method was changed to stop.
         """
         if name in self.spec.bounds.ceilings:
             # Checked here, assigned by `_apply_staged()` -- `bounds.validate` moves
@@ -278,8 +286,11 @@ class Session:
         """
         return tuple(self._staged)
 
-    def _command(self, command) -> None:
+    def _command(self, command, index: int) -> None:
         """A console's request, routed to the one write path.
+
+        `index` is the trial about to run, carried only so a recorded refusal can
+        say where in the session it happened -- see `record.SessionRecord.refusal`.
 
         **Refusals do not end the session.** A person mistyping a parameter name is
         not a fault of the rig, and ending a session with an animal in the chair over
@@ -311,6 +322,8 @@ class Session:
                     asked=command.value,
                     by=command.by,
                     why=str(refused),
+                    trial_index=index,
+                    session_seconds=self.now(),
                 )
             self.refusals.append((command.name, command.by, str(refused)))
             if len(self.refusals) > _link.REFUSAL_HISTORY:
@@ -341,6 +354,15 @@ class Session:
         **Bounded values go back through `bounds.set`, which re-validates.** The
         ceiling check is cheap and belongs to `bounds`; asking it again at the moment
         of assignment costs nothing and means no path reaches a ceiling without one.
+
+        **"Atomically" is true because that re-validation cannot fail here, not
+        because this loop is transactional.** Every staged value was validated at
+        offer time, `Ceiling` is frozen, and nothing reassigns `spec.bounds` while a
+        session runs -- so `bounds.set` below raises on no reachable path today. **If
+        anything ever lets a `Ceiling.maximum` move mid-session**, this loop would
+        leave the earlier rows applied and `_staged` uncleared, and the validation
+        would have to move to a pass of its own above the assignments before that
+        change ships. Named so the next reader can grep it rather than believe it.
         """
         if not self._staged:
             return
@@ -469,7 +491,7 @@ class Session:
                 # nothing else populates it, so the only sign of a queued change
                 # before it silently lands would be gone.
                 for command in self.link.drain():
-                    self._command(command)
+                    self._command(command, index)
                 # Publish *before* the stop check: a console watching a session that
                 # stops learns that it stopped and why, rather than seeing the stream
                 # simply cease.

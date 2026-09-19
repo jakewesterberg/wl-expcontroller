@@ -17,6 +17,12 @@ Two guards, so a copy of this file cannot quietly become a real one:
   *maximum* is the exception and runs the other way: 10 mL is far too large to be a
   dose, because it is not one -- see the entry itself.
 
+**Each ceiling states which kind of limit its maximum is** -- a protocol figure or a
+fault bound (`bounds.Ceiling`). Both are enforced identically, so the comment is the
+only place the difference is written down, and a reviewer signing this off is entitled
+to know which refusal they are approving. `max_trials` carries neither label, and the
+entry says why.
+
 **The daily fluid figure is a floor, not a ceiling** (PI, 2026-09-06): a minimum the
 animal must reach, topped up by hand after the session if the work did not earn it.
 Nothing here caps earned reward, and `Floor` is a different type from `Ceiling` so
@@ -32,8 +38,8 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 BOUNDS = Bounds(
     subject="REFERENCE",
     ceilings={
-        # What one correct trial pays, and a **runaway-fluid fault bound** on it
-        # (PI, 2026-09-19). The maximum is not a ration and not a protocol dose:
+        # What one correct trial pays, and a **fault bound** on it -- specifically a
+        # runaway-fluid one (PI, 2026-09-19). Not a ration and not a protocol dose:
         # 10 mL in one delivery is the size of thing that happens only when software
         # is broken -- a loop, a unit slip, a console sending litres -- so refusing
         # it catches a fault rather than enforcing a limit on an animal. The value
@@ -41,8 +47,16 @@ BOUNDS = Bounds(
         # still a floor; nothing here caps what an animal may earn.
         "reward_correct": Ceiling(value=0.05, maximum=10.0, unit="mL"),
         # Restraint time, from head-fixation. Not from the first trial.
+        # **A protocol figure**: a protocol states how long an animal may be in the
+        # chair, and the number changes when the protocol does.
         "chair_time": Ceiling(value=3_600.0, maximum=3_600.0, unit="s"),
-        # Optional in a way the two above are not.
+        # **Labelled with neither kind, because this entry is going away.** The PI
+        # has ruled (2026-09-19) that **there is no session-length maximum**: trial
+        # counts are per-task, likely per-condition targets, which the scheduler
+        # already carries. Removal is **pending**, together with an open question
+        # about which clock the surviving duration limit uses -- see
+        # `docs/next-session.md` §6. Nothing here should be read as a protocol
+        # figure or a fault bound.
         "max_trials": Ceiling(value=2_000.0, maximum=5_000.0, unit="trials"),
     },
     minima={

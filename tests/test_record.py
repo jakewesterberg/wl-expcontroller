@@ -190,3 +190,19 @@ def test_closing_releases_the_file_and_the_context_manager_does_it_for_you(tmp_p
         assert not r._trials.closed
 
     assert r._trials.closed
+
+
+def test_the_refusal_log_limit_matches_the_in_memory_refusal_caps():
+    """Three in-memory lists and one file are bounded by the same policy, for the
+    same reason: the party driving their growth is an untrusted peer, not the
+    operator. Two constants rather than one import keeps `record.py` free of a
+    dependency on the console link -- the durable record must not learn about
+    telemetry -- so this test is what stops them drifting apart in silence.
+
+    They are not the same *rule*: the file keeps the oldest rows and the feed keeps
+    the newest (`taskd`'s tests say why). It is the size that has to agree.
+    """
+    from wl_expcontroller.link import REFUSAL_HISTORY
+    from wl_expcontroller.record import REFUSAL_LOG_LIMIT
+
+    assert REFUSAL_LOG_LIMIT == REFUSAL_HISTORY

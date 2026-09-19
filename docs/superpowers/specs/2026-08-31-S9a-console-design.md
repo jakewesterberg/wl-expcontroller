@@ -349,11 +349,13 @@ leave `taskd.Session.run` with no telemetry at all — a console watching a rig 
 unattended and cage-side, saw the stream simply stop. The loop boundary now sets
 `stopped_because` to name the fault, publishes once, and re-raises unchanged. The refusal
 is the behaviour that matters; the frame only means a stranger can read what happened off
-the screen, which is this spec's own rule for an abort reason. Schema-versioned with golden-file tests, which ADR-0003 already
-requires. **`SCHEMA` is 3 as of 2026-09-19**: `Staged.bounded` stopped meaning "already
-live" and became "checked against a welfare ceiling", a field that still decodes and no
-longer means what it did — a console built against schema 2 would render a lowered reward
-volume as already in effect. Trial-rate telemetry on one topic; the replica's display-rate stream, if V11
+the screen, which is this spec's own rule for an abort reason.
+
+Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is 3
+as of 2026-09-19**: `Staged.bounded` stopped meaning "already live" and became "checked
+against a welfare ceiling", a field that still decodes and no longer means what it did —
+a console built against schema 2 would render a lowered reward volume as already in
+effect. Trial-rate telemetry on one topic; the replica's display-rate stream, if V11
 permits one, on a separate droppable topic.
 
 **A frame is bounded, and the one list that was not is the refusal feed.** Added

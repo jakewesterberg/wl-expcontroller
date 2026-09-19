@@ -20,6 +20,7 @@ import pytest
 from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
 from wl_expcontroller.dio import Simulated as Card
 from wl_expcontroller.link import REFUSAL_HISTORY, SetParameter, Simulated, Stop
+from wl_expcontroller.record import REFUSAL_LOG_LIMIT
 from wl_expcontroller.scheduler import Block, Condition, Counting
 from wl_expcontroller.task import Outcome
 from wl_expcontroller.taskd import Session, SessionSpec
@@ -835,6 +836,46 @@ def test_a_refused_welfare_bounded_set_reaches_the_session_record(tmp_path):
     assert "0.4" in rows[0]["why"], "the row does not say what the ceiling was"
 
 
+def test_a_recorded_refusal_says_where_in_the_session_it_happened(tmp_path):
+    """A row whose whole reason for existing is "this is asked months later" has to
+    say *when* within the session, or a reader has only an ordering. `trial_index`
+    is the trial about to run and `session_seconds` is `Session.now()` -- the same
+    frame-derived clock the restraint ceiling uses, never a wall clock, because a
+    wall clock here would invite someone to align a refusal to the neural recording.
+
+    The second refusal is queued from `observe`, after trial 0, so it drains on a
+    later pass: a row that hardcoded zeros, or read the wrong index, passes on the
+    first refusal alone and fails here."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    link.queue(SetParameter(name="reward_correct", value=0.90, by="jake"))
+    session.observe = lambda condition, values, result: (
+        link.queue(SetParameter(name="reward_correct", value=0.80, by="sam"))
+        if not link._queued
+        else None
+    )
+
+    session.run()
+
+    rows = [
+        json.loads(line)
+        for line in (session.directory / "refusals.jsonl").read_text().splitlines()
+    ]
+    # Four, not three: `observe` queues after each of the three trials, and the
+    # pass that discovers the trial ceiling drains the last one before it stops.
+    # A *refused* command is recorded on that pass; an accepted one would be staged
+    # and dropped, which is the open item this commit widened -- see
+    # `docs/next-session.md` §6.
+    assert [row["trial_index"] for row in rows] == [0, 1, 2, 3]
+    assert rows[0]["session_seconds"] == 0.0
+    assert rows[1]["session_seconds"] > 0.0, "every row reads as the session's start"
+    seconds = [row["session_seconds"] for row in rows]
+    assert seconds == sorted(seconds) and len(set(seconds)) == 4
+    assert [row["by"] for row in rows] == ["jake", "sam", "sam", "sam"]
+
+
 def test_an_ordinary_parameter_typo_stays_out_of_the_session_record(tmp_path):
     """The other half, and the reason this is not simply "record every refusal". A
     mistyped task-parameter name is a person's slip at a keyboard, not a welfare
@@ -851,6 +892,80 @@ def test_an_ordinary_parameter_typo_stays_out_of_the_session_record(tmp_path):
 
     assert not (session.directory / "refusals.jsonl").exists()
     assert len(session.refusals) == 1, "and it is still on the console's feed"
+
+
+def _refusal_rows(session: Session) -> list[dict]:
+    return [
+        json.loads(line)
+        for line in (session.directory / "refusals.jsonl").read_text().splitlines()
+    ]
+
+
+def _flood(link, n: int) -> None:
+    """`n` ceiling refusals with distinguishable asked-values, so a test can tell
+    which end of the flood survived."""
+    for i in range(n):
+        link.queue(SetParameter(name="reward_correct", value=1.0 + i / 100, by="jake"))
+
+
+def test_the_recorded_refusal_log_keeps_the_first_rows_not_the_last(tmp_path):
+    """PI, 2026-09-19: `refusals.jsonl` is bounded, and it keeps the **oldest**.
+
+    The opposite of `Telemetry.refusals`, deliberately, and the asymmetry is the
+    decision rather than an oversight. A console feed answers "what is happening
+    now", so it keeps the newest. A session record answers "what happened", and a
+    flood of refusals is a fault or a misbehaving console while a *genuine* mistake
+    appears early -- when a person is typing. Keeping the last fifty of a thousand
+    would discard the only rows a human wrote.
+    """
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    _flood(link, REFUSAL_LOG_LIMIT + 12)
+
+    session.run()
+
+    rows = _refusal_rows(session)
+    kept = [row for row in rows if not row.get("truncated")]
+    assert len(kept) == REFUSAL_LOG_LIMIT
+    assert kept[0]["asked"] == 1.0, "the first refusal fell off"
+    assert kept[-1]["asked"] == pytest.approx(1.0 + (REFUSAL_LOG_LIMIT - 1) / 100)
+
+
+def test_a_truncated_refusal_log_says_so_and_says_how_many_are_missing(tmp_path):
+    """A cap that reads as a quiet session is the silent drop the count exists to
+    prevent -- the same argument as `Telemetry.refusals_dropped`, one layer down and
+    on the durable side, where there is no live console to have noticed."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    _flood(link, REFUSAL_LOG_LIMIT + 12)
+
+    session.run()
+
+    rows = _refusal_rows(session)
+    assert rows[-1]["truncated"] is True, "the log was capped and does not say so"
+    assert rows[-1]["dropped"] == 12
+    assert rows[-1]["kept"] == REFUSAL_LOG_LIMIT
+    assert len(rows) == REFUSAL_LOG_LIMIT + 1, "one notice, not one per drop"
+
+
+def test_an_untruncated_refusal_log_carries_no_notice_row(tmp_path):
+    """The notice is evidence of a cap, so a session nobody flooded must not carry
+    one -- a reader who saw it on every session would stop reading it."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    _flood(link, 3)
+
+    session.run()
+
+    rows = _refusal_rows(session)
+    assert len(rows) == 3
+    assert not any(row.get("truncated") for row in rows)
 
 
 def test_the_sessions_own_refusal_list_is_capped_like_the_other_two(tmp_path):

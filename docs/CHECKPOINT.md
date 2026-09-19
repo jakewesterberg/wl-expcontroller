@@ -74,7 +74,7 @@ figure was one low. In order:
 
 | | |
 |---|---|
-| Tests | **447, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's four decisions, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 447 passed, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7) |
+| Tests | **452, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7) |
 | CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the restraint clock, the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7) |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. Chair time and trial count are ceilings and do end a session. S8 §4–§5 were written the other way round and now carry the correction |
@@ -359,7 +359,30 @@ only the capability beside it (`docs/next-session.md` §1).
    fault delivering litres, reported as a fault."* **Answered 2026-09-19: yes, and it is
    this entry.** The *value* beside it (0.05 mL) stays a placeholder until there are
    animals. `bounds.Ceiling`'s docstring no longer claims every maximum is a protocol
-   figure; `tasks/reference_bounds.py` says which each one is at the entry itself.
+   figure — it names the two kinds and leaves the value out of the library — and
+   `tasks/reference_bounds.py` labels each entry: `reward_correct` a fault bound,
+   `chair_time` a protocol figure. **`max_trials` turned out to be neither** — the
+   concept itself is going; see the next entry.
+
+### And a ruling that removes a concept: there is no session-length maximum
+
+Asked because the fault-bound-versus-protocol-figure taxonomy had no answer for
+`max_trials`. The answer was more fundamental than a label. **PI, 2026-09-19:** *"There
+is no session length max. … Each task, depending on its config, will have a target
+number of trials (likely per condition within the task). But the max trials idea makes
+no sense to me. The only limit we have welfare wise is that a session from out of cage
+to back into cage cannot be longer than 12 hours."*
+
+Most of the replacement is already built — per-condition targets are `scheduler.owed()`,
+`Counts` and `upcoming()`, which the console renders as *still needed by condition*. It
+was the session-level cap that made no sense.
+
+**Removal is pending, and deliberately not done here**, because an open question with
+the PI decides what `welfare.must_stop` becomes: the surviving welfare limit is twelve
+hours **out of cage to back in cage**, and the code measures `chair_seconds` **from
+head-fixation**. Those are different clocks — transport and chairing sit between them —
+and it is welfare-critical. `docs/next-session.md` §6 and §5 carry it.
+
 
 **Also, same class as the work just completed:** `taskd.Session.refusals` was the third
 list growing without bound under the same untrusted peer as `ZmqLink.refused` and
@@ -392,7 +415,7 @@ have, because each of them is about two places disagreeing. In commit order:
   nothing lands mid-trial, so this is attribution, not over-delivery — but **the record is
   off by one trial for fluid attribution**. Fixed by documentation only, in all four
   places plus three more carrying the same claim. It was then put to the PI as a question,
-  and **answered the same day: it defers** — see "The PI's four decisions" below, which
+  and **answered the same day: it defers** — see "The PI's four decisions" above, which
   reverses the documentation this bullet describes.
 - **`Refused` could not survive the wire and nothing could tell.** `decode` was correct,
   but the suite's only round-trip ran on an empty `refusals` tuple — deleting the rebuild
@@ -571,6 +594,8 @@ show, not a flat number). Full transcripts in
    with no final `Telemetry` frame and no `stopped_because` — a console watching a
    rig break, unattended, cage-side, sees only silence. What a console should show
    when the rig itself is faulty is a design question for a later slice.
+   **Closed the same day by the PI's second decision** — see "The PI's four
+   decisions" above. This paragraph is what it was closed against.
 2. **A change staged on a session's literal last pass is never applied** —
    `_apply_staged()` gets no further pass once the loop decides to stop. The final
    frame still shows it `staged` beside `STOPPED:`, an implicit signal rather than
@@ -580,9 +605,14 @@ show, not a flat number). Full transcripts in
    the number says the ordering held every time it was tried, nothing about speed) —
    so the obvious way to hit this on purpose does not. Residual risk: a
    `SetParameter` landing on whichever pass a welfare ceiling or "every block
-   finished" resolves on.
+   finished" resolves on. **Widened the same day by the PI's first decision**: a
+   welfare-bounded name used to be immune, because `Session.set` moved the ceiling at
+   drain time and only the record row was lost; now the value is staged too, so such
+   a command on the stopping pass is dropped entirely. Still open, now on the reward
+   path — `docs/next-session.md` §6 item 2 carries the full note.
 3. **`wlx console --set reward_correct=...` is the first person-invocable path that
-   moves a reward limit** (`Session.set` → `bounds.set`). `cli.py` does not become
+   moves a reward limit** (`Session.set` validates, `_apply_staged` → `bounds.set` at
+   the next boundary, since 2026-09-19). `cli.py` does not become
    welfare-critical — the ceiling is still enforced in `bounds.py` alone — but the
    capability is new and welfare-facing, and CLAUDE.md wants a human lab member on
    it before merge, same as `bounds.py`/`welfare.py`.
@@ -746,7 +776,9 @@ invisible in every artifact the session produces. Now pitfall **P21**.
   second loop is a second place for the ceilings to be checked differently.
 - **Two ceilings end a session** — chair time and trials — and chair time runs
   **from head-fixation**, which a session now refuses to start without. **Fluid is not
-  one of them.** The session
+  one of them.** (**The PI has ruled there is no session-length maximum** —
+  2026-09-19; `max_trials` is pending removal, behind an open clock question. When it
+  goes this sentence says *one* ceiling. See "What moved on 2026-09-19".) The session
   clock is derived from frames rather than the wall, which is what keeps "stops at its
   restraint ceiling" deterministic; on a rig frames *are* the clock, so it is the
   honest choice there too.
@@ -985,7 +1017,7 @@ runs out of context before it produces anything.**
 | | + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | — |
 | ~~P4b~~ | ~~Session management: blocks, scheduler, bounded config, welfare accounting, the live parameter path~~ | **done 2026-09-06** — a session runs blocks with criterion transitions, enforces its chair-time and trial ceilings, and reports the day's fluid shortfall at close; `welfare.py` is the second welfare-critical module and **wants human review** | — | — |
 | **P4c** | Parquet derivation at close ~~; the `labhost` endpoint~~ (`labhost` moved under `console`, ADR-0008 — see P4d-2) | Contract-tested against `wl-preproc`'s published schema | S10 | nothing. Independently ready to pick up; `trials.jsonl` now carries block and condition per row, so the derivation has what it needs |
-| ~~P4d-1~~ | ~~The console link: telemetry out, commands in, over a real socket~~ | **done 2026-09-19** — `Session` gains a `Link` port drained once per trial boundary, never per frame; `link.py`'s `Telemetry`/`Staged`/`Refused` message and `SetParameter`/`Stop` commands; `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB + REQ/REP; `wlx console` as a terminal client. Not welfare-critical and built to stay that way. Three items found and deliberately left open — see "What moved" below | — | — |
+| ~~P4d-1~~ | ~~The console link: telemetry out, commands in, over a real socket~~ | **done 2026-09-19** — `Session` gains a `Link` port drained once per trial boundary, never per frame; `link.py`'s `Telemetry`/`Staged`/`Refused` message and `SetParameter`/`Stop` commands; `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB + REQ/REP; `wlx console` as a terminal client. Not welfare-critical and built to stay that way. Three items found and deliberately left open; **one of them (a pump fault publishing nothing) was closed by the PI on 2026-09-19 and one was widened by the same decisions** — see "What moved" above | — | — |
 | **P4d-2** | The console's HTTP/WS surface (S9a §7) and the `labhost` endpoint it carries (S9a §7, superseding P4c's framing — `labhost` is a surface of `console`, not its own process) | A browser reaches a running session on the LAN, and `wl-works` can pull session state from `GET /health` | S9a §7 | nothing |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
 | **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |
