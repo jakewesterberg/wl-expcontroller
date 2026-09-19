@@ -2,17 +2,25 @@
 
 **State at handoff:** **421 tests passing**, working tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
-console link this file used to list as missing (§6, old text) now exists: 16 commits
-on top of `p4b-session-management`'s tip (`8693299`), **committed locally only — not
-pushed, and not merged.** `p4b-session-management` itself is 11 commits ahead of
-`main` (ten of them pushed; the eleventh, `8693299`, is local only) — check
-`git log --oneline main..HEAD` rather than trusting either number to stay still.
-`main` still points at `300d7d1` and knows about neither branch, so a check that
-looks only at `main` will report that nothing happened. Both branches exist rather
-than merging straight in because `bounds.py` and `welfare.py` are welfare-critical
-and want a human before they merge (§1) — `p4d1-console-link` adds a second, narrower
-ask to the same review rather than a new one (§1, bottom). The push and the merge
-decision are the PI's. No hardware exists.
+console link this file used to list as missing (§6, old text) now exists, built on
+`p4b-session-management`'s tip (`8693299`) — run `git log --oneline
+p4b-session-management..p4d1-console-link` for the branch's own commits rather than
+trusting a count written here. **That is not a hedge, it is the whole rule**: a
+commit count of a branch, stated in a file tracked on that branch, is wrong the
+instant it is committed, every time, because writing it is itself one more commit
+than it counted — this exact number was wrong three different ways across three
+fix rounds before it was removed rather than corrected a fourth time.
+`p4d1-console-link` is **committed locally only — not pushed, and not merged**
+(`git ls-remote origin p4d1-console-link` finds nothing). `p4b-session-management`
+itself is 11 commits ahead of `main` (ten of them pushed; the eleventh, `8693299`,
+is local only) — that count is safe to state here, unlike `p4d1-console-link`'s
+own, because nothing committed to *this* branch can change *another* branch's
+history. `main` still points at `300d7d1` and knows about neither branch, so a
+check that looks only at `main` will report that nothing happened. Both branches
+exist rather than merging straight in because `bounds.py` and `welfare.py` are
+welfare-critical and want a human before they merge (§1) — `p4d1-console-link`
+adds a second, narrower ask to the same review rather than a new one (§1, bottom).
+The push and the merge decision are the PI's. No hardware exists.
 
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
 > is; this says what to do. There are 19 specs and 8 ADRs (ADR-0008 is the newest and

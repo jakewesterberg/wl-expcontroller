@@ -7,11 +7,17 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > **This file describes `p4b-session-management`, not `main` — and, for the P4d-1
 > material below, `p4d1-console-link`, built on top of it.** `p4b-session-management`
 > is **11 commits** ahead of `main`; ten are pushed (`origin/p4b-session-management`),
-> the eleventh (`8693299`) is local only. `p4d1-console-link` adds 16 more commits on
-> top of that same `8693299` and **is committed locally only — not pushed, and not
-> merged** (the push and the merge decision are the PI's, not a session's). `main` is
-> still at `300d7d1` and knows about neither branch. Both exist rather than merging
-> straight in because `bounds.py` and `welfare.py` are welfare-critical and want a
+> the eleventh (`8693299`) is local only. `p4d1-console-link` branches from that same
+> `8693299` — run `git log --oneline p4b-session-management..p4d1-console-link` for
+> the current list. **Deliberately not a count written here**: a commit count of a
+> branch, stated in a file tracked on that branch, is wrong the instant it is
+> committed — writing it is itself one more commit than it counted, and this file
+> got that wrong three separate times before the number was removed rather than
+> corrected again. `p4d1-console-link` **is committed locally only — not pushed, and
+> not merged** (`git ls-remote origin p4d1-console-link` finds nothing; the push and
+> the merge decision are the PI's, not a session's). `main` is still at `300d7d1`
+> and knows about neither branch. Both exist rather than merging straight in
+> because `bounds.py` and `welfare.py` are welfare-critical and want a
 > human before they merge (CLAUDE.md); `p4d1-console-link` adds a second, narrower ask
 > to the same review rather than opening a new one (see the P4d-1 entry under "What
 > moved on 2026-09-19", and `docs/next-session.md` §1). **`git branch --show-current`
@@ -395,8 +401,8 @@ It is a P4c item, not a console one.
 
 ### The console link ships (P4d-1), and three things about it stay open
 
-Built on `p4d1-console-link` — commit counts live in this file's banner above, not
-repeated per-section after a fix round found two of three copies wrong — on top of
+Built on `p4d1-console-link` — see this file's banner above for how to find the
+branch's own commits (deliberately not a count; see why there) — on top of
 `p4b-session-management`, itself still unmerged and waiting on the welfare review
 below. `Session` gains a `link` field, drained and published **once per trial
 boundary and never per frame** — proved by a test, not only argued (the plan's Task
