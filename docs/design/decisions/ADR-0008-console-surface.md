@@ -66,10 +66,15 @@ is the authority.**
    session start, parameter change — is published as a lab-host-protocol action**, which
    is the standing constraint architecture.md already records and Plan 10 §6.2 is the
    reason for.
-3. **Authentication, the single-writer lock and the audit log live on the box.** S9a §1
-   already has several consoles watching and one holding the write lock; that lock is
-   enforced by `taskd`, not by a UI. This is Plan 10 §6.2's own logic taken seriously: if
-   the host is the boundary, it has to be a real one.
+3. **Authentication and the audit log live on the box.** This is Plan 10 §6.2's own logic
+   taken seriously: if the host is the boundary, it has to be a real one.
+
+   > **Amended 2026-09-19.** This clause also said "the single-writer lock", following
+   > S9a §1's several-consoles-one-writer model. **There is no write lock** (PI: *"anybody
+   > connecting to the session should be able to access features full access"*), because
+   > `bounds` is the welfare boundary and a lock would only buy coordination — at the cost
+   > of an animal waiting while somebody's laptop is asleep. Visibility replaces it. See
+   > S9a §8.
 4. **LAN-only** (PI, 2026-09-19: *"off-site is not necessary. at least now it isn't"*).
    The browser reaches the box directly; nothing bridges. A `wl-works` outage therefore
    cannot cost an operator the console mid-session — which matters because S13 §4.1

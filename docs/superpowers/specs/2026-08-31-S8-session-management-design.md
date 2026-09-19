@@ -158,8 +158,12 @@ supplement afterwards — is then computed against a figure that describes half 
 ### 5.2b One fluid budget across rig and kiosk
 
 **Kiosk fluid counts toward the same daily figure as rig work** (PI, 2026-08-31). Neither
-deployment can see the other's record — the kiosk has no sync box at all — so a shared total has
-to live somewhere neither owns.
+deployment can see the other's record, so a shared total has to live somewhere neither owns.
+
+> **Corrected 2026-09-19.** The reason given here was "the kiosk has no sync box at all",
+> and the kiosk now gets a reduced one (S13 §2). **The conclusion is unaffected** — a sync
+> module gives the kiosk a local timebase, not sight of the rig's records — but the reason
+> was load-bearing for a reader, so it is replaced rather than left to be believed.
 
 **wl-works holds the ledger and pushes the day's already-delivered total in `prepare-session`.**
 It is the ELN, it already keys on subject and session, and the network topology permits a push in

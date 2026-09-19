@@ -298,7 +298,7 @@ through `wl-works`. Three findings decided it, each read from source rather than
   of the lab. There is no permission model on the app side."* §6.2 defends that with *"the
   host is the real boundary anyway"*. On a preprocessing server the worst case is wasted
   compute; on a rig it is fluid, or a session started on an animal nobody is standing next
-  to. So the box authenticates, the box holds the write lock, and `wl-works` carries a link
+  to. So the box authenticates, the box records who asked, and `wl-works` carries a link
   and readings — which is the exclusion `architecture.md` already recorded, now with the
   reason attached to it.
 - **"A server on the rig" stopped distinguishing the options.** S9 §8 rejected a web UI
@@ -318,7 +318,48 @@ browser carries it. V11 measures it over the LAN with no rig. If it fails, the f
 a native path for that pane, not a second console.
 
 **The kiosk's iPad is the next decision** and is deliberately not made here — see
-`next-session.md` §3d.
+`next-session.md` §3d — **answered on 2026-09-19; see the console design above.**
+
+### The console design, brainstormed and settled
+
+S9a now carries the whole control-system design in §6–§10, and **two of S9's open items
+closed by being dissolved rather than answered.** Decisions, each the PI's:
+
+- **Identity is OAuth2 against `wl-works`** — which turned out to be configuration rather
+  than development. Read from their source: `src/lib/auth.ts` registers better-auth's
+  `mcp()` plugin, which *is* the OAuth provider in 1.7.1 and serves the `/oauth2/*`
+  surface Zulip already consumes, with revocation proven end to end. The ask drafted in
+  `pending-wl-works-amendments.md` is "register a client".
+- **Two entry points, one console.** Via `wl-works` for attributed actions; **locally as a
+  permanent peer**, never an emergency hatch, so an intranet outage cannot cost an
+  operator the console with an animal in the chair. `Actor` is two types — `Verified` and
+  `Local` — because a forgeable name is worse than no name.
+- **No write lock** (S9 open item 1, closed). Anybody attached has full access. Safe
+  because **`bounds` is the welfare boundary, not the lock**: magnitudes are
+  ceiling-checked whoever asks, fluid is a floor with nothing to race against, mappings
+  are versioned, stop is idempotent. Visibility — presence, a live change feed, and
+  **staged changes visible to everyone** — replaces coordination.
+- **Preflight: unknown proceeds on a recorded acknowledgement; only a failure blocks**
+  (S9 open item 2, closed). One rule, no exceptions, shaped against a gate that cries wolf
+  and gets routed around. **It carries a dated dependency**: it is safe only while the
+  pump driver may not be written before V10, and S9a §10 says so in the place someone
+  would have to grep.
+- **RT is approximate online and real offline.** `rt_approx_ms`, never `rt_ms`. An
+  earlier proposal to wire hardware response lines was withdrawn — it would have changed a
+  board on the strength of reasoning rather than a measurement, which is the thing this
+  repo forbids.
+- **The kiosk's animal-facing screen is an attached panel with a wired touch sensor**, not
+  an iPad: a touch arriving over WiFi cannot be strobed promptly, and the offline join is
+  the method. The iPad becomes the *experimenter's* window, which ADR-0008 already gives
+  for free. **And the cage-side deployment gets a reduced sync module** — reversing S13
+  §2's "no sync box" — which also gives `wl-juicer`'s dose and witness lines the home its
+  spec designed them for.
+
+**One thing found and deliberately not fixed here:** the session directory carries
+`trials.jsonl`, `config.json`, `parameter_changes.jsonl` and `eye_calibration.yaml` but
+**no event-code table**, so nothing downstream can name a code without checking out the
+task at the recorded version and re-deriving it. `wlx review` builds that table already.
+It is a P4c item, not a console one.
 
 ### The branch was pushed, and the gate caught something real
 

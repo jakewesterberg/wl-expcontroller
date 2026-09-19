@@ -184,23 +184,34 @@ it. One decision, in the task layer, deliberately not made by the session that f
 
 ---
 
-## 3d. The next decision: what the kiosk's iPad actually is
+## 3d. ~~The next decision: what the kiosk's iPad actually is~~ — answered 2026-09-19
 
-**Not made 2026-09-19, deliberately.** ADR-0008 settled the console; it did not settle
-whether the iPad runs the task or is a display and touch surface for a Linux host.
+**The iPad is the experimenter's window, not the animal's screen.** A touch arriving over
+WiFi cannot be strobed promptly, and RT is recovered offline by joining sync ticks, so the
+animal-facing screen is an attached panel with a wired touch sensor on the edge box. The
+cage-side deployment also gains a **reduced sync module**, reversing S13 §2 — which is
+what gives `wl-juicer`'s dose input and witness line the home its own spec designed them
+for, and gives the kiosk a hardware timebase to recover RT against.
 
-The argument points hard at the thin client, and it is a welfare argument rather than an
-engineering preference. S13 §4: *"the welfare-critical module stays single, written once
-and reviewed once — the less-supervised deployment gets no weaker path of its own."* An
-iPad running the task means a second task engine and either an iOS twin of `bounds` and
-`welfare` or a route around them. S13 §3 already assumes a host besides: reward is
-`wl-juicer`, whose spec wires its dose input and witness line to the sync box, which the
-kiosk has not got, *"so the host has to drive the one and read the other."*
+The full control-system design is **S9a §6–§10**. Read that before writing any console
+code; it is the one spec this package names.
 
-The cost of the thin client, which should be accepted out loud rather than discovered:
-kiosk display timing is not frame-accurate, and touch latency gains a network hop. Touch
-already reaches the record only as event codes (S13 §3), so it is software-timed either
-way — but the added hop wants measuring before it is relied on.
+## 3e. What the console needs that does not exist yet
+
+Three things S9a §6–§10 depends on that nobody has built:
+
+- **`wl-works` must register the box as an OAuth2 client.** Drafted in
+  `pending-wl-works-amendments.md`; it is configuration on their side, not development,
+  because the `/oauth2/*` surface exists and Zulip consumes it. **Not blocking** — the box
+  ships with its own credential and records `unattributed` until identity arrives.
+- **Protocol V11** decides whether a browser can carry the replica pane. Measurable now,
+  over the LAN, with no rig. Until it is run, S9a §2's replica is the one pane the design
+  makes no claim about.
+- **`wl-touchtrain` holds no design at all yet**, and now owes one: what the reduced sync
+  module carries. S13 §2, §3 and §5 are corrected, and so are S6, S8 and the spec map,
+  which all asserted the kiosk had no sync box. What is *not* settled is whether the
+  reduced module mints a session id or emits a barcode — S13 §5's three candidates for the
+  kiosk's session directory turn on it, and the first is no longer ruled out by hardware.
 
 ---
 

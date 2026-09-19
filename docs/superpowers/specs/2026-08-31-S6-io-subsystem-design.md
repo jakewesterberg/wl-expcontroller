@@ -107,8 +107,12 @@ is the joystick.
 
 ## 6. The hardware interface must degrade to absent
 
-S13's kiosk has no NI card, no sync box, no neural plane — so this is not a rig-only subsystem
-with a stub for tests. Every interface has three implementations and they are peers:
+S13's kiosk has no NI card and no neural plane — so this is not a rig-only subsystem with a
+stub for tests. Every interface has three implementations and they are peers:
+
+> **Corrected 2026-09-19:** this also said "no sync box". The kiosk gets a reduced sync
+> module (S13 §2), which strengthens rather than weakens the argument below — the set of
+> absent devices differs *per deployment*, so it cannot be a fixed list anywhere.
 
 | Implementation | Used by |
 |---|---|

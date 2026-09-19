@@ -27,8 +27,13 @@ and they are requirements rather than aspirations:
 a plot, serves a request, or holds a UI.** Four requirements now depend on it: plots off the
 frame budget, the external control API, remote access, and the kiosk running a console at all.
 
-The link is ZMQ — REQ/REP for commands, PUB for telemetry — with a bearer token, a rate limit,
-and S8 §3.3's arbitration rule between concurrent writers.
+The link is ZMQ — REQ/REP for commands, PUB for telemetry — with a bearer token and a rate
+limit.
+
+**Amended 2026-09-19.** This sentence also carried "S8 §3.3's arbitration rule between
+concurrent writers"; there is no write lock to arbitrate (S9a §8). And under ADR-0008 the
+box serves HTTP — but from the `console` process, never from `taskd`, so the rule above is
+unchanged rather than bent (S9a §7).
 
 ---
 
@@ -56,6 +61,14 @@ the project: it prevents the two-hours-recorded-with-no-eye-data class of loss.
 | **Config diff against last session** | "This rig differs in 3 ways" catches the change nobody remembers making |
 
 A failed check names the fix, not just the failure.
+
+**Three states, not two** (settled 2026-09-19; S9a §10 carries the reasoning). A check
+that has **failed** blocks. A check whose answer is **unknown** proceeds, on an explicit
+acknowledgement written into the session record naming who accepted it and what was
+unknown. There are no exceptions to that, including the pump calibration — which is safe
+only while the real pump driver may not be written before V10 exists, and must be
+revisited the day it is. The shape is chosen against the failure mode where a gate refuses
+so often that people route around it, at which point it protects nothing.
 
 ---
 
@@ -167,7 +180,7 @@ the network topology forbids.
 
 | # | Item | Blocks |
 |---|---|---|
-| 1 | Arbitration between console and control-API writers (S8 §3.3) | the control API |
-| 2 | What preflight does when a check is *unknown* rather than failed | preflight semantics |
+| ~~1~~ | ~~Arbitration between console and control-API writers (S8 §3.3)~~ **Closed 2026-09-19: there is no write lock, so there is nothing to arbitrate.** Both are ordinary writers; `bounds` is the welfare boundary, and visibility replaces coordination. S9a §8 | — |
+| ~~2~~ | ~~What preflight does when a check is *unknown* rather than failed~~ **Closed 2026-09-19: unknown proceeds on a recorded acknowledgement; only an actual failure blocks.** S9a §10 | — |
 | 3 | Whether the console can run against a live session it did not start | remote use |
 | 4 | Behaviour-agent fidelity — how realistic a synthetic animal needs to be | the simulation gate's value |

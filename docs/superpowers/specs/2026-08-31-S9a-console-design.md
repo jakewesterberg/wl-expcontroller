@@ -23,8 +23,13 @@ is frame-accurate timing."*
 
 **`taskd` owns the session; consoles attach.** A session survives the console closing,
 crashing, or sitting on a laptop whose lid shuts over a working animal. Several consoles
-may watch; one holds the write lock. That is also what makes the *remote* console real
-rather than a viewer — S9 §7's remote operation is this decision, not a feature.
+may attach at once. That is also what makes the *remote* console real rather than a
+viewer — S9 §7's remote operation is this decision, not a feature.
+
+> **Amended 2026-09-19.** This said "one holds the write lock". There is no write lock:
+> anybody attached has full access, because `bounds` is the welfare boundary and a lock
+> would only buy coordination — at the price of an animal waiting on a sleeping laptop.
+> §8 has what replaces it.
 
 ---
 
@@ -138,7 +143,197 @@ failing over.
 
 ---
 
-## 6. Open
+## 6. Identity and authority
+
+Settled 2026-09-19, after ADR-0008. **The box is the authority**, because `wl-works`
+deliberately will not be: its Plan 10 §4.1 is the first line of its protocol document —
+*"Publishing an action makes it available to every member of the lab. There is no
+permission model on the app side."* On a preprocessing server the worst case is wasted
+compute; on a rig it is fluid, or a session started on an animal nobody is standing next
+to.
+
+**The box is an OAuth2 client of `wl-works`.** Not a bespoke scheme: read from their
+source 2026-09-19, `src/lib/auth.ts` registers better-auth's `mcp()` plugin, which *is*
+the OAuth provider in 1.7.1 and serves the `/oauth2/*` surface Zulip already consumes,
+with per-client PKCE. Revocation is proven end to end there — an admin deactivating a
+member cut their already-open Zulip session as a direct result. So the ask on `wl-works`
+is to register a client, not to build token issuance.
+
+**Two entry points, one console.** The same page, reached two ways, because two UIs would
+be the two-operator-surfaces mistake ADR-0008 exists to avoid:
+
+- **Via `wl-works`** — sign in there, land on the box, the box verifies the token. Actions
+  are attributed to a real account, and deactivating that account revokes access to every
+  box at once.
+- **Locally** — straight to the box, authenticated by the box's own credential. Always
+  works, never touches the network. **A permanent peer, not an emergency hatch** (PI,
+  2026-09-19), so that a `wl-works` outage cannot cost an operator the console with an
+  animal in the chair.
+
+**`Actor` is two types, not one type with a nullable name.** `Verified(person, issuer,
+token id)` and `Local(box credential)`. Different types for the reason `Floor` and
+`Ceiling` are different types: so no call site can treat them alike, and so "we do not
+know who" can never render as a name. A forgeable name is worse than no name, because it
+is believed.
+
+**The degradation is loud.** The console header states its mode. Every welfare-affecting
+action records its actor type, and a session whose welfare actions were unattributed says
+so in its summary. The local path is not prevented — preventing it defeats its purpose —
+it is made impossible not to notice.
+
+**Token expiry mid-session interrupts nothing.** The session continues, the console drops
+to local mode, and the transition is recorded as an event. Never raise out of a trial the
+animal is completing, which is the rule `welfare.Rig` already follows for pump faults.
+
+---
+
+## 7. Processes and protocol
+
+```
+   wl-works ──── polls /health, links to the console ─────┐
+       │  OAuth2 (identity)                               │
+       ▼                                                  ▼
+browser ──HTTP/WS──►  console  ──ZMQ REQ/REP (commands)──►  taskd ──► world, devices
+                      ├ OAuth client + local credential  ◄──ZMQ PUB (telemetry)──┘
+                      ├ static assets, WS fan-out
+                      └ /health  (the labhost surface)
+```
+
+**Two processes, and the split was already mandatory.** §1 of S9: *"`taskd` and `console`
+are separate processes under all conditions. The hot loop never renders a plot, serves a
+request, or holds a UI."* An HTTP server inside `taskd` is out on that rule alone.
+
+**ADR-0003's link is untouched** — REQ/REP for commands, PUB for telemetry, msgpack,
+schema-versioned. The console is a new client of an existing contract, not a new
+transport.
+
+**The console can die without the experiment noticing.** It holds HTTP sessions, OAuth
+state and a cache of the last telemetry so a newly-opened browser renders immediately. It
+holds no authoritative session state. Restart it mid-session and nothing in the trial loop
+changes, which is the property §1 asks for when it says a session survives the console
+closing.
+
+**Identity crosses one trust boundary and it is explicit.** `wl-works` asserts identity to
+the box, signed. Inside the box the console asserts the actor to `taskd` over ZMQ and
+`taskd` trusts it, because they are the same machine and the console *is* the
+authenticator. Command messages therefore carry an `actor`, and the audit is written by
+`taskd`, where the validated write path already lives.
+
+**`labhost` stops being its own component.** P4c's pull-only `/health` endpoint becomes a
+surface of the console process rather than a second server on the box: same process,
+separate path, separate auth, since `wl-preproc`'s lab-host protocol carries its own
+bearer token and deliberately no permission model.
+
+**The subject's display is not affected by any of this.** S13 §3 routes the kiosk through
+the display module's zero-disparity path, so `DisplayAdapter` is unchanged and ADR-0002
+stays deferred. The console is an operator surface only.
+
+---
+
+## 8. Writers: visibility instead of a lock
+
+Settled 2026-09-19 (PI): *"anybody connecting to the session should be able to access
+features full access."* **There is no write lock.** S9 §10's open item 1 — arbitration
+between console and control-API writers — resolves by dissolving: both are ordinary
+writers.
+
+**This is safe because `bounds` is the welfare boundary, not the lock.** Two writers
+cannot do harm concurrently: a per-delivery magnitude is ceiling-checked whoever asks,
+fluid is a floor with no ceiling to race against, mappings are versioned, and stop is
+idempotent. Concurrent writers cause *confusion*, not damage — and confusion is cheaper to
+solve with visibility than with a lock that makes an animal wait while somebody's laptop
+is asleep.
+
+Three things replace it:
+
+- **Presence.** Every console shows who else is attached.
+- **A live change feed.** Every parameter change, reward and state transition appears on
+  every attached console with its actor.
+- **Staged changes are visible to everyone, not only to whoever staged them.** This is the
+  one that carries the weight. `Session.set` stages and applies at the next trial
+  boundary, so a pending change is an action that has happened but not yet landed. With no
+  lock, the only thing standing between that and an invisible parameter move is that
+  everybody can see it queued.
+
+Last-write-wins within an ITI, both writes recorded with their actors, and the resolution
+shown.
+
+---
+
+## 9. The telemetry contract
+
+**One rule: every number on the console comes from the object the record is written from,
+never computed beside it.** This is where a number nobody measured would get in, and the
+defence is structural rather than careful.
+
+| Pane | Source |
+|---|---|
+| Fluid delivered / floor / supplement | `welfare.session_total`, `total_today`, `shortfall()`, `bounds.minima` |
+| Chair time | `welfare.chair_seconds` — frame-derived, so it matches the ceiling that ends the session |
+| Trials, outcomes, aborts by reason | `simulate.Tally`, already shared with `taskd` |
+| Still needed, by condition | `scheduler` quotas |
+| Parameter row | The task's own `Param` declarations; writes return through `Session.set` |
+| Drops, staleness | `eye`'s staleness accounting |
+
+**If the console needs a number that is not in those objects, the fix is to add it to the
+object.** A console-only number cannot be in the record, cannot be checked, and will
+eventually be read off a screen into a paper.
+
+**Approximation is in the name.** `rt_approx_ms`, never `rt_ms` — online RT is
+approximate by decision (PI, 2026-09-19: *"an approximate rt online is fine enough"*),
+with the real value recovered offline from sync ticks. Unknown is `None`, never `0`,
+following `shortfall()`'s refusal to claim a day went well.
+
+**The console never computes a welfare number.** Fluid shown is what `welfare` says was
+*delivered*, never a sum of reward commands issued.
+
+**Telemetry is lossy by design.** ZMQ PUB drops rather than blocks, because latest-wins
+telemetry must never stall a frame. The consequence, stated loudly: **the console is a
+view, never a source.** Schema-versioned with golden-file tests, which ADR-0003 already
+requires. Trial-rate telemetry on one topic; the replica's display-rate stream, if V11
+permits one, on a separate droppable topic.
+
+---
+
+## 10. Preflight semantics
+
+S9 §10's open item 2 — what preflight does when a check is *unknown* rather than failed.
+
+**Presence is a load-time refusal; preflight is about condition.** A task needing gaze
+will not load on a deployment without gaze (S13 §2 made "absent" a first-class device
+state precisely so it is refused at load time with a reason), and `check` already refuses
+a chromatic task with no photometer calibration. So preflight never asks *is there a
+tracker*, only *is it healthy* — which is a real three-state question.
+
+**One rule, no exceptions** (PI, 2026-09-19):
+
+- **fail** → blocks. A check that has actively failed stops the session.
+- **unknown** → proceeds on an **explicit acknowledgement that is written into the session
+  record**: which checks were unknown, and who accepted them.
+- **pass** → proceeds.
+
+The failure mode this is shaped against is not proceeding on an unknown. It is **a gate
+that cries wolf and gets clicked through**, because a gate people route around protects
+nothing. Refusing only on evidence of a problem, and recording acceptance where evidence
+is merely absent, keeps a refusal meaningful.
+
+Months later, when data looks odd, the record says *"this session started with the optics
+residual unknown, acknowledged by jake"* rather than nothing at all. Same instinct as
+`shortfall()` answering `None` and the `unattributed` actor: do not prevent, make it
+impossible not to notice, and put it in the data rather than in somebody's memory.
+
+**A dated dependency, stated so the next reader can grep it rather than believe it.**
+An absent pump calibration (V10) is acknowledgeable like everything else, and that is
+safe *only* because the real pump driver does not exist and may not be written until V10
+is measured (`docs/CHECKPOINT.md`, "Open measurements"). An unmeasured millilitre
+conversion therefore cannot reach an animal whatever preflight allows. **If anyone writes
+that driver, this rule must be revisited before it ships** — at that point an
+acknowledgeable unknown would mean a per-delivery ceiling enforced against a number
+nobody measured, while appearing to work.
+
+---
+
+## 11. Open
 
 | # | Item |
 |---|---|

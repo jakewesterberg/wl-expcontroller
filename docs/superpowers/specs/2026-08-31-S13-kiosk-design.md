@@ -23,7 +23,17 @@ real deployments is the opposite of framework creep.
 
 ## 2. What is absent
 
-No stereoscope. No NI card. No sync box. No neural plane. No SpikeGLX, no Intan.
+No stereoscope. No NI card. No neural plane. No SpikeGLX, no Intan.
+
+> **"No sync box" was here and is withdrawn (PI, 2026-09-19).** It does not survive the
+> requirement that timing be measurable: RT is recovered offline by joining a hardware
+> timebase, so a deployment with no tick has nothing to recover from. The cage-side
+> deployment gets a **reduced sync module** — smaller than the rig's 2U breakout, which
+> exists to interface an NI card, an Intan and an eye tracker that the kiosk has none of.
+> It also gives `wl-juicer`'s dose input and witness line the home its own spec designed
+> them for (§3), instead of the host faking both in software on the welfare-critical path.
+> `wl-touchtrain` owns the hardware; this section will be rewritten when that repository
+> holds a design.
 
 **So "absent" is a first-class device state** (S6 §6), beside hardware and simulated rather than
 a stub for tests. A task requiring a device the deployment lacks is **refused at load time with a
@@ -43,9 +53,14 @@ recoverable situation rather than a crash.
   events reach any record only as event codes (S2 §5.1) — here, they are the only response
   modality.
 - **Reward, through `wl-juicer`** (PI, 2026-09-13). Its spec wires both of its lines to the sync
-  box — the dose input from `wl-sync` `J6`, the witness line back to `J5B` — and the kiosk has
-  none (§2), so the host has to drive the one and read the other. That interface is
-  `wl-touchtrain`'s, the package that owns the kiosk hardware (§6 item 2).
+  box — the dose input from `wl-sync` `J6`, the witness line back to `J5B`. **Since the kiosk
+  now gets a reduced sync module (§2, 2026-09-19), those two lines land where their own spec
+  put them** rather than being faked by the host in software on the welfare-critical path.
+  What the reduced module must carry is `wl-touchtrain`'s to specify (§6 item 2).
+- **An attached panel with a wired touch sensor** (PI, 2026-09-19), not a tablet. A touch
+  arriving over a wireless link cannot be strobed promptly, and the offline join against a
+  hardware tick is how RT is recovered — so the response path must not cross a network. A
+  tablet is the *experimenter's* window instead, which ADR-0008 provides for free.
 - **The same task model.** A task written for the rig runs here if its declared device
   requirements are met; one that needs gaze or stimulation does not, and says so at load.
 
@@ -66,7 +81,7 @@ Two consequences that matter more than the numbers:
 
 **Kiosk fluid counts toward the same daily figure as rig work** (PI, 2026-08-31; that figure is
 a **floor** rather than a budget — PI, 2026-09-06, see S8's head), so the two
-deployments share a total neither can see directly — the kiosk has no sync box. wl-works holds the
+deployments share a total neither can see directly. wl-works holds the
 ledger and pushes the day's already-delivered figure in `prepare-session`; each deployment enforces
 `ceiling − already_delivered_today` (S8 §5.2b). Sequential use is the only real case, since an
 animal cannot be in the chair and at the kiosk at once, so a start-time figure suffices.
@@ -106,8 +121,14 @@ worth considering when the hardware is specified (§6 item 2).
 ## 5. Recording
 
 **Open, and it is the main design question this spec does not answer.** A kiosk session has no
-barcode, no sync box, and no acquisition systems, so `wl-preproc`'s session directory does not
-obviously fit: `SessionLayout` is keyed on a sync box session id that will not exist.
+acquisition systems, so `wl-preproc`'s session directory does not obviously fit.
+
+> **Partly overtaken 2026-09-19.** This said the kiosk has "no barcode, no sync box", and
+> concluded that `SessionLayout`'s sync-box session id "will not exist". With a reduced sync
+> module (§2) it may well exist — a sync module is what mints that id — and a barcode may be
+> available too. **Whether the reduced module carries either is `wl-touchtrain`'s to specify
+> and is not decided here**, so the three candidates below are still live rather than
+> resolved. What has changed is that the first of them is no longer ruled out by hardware.
 
 Three candidates:
 

@@ -164,12 +164,46 @@ So the planner should emit a calibration block at the head of every session, wit
 `TaskTypeCode.CALIBRATION`. The in-task `CALIBRATION_START`/`CALIBRATION_END` epochs that follow
 through the day need no planning and create no blocks.
 
+## An OAuth2 client per control box (new, 2026-09-19)
+
+ADR-0008 makes the experimenter console a web application served by each control box, and
+S9a §6 makes the box an **OAuth2 client of wl.works** so that an action can be attributed
+to a real account and revoked by deactivating it.
+
+**This asks for configuration, not development.** Read from source 2026-09-19:
+`src/lib/auth.ts` registers better-auth's `mcp()` plugin, which in 1.7.1 *is* the OAuth
+provider — its own comment: *"Because it is the OAuth provider, it cannot be combined with
+a separate oauthProvider. So the `/oauth2/*` surface Zulip reads and the MCP agent surface
+are served by the same plugin."* Zulip is already a live consumer, PKCE is a per-client
+column defaulting true, and revocation is proven end to end: an admin deactivating a
+member cut their already-open Zulip session as a direct result.
+
+So the ask is a client registration per control box — or one for the fleet, if that is
+preferred there; we have no opinion, and the choice is yours because it is your
+credential lifecycle.
+
+> **This does not make wl.works load-bearing for a session.** The box's own credential is
+> the floor and never depends on the network: if wl.works is unreachable, the console is
+> still reachable directly on the LAN and actions are recorded as `unattributed` rather
+> than refused. A session with an animal in the chair must not stop because an intranet is
+> down. Identity is an attribution mechanism here, never an authorisation one.
+
+> **And the welfare exclusion above is unchanged and unaffected.** Reward, stimulation,
+> session start and parameter changes are still not published as lab-host-protocol
+> actions, for exactly the reason Plan 10 §4.1 states in its own first line. Attribution
+> arriving *from* wl.works does not make wl.works an actor; the box authorises, and the
+> box records who asked.
+
+---
+
 ## What wl-works must decide
 
 1. Whether the client's host list becomes configuration.
 2. Whether `prepare-session` and `export-session` are acceptable as published actions given
    the flat permission model, with the welfare exclusion above as a standing constraint.
-3. Whether `planned_task` and `session_intent` are worth adding to a bundle that is already
+3. Whether a control box may register as an OAuth2 client of wl.works for operator
+   attribution (above), and whether that is one client per box or one for the fleet.
+4. Whether `planned_task` and `session_intent` are worth adding to a bundle that is already
    load-bearing on their side — their Plan 18b tests run against a fake, so the payload
    shape matters there before either machine exists.
 
