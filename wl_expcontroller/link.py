@@ -58,6 +58,24 @@ class Staged:
 
 
 @dataclass(frozen=True, slots=True)
+class Refused:
+    """A console's command that `Session.set` rejected: an undeclared name, or one
+    outside its declared range or ceiling.
+
+    **Part of S9a §8's live change feed, the same as `Staged`.** Before this field
+    existed, `Session.refusals` was in-memory only -- a person who mistyped a
+    parameter name got no feedback at all, and nothing on any console showed that a
+    write to a welfare-bounded name had even been attempted. `why` is `str(Exceeded)`,
+    already a complete sentence (see `Session.set`'s own messages), not a code a
+    console would need the source to interpret.
+    """
+
+    name: str
+    by: str
+    why: str
+
+
+@dataclass(frozen=True, slots=True)
 class Telemetry:
     """What a session tells its consoles, once per trial boundary.
 
@@ -93,6 +111,11 @@ class Telemetry:
     #: Every change accepted but not yet applied, from `session.staged` -- see
     #: `Staged`.
     staged: tuple
+    #: Every command refused since the session started, from `session.refusals` --
+    #: see `Refused`. Cumulative like `outcomes`, not cleared each boundary: a
+    #: refusal is a resolved event, not a pending one, so there is no "applied" for
+    #: it to disappear at.
+    refusals: tuple
 
     @classmethod
     def of(cls, session, tally, scheduler, index: int) -> "Telemetry":
@@ -131,6 +154,11 @@ class Telemetry:
             staged=tuple(
                 Staged(name=n, was=w, now=v, by=b, bounded=bd)
                 for n, w, v, b, bd in session.staged
+            ),
+            # `session.refusals`, already public -- unlike `_staged`, nothing private
+            # to reach around.
+            refusals=tuple(
+                Refused(name=n, by=b, why=w) for n, b, w in session.refusals
             ),
         )
 

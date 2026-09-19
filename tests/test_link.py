@@ -32,9 +32,10 @@ def _session_with(delivered_ml: float, already_today: float | None):
     Not a real `Session`: constructing one loads a task file and an allocation from
     disk, which these tests have no reason to do. `Telemetry.of`'s parameters are
     untyped precisely so any object with the right shape counts as a session (see
-    `link.py`). `.staged` is supplied directly as a plain tuple -- the public
-    property of the same name on the real `Session` belongs to a later piece of this
-    slice, and this fixture does not need to wait for it to exist.
+    `link.py`). `.staged` and `.refusals` are supplied directly as plain tuples --
+    stand-ins for the real `Session.staged` property and `Session.refusals` field,
+    so this fixture does not need to construct either the live-parameter or the
+    console-command machinery to satisfy `Telemetry.of`'s shape.
 
     `delivered_ml` becomes `welfare.delivered` -- the sync box's delivered-line
     figure -- rather than `welfare.commanded`, with `commanded` pinned to a small
@@ -61,6 +62,7 @@ def _session_with(delivered_ml: float, already_today: float | None):
         welfare=welfare,
         stopped_because="",
         staged=(),
+        refusals=(),
         now=lambda: 0.0,
     )
 

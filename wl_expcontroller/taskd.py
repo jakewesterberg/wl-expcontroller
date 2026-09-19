@@ -388,9 +388,14 @@ class Session:
 
             while True:
                 self._apply_staged()
-                # Drain *after* `_apply_staged()`: a command offered at the previous
-                # boundary has already landed, so the telemetry a console sees below
-                # matches the values the next trial will actually run.
+                # Drain *after* `_apply_staged()`, not before: staging and applying
+                # in the same pass would collapse S9a §8's one-boundary visibility
+                # window to nothing. A change drained here is staged but not yet
+                # applied -- `_apply_staged()` above already ran this pass, so it
+                # will not land until the *next* one -- and `publish()` below reports
+                # it queued. Reorder this and `Telemetry.staged` reads empty forever:
+                # nothing else populates it, so the only sign of a queued change
+                # before it silently lands would be gone.
                 for command in self.link.drain():
                     self._command(command)
                 # Publish *before* the stop check: a console watching a session that

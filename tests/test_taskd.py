@@ -485,7 +485,7 @@ def test_a_session_refuses_a_bounded_config_belonging_to_another_subject(tmp_pat
 # --- the console link --------------------------------------------------------
 
 
-def test_a_session_publishes_once_per_trial(tmp_path):
+def test_a_session_publishes_one_frame_per_trial_then_two_when_it_stops(tmp_path):
     """One entry before each trial runs, plus two more at the close: `run()`
     publishes at the top of every pass through `while True:`, and the pass where the
     session discovers its ceiling and stops -- without drawing a sixth trial -- is
@@ -504,6 +504,35 @@ def test_a_session_publishes_once_per_trial(tmp_path):
     assert [t.trial_index for t in link.published] == [0, 1, 2, 3, 4, 5, 5]
 
 
+def test_a_queued_commands_staged_value_is_visible_before_it_applies(tmp_path):
+    """The load-bearing ordering, made to fail if it moves. The drain happens after
+    `_apply_staged()`, so a command offered at one boundary is staged and visible in
+    that same boundary's telemetry (S9a §8's live change feed) but does not land
+    until the *next* one. Move the drain above `_apply_staged()` and this fails two
+    ways at once: the first published frame's `staged` reads empty, since nothing
+    else ever populates `Telemetry.staged`, and trial 0 runs under the *new* value
+    instead of the old one, because staging and applying would happen in the same
+    pass rather than a boundary apart."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
+
+    session.run()
+
+    staged = link.published[0].staged
+    assert len(staged) == 1
+    assert staged[0].name == "fix_hold"
+    assert staged[0].now == 0.4
+
+    rows = [
+        json.loads(line)
+        for line in (session.directory / "trials.jsonl").read_text().splitlines()
+    ]
+    assert rows[0]["params"]["fix_hold"] == 0.3, "trial 0 ran under the old value"
+
+
 def test_a_command_from_a_console_lands_at_the_next_boundary_with_its_actor(tmp_path):
     """The console gains no second write path: the command goes through `Session.set`,
     so a welfare-bounded name still meets its ceiling and an undeclared name is still
@@ -519,6 +548,42 @@ def test_a_command_from_a_console_lands_at_the_next_boundary_with_its_actor(tmp_
     changes = _parameter_changes(session)
     assert changes[0]["name"] == "fix_hold"
     assert changes[0]["by"] == "jake"
+
+
+def test_a_console_command_moving_reward_volume_goes_through_its_ceiling(tmp_path):
+    """The highest-consequence capability in this diff -- a console moving reward
+    volume -- proved end to end rather than assembled from two halves tested apart.
+    `test_a_live_write_to_a_welfare_bounded_value_goes_through_its_ceiling` drove
+    `Session.set` directly, and no test had driven a *bounded* name through a
+    console command. `reward_correct`'s ceiling here is `Ceiling(value=0.15,
+    maximum=0.40, unit="mL")` (see `_bounds`): a command asking for 0.90 is refused,
+    visible as a refusal, and one asking for 0.30 is accepted, staged with
+    `bounded=True`, and takes effect on the ceiling immediately -- `Session.set`'s
+    bounded branch does not defer to `_apply_staged()` the way an ordinary
+    parameter does."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    link.queue(SetParameter(name="reward_correct", value=0.90, by="jake"))
+    link.queue(SetParameter(name="reward_correct", value=0.30, by="jake"))
+
+    session.run()
+
+    assert len(session.refusals) == 1
+    assert session.refusals[0][0] == "reward_correct"
+    assert session.refusals[0][1] == "jake"
+    assert session.spec.bounds.value("reward_correct") == 0.30
+
+    staged = link.published[0].staged
+    assert len(staged) == 1
+    assert staged[0].name == "reward_correct"
+    assert staged[0].now == 0.30
+    assert staged[0].bounded is True
+
+    refused = link.published[0].refusals
+    assert len(refused) == 1
+    assert refused[0].name == "reward_correct"
 
 
 def test_a_stop_command_ends_the_session_at_a_boundary_not_mid_trial(tmp_path):
@@ -550,6 +615,29 @@ def test_a_refused_command_does_not_stop_the_session(tmp_path):
     assert len(session.refusals) == 1
     assert session.refusals[0][0] == "not_a_parameter"
     assert session.refusals[0][1] == "jake"
+
+
+def test_a_refusal_appears_in_the_telemetry_a_console_reads(tmp_path):
+    """`Session.refusals` was in-memory only until now: the person who mistyped a
+    name got no feedback, and nothing on any console showed that a write had even
+    been attempted. `Telemetry.refusals` mirrors `session.refusals` (S9a §8's live
+    change feed), cumulative like `outcomes` rather than cleared per boundary, since
+    a refusal is a resolved event and not a pending one."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    link.queue(SetParameter(name="not_a_parameter", value=1.0, by="jake"))
+
+    session.run()
+
+    refused = link.published[0].refusals
+    assert len(refused) == 1
+    assert refused[0].name == "not_a_parameter"
+    assert refused[0].by == "jake"
+    # Still on the very last frame -- refusals accumulate for the session's life,
+    # unlike `staged`, which clears at the boundary the change actually applies.
+    assert len(link.published[-1].refusals) == 1
 
 
 # --- the last telemetry frame always names why (S9 "written for a stranger") ------
