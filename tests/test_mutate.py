@@ -128,17 +128,14 @@ def test_the_real_no_op_displays_are_inert_and_the_real_one_is_not():
 
 
 def _neutered(source: str, function: str, returns: str = "None") -> str:
-    """Apply the tool's substitution to `source` without running any suite."""
-    import re
+    """The shipped mutation applied to `source`, without running any suite.
 
-    pattern = mutate_tool._PATTERN.format(name=re.escape(function))
-
-    def _fill(match):
-        head = match.group(0)
-        indent = " " * (len(head) - len(head.lstrip(" ")))
-        return f"{head}{indent}    return {returns}\n"
-
-    return re.subn(pattern, _fill, source, flags=re.S)[0]
+    This calls `_neuter_source` rather than reimplementing it. It used to hold its
+    own copy of the substitution, which is a test that can agree with itself while
+    disagreeing with the tool -- and the tool is the thing under test."""
+    mutated, why = mutate_tool._neuter_source(source, function, returns)
+    assert mutated is not None, why
+    return mutated
 
 
 def test_a_one_line_body_is_left_alone_rather_than_made_unparseable():
@@ -190,3 +187,106 @@ def test_the_shipped_one_line_stubs_are_the_ones_this_protects():
         source = (root / module).read_text()
         assert f"-> None: ...\n" in source or "-> bool: ...\n" in source
         ast.parse(_neutered(source, name))
+
+
+# ---------------------------------------------------------------------------
+# The seventh failure: a signature the pattern could not reach at all
+# ---------------------------------------------------------------------------
+
+
+def _first_statement(source: str, function: str) -> str:
+    """`function`'s first real statement, docstring skipped -- which is where a
+    mutation has to land. Parsing rather than grepping is the point: a mutation
+    inserted into the *signature* is a `SyntaxError`, and that is the shape that
+    reported itself as caught for as long as the tool used a regex."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name != function:
+            continue
+        body = node.body
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            body = body[1:]
+        return ast.unparse(body[0]) if body else ""
+    raise AssertionError(f"no definition of {function}")
+
+
+def test_a_default_argument_containing_parens_does_not_hide_the_function():
+    """`params: Params = Params()` closes a paren inside the parameter list, so
+    `\\([^)]*\\)` ends the signature early and the match fails. This is
+    `saccade.detect`, and the gate reported it `SKIPPED  could not find detect`."""
+    source = (
+        "def detect(\n"
+        "    gaze_deg: list[tuple[float, float] | None],\n"
+        "    at: list[float],\n"
+        "    params: Params = Params(),\n"
+        ") -> list[Saccade]:\n"
+        '    """Every saccade in a trace."""\n'
+        "    return _scan(gaze_deg, at, params)\n"
+    )
+
+    mutated = _neutered(source, "detect")
+
+    ast.parse(mutated)
+    assert _first_statement(mutated, "detect") == "return None"
+
+
+def test_a_parenthesised_default_before_an_annotated_one_lands_in_the_body():
+    """`calibration.recenter`, and the worse half of the same bug. After the stray
+    `)` the scan for a colon finds the one in `why: str`, so the old pattern matched
+    **part of the signature** and inserted a statement into the parameter list. The
+    suite then reports collection errors and `mutate` reads any non-zero exit as
+    caught -- so this function has never once been mutated, and the nightly on `main`
+    still prints `caught recenter  2 errors in 0.82s`."""
+    source = (
+        "class MappingLog:\n"
+        "    def recenter(\n"
+        "        self,\n"
+        "        at: float,\n"
+        "        left: tuple[float, float] = (0.0, 0.0),\n"
+        '        why: str = "recentered",\n'
+        "    ) -> Mapping:\n"
+        '        """A single-point offset on the existing map."""\n'
+        "        return self._install(at, left, why)\n"
+    )
+
+    mutated = _neutered(source, "recenter")
+
+    ast.parse(mutated)
+    assert _first_statement(mutated, "recenter") == "return None"
+
+
+def test_the_shipped_signatures_the_gate_could_not_reach():
+    """Against the real modules and with the gate's own `--returns` values, so this
+    fails the day either signature moves back out of reach. These two are the whole
+    of `MUTATION GATE FAILED: calibration, saccade` (run 34769913502)."""
+    root = Path(__file__).resolve().parents[1] / "wl_expcontroller"
+    for module, name, returns in (
+        ("calibration.py", "recenter", "[]"),
+        ("saccade.py", "detect", "None"),
+    ):
+        mutated = _neutered((root / module).read_text(), name, returns)
+        ast.parse(mutated)
+        assert _first_statement(mutated, name) == f"return {returns}", module
+
+
+def test_a_name_defined_more_than_once_is_mutated_once():
+    """Every definition of a name is neutered together, so a name listed twice runs
+    an identical sweep twice -- and a sweep is a full suite run. `run.py` alone
+    repeats six names."""
+    source = (
+        "class Quiet:\n"
+        "    def satisfied(self, window): ...\n"
+        "class Scripted:\n"
+        "    def satisfied(self, window): ...\n"
+        "def free(window):\n"
+        "    return True\n"
+    )
+
+    assert mutate_tool._function_names(source) == ["satisfied", "free"]

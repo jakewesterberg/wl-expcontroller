@@ -1,15 +1,19 @@
 # Where this build actually is
 
-**Last updated 2026-09-06**, at the commit this file was committed in. Check
+**Last updated 2026-09-19**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
-> **This file describes `p4b-session-management`, not `main`.** P4b is three unpushed
-> commits on that branch; `main` is still at `300d7d1` and knows none of it. The branch
+> **This file describes `p4b-session-management`, not `main`.** The branch is six
+> commits and is pushed; `main` is still at `300d7d1` and knows none of it. The branch
 > exists because `bounds.py` and `welfare.py` are welfare-critical and want a human
 > before they merge (CLAUDE.md). **`git branch --show-current` before believing
 > anything below** — on `main` this file does not describe the tree you are looking at.
-> Nothing in P4b has run in CI either, so every claim here about the gate is local.
+>
+> **P4b has now run in CI, and the first run failed** (`34769913502`, 2026-09-13):
+> pytest green on all three Pythons, mutation gate red on `calibration` and `saccade`.
+> Not survivors — the harness could not find two functions. Fixed 2026-09-19; see
+> "What moved" and trap 7's seventh entry.
 
 **The lab opens January 2027.** Everything is being built before any rig exists.
 
@@ -53,8 +57,8 @@ each other and with the directory. In order:
 
 | | |
 |---|---|
-| Tests | **375, green.** `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth entry for why that qualifier is load-bearing |
-| CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b's three commits have not run in CI at all** — they are unpushed, and the gate will escalate to a full sweep (47–61 min) because `tasks/` and `tools/mutate.py` both changed. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
+| Tests | **383, green.** `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned |
+| CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b ran in CI on 2026-09-13 and the mutation gate failed** (`34769913502`): as predicted it escalated to a full sweep, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Fixed 2026-09-19. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the restraint clock, the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7) |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. Chair time and trial count are ceilings and do end a session. S8 §4–§5 were written the other way round and now carry the correction |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
@@ -266,6 +270,89 @@ each other and with the directory. In order:
 
   Three ways of getting one checkout wrong, each of which looked fixed: no checkout,
   a path outside the workspace, and no credentials for it.
+
+---
+
+## What moved on 2026-09-19
+
+### The branch was pushed, and the gate caught something real
+
+`docs/next-session.md` said the first thing to do was push the branch and watch the
+runs. That happened on 2026-09-13, and **the run failed** — which is the entry justifying
+why it was the first thing to do. Run `34769913502`: pytest green on 3.11, 3.12 and
+3.13, then the mutation gate escalated to a full sweep as predicted, ran for 1h46m, and
+printed
+
+```
+MUTATION GATE FAILED: calibration, saccade
+  SKIPPED   recenter    could not find recenter
+  SKIPPED   detect      could not find detect
+```
+
+**Not survivors.** A skip fails the gate on purpose (`tools/mutate.py`): a function the
+harness cannot mutate is a function whose coverage is unproven, and the whole point of
+this tool is that it never reports safety it has not measured.
+
+### What was underneath it was worse than a red build
+
+The pattern's `\([^)]*\)` cannot cross a `)` inside a parameter list, and both
+functions have one — `params: Params = Params()` and
+`left: tuple[float, float] = (0.0, 0.0)`. `saccade.detect` therefore matched nothing.
+**`calibration.recenter` matched part of its own signature**, so the mutation was
+inserted into the parameter list, the suite reported collection errors, and `mutate`
+read the non-zero exit as `caught`.
+
+So that function had been reported covered *for as long as it existed*, and the nightly
+on `main` was still printing `caught recenter  2 errors in 0.82s` on 2026-09-18 —
+verified by reading run `35323903984`'s log rather than by reasoning about the tool.
+With the fix it reports **`caught recenter  5 failed, 374 passed`**: a real test
+failure, the first this function has ever produced.
+
+`saccade.detect` is the opposite case and worth separating: the nightly shows
+`caught detect  7 failed, 300 passed`, so it was genuinely covered and the stricter
+pattern of 2026-09-06 **regressed** it. One fix, two different lies.
+
+### The pattern is gone
+
+`_neuter_source` asks `ast` where a body starts. Three regex failures in a row were
+each the fix for the last — a trailing comment defeated the match, then a same-line body
+matched and produced a `SyntaxError`, then a nested paren ended the signature early —
+and that sequence is the argument: `body[0]` **is** the body, and no punctuation in a
+signature can move it. What is left to decide is only where the inserted line goes: a
+docstring is stepped over rather than displaced, and a body on the signature's own line
+is refused for that definition while its siblings are still neutered.
+
+### And two functions that were never on the list at all
+
+`_function_names` matched `^ *def ([a-z_][a-z0-9_]*)\(`, which **cannot spell a
+capital letter**. `photometry._XYZ` and `task.FixPoint` had therefore never been mutated
+once, and nothing in any output said so — they were simply absent. Found by replacing
+the pattern with the parser and diffing the target lists. Fourth instance of this
+harness's recurring shape: quietly examining nothing and reporting success.
+
+### And the first thing the fixed harness found: `task.FixPoint` is covered by nothing
+
+`SURVIVED  FixPoint  379 passed in 13.61s`. Neuter the task vocabulary's
+fixation-point shortcut and **the whole suite still passes**, because nothing in this
+repository uses it: no test, and none of the three reference tasks, though S1a §6
+settles it as vocabulary and S1 §5.1's worked example is `FIX = FixPoint(at=(0, 0),
+size=0.3)`. It had never been mutated in its life, so nothing had ever had the chance
+to say so.
+
+It has tests now (`tests/test_task.py`, which also gives `task` a test file the
+selective gate can map to it). But the more useful finding is the disagreement it
+exposes: **the spec's worked example uses a shortcut none of our worked examples use.**
+Either the reference tasks should spell fixation points the way a task author will, or
+the vocabulary is carrying a name for a thing nobody reaches for. Worth one decision,
+and it is a task-layer decision rather than a repair, so it is not made here.
+
+### The cheap win from §3b, taken
+
+Every definition of a name is neutered together, so a name six worlds implement ran six
+identical sweeps — six full runs of the suite, same input, same result. `_function_names`
+now returns each name once: `run.py` 24 targets → 12, `dio.py` 14 → 6, `welfare.py`
+17 → 14, `calibration.py` 24 → 22. Across those eight modules 120 → 94. It changes no
+result; it halves the cost of the modules with protocol implementations.
 
 ---
 
@@ -680,7 +767,32 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    its next run, and the rule stands that **nothing is committed without a green
    suite in the same breath**. `git add -A` after a long-running command is the shape
    of the mistake.
-7. **The mutation harness has now been wrong six times, and the sixth is the one that
+7. **The mutation harness has now been wrong seven times, and the seventh had been
+    lying for as long as the function existed.** `calibration.recenter` and
+    `saccade.detect` both take a default argument containing a `)` --
+    `left: tuple[float, float] = (0.0, 0.0)`, `params: Params = Params()` -- and the
+    pattern's `\([^)]*\)` ends the signature at that inner paren. For `detect` the
+    scan then found no colon and the function was simply never matched. For
+    `recenter` it found the one in `why: str` and matched **part of the signature**,
+    so the mutation was inserted *into the parameter list*: `SyntaxError`, collection
+    errors, non-zero exit, `caught`.
+
+    So the module was reported mutation-clean while one of its functions had never
+    once been neutered. The nightly on `main` printed `caught recenter  2 errors in
+    0.82s` every night, which is the whole tell: two *errors* is not a test failing.
+
+    **Three regex failures in a row, each one the fix for the last.** `[^\n]*` was
+    added so a trailing comment could not defeat the match; it swallowed a same-line
+    body. `[^:\n]*` fixed that; it could not cross a nested paren. The pattern is gone:
+    `_neuter_source` asks `ast` where the body starts, because `body[0]` **is** the
+    body and no amount of punctuation in a signature can move it.
+
+    **And the same file had two more functions it had never named.** `_function_names`
+    matched `^ *def ([a-z_][a-z0-9_]*)\(`, which cannot spell a capital letter, so
+    `photometry._XYZ` and `task.FixPoint` were not on any target list and no output
+    ever said so. Both now come from the parser too. Original entry follows.
+
+    **The mutation harness has now been wrong six times, and the sixth is the one that
     matters most.** A body written on the signature's own line -- `def deliver(self,
     ml: float) -> None: ...` -- cannot have a statement inserted after it, so the
     mutation produced a **`SyntaxError`**. The suite then reported *collection errors*,

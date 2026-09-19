@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import re
 import json
 import shutil
 import subprocess
@@ -109,39 +108,111 @@ def _run_suite() -> tuple[bool, str]:
 
 
 def _function_names(source: str) -> list[str]:
-    """Every function, module-level and method alike.
+    """Every function, module-level and method alike, and each name once.
 
-    Two blind spots found by using it, both the same shape -- the tool quietly
+    Four blind spots found by using it, all the same shape -- the tool quietly
     examining nothing and reporting success. First it matched only `_`-prefixed
     names, so a run over `simulate.py` covered none of it. Then it matched only
     module-level `def`, so `record.py` -- which is entirely methods -- reported
-    nothing to mutate, which reads like nothing to check.
+    nothing to mutate, which reads like nothing to check. Then, found by replacing
+    the pattern with the parser: `^ *def ([a-z_][a-z0-9_]*)\\(` cannot spell a
+    capital, so **`photometry._XYZ` and `task.FixPoint` had never been mutated
+    once** and no output said so -- they were simply not on the list.
 
     A coverage tool that can silently cover nothing has the exact failure mode it
-    exists to catch, so `--all` refuses an empty target list and this matches both
-    indentation levels.
+    exists to catch, so `--all` refuses an empty target list and this asks the
+    parser rather than a pattern.
+
+    **And each name once.** Every definition of a name is neutered together, so a
+    name six worlds implement ran six identical sweeps against identical inputs for
+    identical results -- and a sweep is a full run of the suite. `run.py` was
+    twenty-four targets and is twelve; `dio.py` was fourteen and is six.
     """
-    return re.findall(r"^ *def ([a-z_][a-z0-9_]*)\(", source, flags=re.M)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    found = sorted(
+        (node.lineno, node.name)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+    return list(dict.fromkeys(name for _, name in found))
 
 
 #: Returned by `mutate` when the neutered body is the body it already had.
 INERT = "inert"
 
-#: The signature a mutation inserts a statement after. Format with `name=` already
-#: `re.escape`d. Two clauses earn their keep, and both were bugs first:
-#:
-#: `[^:\n]*` for the return annotation, then a **comment-only** tail. A trailing
-#: comment must not defeat the match -- `def __repr__(self) -> str:  # pragma: no
-#: cover` did, and under `--all` that aborted the whole sweep at that line (trap 7).
-#: But a *body* on the signature's own line must not match at all: inserting a
-#: statement after `def deliver(self, ml: float) -> None: ...` produces a
-#: `SyntaxError`, the suite reports collection errors, and `mutate` reads any
-#: non-zero exit as the mutation being caught -- so a function nothing covers is
-#: reported as covered. The earlier `[^\n]*` swallowed both cases alike.
-#:
-#: The optional docstring line after it is skipped so the insertion lands below it
-#: rather than displacing it.
-_PATTERN = r'( *def {name}\([^)]*\)[^:\n]*:[ \t]*(?:#[^\n]*)?\n(?: *""".*?"""\n)?)'
+
+def _is_docstring(node: ast.stmt) -> bool:
+    return (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+
+
+def _neuter_source(source: str, function: str, returns: str) -> tuple[str | None, str]:
+    r"""`source` with every definition of `function` returning `returns` first, or
+    `(None, why)` when there is nothing this can safely do.
+
+    **This asks the parser where a body starts.** It used to ask a regex, and that
+    regex was wrong three times in three different ways. A trailing comment defeated
+    the match, so `def __repr__(self) -> str:  # pragma: no cover` aborted a whole
+    sweep. A body on the signature's own line matched, and the line inserted after it
+    made a `SyntaxError`. And a default argument containing a `)` ended the signature
+    early: `\([^)]*\)` stops inside `Params()`, so `saccade.detect` could not be
+    found at all, and in `calibration.recenter` the scan for the colon ran on into
+    `why: str` and inserted a statement **into the parameter list**.
+
+    That last one is the seventh time this harness has been wrong and the third that
+    broke toward a false *clean*: the suite reported collection errors, `mutate` read
+    the non-zero exit as the mutation being caught, and a function that had never in
+    its life been mutated was reported covered. The nightly on `main` still prints
+    `caught recenter  2 errors in 0.82s`, which is what that looks like from outside.
+
+    A parser cannot make any of those three mistakes, because `body[0]` **is** the
+    body. Two decisions are left, and both are about where the line goes rather than
+    about where the body is:
+
+    - a docstring is stepped over rather than displaced, so the mutation lands below
+      it and the function keeps its documentation;
+    - a body written on the signature's own line is refused *for that definition*,
+      because no line can follow `def deliver(self, ml: float) -> None: ...` and still
+      parse. Its siblings are still neutered -- a Protocol stub beside a real
+      implementation must not exempt the implementation.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return None, f"{function}: source does not parse ({exc})"
+
+    lines = source.splitlines(keepends=True)
+    insertions: list[tuple[int, str]] = []
+    on_signature_line = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name != function:
+            continue
+        anchor = node.body[0]
+        if lines[anchor.lineno - 1][: anchor.col_offset].strip():
+            on_signature_line += 1
+            continue
+        at = anchor.end_lineno if _is_docstring(anchor) else anchor.lineno - 1
+        insertions.append((at, " " * anchor.col_offset + f"return {returns}\n"))
+
+    if not insertions:
+        if on_signature_line:
+            return None, f"{function} is written on its signature's own line"
+        return None, f"could not find {function}"
+
+    # Descending, so an earlier insertion cannot move a later one's line number.
+    for at, text in sorted(insertions, reverse=True):
+        if at and not lines[at - 1].endswith("\n"):
+            lines[at - 1] += "\n"
+        lines.insert(at, text)
+    return "".join(lines), ""
 
 
 def _already_inert(source: str, function: str, returns: str) -> bool:
@@ -222,20 +293,14 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
     original = path.read_text()
     if _already_inert(original, function, args_returns):
         return INERT, f"body is already `return {args_returns}`; nothing to neuter"
-    pattern = _PATTERN.format(name=re.escape(function))
-    def _neuter(match: re.Match) -> str:
-        head = match.group(0)
-        indent = " " * (len(head) - len(head.lstrip(" ")))
-        return f"{head}{indent}    return {args_returns}\n"
-
-    mutated, count = re.subn(pattern, _neuter, original, flags=re.S)
-    if count == 0:
+    mutated, why = _neuter_source(original, function, args_returns)
+    if mutated is None:
         # A miss is reported, never fatal. Under `--all` an abort here stopped the
         # sweep at the first unmatchable signature, and every function *after* it
         # went silently unmutated -- which reads as a completed run. That is the
         # same false-clean failure this whole script exists to prevent, and it is
         # the fourth blind spot of exactly that shape.
-        return None, f"could not find {function}"
+        return None, why
 
     try:
         path.write_text(mutated)

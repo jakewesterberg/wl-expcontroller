@@ -60,10 +60,13 @@ These conventions bind every session (human- or AI-driven) working in this repo.
   a new check. CI gates on it. A test that cannot fail reports safety it does not
   provide, and for a checker whose whole job is refusing bad tasks that is worse than
   having no checker. **Read the harness's output, not its exit code** — it has been
-  wrong six times, most recently reporting `caught` from a `SyntaxError` on the
-  welfare-critical reward path. `N failed` is a test noticing; `N errors in 0.6s` is
-  not. And never run the suite, edit a test, or `git add` while a sweep is in flight:
-  the module on disk is neutered and the suite it is measuring must not move.
+  wrong seven times, most recently reporting `caught` on `calibration.recenter` for
+  as long as that function existed — it had inserted the mutation into the parameter
+  list, so the `SyntaxError` was doing the reporting. `N failed` is a test noticing;
+  `N errors in 0.8s` is not. **A tool that reasons about code asks the parser**: three
+  of those seven were one regex, and each fix created the next. And never run the
+  suite, edit a test, or `git add` while a sweep is in flight: the module on disk is
+  neutered and the suite it is measuring must not move.
 - **A safety component ships with its consumer, or its absence fails.** Writing the
   guardrail and wiring it later is how `bounds`' fluid check went a week called by
   nothing, and how `Mark` and `Reward` were silently dropped by the trial loop while

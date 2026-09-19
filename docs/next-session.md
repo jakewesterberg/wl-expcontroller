@@ -1,7 +1,7 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **375 tests passing**, working tree clean, **and the work is on
-`p4b-session-management`, not on `main`.** Three commits, unpushed. `main` still points
+**State at handoff:** **383 tests passing**, working tree clean, **and the work is on
+`p4b-session-management`, not on `main`.** Six commits, pushed. `main` still points
 at `300d7d1`, so a check that looks only at `main` will report that nothing happened.
 The branch exists rather than merging straight in because `bounds.py` and `welfare.py`
 are welfare-critical and want a human before they merge (§1). No hardware exists.
@@ -27,26 +27,29 @@ git log --oneline main..HEAD               # what is not on main yet
 `p4b-session-management`; a session that checks out `main` and reads this file will find
 a handoff describing work its tree does not contain.
 
-**Trap 17, learned expensively on 2026-09-05.** Nothing was pushed for four days while
-this file and the checkpoint both described CI behaviour that had never executed. The
-first push found seven bugs in five runs. **A green local suite says nothing about
-CI**, and unpushed commits are how every one of those hid. Three commits are unpushed
-now, so **nothing in P4b has run in CI** — including the mutation gate, which will
-escalate to a full sweep because `tasks/` and `tools/mutate.py` both changed.
+**Trap 17, learned expensively on 2026-09-05 and paid off on 2026-09-13.** Nothing was
+pushed for four days while this file and the checkpoint both described CI behaviour that
+had never executed. The first push found seven bugs in five runs. **A green local suite
+says nothing about CI.** P4b's first push proved it again: the full sweep ran for 1h46m
+and failed on two functions the harness could not find, one of which had been reporting
+itself covered on the strength of a `SyntaxError` for as long as it existed (trap 7's
+seventh entry). Fixed 2026-09-19.
 
 ---
 
 ## 0b. The first thing to do
 
-**Push the branch and watch the runs.** Three commits have never executed in CI, and
-trap 17 is the entry in this repo's history that cost the most: four days of unpushed
-work while both this file and the checkpoint described CI behaviour that had never run,
-and the first push found seven bugs in five runs.
+**Read the branch's own CI run before anything else** — `gh run list --branch
+p4b-session-management`, then `gh run view <id> --log-failed` and *read it*, because the
+last two things this gate reported were a skip dressed as a failure and a syntax error
+dressed as coverage.
 
-Expect the mutation gate to escalate to a **full sweep (47–61 minutes)** — `tasks/`
-gained `reference_bounds.py` and `tools/mutate.py` changed, and both escalate by rule.
-That is the point: the harness fix means every module's previous result was measured
-with a tool that could report `caught` from a syntax error.
+The push this section used to ask for happened on 2026-09-13 and the run failed; the fix
+is in. `tools/mutate.py` changed again, so the next push escalates to a **full sweep
+(47–61 minutes)** by rule. It should now be faster than that figure — the target lists
+lost their duplicates (120 → 94 across eight modules) — and if a sweep comes back
+*much* faster than the modules it names, that is a reason to read the output rather than
+to celebrate.
 
 CI itself is green and needs nothing from anyone — the `WL_PREPROC_TOKEN` ask this file
 carried is closed, verified 2026-09-06 by reading the runs.
@@ -128,10 +131,16 @@ next thing while four cross-repo asks are outstanding.
   which happened twice this session and read exactly like a real regression both times.
   Editing a *test* file mid-run is the same hazard from the other side: the suite the
   harness is measuring changes underneath it.
-- **Read the harness's output, not its exit code** (trap 7, sixth occurrence). `caught
-  deliver  3 errors in 0.60s` is a collection error, not a test failing — and it was
-  reporting the welfare-critical reward path as covered. With the fix the same function
-  reports `16 failed`.
+- **Read the harness's output, not its exit code** (trap 7, now seven occurrences).
+  `caught deliver  3 errors in 0.60s` is a collection error, not a test failing — and it
+  was reporting the welfare-critical reward path as covered. `caught recenter  2 errors
+  in 0.82s` was the same lie in the nightly, every night, until 2026-09-19. With the
+  fixes those two report `16 failed` and `5 failed`.
+- **A tool that reasons about code asks the parser.** Three of the seven were one
+  regex, and each fix created the next: a trailing comment defeated the match, then a
+  same-line body matched and made a `SyntaxError`, then a nested paren ended the
+  signature early. `_neuter_source` uses `ast` now. If you find yourself writing a
+  pattern to find a `def`, that is the trap re-forming.
 - **A contract test that may skip is not a contract test.** The new calibration-file
   test uses `test_calibration.py`'s guard, not `pytest.importorskip`: a missing
   `wl-preproc` skips locally and **fails** under `WLX_REQUIRE_PREPROC=1`, which is what
@@ -145,19 +154,28 @@ next thing while four cross-repo asks are outstanding.
 
 ---
 
-## 3b. One cheap win, if you want a warm-up
+## 3b. ~~One cheap win~~ — taken on 2026-09-19
 
-`mutate._function_names` returns **one entry per `def`**, and `mutate` neuters *every*
-definition of a name together — so a name implemented by six worlds is mutated six times
-with identical inputs and identical results. `run.py`'s sweep prints `in_window`,
-`happened`, `signal`, `mark` and `reward` three or four times each, and every repeat is a
-full suite run. De-duplicating the target list changes no result and roughly halves the
-sweep for the modules with protocol implementations, against a full sweep that already
-costs 47–61 minutes and grows with every module.
+`mutate._function_names` returned one entry per `def` while `mutate` neuters every
+definition of a name together, so a name six worlds implement ran six identical sweeps.
+It now returns each name once — `run.py` 24 targets → 12, `dio.py` 14 → 6, 120 → 94
+across eight modules — with a test that a repeated name is mutated once.
 
-Not done here because it is a performance change to the tool the evidence depends on, and
-this session had already changed that tool once for a correctness reason (trap 7's sixth
-entry). Worth a test that a repeated name is mutated once.
+Done here, against the earlier judgement that it was a performance change to the tool the
+evidence depends on, because the same commit had to replace that tool's locator anyway
+and leaving a known waste beside a rewrite is how the next session inherits both.
+
+---
+
+## 3c. One decision left on the table
+
+**`task.FixPoint` is used by nothing**, and the fixed harness is what said so
+(`SURVIVED FixPoint  379 passed`). It has tests now, but the disagreement underneath
+them is not repaired: S1 §5.1's worked example builds its fixation point with
+`FixPoint(...)` and all three reference tasks spell out a `Stimulus` longhand instead.
+Tasks here are model-authored, so the reference tasks *are* the examples a task author
+copies — if the shortcut is right, they should use it; if it is not, S1a §6 should lose
+it. One decision, in the task layer, deliberately not made by the session that found it.
 
 ---
 
