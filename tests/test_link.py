@@ -9,10 +9,22 @@ telemetry message and would still pass every other test in this suite.
 
 from __future__ import annotations
 
+import time
+from dataclasses import replace
 from types import SimpleNamespace
 
 from wl_expcontroller.bounds import Bounds, Ceiling, Floor
-from wl_expcontroller.link import Absent, Simulated, SetParameter, Stop, Telemetry
+from wl_expcontroller.link import (
+    Absent,
+    Simulated,
+    SetParameter,
+    Stop,
+    Telemetry,
+    ZmqConsole,
+    ZmqLink,
+    decode,
+    encode,
+)
 from wl_expcontroller.scheduler import Block, Condition, Scheduler
 from wl_expcontroller.simulate import Tally
 from wl_expcontroller.welfare import Simulated as Pump, Welfare
@@ -98,9 +110,17 @@ def test_an_unknown_day_is_none_and_never_zero():
     assert telemetry.shortfall_ml is None
 
 
-def _telemetry() -> Telemetry:
-    """A test telemetry object for console link tests."""
-    return Telemetry.of(_session_with(delivered_ml=1.0, already_today=None), Tally(), _scheduler(), index=0)
+def _telemetry(**overrides) -> Telemetry:
+    """A test telemetry object for console link tests.
+
+    `_session_with(..., already_today=None)` already makes `fluid_today_ml` and
+    `shortfall_ml` come out `None` (see `test_an_unknown_day_is_none_and_never_zero`
+    above). `**overrides` lets a call site say so explicitly anyway -- via
+    `dataclasses.replace` on the assembled `Telemetry` -- without this fixture
+    growing a second construction path just to accept keyword tweaks.
+    """
+    base = Telemetry.of(_session_with(delivered_ml=1.0, already_today=None), Tally(), _scheduler(), index=0)
+    return replace(base, **overrides) if overrides else base
 
 
 def test_absent_publishes_nowhere_and_yields_no_commands():
@@ -126,3 +146,79 @@ def test_simulated_keeps_what_was_published_and_returns_queued_commands():
     assert len(link.published) == 1
     assert link.drain() == [SetParameter(name="fix_hold", value=0.4, by="jake")]
     assert link.drain() == [], "a command is delivered once, not every boundary"
+
+
+# ---------------------------------------------------------------------------
+# The wire: encode/decode, and both ends over a real socket
+# ---------------------------------------------------------------------------
+
+
+def test_telemetry_survives_the_wire_unchanged():
+    """A golden round-trip, which ADR-0003 requires of every message schema
+    ("schema-versioned messages ... version field from day one"). A field that
+    silently changes type on the wire is a console rendering something other than
+    what the session meant."""
+    original = _telemetry(fluid_today_ml=None, shortfall_ml=None)
+
+    restored = decode(encode(original))
+
+    assert restored == original
+    assert restored.fluid_today_ml is None, "None must not become 0.0 on the wire"
+
+
+def test_a_console_and_a_session_talk_over_a_real_socket():
+    """Over loopback rather than a mock, for the reason `tests/test_eye.py` uses a
+    real socket: a protocol proven against a mock is a proof about the mock.
+
+    **The `time.sleep(0.02)` below is not a latency claim about this system**
+    (CLAUDE.md: no timing claim without a measurement) -- it compensates for a gap
+    this test has that production never does. `console.send` and `link.drain` here
+    run in the same thread with literally nothing between them; a real console and a
+    real `taskd` are two separate processes, so a real command is always separated
+    from the `drain()` call that picks it up by genuine inter-process scheduling
+    time. Measured on this machine (200-2000 iteration loops, this session's
+    scratchpad, kept out of the repo as throwaway probes rather than committed
+    here): with zero delay, a REP socket's zero-timeout poll called immediately
+    after the paired REQ's `send()` misses the message on essentially every
+    iteration, because the actual I/O happens on ZeroMQ's background thread and two
+    adjacent Python statements give it no chance to run before the check. 20 ms gave
+    0 misses in 2000 iterations; production has no equivalent race because nothing
+    there calls `drain()` in the same instruction as a console's `send()`.
+
+    `ZmqConsole.__init__` carries its own settle delay for the companion problem on
+    the telemetry side -- ZeroMQ's well-documented PUB/SUB "slow joiner" behaviour --
+    which is why `link.publish` right after `console.send`/`link.drain` above is not
+    itself given an extra sleep here.
+    """
+    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
+    try:
+        console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+        time.sleep(0.02)
+        commands = link.drain()
+        link.publish(_telemetry())
+
+        assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+        assert console.receive().session_id == _telemetry().session_id
+    finally:
+        console.close()
+        link.close()
+
+
+def test_close_releases_both_sockets():
+    """Found by the mutation harness (`tools/mutate.py --all wl_expcontroller/link.py`
+    reported `close` surviving), the same way `test_record.py` found `close`
+    surviving there. The real-socket test above calls `close()` in a `finally`
+    purely for hygiene -- so a full suite run does not accumulate open sockets and
+    ports across hundreds of tests -- without ever checking that anything closed;
+    gutting `close()`'s body would not have failed a single test before this one."""
+    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
+    assert not link._pub.closed and not link._rep.closed
+    assert not console._sub.closed and not console._req.closed
+
+    link.close()
+    console.close()
+
+    assert link._pub.closed and link._rep.closed
+    assert console._sub.closed and console._req.closed

@@ -1,11 +1,15 @@
 """The telemetry message a running session publishes to its consoles, and its schema.
 
 S9a §6-§10 designs the console; **§9, "The telemetry contract," is what this file
-implements.** This file currently holds `SCHEMA`, `Staged`, `Telemetry` and
-`Telemetry.of` -- the message and the one function that fills it in. Later tasks in
-this same slice add `Link`, the port a session publishes `Telemetry` through, and its
-wire encoding (`encode`/`decode` in a transport module); grep this file for `Link` to
-see whether they have landed yet.
+implements.** This file holds the message (`Telemetry`, `Staged`, `Refused`), the
+commands a console sends back (`SetParameter`, `Stop`, `Command`), the port a session
+publishes and drains through (`Link`, `Absent`, `Simulated`), its wire encoding
+(`encode`/`decode`, plus the command-side `_encode_command`/`_decode_command`), and
+the one live transport that carries all of it over a real socket (`ZmqLink`,
+`ZmqConsole`). Nothing here is deferred to a later module -- an earlier version of
+this docstring said `encode`/`decode` would land "in a transport module", but Task 5's
+own brief puts them in this file instead, so that plan changed and this file is now
+current with the code rather than pointing at a module that does not exist.
 
 **Not welfare-critical, and it must not become one.** CLAUDE.md requires human review
 before merge for welfare-critical code; `docs/design/architecture.md` names
@@ -32,6 +36,7 @@ question nobody could actually answer.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -163,6 +168,82 @@ class Telemetry:
         )
 
 
+def encode(telemetry: Telemetry) -> bytes:
+    """`Telemetry` to msgpack, the wire format ADR-0003 named alongside ZeroMQ.
+
+    Imports `msgpack` **lazily, inside this function** -- the same discipline as
+    `ZmqLink`/`ZmqConsole` below and required by this task: `link.py` is imported by
+    `taskd.py`, which a rig operator running `wlx run` from a terminal loads with
+    neither `zmq` nor `msgpack` installed, and the Python 3.13 CI leg exists
+    specifically to catch a transport dependency leaking into that path (S9a §5's
+    argument for the display layer, holding identically here).
+
+    Every field is written out by name rather than handed to
+    `dataclasses.asdict(telemetry)`. `asdict` would flatten `staged`/`refusals` into
+    plain dicts happily enough for encoding, but `decode` still has to rebuild
+    `Staged`/`Refused` instances to make `restored == original` true, so the two
+    directions are written out explicitly here rather than trusting a generic
+    recursive helper to invert itself correctly.
+    """
+    import msgpack
+
+    payload = {
+        "schema": telemetry.schema,
+        "session_id": telemetry.session_id,
+        "subject": telemetry.subject,
+        "trial_index": telemetry.trial_index,
+        "block": telemetry.block,
+        "stopped_because": telemetry.stopped_because,
+        "fluid_session_ml": telemetry.fluid_session_ml,
+        "fluid_today_ml": telemetry.fluid_today_ml,
+        "shortfall_ml": telemetry.shortfall_ml,
+        "chair_seconds": telemetry.chair_seconds,
+        "outcomes": telemetry.outcomes,
+        "hangs": telemetry.hangs,
+        "owed": telemetry.owed,
+        "staged": [
+            {"name": s.name, "was": s.was, "now": s.now, "by": s.by, "bounded": s.bounded}
+            for s in telemetry.staged
+        ],
+        "refusals": [{"name": r.name, "by": r.by, "why": r.why} for r in telemetry.refusals],
+    }
+    return msgpack.packb(payload, use_bin_type=True)
+
+
+def decode(payload: bytes) -> Telemetry:
+    """The inverse of `encode`, rebuilding `Staged`/`Refused` rather than leaving
+    them as the plain dicts msgpack hands back.
+
+    **`None` survives.** msgpack has a native nil, distinct from `0`/`0.0`, and
+    `unpackb`'s default `raw=False` returns Python `str` rather than `bytes` for text
+    -- so `fluid_today_ml`/`shortfall_ml` round-trip as `None` when that is what they
+    were, never silently becoming a number. See this module's docstring: an unknown
+    day rendered as a confident `0.0` is exactly the failure `welfare.shortfall()`
+    exists to prevent, and a console showing it would be the same failure one hop
+    further downstream.
+    """
+    import msgpack
+
+    data = msgpack.unpackb(payload, raw=False)
+    return Telemetry(
+        schema=data["schema"],
+        session_id=data["session_id"],
+        subject=data["subject"],
+        trial_index=data["trial_index"],
+        block=data["block"],
+        stopped_because=data["stopped_because"],
+        fluid_session_ml=data["fluid_session_ml"],
+        fluid_today_ml=data["fluid_today_ml"],
+        shortfall_ml=data["shortfall_ml"],
+        chair_seconds=data["chair_seconds"],
+        outcomes=data["outcomes"],
+        hangs=data["hangs"],
+        owed=data["owed"],
+        staged=tuple(Staged(**s) for s in data["staged"]),
+        refusals=tuple(Refused(**r) for r in data["refusals"]),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SetParameter:
     """A parameter change offered by a console. Validated by `Session.set`, which is
@@ -183,6 +264,38 @@ class Stop:
 
 
 Command = SetParameter | Stop
+
+
+def _encode_command(command: Command) -> bytes:
+    """`SetParameter`/`Stop` to msgpack, tagged by kind so `_decode_command` knows
+    which dataclass to rebuild.
+
+    Private, unlike `encode`/`decode`: `ZmqConsole.send` is the only caller, in this
+    same file, so this is an implementation detail of the REQ/REP leg rather than a
+    wire contract another module is meant to import.
+    """
+    import msgpack
+
+    if isinstance(command, SetParameter):
+        payload = {"kind": "set", "name": command.name, "value": command.value, "by": command.by}
+    elif isinstance(command, Stop):
+        payload = {"kind": "stop", "by": command.by}
+    else:
+        raise TypeError(f"no wire encoding for {command!r}")
+    return msgpack.packb(payload, use_bin_type=True)
+
+
+def _decode_command(payload: bytes) -> Command:
+    """The inverse of `_encode_command`. `ZmqLink.drain` is the only caller."""
+    import msgpack
+
+    data = msgpack.unpackb(payload, raw=False)
+    kind = data["kind"]
+    if kind == "set":
+        return SetParameter(name=data["name"], value=data["value"], by=data["by"])
+    if kind == "stop":
+        return Stop(by=data["by"])
+    raise ValueError(f"unknown command kind on the wire: {kind!r}")
 
 
 class Link(Protocol):
@@ -233,3 +346,175 @@ class Simulated:
     def drain(self) -> list[Command]:
         taken, self._queued = self._queued, []
         return taken
+
+
+class ZmqLink:
+    """The `taskd` side of the console link, live on a real socket (S9a §7:
+    `taskd ── ZMQ REQ/REP (commands) / ZMQ PUB (telemetry) ──> console`, ADR-0003's
+    transport, untouched by the console design).
+
+    Two sockets, not one, because the two directions have opposite delivery
+    semantics. `publish` (PUB) is lossy and must never block, so a console that is
+    slow, unattached, or stuck reading its last message cannot stall a trial
+    boundary. `drain` (REP) is reliable within one poll -- a command that is seen is
+    never silently dropped -- but is still non-blocking on this end, because a
+    session's trial loop calls it once per boundary and cannot wait on a console
+    that has nothing to say.
+
+    Imports `zmq` **lazily, inside `__init__`**, never at module level -- see
+    `encode`'s docstring for why this file cannot afford an unconditional
+    `import zmq`.
+
+    Binds to `pub_endpoint`/`rep_endpoint` as given -- `tcp://127.0.0.1:0` asks the
+    OS for an ephemeral port -- and `self.pub_endpoint`/`self.rep_endpoint` read back
+    what ZeroMQ actually bound (`zmq.LAST_ENDPOINT`), which is what a `ZmqConsole`
+    needs in order to connect.
+    """
+
+    def __init__(self, pub_endpoint: str, rep_endpoint: str):
+        import zmq
+
+        self._ctx = zmq.Context()
+
+        self._pub = self._ctx.socket(zmq.PUB)
+        # LINGER=0 from creation, not only passed to close() below: whenever close()
+        # DOES run, this guarantees it cannot block flushing a queued message even if
+        # someone later removes the explicit `linger=0` argument there. It does NOT
+        # by itself prevent the hang `tools/mutate.py --all wl_expcontroller/link.py`
+        # found when it neutered `close()`'s body: the suite ran past the harness's
+        # 300s timeout, and `sample <pid>` against the stuck process (this session's
+        # scratchpad) showed the real mechanism -- Python's GC finalizing an abandoned
+        # `Context` calls `zmq_ctx_destroy`, which blocks in `ctx_t::terminate()`
+        # waiting for sockets that were simply never closed at all, regardless of
+        # their LINGER value. That is `close()` mattering, correctly caught -- see
+        # this file's own `close()` docstring and `tools/mutate.py`'s comment on why a
+        # hung mutation counts as caught. LINGER=0 here is real defence in depth for
+        # the paths that DO call close(), not a fix for the one that skips it.
+        self._pub.setsockopt(zmq.LINGER, 0)
+        self._pub.bind(pub_endpoint)
+        self.pub_endpoint = self._pub.getsockopt_string(zmq.LAST_ENDPOINT)
+
+        self._rep = self._ctx.socket(zmq.REP)
+        self._rep.setsockopt(zmq.LINGER, 0)
+        self._rep.bind(rep_endpoint)
+        self.rep_endpoint = self._rep.getsockopt_string(zmq.LAST_ENDPOINT)
+
+    def publish(self, telemetry: Telemetry) -> None:
+        """Offer telemetry to whoever is subscribed. **Never blocks** (S9a §9: "ZMQ
+        PUB drops rather than blocks, because latest-wins telemetry must never stall
+        a frame"): sent with `zmq.DONTWAIT`, and a full send queue -- `zmq.Again` --
+        is swallowed rather than raised. The next boundary's frame supersedes this
+        one regardless, so losing it costs nothing a working console would notice."""
+        import zmq
+
+        try:
+            self._pub.send(encode(telemetry), flags=zmq.DONTWAIT)
+        except zmq.Again:
+            pass
+
+    def drain(self) -> list[Command]:
+        """Every command waiting on the REP socket right now, replied to as it is
+        read.
+
+        Polls with a zero timeout -- never blocks the trial loop waiting for a
+        console that has nothing to say -- looping only while `poll` reports more
+        already waiting, so this returns as soon as the queue is empty rather than
+        after a fixed number of checks. REP's state machine requires exactly one
+        reply per request; skipping it would wedge the socket for whichever console
+        sent it, so every `recv` here is paired with a `send` before the next
+        `recv`. The reply means "your command reached the session," not "your
+        command was applied" -- `drain` only turns bytes into `Command` objects;
+        `Session.set` is where acceptance or refusal is decided, and that outcome
+        reaches every console as `Staged`/`Refused` in the next `Telemetry` frame,
+        not in this reply.
+        """
+        import zmq
+
+        commands: list[Command] = []
+        while self._rep.poll(timeout=0, flags=zmq.POLLIN):
+            raw = self._rep.recv()
+            commands.append(_decode_command(raw))
+            self._rep.send(b"received")
+        return commands
+
+    def close(self) -> None:
+        """Release both sockets and this link's own `Context`. Not part of the
+        `Link` protocol and nothing in `taskd.py` calls it -- a session's process
+        exit tears its sockets down regardless -- but a test process that creates
+        many links needs it so ports and file descriptors do not accumulate across
+        the suite. `linger=0` so a close never blocks on an unsent/unread message."""
+        self._pub.close(linger=0)
+        self._rep.close(linger=0)
+        self._ctx.term()
+
+
+class ZmqConsole:
+    """The console side of the same link (S9a §7). Connects to a running
+    `ZmqLink`'s two endpoints: SUB for telemetry, REQ for commands.
+
+    Subscribes to everything (`b""`) -- S9a §9 leaves splitting telemetry across
+    topics to a later slice ("a separate droppable topic" for a display-rate stream,
+    "if V11 permits one"); today there is exactly one topic, so no filtering is
+    needed here.
+
+    **The settle delay after connecting is a real design choice, not a test-only
+    hack.** ZeroMQ's PUB socket does not queue a message for a subscriber whose
+    subscription has not yet propagated to it -- the well-documented "slow joiner"
+    behaviour -- so a console that connects and is published to immediately can miss
+    that first frame. Telemetry is lossy by design (S9a §9) and the next published
+    frame will still arrive regardless, so this is never a correctness requirement;
+    it exists only so a human opening a console does not see an avoidable gap before
+    the first frame. 50 ms was measured on this machine to be well clear of the
+    problem (0 misses in 1000 back-to-back trials, this session's scratchpad probe,
+    not committed as a repo measurement because it is a ZeroMQ implementation detail
+    rather than a claim about this system's own latency, jitter or throughput).
+    """
+
+    def __init__(self, pub_endpoint: str, req_endpoint: str):
+        import zmq
+
+        self._ctx = zmq.Context()
+
+        self._sub = self._ctx.socket(zmq.SUB)
+        self._sub.setsockopt(zmq.LINGER, 0)  # see ZmqLink.__init__ -- same reasoning
+        self._sub.setsockopt(zmq.SUBSCRIBE, b"")
+        # Bounded, not infinite: a console that lost its session should raise
+        # rather than hang a UI thread forever. Not a latency claim about this
+        # system -- a ceiling above which something is already wrong, not a
+        # measured number.
+        self._sub.setsockopt(zmq.RCVTIMEO, 5000)
+        self._sub.connect(pub_endpoint)
+
+        self._req = self._ctx.socket(zmq.REQ)
+        self._req.setsockopt(zmq.LINGER, 0)
+        self._req.connect(req_endpoint)
+
+        time.sleep(0.05)  # see the class docstring -- the PUB/SUB settle delay
+
+    def send(self, command: Command) -> None:
+        """Offer a command to the session. Does not wait for `drain`'s reply -- REQ's
+        send half returns once the message is queued, not once a peer has processed
+        it, so this cannot block on a session that has not called `drain` yet. The
+        reply `drain` sends is left unread on this socket; what a console does with
+        it -- show "accepted", surface a later `Refused` from telemetry instead,
+        anything else -- is a Task 6 question about the `wlx console` CLI, not this
+        transport."""
+        self._req.send(_encode_command(command))
+
+    def receive(self) -> Telemetry:
+        """Block for the next telemetry frame, up to the receive timeout set in
+        `__init__`. Raises `TimeoutError` rather than leaking `zmq.Again` -- nothing
+        outside this file has a reason to know this link happens to be ZeroMQ."""
+        import zmq
+
+        try:
+            raw = self._sub.recv()
+        except zmq.Again as exc:
+            raise TimeoutError("no telemetry received within the console's receive timeout") from exc
+        return decode(raw)
+
+    def close(self) -> None:
+        """See `ZmqLink.close` -- same reasoning, same shape."""
+        self._sub.close(linger=0)
+        self._req.close(linger=0)
+        self._ctx.term()
