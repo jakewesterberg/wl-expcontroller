@@ -476,7 +476,7 @@ class Session:
                 "task refused, session not started:\n"
                 + "\n".join(f"  {f.code}: {f.detail}" for f in blocking)
             )
-        self.welfare.preflight()
+        self.welfare.preflight(self.now())
 
         scheduler = Scheduler(blocks=self._plan(), seed=self.spec.seed)
         make_world = self.world if self.world is not None else self._agent()

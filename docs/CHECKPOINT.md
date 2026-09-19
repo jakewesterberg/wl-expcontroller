@@ -74,7 +74,7 @@ figure was one low. In order:
 
 | | |
 |---|---|
-| Tests | **481, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below |
+| Tests | **490, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below |
 | CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the two clocks (out-of-cage, which bounds the session; restraint, which is recorded), the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7), and **both have moved on this branch** |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. S8 §4–§5 were written the other way round and now carry the correction |
@@ -465,9 +465,33 @@ the family this whole module exists to close.
    already past twelve hours gets. **`wlx run --out-of-cage-ago` is required with no
    default**, for the reason `--as WHO` is: a headless run types `0` and means it.
 
-`welfare` re-swept after the fixes at a 481 baseline — 18 names, 0 survivors, 0 skips, 0
-timeouts, and the new guards visible where they should be (`returned_to_cage` 1 → 8 failing
-tests, `left_cage` 71 → 83). Full account in `welfare-clock-report.md`.
+3. **And then a value that is unordered against every bound.** Found by review after the
+   two above were closed, and the sharpest of the three: every guard on this path is an
+   *ordered* comparison, and **NaN is `False` against all of them** — not in the future, not
+   past the ceiling, not backwards. `left_cage(nan)` made the mark NaN, the duration NaN, and
+   `must_stop` answer `None` forever. Reachable from the surface an operator touches:
+   `--out-of-cage-ago` is `type=float` and argparse parses `nan`, so `wlx run` ran **400
+   rewarded trials, 13.55 mL, a clean summary and no duration limit at all**. A NaN
+   `out_of_cage` **ceiling** in a bounded config did the same with an honest mark.
+
+   `bounds._finite` refuses a non-finite value at `Ceiling`, at `Floor` and at
+   `Bounds.validate`, so a limit that is not a number cannot be constructed; `welfare`
+   refuses one at both ends of the mark and on the computed duration. `math.isfinite`,
+   because `calibration._yaml_float` already spells it that way and a second spelling of
+   "is this a number" is a second thing to keep in step. **`inf` was always refused
+   correctly** — `inf` is ordered — which is precisely what made NaN the one that got
+   through, and why the guard is finiteness rather than a larger comparison.
+
+   Two smaller things went with it. `preflight` took the session clock instead of
+   hardcoding `0.0`, which had baked the zero-base assumption into a second place. And
+   `left_cage` now refuses `seconds_ago >= ceiling` rather than `>`: an animal out for
+   exactly the limit has no room for a trial, and the boundary now meets `must_stop`'s `>`
+   instead of overlapping it by one.
+
+`welfare` and `bounds` re-swept after the fixes at a 490 baseline — 26 names, 0 survivors, 0
+skips, 0 timeouts, and the new guards visible where they should be (`returned_to_cage` 1 → 8
+failing tests, `left_cage` 71 → 89, and `bounds._finite` 7). Full account in
+`welfare-clock-report.md`.
 
 
 **Also, same class as the work just completed:** `taskd.Session.refusals` was the third

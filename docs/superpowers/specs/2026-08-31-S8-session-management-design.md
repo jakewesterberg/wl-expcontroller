@@ -174,6 +174,18 @@ supplement afterwards — is then computed against a figure that describes half 
    declaration is required on `SessionSpec`, with no default, and a cage-side config that also
    states an `out_of_cage` ceiling is refused — the two must not disagree.
 
+   **And a value that is not a number must not disable it either.** The same failure reached
+   a third way, found by review after the two below were closed: every guard on this path is
+   an *ordered* comparison, and **NaN is `False` against all of them** — not in the future,
+   not past the ceiling, not backwards. One NaN made the mark NaN, the duration NaN, and
+   `must_stop` answer `None` for a whole session; `wlx run --out-of-cage-ago nan` (argparse's
+   `float` accepts it) ran four hundred rewarded trials with a clean summary and no limit.
+   A NaN `out_of_cage` **ceiling** in a bounded config did the same with an honest mark.
+   `inf` was always refused, because `inf` is ordered — which is what made NaN the one that
+   got through. `bounds._finite` now refuses a non-finite value at `Ceiling`, at `Floor`, at
+   `Bounds.validate` and at both ends of the out-of-cage mark, spelled with `math.isfinite`
+   because `calibration._yaml_float` already spells it that way.
+
    **And the *presence* of both marks must not disable it either.** The mirror case, found by
    review: two marks in the wrong order are a session that reports itself fully marked and is
    bounded by nothing. A return before the departure gave a **negative** duration, which is

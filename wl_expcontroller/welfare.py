@@ -86,6 +86,7 @@ from wl_expcontroller.bounds import (
     Reconciliation,
     reconcile,
     reconcile_report,
+    _finite,
 )
 
 #: The daily fluid minimum a session reports its shortfall against (S8 §5.2b, as
@@ -196,7 +197,12 @@ class Welfare:
     delivered: float | None = None
     deliveries: int = 0
     #: The clock that bounds the session: when the animal came out of its home cage,
-    #: and when it went back in.
+    #: and when it went back in. **Set these through `left_cage` and
+    #: `returned_to_cage`, never by constructing a `Welfare` around them** -- the
+    #: ordering and finiteness guards live on those methods, and a field passed to
+    #: the constructor reaches none of them. In-repo callers only, and
+    #: `out_of_cage_seconds` still refuses a non-finite or backwards result, so
+    #: what a direct construction can hide is a wrong-but-ordered instant.
     left_cage_at: float | None = None
     returned_at: float | None = None
     #: The restraint clock. Recorded, and it bounds nothing (PI, 2026-09-19).
@@ -314,17 +320,27 @@ class Welfare:
         got wrong that way, and it is the number an operator actually holds -- the
         animal came out of its cage twenty minutes ago.
 
-        Three refusals, and each is a value that cannot be in this base:
+        Four refusals, and each is a value that cannot be in this base:
 
         - **A cage-side session cannot leave a cage it never left.** The deployment
           already said so, and the two must not disagree.
+        - **A value that is not a number is refused first**, before anything
+          compares it (`bounds._finite`). NaN is not in the future, not past the
+          ceiling and not backwards -- it is `False` against all three, so it walked
+          through every guard below and left `left_cage_at` NaN, `must_stop`
+          answering `None` for the whole session. Reproduced through `wlx run
+          --out-of-cage-ago nan`, which ran four hundred rewarded trials with a
+          clean summary and no limit at all.
         - **The future is refused.** Nothing left its cage after the software
           started asking.
-        - **Longer ago than the ceiling is refused**, which is also what catches a
-          wall clock handed to a session-relative parameter: 1.79e9 seconds is
+        - **At or past the ceiling is refused**, which is also what catches a wall
+          clock handed to a session-relative parameter: 1.79e9 seconds is
           fifty-seven years, not a transport. The bound is the session's own limit
-          rather than a sanity constant, because a session already past twelve hours
+          rather than a sanity constant, because a session already at twelve hours
           before its first frame must not start -- one refusal serves both readings.
+          **At**, not past: an animal out for exactly the limit has no room for a
+          trial, and `must_stop`'s own `>` then fires on the first pass that
+          exceeds it rather than a trial later.
         """
         if self.deployment is Deployment.ANIMAL_AT_HOME:
             raise Exceeded(
@@ -340,6 +356,8 @@ class Welfare:
                 f"re-armed either: one session is one time out of the cage, and an "
                 f"animal that has gone home has finished this one"
             )
+        _finite("the time since this subject left its cage", seconds_ago)
+        _finite("the session clock", now)
         if seconds_ago < 0.0:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} cannot have left its cage "
@@ -347,13 +365,14 @@ class Welfare:
                 f"animal came out, on the session's own clock"
             )
         ceiling = self.bounds.ceilings[OUT_OF_CAGE]
-        if seconds_ago > ceiling.value:
+        if seconds_ago >= ceiling.value:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is recorded as out of its cage "
-                f"{seconds_ago} {ceiling.unit} ago, which is already past the "
-                f"ceiling of {ceiling.value:.0f}; a session cannot start outside the "
-                f"limit it is bounded by. If this was a timestamp, it is in the "
-                f"wrong base -- this parameter is how long ago, in seconds"
+                f"{seconds_ago} {ceiling.unit} ago, against a ceiling of "
+                f"{ceiling.value:.0f}; a session cannot start at or outside the "
+                f"limit it is bounded by, because its first trial is already past "
+                f"it. If this was a timestamp, it is in the wrong base -- this "
+                f"parameter is how long ago, in seconds"
             )
         self.left_cage_at = now - seconds_ago
 
@@ -433,6 +452,12 @@ class Welfare:
             )
         end = self.returned_at if self.returned_at is not None else now
         seconds = end - self.left_cage_at
+        # **Checked on the computed duration, not only on the marks.** The marks
+        # are guarded where they are taken, but this is the number every ceiling is
+        # read against, and it is the last place a NaN can be caught before one is
+        # compared -- from a `now` this method was handed, or from a `Welfare`
+        # constructed field-by-field rather than marked (see `left_cage_at`).
+        _finite("the time out of the cage", seconds)
         if seconds < 0.0:
             # The marks are guarded, so the only way here is a `now` before the
             # opening mark -- a `Session(clock=...)` that runs backwards, or one
@@ -447,8 +472,16 @@ class Welfare:
             )
         return seconds
 
-    def preflight(self) -> None:
+    def preflight(self, now: float) -> None:
         """What must be true before a session runs (S8 §5.2). Raises `Exceeded`.
+
+        **`now` is passed rather than assumed zero.** This called
+        `out_of_cage_seconds(0.0)`, which is right only because the default session
+        clock starts at zero -- a `Session(clock=...)` with any other base would
+        have had a legitimately-marked session refused for running backwards. It
+        failed closed, so it was never going to hurt an animal; what it did was
+        bake the zero-base assumption into a second place, and "how long ago"
+        already depends on that assumption quietly enough in one.
 
         Called by `taskd.Session.run` before its first frame, so a missing mark is
         a refusal a person sees at the console rather than a fault partway into a
@@ -467,7 +500,7 @@ class Welfare:
         return while the animal is head-fixed, so the marks cannot be closed *during*
         a run; this is the same hole reached before one starts.
         """
-        self.out_of_cage_seconds(0.0)  # for the refusal; the number is not wanted
+        self.out_of_cage_seconds(now)  # for the refusal; the number is not wanted
         if self.returned_at is not None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is already recorded as back in its "

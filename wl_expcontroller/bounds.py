@@ -37,11 +37,41 @@ Three properties, and each exists because of a specific way this goes wrong:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 
 class Exceeded(ValueError):
     """A value or a delivery would go past a ceiling. Never caught internally."""
+
+
+def _finite(what: str, value: float) -> None:
+    """Refuse a value that is not a number, before anything compares it.
+
+    **NaN is not past a ceiling, not below a floor, and not negative** -- every
+    ordered comparison against it is `False`, so a single NaN turns each guard in
+    this file and in `welfare` into a pass. Found by review, reproduced end to end:
+    a bounded config with a NaN `out_of_cage` ceiling, and `wlx run
+    --out-of-cage-ago nan` (argparse's `float` accepts it), each ran a full
+    reward-delivering session with its duration limit off and a summary that looked
+    entirely normal. `inf` was already refused correctly -- it *is* ordered -- and
+    only NaN slipped through, which is what makes it the dangerous one.
+
+    `math.isfinite` rather than `value != value`, because
+    `calibration._yaml_float` already spells this check that way and a second
+    spelling of "is this a number" is a second thing to keep in step.
+
+    One helper called from both the type and the console path, for the reason `set`
+    goes through `validate`: the rule has one home. The two callers ask different
+    questions -- "can this type hold this" and "would this value be refused" -- and
+    a NaN is the answer to both.
+    """
+    if not math.isfinite(value):
+        raise Exceeded(
+            f"{what} is {value!r}, which is not a number: it compares False against "
+            f"every limit, so nothing could refuse it and the bound it belongs to "
+            f"would be switched off rather than exceeded"
+        )
 
 
 class Unknown(RuntimeError):
@@ -75,6 +105,17 @@ class Ceiling:
     maximum: float
     unit: str
 
+    def __post_init__(self) -> None:
+        """**A limit that is not a number is not a limit** -- see `_finite`.
+
+        Here rather than only at the call sites because a bounded config builds
+        these directly (`tasks/reference_bounds.py` is Python, ADR-0006), which is
+        the route a review reproduced: a NaN ceiling reached `welfare.must_stop`
+        and answered `None` for a whole session.
+        """
+        _finite("a ceiling's value", self.value)
+        _finite("a ceiling's maximum", self.maximum)
+
 
 @dataclass(frozen=True, slots=True)
 class Floor:
@@ -87,6 +128,16 @@ class Floor:
 
     value: float
     unit: str
+
+    def __post_init__(self) -> None:
+        """A floor that is not a number is not a floor either (`_finite`).
+
+        Less dangerous than a NaN ceiling -- no delivery is ever refused on volume,
+        so nothing stops -- but it makes `shortfall()` answer `nan`, which the
+        console and `wlx run` print as a supplement figure. A number nobody can act
+        on, shown where a person acts on it.
+        """
+        _finite("a floor's value", self.value)
 
 
 @dataclass
@@ -114,9 +165,17 @@ class Bounds:
         become an unbounded parameter that is then used. `rewrd_correct` set to 5.0
         would otherwise be accepted, bounded by nothing.
 
+        **A value that is not a number is refused here, not at assignment.**
+        `Ceiling` refuses to hold one, so `set` would raise either way -- but it
+        would raise inside `taskd._apply_staged`, which states that its
+        re-validation cannot fail and leaves earlier rows applied if one does. A
+        NaN offered by a console is refused while the person is still looking, like
+        every other value this method refuses.
+
         No actor: a refusal does not depend on who asked, and every caller records
         the actor beside the refusal it raises.
         """
+        _finite(f"{name!r}", value)
         ceiling = self.ceilings.get(name)
         if ceiling is None:
             raise Exceeded(

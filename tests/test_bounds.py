@@ -36,6 +36,44 @@ def _bounds() -> Bounds:
     )
 
 
+def test_a_ceiling_that_is_not_a_number_cannot_be_built():
+    """**A limit that is not a number is not a limit.** NaN compares `False`
+    against every ordered test, so a NaN ceiling is not exceeded by anything: a
+    review reproduced one in a bounded config reaching `welfare.must_stop`, which
+    answered `None` for a whole reward-delivering session with an honest mark and
+    a clean summary.
+
+    Refused at the type, because a bounded config builds these directly -- it is
+    Python (ADR-0006) -- so there is no call site to put the check at."""
+    with pytest.raises(Exceeded, match="not a number"):
+        Ceiling(value=float("nan"), maximum=10.0, unit="s")
+
+    with pytest.raises(Exceeded, match="not a number"):
+        Ceiling(value=1.0, maximum=float("nan"), unit="s")
+
+
+def test_a_floor_that_is_not_a_number_cannot_be_built():
+    """Less dangerous than a NaN ceiling -- no delivery is refused on volume, so
+    nothing stops -- but `shortfall()` would answer `nan` and both the console and
+    `wlx run` print it as the figure a person supplements against."""
+    with pytest.raises(Exceeded, match="not a number"):
+        Floor(value=float("nan"), unit="mL")
+
+
+def test_a_console_offering_a_value_that_is_not_a_number_is_refused_when_it_asks():
+    """Refused by `validate`, not merely by the `Ceiling` that `set` would build.
+    `taskd._apply_staged` states that its re-validation cannot fail and leaves
+    earlier rows applied if one does, so a NaN accepted at offer time would blow up
+    mid-apply. It is refused while the person is still looking, like every other
+    value this method refuses."""
+    bounds = _bounds()
+
+    with pytest.raises(Exceeded, match="not a number"):
+        bounds.validate("reward_correct", float("nan"))
+
+    assert bounds.value("reward_correct") == 0.15, "the previous value must stand"
+
+
 def test_a_console_may_move_a_value_within_its_ceiling():
     bounds = _bounds()
 

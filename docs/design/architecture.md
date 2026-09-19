@@ -122,6 +122,14 @@ and stops a running session rather than freezing its clock. And the opening mark
 ago**, against the session's frame-derived clock, so that counting transport and chairing does
 not depend on a caller knowing to pass a negative instant — S8 §5.2 item 4 has both accounts.
 
+**Nor may a value that is not a number.** Every guard above is an *ordered* comparison and
+**NaN is `False` against all of them**, so one NaN switched the duration limit off entirely —
+through a bounded config's ceiling, and through `wlx run --out-of-cage-ago nan`. `bounds`
+refuses a non-finite value at `Ceiling`, at `Floor` and at `validate`, so a limit that is not
+a number cannot be constructed at all; `welfare` refuses one at the mark and on the computed
+duration. `inf` was always refused, because `inf` is ordered — which is exactly why NaN was
+the one that got through, and why the check is finiteness rather than a bigger comparison.
+
 Added 2026-09-06, because ceilings alone were not enough: `bounds.check_delivery` was called
 by nothing outside its own tests for a week, so a task could command reward, a session could
 run to completion, and no ceiling was ever asked. A bound nothing calls reads as present and

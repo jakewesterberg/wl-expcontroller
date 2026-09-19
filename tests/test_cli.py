@@ -19,6 +19,7 @@ from dataclasses import replace
 
 import pytest
 
+from wl_expcontroller.bounds import Exceeded
 from wl_expcontroller.cli import main, render
 from wl_expcontroller.link import (
     Refused,
@@ -162,6 +163,45 @@ def test_wlx_run_refuses_a_session_that_does_not_say_how_long_the_animal_was_out
         )
 
     assert "--out-of-cage-ago" in capsys.readouterr().err
+
+
+def test_wlx_run_refuses_a_mark_that_is_not_a_number(tmp_path):
+    """**The surface an operator actually touches, for the defect that got
+    furthest.** `--out-of-cage-ago` is `type=float`, and argparse happily parses
+    `nan`. Every guard on the mark was an ordered comparison, and NaN is `False`
+    against all of them -- so this exact command line ran a full session with its
+    duration limit switched off:
+
+        --out-of-cage-ago 0    -> ended: out_of_cage: 601 s against a ceiling of 600
+        --out-of-cage-ago nan  -> ended: every block is finished
+                                  400 trials, ~760 session-seconds, 13.55 mL
+
+    A reward-delivering session to completion, unbounded, with a summary that read
+    entirely normally. Asserted here rather than only in `test_welfare.py` because
+    the unit test would have passed while this command line still worked -- the
+    parser is part of the path."""
+    with pytest.raises(Exceeded, match="not a number"):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--allocation", "tasks/allocation.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-ago", "nan",
+                "--delivered-today", "0",
+                "--trials", "3",
+                "--set", "fix_timeout=4.0",
+                "--set", "fix_hold=0.3",
+                "--set", "response_window=0.6",
+                "--set", "target_hold=0.2",
+                "--set", "fix_window=2.0",
+                "--set", "target_window=3.0",
+                "--set", "target_position=10.0",
+            ]
+        )
 
 
 def test_wlx_run_without_a_bounded_config_refuses(tmp_path, capsys):

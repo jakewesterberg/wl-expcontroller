@@ -326,8 +326,68 @@ def test_a_session_that_starts_already_past_its_ceiling_is_refused():
     than the limit allows cannot begin a session inside it."""
     welfare = _welfare(out_of_cage=60.0)
 
-    with pytest.raises(Exceeded, match="past the ceiling"):
+    with pytest.raises(Exceeded, match="at or outside"):
         welfare.left_cage(seconds_ago=61.0, now=0.0)
+
+
+def test_a_session_that_starts_exactly_at_its_ceiling_is_refused():
+    """**The boundary belongs to the refusal, not to the session.** An animal out
+    for exactly the limit has no room for a trial: the first one is already past
+    it, and `left_cage` accepting this let a session run one trial and then stop.
+    `must_stop` keeps `>` -- at exactly twelve hours nothing has been *longer* than
+    twelve hours yet -- and the two now meet rather than overlapping by a trial."""
+    welfare = _welfare(out_of_cage=60.0)
+
+    with pytest.raises(Exceeded, match="at or outside"):
+        welfare.left_cage(seconds_ago=60.0, now=0.0)
+
+
+def test_a_mark_that_is_not_a_number_is_refused():
+    """**NaN is `False` against every comparison, so it is not "in the future", not
+    "past the ceiling" and not "backwards".** Each guard on this path is an ordered
+    comparison, and one NaN walked through all of them: `left_cage_at` became NaN,
+    `out_of_cage_seconds` returned NaN, and `must_stop`'s `nan > ceiling` is False,
+    so it answered `None` for the whole session.
+
+    Reproduced end to end through `wlx run --out-of-cage-ago nan`, whose `type=float`
+    accepts it: four hundred rewarded trials, 13.55 mL, a clean summary, and no
+    duration limit at all. `inf` was always refused correctly, because `inf` *is*
+    ordered -- which is what made NaN the one that slipped through."""
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded, match="not a number"):
+        welfare.left_cage(seconds_ago=float("nan"), now=0.0)
+
+
+def test_a_session_clock_that_is_not_a_number_is_refused_at_the_mark():
+    """The other half of the same arithmetic: `left_cage_at = now - seconds_ago`,
+    so a NaN on either side produces a NaN mark."""
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded, match="not a number"):
+        welfare.left_cage(seconds_ago=0.0, now=float("nan"))
+
+
+def test_a_duration_that_is_not_a_number_is_refused_when_it_is_read():
+    """Guarded on the **computed duration**, not only on the marks, because that is
+    the number every ceiling is read against and the last place a NaN can be caught
+    before one is compared. Reached here by a clock handed in later; a `Welfare`
+    built field-by-field rather than marked reaches it the same way."""
+    welfare = _welfare()
+    welfare.left_cage(seconds_ago=0.0, now=0.0)
+
+    with pytest.raises(Exceeded, match="not a number"):
+        welfare.out_of_cage_seconds(now=float("nan"))
+
+
+def test_an_infinite_mark_is_refused_like_any_other_non_number():
+    """`inf` was already refused by the ceiling comparison, because it is ordered.
+    Pinned so that the finiteness guard cannot be narrowed to NaN alone and leave
+    `inf` depending on a comparison two branches away."""
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded):
+        welfare.left_cage(seconds_ago=float("inf"), now=0.0)
 
 
 def test_a_cage_side_session_cannot_be_marked_as_leaving_its_cage():
@@ -436,7 +496,7 @@ def test_a_session_may_not_start_with_the_animal_already_home():
     welfare.head_fixed(at=200.0)
 
     with pytest.raises(Exceeded, match="already recorded as back"):
-        welfare.preflight()
+        welfare.preflight(now=0.0)
 
 
 def test_taking_out_an_animal_that_is_already_out_is_refused():
@@ -529,7 +589,7 @@ def test_a_rig_session_with_no_out_of_cage_mark_refuses_rather_than_running_free
     welfare = _welfare()
 
     with pytest.raises(Exceeded, match="out of its cage"):
-        welfare.preflight()
+        welfare.preflight(now=0.0)
 
     with pytest.raises(Exceeded, match="out of its cage"):
         welfare.must_stop(now=100_000.0)
@@ -544,7 +604,7 @@ def test_a_rig_session_still_refuses_to_run_before_the_animal_is_head_fixed():
     welfare.left_cage(seconds_ago=0.0, now=0.0)
 
     with pytest.raises(Exceeded, match="head-fixed"):
-        welfare.preflight()
+        welfare.preflight(now=0.0)
 
 
 def test_a_marked_rig_session_passes_preflight():
@@ -552,7 +612,7 @@ def test_a_marked_rig_session_passes_preflight():
     welfare.left_cage(seconds_ago=0.0, now=0.0)
     welfare.head_fixed(at=100.0)
 
-    assert welfare.preflight() is None
+    assert welfare.preflight(now=0.0) is None
 
 
 def test_a_cage_side_session_declares_that_it_has_no_duration_bound():
@@ -563,7 +623,7 @@ def test_a_cage_side_session_declares_that_it_has_no_duration_bound():
     a limit nobody marked."""
     welfare = _home_welfare()
 
-    assert welfare.preflight() is None
+    assert welfare.preflight(now=0.0) is None
     assert welfare.out_of_cage_seconds(now=100_000.0) is None
     assert welfare.must_stop(now=100_000.0) is None
 

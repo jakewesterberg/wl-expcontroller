@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **481 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **490 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
@@ -83,9 +83,20 @@ carried is closed, verified 2026-09-06 by reading the runs.
 
 **`bounds.py` and `welfare.py` want human review before they merge** (CLAUDE.md, S8
 §7), and that review is what `p4b-session-management` is waiting on. They are the only
-two welfare-critical files and they are deliberately small — 236 and 311 lines, most of
-it argument — so that this is a job someone can actually do. `git diff main..HEAD --
+two welfare-critical files and they are deliberately small — **280 and 623 lines, of
+which 88 and 233 are executable**; the rest is argument. `git diff main..HEAD --
 wl_expcontroller/bounds.py wl_expcontroller/welfare.py` is the whole of it.
+
+> **`welfare.py` roughly doubled on 2026-09-19** (311 → 623 lines, 124 → 233
+> executable), across the welfare-clock rulings and two review rounds. Almost all of
+> the growth is **refusals and their messages**: a guard is `if X: raise Exceeded(...)`
+> where the `raise` wraps over four or five lines because the message says what to do
+> about it. The *logic* a reviewer has to follow is still a short list of conditions —
+> counted at the start of this session as 124 executable lines and judged reviewable
+> then, and nothing has been added since but more of the same shape. If it reads as
+> too much, the thing to challenge is whether each refusal is earned, not whether the
+> messages are too long: every one of them was written because a review reproduced the
+> failure it names.
 
 What a reviewer has to check, stated so the ask is concrete:
 
@@ -123,6 +134,13 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   re-armed `left_cage`. All refused now — including a return while the animal is recorded
   head-fixed, which is what puts the whole trial loop inside the refusal. **If you add a
   mark, ask what its mis-ordering does**, not only what its absence does.
+- **NaN is `False` against every ordered comparison, so it switches a limit off rather
+  than exceeding it.** This got further than anything else on the branch: `wlx run
+  --out-of-cage-ago nan` ran 400 rewarded trials with a clean summary and no duration
+  limit, and a NaN ceiling in a bounded config did the same. `bounds._finite` guards
+  `Ceiling`, `Floor`, `validate`, the mark and the computed duration. **`inf` was always
+  refused** — it is ordered — which is why the check is finiteness and not a bigger
+  comparison. **If you write a guard as `<` or `>`, ask what NaN does to it.**
 - **`left_cage` takes `seconds_ago`, not a timestamp**, against the frame-derived session
   clock that reads zero at the start. A timestamp invited `0.0`, which makes out-of-cage
   time equal chair time — the under-count the clock exists to remove. `wlx
