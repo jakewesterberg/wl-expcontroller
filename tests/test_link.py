@@ -12,10 +12,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from wl_expcontroller.bounds import Bounds, Ceiling, Floor
-from wl_expcontroller.link import Telemetry
+from wl_expcontroller.link import Absent, Simulated, SetParameter, Stop, Telemetry
 from wl_expcontroller.scheduler import Block, Condition, Scheduler
 from wl_expcontroller.simulate import Tally
-from wl_expcontroller.welfare import Simulated, Welfare
+from wl_expcontroller.welfare import Simulated as WelfareSimulated, Welfare
 
 
 def _bounds(daily_fluid: float = 250.0) -> Bounds:
@@ -51,7 +51,7 @@ def _session_with(delivered_ml: float, already_today: float | None):
     """
     welfare = Welfare(
         bounds=_bounds(),
-        pump=Simulated(),
+        pump=WelfareSimulated(),
         already_today=already_today,
         commanded=0.1,
         delivered=delivered_ml,
@@ -94,3 +94,33 @@ def test_an_unknown_day_is_none_and_never_zero():
 
     assert telemetry.fluid_today_ml is None
     assert telemetry.shortfall_ml is None
+
+
+def _telemetry() -> Telemetry:
+    """A test telemetry object for console link tests."""
+    return Telemetry.of(_session_with(delivered_ml=1.0, already_today=None), Tally(), _scheduler(), index=0)
+
+
+def test_absent_publishes_nowhere_and_yields_no_commands():
+    """**Unlike `dio.Absent` and `run.Unwired`, this one does not refuse**, and the
+    difference is what is lost. A dropped event code is missing from a recording
+    forever and a dropped reward is fluid an animal worked for. Telemetry nobody
+    subscribed to loses nothing -- the record is the record, and a session with no
+    console attached is a normal configuration, which is exactly how the cage-side
+    kiosk runs."""
+    link = Absent()
+
+    link.publish(_telemetry())
+
+    assert link.drain() == []
+
+
+def test_simulated_keeps_what_was_published_and_returns_queued_commands():
+    link = Simulated()
+    link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
+
+    link.publish(_telemetry())
+
+    assert len(link.published) == 1
+    assert link.drain() == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+    assert link.drain() == [], "a command is delivered once, not every boundary"

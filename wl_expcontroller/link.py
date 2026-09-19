@@ -32,7 +32,8 @@ question nobody could actually answer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Protocol
 
 #: Bumped whenever a field changes meaning or disappears. ADR-0003: "schema-versioned
 #: messages ... version field from day one". A console reading an older schema than it
@@ -132,3 +133,62 @@ class Telemetry:
                 for n, w, v, b, bd in session.staged
             ),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SetParameter:
+    """A parameter change offered by a console. Validated by `Session.set`, which is
+    the one write path -- this carries the request, never a second validator."""
+
+    name: str
+    value: float
+    by: str
+
+
+@dataclass(frozen=True, slots=True)
+class Stop:
+    """End the session at the next trial boundary. **Never mid-trial**: a trial the
+    animal completed must not be aborted, which is the rule `welfare.Rig` follows for
+    pump faults."""
+
+    by: str
+
+
+class Link(Protocol):
+    def publish(self, telemetry: Telemetry) -> None:
+        """Offer telemetry to whoever is listening. **Must never block**: latest-wins
+        telemetry that could stall a trial boundary would make a view able to delay an
+        experiment."""
+
+    def drain(self) -> list:
+        """Every command that has arrived since the last call. Non-blocking, and each
+        command is returned once."""
+
+
+@dataclass(frozen=True, slots=True)
+class Absent:
+    """No console, and that is a legitimate configuration -- see the test."""
+
+    def publish(self, telemetry: Telemetry) -> None:
+        return None
+
+    def drain(self) -> list:
+        return []
+
+
+@dataclass
+class Simulated:
+    """The in-process link a test drives."""
+
+    published: list = field(default_factory=list)
+    _queued: list = field(default_factory=list)
+
+    def queue(self, command) -> None:
+        self._queued.append(command)
+
+    def publish(self, telemetry: Telemetry) -> None:
+        self.published.append(telemetry)
+
+    def drain(self) -> list:
+        taken, self._queued = self._queued, []
+        return taken
