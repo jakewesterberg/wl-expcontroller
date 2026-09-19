@@ -1,6 +1,8 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **421 tests passing**, working tree clean, **and the work has
+**State at handoff:** **438 tests passing** (with `.[dev,contract,console]` installed —
+nine of them need the transport, and until 2026-09-19 CI did not install it), working
+tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
 console link this file used to list as missing (§6, old text) now exists, built on
 `p4b-session-management`'s tip (`8693299`) — run `git log --oneline
@@ -127,6 +129,33 @@ it goes to the same reviewer rather than opening a second thread. `git diff
 p4b-session-management..p4d1-console-link -- wl_expcontroller/cli.py
 wl_expcontroller/link.py wl_expcontroller/taskd.py` is the whole of it (ruling R23,
 `.superpowers/sdd/2026-09-19-p4d1-console-link/progress.md`).
+
+**And that reviewer now has one question to answer, not only code to read** — found by
+the whole-branch review on 2026-09-19 and deliberately not decided by a session:
+
+> **When a console lowers or raises a reward volume, should it take effect on the trial
+> that is about to run, or on the one after?**
+>
+> It currently takes effect **immediately**. `Session.set` calls `bounds.set`
+> synchronously as the command is drained, and `welfare.Rig.deliver` reads
+> `bounds.value(ref)` when it opens the valve, so the trial that runs later in that same
+> pass is already at the new volume — measured: a queued
+> `SetParameter(reward_correct, 0.30)` against a starting 0.15 has trial 0 commanding
+> 0.30 mL. An *ordinary* task parameter does the opposite and waits for the next pass.
+>
+> The ceiling is enforced either way and nothing lands mid-trial, so no animal gets more
+> than its limit. What is wrong is the *record*: the `PARAM_CHANGED` strobe and the
+> `parameter_changes.jsonl` row are written on the next pass, so **for a welfare-bounded
+> name the record is off by one trial**, and anyone reconciling commanded fluid offline
+> will assign one trial's delivery to the wrong value.
+>
+> Deferring means an operator who has just lowered a volume watches one more trial go
+> out at the old one. Keeping it means the record needs a second strobe point, or S9a
+> §8.1 becomes the contract and offline tooling has to know it. Both are expensive in
+> the way CLAUDE.md says to ask about rather than file — one edits the call path into a
+> welfare-critical module, the other changes the spec — so this is a question for the
+> PI, marked in the source at `taskd.Session.set` and in S9a §8.1. **Every document now
+> describes the behavior truthfully; only the decision is open.**
 
 ---
 

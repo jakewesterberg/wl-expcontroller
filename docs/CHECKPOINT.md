@@ -74,7 +74,7 @@ figure was one low. In order:
 
 | | |
 |---|---|
-| Tests | **421, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so "421, green" was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) swept clean 2026-09-19 too — 36 target names, 0 survivors, 0 skips |
+| Tests | **438, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code |
 | CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the restraint clock, the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7) |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. Chair time and trial count are ceilings and do end a session. S8 §4–§5 were written the other way round and now carry the correction |
@@ -321,6 +321,52 @@ figure was one low. In order:
 
 ## What moved on 2026-09-19
 
+### The whole-branch review of P4d-1, and its fixes
+
+**The last pass before the PI sees it.** Seven tasks had each been reviewed on their own;
+this reviewed the branch as a whole and found six things no single task's review could
+have, because each of them is about two places disagreeing. In commit order:
+
+- **CI would have been red on every job at the first push.** P4d-1 added the `console`
+  extra and neither CI job installed it. Measured with `zmq`/`msgpack` blocked:
+  `9 failed, 412 passed`. Worse on the mutation job, which escalates to a full sweep on a
+  `pyproject.toml` change and would have aborted at `tools/mutate.py`'s "suite is not green
+  to begin with" with no coverage evidence at all. **A test count is a claim about an
+  environment**, and "421, green" was a claim about a developer machine. The Tests row
+  above now says what it is green *with*.
+- **A welfare-bounded change applies immediately and was displayed as `staged`.** Four
+  documents said it deferred to the next trial boundary; only one test said otherwise.
+  Measured: a queued `SetParameter(reward_correct, 0.30)` against a starting 0.15 has
+  trial 0 — the trial in that same pass — commanding 0.30 mL, while its
+  `parameter_changes.jsonl` row lands between trial 0 and trial 1. The ceiling holds and
+  nothing lands mid-trial, so this is attribution, not over-delivery — but **the record is
+  off by one trial for fluid attribution**. Fixed by documentation only, in all four
+  places plus three more carrying the same claim. **Whether it should defer is an open
+  question for the PI**, marked in `taskd.Session.set` and S9a §8.1: one fix edits the call
+  path into a welfare-critical module, the other rewrites S9a §8.
+- **`Refused` could not survive the wire and nothing could tell.** `decode` was correct,
+  but the suite's only round-trip ran on an empty `refusals` tuple — deleting the rebuild
+  left `421 passed, 0 failed`. Two tests now, one of them `render(decode(encode(...)))`,
+  because the chain is what a console walks.
+- **The refusal feed grew without bound, driven by an untrusted peer.** Capped at 50 per
+  source with the drops counted and printed; `SCHEMA` → 2.
+- **Nothing constrained the bind address.** `wlx run --link tcp://0.0.0.0:...` was accepted
+  in silence, which voids S9a §7's entire justification for trusting a command's actor.
+  Loopback unless `--link-allow-remote`, with **P4d-3** named at the bind as what real
+  authentication waits on.
+- **Found on the way:** `ZmqLink.__init__` abandoned its `Context` if `bind` raised —
+  a port already in use is the ordinary case — which is the state that makes the suite stop
+  terminating. It cost a 600 s hang here before it was closed.
+
+Six minors too, of which two were the same rule applied in one place and not its twin: an
+unchecked `partition("=")` in `--set` after `--link` had been hardened, and a measurement
+disclaimer in one test file and not the other.
+
+`bounds.py` and `welfare.py` remain untouched by this branch — checked against its own
+base, `8693299`, not against `main`. The full report is in
+`.superpowers/sdd/2026-09-19-p4d1-console-link/final-fix-report.md` (untracked;
+`.superpowers/` is gitignored).
+
 ### The console is a web application now, and `wl-works` lists the devices
 
 **ADR-0008, accepted by the PI 2026-09-19.** It supersedes S9a §1's PySide6 decision and
@@ -436,29 +482,35 @@ twin of `Session.refusals`) rather than dropping it.
 **Mutation sweeps, read rather than trusted (CLAUDE.md; trap 7's shape is exactly
 what "read the output" guards against):**
 
+Re-run in full after the whole-branch review's fixes, since those added two functions
+(`_binds_beyond_this_machine`, `_value`) and seventeen tests:
+
 ```
 python3 tools/mutate.py --all --returns None wl_expcontroller/link.py
-  baseline: 421 passed in 12.34s -- 14 functions, all caught (of, encode, decode,
-  _encode_command, _decode_command, publish, drain, queue, __init__, close,
-  __enter__, __exit__, send, receive) -- restored: 421 passed in 9.54s
+  baseline: 438 passed in 25.01s -- 15 functions, all caught (of, encode, decode,
+  _encode_command, _decode_command, publish, drain, queue,
+  _binds_beyond_this_machine, __init__, close, __enter__, __exit__, send,
+  receive) -- restored: 438 passed in 14.10s
 
 python3 tools/mutate.py --all --returns None wl_expcontroller/taskd.py
-  baseline: 421 passed in 13.09s -- 16 functions, all caught (__post_init__,
+  baseline: 438 passed in 14.05s -- 16 functions, all caught (__post_init__,
   directory, now, head_fixed, head_released, set, staged, _command, _params,
-  _apply_staged, _load, _plan, _agent, make, run, publish) -- restored: 421 passed
-  in 10.24s
+  _apply_staged, _load, _plan, _agent, make, run, publish) -- restored: 438 passed
+  in 21.40s
 
 python3 tools/mutate.py --all --returns None wl_expcontroller/cli.py
-  baseline: 421 passed in 12.37s -- 6 functions, all caught (_load_trial,
-  _load_allocation, _load_bounds, _clock, render, main) -- restored: 421 passed
-  in 9.57s
+  baseline: 438 passed in 16.24s -- 7 functions, all caught (_load_trial,
+  _load_allocation, _load_bounds, _clock, _value, render, main) -- restored: 438
+  passed in 13.58s
 ```
 
-**Zero `SURVIVED`, zero `SKIPPED`, no hang, across all three modules — 36 functions,
-each `caught` by a real assertion failure** (`__post_init__` and `run` each fail 40+
-of the 421 tests; the narrowest, `_clock` and `head_released`, fail exactly one — the
-range a coverage tool should show, not a flat number). Full transcripts in
-`.superpowers/sdd/2026-09-19-p4d1-console-link/task-7-report.md`.
+**Zero `SURVIVED`, zero `SKIPPED`, zero `NOT MUTABLE`, no hang, across all three
+modules — 38 functions, each `caught` by a real assertion failure** (`__post_init__`
+and `_load_allocation` each fail 45+ of the 438 tests; the narrowest,
+`head_released` and `_clock`, fail exactly one — the range a coverage tool should
+show, not a flat number). Full transcripts in
+`.superpowers/sdd/2026-09-19-p4d1-console-link/task-7-report.md` for the first run and
+`final-fix-report.md` beside it for this one.
 
 **Three things found and deliberately left open, recorded rather than fixed —
 `docs/next-session.md` §6 has the full account, and item 3 is also in §1 beside the
