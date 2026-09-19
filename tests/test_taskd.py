@@ -486,12 +486,14 @@ def test_a_session_refuses_a_bounded_config_belonging_to_another_subject(tmp_pat
 
 
 def test_a_session_publishes_once_per_trial(tmp_path):
-    """One entry before each trial runs, plus one more: `run()` publishes at the top
-    of every pass through `while True:`, and the pass where the session discovers its
-    ceiling and stops -- without drawing a sixth trial -- is such a pass too. See
-    `run()`: the `must_stop`/`scheduler.finished` checks sit *below* the publish, so
-    this last entry is the boundary the session stopped at, one index past the last
-    trial that actually ran."""
+    """One entry before each trial runs, plus two more at the close: `run()`
+    publishes at the top of every pass through `while True:`, and the pass where the
+    session discovers its ceiling and stops -- without drawing a sixth trial -- is
+    such a pass too, published once before the stop is known (`must_stop`/
+    `scheduler.finished` sit *below* that publish) and once more right after, so the
+    very last frame names the reason (`publish()` in `run()`). Both final frames
+    share `trial_index=5`, one index past the last trial that actually ran; see
+    `test_the_last_telemetry_names_a_welfare_ceilings_reason` for the reason itself."""
     link = Simulated()
     spec = _spec(tmp_path)
     spec.bounds = _bounds(max_trials=5)
@@ -499,7 +501,7 @@ def test_a_session_publishes_once_per_trial(tmp_path):
 
     session.run()
 
-    assert [t.trial_index for t in link.published] == [0, 1, 2, 3, 4, 5]
+    assert [t.trial_index for t in link.published] == [0, 1, 2, 3, 4, 5, 5]
 
 
 def test_a_command_from_a_console_lands_at_the_next_boundary_with_its_actor(tmp_path):
@@ -548,3 +550,49 @@ def test_a_refused_command_does_not_stop_the_session(tmp_path):
     assert len(session.refusals) == 1
     assert session.refusals[0][0] == "not_a_parameter"
     assert session.refusals[0][1] == "jake"
+
+
+# --- the last telemetry frame always names why (S9 "written for a stranger") ------
+
+
+def test_the_last_telemetry_names_a_welfare_ceilings_reason(tmp_path):
+    """A console watching a session hit its trial ceiling must not see the stream go
+    quiet with no explanation -- that is precisely the failure the publish-before-
+    break ordering exists to prevent, and it must hold for every stop path, not only
+    a console-issued `Stop`. Asserts on the reason itself, not a frame count: a count
+    assertion would pass even with an empty `stopped_because`."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=5)
+    session = _session(spec, link=link)
+
+    session.run()
+
+    assert "max_trials" in link.published[-1].stopped_because
+    assert link.published[-1].stopped_because == session.stopped_because
+
+
+def test_the_last_telemetry_names_a_consoles_stop_reason(tmp_path):
+    """The path this was already true for, made explicit against the telemetry a
+    console actually reads rather than the session's own attribute."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=100)
+    session = _session(spec, link=link)
+    link.queue(Stop(by="jake"))
+
+    session.run()
+
+    assert link.published[-1].stopped_because == "stopped by jake"
+
+
+def test_the_last_telemetry_names_every_block_finished(tmp_path):
+    """The third stop path: a flat session running to its declared length, with no
+    welfare ceiling in the way. Same requirement, same assertion shape."""
+    link = Simulated()
+    spec = _spec(tmp_path, trials=3)
+    session = _session(spec, link=link)
+
+    session.run()
+
+    assert link.published[-1].stopped_because == "every block is finished"

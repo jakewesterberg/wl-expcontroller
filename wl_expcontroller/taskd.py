@@ -366,6 +366,26 @@ class Session:
         )
         try:
             index = 0
+
+            def publish() -> None:
+                """Telemetry for the current boundary, to whoever is attached.
+
+                Called at the top of every pass, and **again** immediately after a
+                natural stop (a welfare ceiling, or every block finished) sets
+                `stopped_because` -- so the last frame a session ever publishes
+                always names the real reason, on every stop path alike. A
+                console-issued `Stop` needs no second call: `_command` sets
+                `stopped_because` before this runs, so the top-of-pass call already
+                carries it. S9's "Written for a stranger" requirement says an error
+                that requires knowing the design to interpret is a bug and abort
+                reasons must be self-explanatory; a console that watched the stream
+                simply go quiet on a chair-time or trial ceiling would have neither.
+                The extra frame this costs on a natural stop is free: telemetry is
+                lossy and latest-wins by design (S9a §9), so nothing downstream cares
+                that two frames share a `trial_index`.
+                """
+                self.link.publish(_link.Telemetry.of(self, tally, scheduler, index))
+
             while True:
                 self._apply_staged()
                 # Drain *after* `_apply_staged()`: a command offered at the previous
@@ -376,16 +396,18 @@ class Session:
                 # Publish *before* the stop check: a console watching a session that
                 # stops learns that it stopped and why, rather than seeing the stream
                 # simply cease.
-                self.link.publish(_link.Telemetry.of(self, tally, scheduler, index))
+                publish()
                 if self.stopped_because:
                     break
                 stop = self.welfare.must_stop(self.now(), index)
                 if stop:
                     self.stopped_because = stop
+                    publish()
                     break
                 if scheduler.finished:
                     if scheduler.done:
                         self.stopped_because = "every block is finished"
+                        publish()
                         break
                     scheduler.advance()
                     self.blocks_run.append(scheduler.block.name)
