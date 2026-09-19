@@ -80,6 +80,23 @@ def _load_bounds(path: Path):
     return found
 
 
+def _clock(seconds: float) -> str:
+    """`seconds` as `H:MM:SS` (or `M:SS` under an hour) -- S9a §4's own chair-time
+    example (`1:47 / 4:00`). Formatting, not derivation: every digit comes from
+    the one number passed in, read from `Telemetry.chair_seconds` and nowhere
+    recomputed -- `render`'s own "nothing here is computed" promise is about a
+    second *source* for a number, not about which base a human reads it in. Added
+    fix round 1, minor: a raw `28702.8 s` is not a thing to show a person glancing
+    at a screen.
+    """
+    total = int(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
 def render(frame: _link.Telemetry) -> str:
     """One screen's worth of a `Telemetry` frame -- S9a §4's panes this slice has
     data for: fluid, chair, trials by outcome, what is still owed, staged changes
@@ -126,21 +143,26 @@ def render(frame: _link.Telemetry) -> str:
         if frame.shortfall_ml is None
         else f"  supplement: {frame.shortfall_ml:.2f} mL to reach the day's floor"
     )
-    lines.append(f"  chair: {frame.chair_seconds:.1f} s")
+    lines.append(f"  chair: {_clock(frame.chair_seconds)}")
 
-    attempted = sum(frame.outcomes.values())
+    # Fix round 1, IMPORTANT 2: this used to open with `sum(frame.outcomes.values())
+    # attempted`, a computed total that also silently excluded hangs (5 outcomes
+    # plus 2 hangs printed "5 attempted" when 7 trials ran) -- both a wrong number
+    # and a direct contradiction of this function's own "nothing here is computed"
+    # promise a few lines up. `frame.outcomes` and `frame.hangs` are read as they
+    # are, with no total claimed; a reader who wants one can add what is on screen.
     by_outcome = ", ".join(f"{name} {count}" for name, count in frame.outcomes.items())
-    lines.append(
-        f"  trials: {attempted} attempted ({by_outcome or 'none yet'}), "
-        f"{frame.hangs} hangs"
-    )
+    lines.append(f"  trials: {by_outcome or 'none yet'}, hangs {frame.hangs}")
 
     still_owed = ", ".join(f"{name} {count}" for name, count in frame.owed.items())
     lines.append(f"  still owed: {still_owed or 'none'}")
 
     if frame.staged:
         for change in frame.staged:
-            kind = "bounded" if change.bounded else "task"
+            # Fix round 1, minor: a bare "(task)"/"(bounded)" tag names an
+            # internal field, not what it means to whoever is reading the
+            # screen -- spelled out instead.
+            kind = "welfare-bounded ceiling" if change.bounded else "task parameter"
             lines.append(
                 f"  staged: {change.name} {change.was} -> {change.now} "
                 f"by {change.by} ({kind})"
@@ -196,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     runner.add_argument(
         "--link",
         default=None,
-        metavar="PUB,REQ",
+        metavar="PUB,REP",
         help="open a console link, bound on these two endpoints (PUB for "
         "telemetry, REP for commands), e.g. "
         "tcp://127.0.0.1:5571,tcp://127.0.0.1:5572. Omitted, the session runs "
@@ -259,14 +281,20 @@ def main(argv: list[str] | None = None) -> int:
         # the transport dependency (S9a §5's argument for the display layer,
         # holding identically here -- see `link.encode`'s docstring). A plain
         # `nullcontext(None)` when it is omitted keeps `Session`'s own default
-        # (`link.Absent()`) untouched, so behaviour with no `--link` is unchanged.
+        # (`link.Absent()`) untouched, so behavior with no `--link` is unchanged.
         if args.link is not None:
-            pub_endpoint, sep, rep_endpoint = args.link.partition(",")
-            if not sep:
+            # Fix round 1, minor: `.partition(",")` on a value with a second
+            # comma (`"a,b,c"`) silently took everything after the first comma
+            # -- `"b,c"` -- as one endpoint, rather than refusing it. `.split`
+            # plus an exact length check refuses anything that is not exactly
+            # two comma-separated parts.
+            link_parts = args.link.split(",")
+            if len(link_parts) != 2:
                 raise SystemExit(
-                    f"--link expects PUB,REQ (two comma-separated endpoints), "
-                    f"got {args.link!r}"
+                    f"--link expects PUB,REP (exactly two comma-separated "
+                    f"endpoints), got {args.link!r}"
                 )
+            pub_endpoint, rep_endpoint = link_parts
             link_cm = _link.ZmqLink(pub_endpoint, rep_endpoint)
         else:
             link_cm = nullcontext(None)
@@ -359,16 +387,25 @@ def main(argv: list[str] | None = None) -> int:
             commands.append(_link.Stop(by=args.actor))
 
         with _link.ZmqConsole(args.sub, args.req) as console:
-            for command in commands:
-                console.send(command)
-            # Watches until the session says it has stopped, or the operator
-            # interrupts -- "the console prints frames as trials run" is a live
-            # view, not a one-shot query. `stopped_because` is the session's own
-            # last word (`taskd.Session.run`'s `publish()` fires it on every stop
-            # path), so waiting for it rather than for `receive()` to time out is
-            # what lets this exit on a natural end instead of after 5 idle
-            # seconds.
+            # `send()` is inside this same `try` -- fix round 1, IMPORTANT 1: a
+            # second `send()` reads the *previous* command's reply first
+            # (`ZmqConsole.send`'s own docstring) and raises `TimeoutError`,
+            # exactly like `receive()`, if a gone or too-slow session never
+            # answers. `--set X --stop` -- this subcommand's own advertised
+            # usage two paragraphs up -- sends two commands, so a raw traceback
+            # from an uncaught `send()` was not a hypothetical: nothing before
+            # this exercised a second command, because every earlier test sent
+            # at most one.
             try:
+                for command in commands:
+                    console.send(command)
+                # Watches until the session says it has stopped, or the
+                # operator interrupts -- "the console prints frames as trials
+                # run" is a live view, not a one-shot query. `stopped_because`
+                # is the session's own last word (`taskd.Session.run`'s
+                # `publish()` fires it on every stop path), so waiting for it
+                # rather than for `receive()` to time out is what lets this
+                # exit on a natural end instead of after 5 idle seconds.
                 while True:
                     frame = console.receive()
                     print(render(frame))

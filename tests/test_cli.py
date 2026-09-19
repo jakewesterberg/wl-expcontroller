@@ -12,6 +12,7 @@ proved a person could actually run `wlx run --link` and attach `wlx console` to 
 
 from __future__ import annotations
 
+import gc
 import json
 import threading
 from dataclasses import replace
@@ -173,13 +174,48 @@ def test_wlx_run_without_link_still_runs(tmp_path):
     assert exit_code == 0
 
 
-def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path):
+def test_wlx_run_refuses_a_malformed_link_value(tmp_path):
+    """Fix round 1, minor: `--link`'s parsing used to be `.partition(",")`, which
+    on a value with a second comma (`"a,b,c"`) silently took `"b,c"` -- the whole
+    remainder -- as the REP endpoint rather than refusing it. Exactly two
+    comma-separated endpoints or refusal; nothing in between. Raised before any
+    socket is touched, so this needs no real endpoint and no cleanup."""
+    with pytest.raises(SystemExit, match="PUB,REP"):
+        main(
+            [
+                "run", GOOD,
+                "--allocation", ALLOCATION,
+                "--bounds", BOUNDS,
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_05",
+                "--subject", "REFERENCE",
+                "--delivered-today", "0",
+                "--trials", "5",
+                *_TASK_SETS,
+                "--link", "tcp://127.0.0.1:1,tcp://127.0.0.1:2,tcp://127.0.0.1:3",
+            ]
+        )
+
+
+def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     """The wiring this task exists for (CLAUDE.md: "a safety component ships with
     its consumer, or its absence fails"). `test_link.py` already proves
     `ZmqLink`/`ZmqConsole` talk to each other directly; nothing before this test
     proved that `wlx run --link` -- through `main()`'s own argument parsing --
     actually attaches a real `ZmqLink` to a running `Session`, or that a console's
     write travels all the way to `parameter_changes.jsonl`.
+
+    **`zmq_cleanup` (now in `conftest.py`, moved there in fix round 1) registers
+    `probe` and `console` below.** Fix round 1 found this test reintroduced the 300 s
+    mutation hang `test_link.py`'s own `zmq_cleanup` exists to prevent -- that
+    fixture was module-local, so this file's sockets were not protected by it. See
+    `conftest.py`'s copy for the full mechanism. `main()`'s *own* `ZmqLink`, built
+    and closed entirely inside the background thread below, has no handle this test
+    could register the same way; `gc.collect()` after the thread joins forces its
+    cyclic collection to happen under this test's own control -- Task 5's own
+    measurements found that path safe ("even from an explicit `gc.collect()` in a
+    bare script ... none of these reproduce it outside pytest") -- rather than
+    leaving it to whenever pytest's internal collector next happens to run.
 
     Runs `wlx run` on a background thread (a real `Session.run()`, not a mock) and
     drives a real `ZmqConsole` from the test's own thread -- the same two-sided
@@ -213,7 +249,9 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path):
     exact-last-pass coincidence (a) guards against has nowhere near enough room
     to land by chance.
     """
-    probe = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    probe = zmq_cleanup(
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    )
     pub_endpoint, rep_endpoint = probe.pub_endpoint, probe.rep_endpoint
     probe.close()
 
@@ -238,7 +276,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path):
     runner_thread = threading.Thread(target=_run)
     runner_thread.start()
     try:
-        with ZmqConsole(pub_endpoint, rep_endpoint) as console:
+        with zmq_cleanup(ZmqConsole(pub_endpoint, rep_endpoint)) as console:
             first = console.receive()
             assert first.session_id == "2027-01-14_04"
 
@@ -260,6 +298,13 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path):
     finally:
         runner_thread.join(timeout=15)
     assert not runner_thread.is_alive(), "wlx run did not finish on its own"
+    # Forces the background thread's own ZmqLink -- built and closed entirely
+    # inside main(), so this test has no handle to register with zmq_cleanup --
+    # through a cyclic collection this test controls, rather than leaving an
+    # abandoned Context (if a future mutation ever neuters close()) for whichever
+    # later pytest-internal collection happens to reach it first. See this
+    # function's docstring.
+    gc.collect()
     assert result["exit_code"] == 0
 
     changes_path = (
@@ -270,6 +315,47 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path):
     assert fix_hold_changes, "the console's SetParameter never reached the record"
     assert fix_hold_changes[0]["by"] == "jake"
     assert fix_hold_changes[0]["now"] == 0.4
+
+
+def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch):
+    """Fix round 1, minor: nothing pinned that `wlx run --link` actually closes
+    the link it opens -- the manual two-terminal drive (this task's report)
+    checked it by hand with `ps`/`lsof`, which is exactly the "verified only by
+    a reviewer's spy" shape this slice has otherwise been careful to avoid
+    (`ZmqLink.close()`'s own docstring names this command as what it was
+    waiting for).
+
+    Wraps the real `ZmqLink` with a spy that records whether `close()` ran
+    while still calling through to it, so this proves the CLI's own `with`
+    wiring calls `close()` -- not that `ZmqLink.close()` itself works, which
+    `test_link.py` already covers directly.
+    """
+    closed = []
+
+    class _SpyLink(ZmqLink):
+        def close(self) -> None:
+            closed.append(True)
+            super().close()
+
+    monkeypatch.setattr("wl_expcontroller.link.ZmqLink", _SpyLink)
+
+    exit_code = main(
+        [
+            "run", GOOD,
+            "--allocation", ALLOCATION,
+            "--bounds", BOUNDS,
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_06",
+            "--subject", "REFERENCE",
+            "--delivered-today", "0",
+            "--trials", "5",
+            *_TASK_SETS,
+            "--link", "tcp://127.0.0.1:0,tcp://127.0.0.1:0",
+        ]
+    )
+
+    assert exit_code == 0
+    assert closed == [True], "wlx run --link must close the link it opens"
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +403,18 @@ def test_console_renders_a_telemetry_frame_without_inventing_a_number():
     assert "0.0" not in rendered.split("supplement:")[1].splitlines()[0]
 
 
+def test_console_renders_chair_time_as_a_clock_not_a_raw_float():
+    """Fix round 1, minor: `chair: 28702.8 s` is not a thing to show a person --
+    S9a §4 renders chair time as a clock (`1:47 / 4:00`). `_clock` only formats
+    `frame.chair_seconds`; the number itself is still read, not recomputed."""
+    frame = _telemetry(chair_seconds=107.0)
+
+    rendered = render(frame)
+
+    assert "chair: 1:47" in rendered
+    assert "107.0" not in rendered, "the old raw-seconds float is back"
+
+
 def test_console_shows_staged_changes_with_who_staged_them():
     """S9a §8 removed the write lock; staged visibility -- with the actor -- is
     what replaces it. A console that showed only applied values would hide a
@@ -332,6 +430,42 @@ def test_console_shows_staged_changes_with_who_staged_them():
     assert "jake" in rendered
     assert "0.3" in rendered
     assert "0.4" in rendered
+    # Fix round 1, minor: a bare "(task)" tag named the internal field
+    # (`Staged.bounded`), not what it means to a reader.
+    assert "task parameter" in rendered
+
+
+def test_console_labels_a_staged_welfare_ceiling_change_distinctly():
+    """The other half of `Staged.bounded` -- a console must not describe a
+    welfare-bounded ceiling change (e.g. `reward_correct`) with the same bare
+    label as an ordinary task parameter; the two have very different stakes."""
+    frame = _telemetry(
+        staged=(
+            Staged(name="reward_correct", was=0.05, now=0.08, by="jake", bounded=True),
+        )
+    )
+
+    rendered = render(frame)
+
+    assert "welfare-bounded ceiling" in rendered
+    assert "task parameter" not in rendered
+
+
+def test_console_does_not_compute_a_trial_total_that_excludes_hangs():
+    """Fix round 1, IMPORTANT 2: `render`'s trials line used to open with
+    `sum(frame.outcomes.values())` labelled "attempted" -- a computed total that
+    silently excluded hangs, so 5 outcomes plus 2 hangs printed "5 attempted" for
+    7 actual trials, directly contradicting this function's own "nothing here is
+    computed" promise (S9a §9: the console reads numbers, it does not derive
+    them). `outcomes`/`hangs` are read as they are now, with no total claimed."""
+    frame = _telemetry(outcomes={"correct": 3, "no_fixation": 2}, hangs=2)
+
+    rendered = render(frame)
+
+    assert "5 attempted" not in rendered, "a computed, hang-excluding total is back"
+    assert "correct 3" in rendered
+    assert "no_fixation 2" in rendered
+    assert "hangs 2" in rendered
 
 
 def test_console_shows_refusals_so_a_mistyped_write_is_not_silent():
@@ -410,7 +544,7 @@ def test_console_with_no_write_needs_no_actor(monkeypatch):
 
     Stubs `link.ZmqConsole` rather than opening a real socket: the property under
     test is that `main()` reaches the point of constructing a console at all --
-    proven by `calls`, below -- not any real transport behaviour, which
+    proven by `calls`, below -- not any real transport behavior, which
     `test_link.py` already covers.
     """
     calls = []
@@ -464,3 +598,57 @@ def test_console_refuses_a_non_numeric_set_value(capsys):
         f"refused for the wrong reason -- expected the --set parsing message, "
         f"not a socket timeout against an unreachable endpoint: {err!r}"
     )
+
+
+def test_console_reports_a_second_commands_timeout_cleanly(monkeypatch, capsys):
+    """Fix round 1, IMPORTANT 1: `console.send()` sat outside the `try` that
+    catches `TimeoutError` (`cli.py`). `ZmqConsole.send()`'s own docstring says a
+    second `send()` reads the *previous* command's reply first, and raises
+    `TimeoutError` -- exactly like `receive()` -- if a gone or too-slow session
+    never answers it. `--set X --stop`, this subcommand's own advertised usage,
+    sends two commands, so this was not a hypothetical: every test before this one
+    sent at most one command and so never exercised a second `send()` at all.
+
+    Stubs `ZmqConsole` so the *second* `send()` raises `TimeoutError` directly,
+    rather than waiting out a real 5 s `RCVTIMEO` against an unreachable endpoint --
+    the property under test is `main()`'s own exception handling around `send()`,
+    which `test_link.py` has no reason to cover.
+    """
+    calls = []
+
+    class _StubConsole:
+        def __init__(self, sub: str, req: str) -> None:
+            pass
+
+        def __enter__(self) -> "_StubConsole":
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def send(self, command: object) -> None:
+            calls.append(command)
+            if len(calls) >= 2:
+                raise TimeoutError(
+                    "no reply to the previous command within the console's "
+                    "receive timeout; refusing to send another command until "
+                    "this socket is healthy again"
+                )
+
+        def receive(self) -> None:
+            raise AssertionError("the receive loop must never be reached here")
+
+    monkeypatch.setattr("wl_expcontroller.link.ZmqConsole", _StubConsole)
+
+    code = main(
+        [
+            "console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2",
+            "--as", "jake", "--set", "fix_hold=0.4", "--stop",
+        ]
+    )
+
+    assert len(calls) == 2, "both commands should have been attempted"
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "console:" in err, f"expected the one-line console: ... message, got: {err!r}"
+    assert "Traceback" not in err

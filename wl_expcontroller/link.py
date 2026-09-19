@@ -515,9 +515,29 @@ class ZmqLink:
         `ZmqLink` this method belongs to, wrapped in `with` rather than a bare
         `try`/`finally` so `close()` cannot be forgotten -- it runs via `__exit__`
         on every exit from that command, a normal return or an exception out of
-        `session.run()` alike. The open item immediately above this paragraph (the
-        300 s pytest-collector hang under `weakref.finalize`) is unrelated and
-        still open; this note only closes the "nothing calls it yet" half.
+        `session.run()` alike.
+
+        **The open item above is not "unrelated", the way this paragraph first
+        said -- Task 6's own fix round 1 reproduced it, by hand, one file over,**
+        which is why that claim is corrected here rather than left standing.
+        `tests/test_cli.py`'s first end-to-end `--link` test built its own
+        `ZmqLink`/`ZmqConsole` instances without `test_link.py`'s `zmq_cleanup`
+        fixture, module-local at the time, and `tools/mutate.py --returns None
+        wl_expcontroller/link.py close` hung past 300 s again -- measured, same
+        command, only that test file differing from the commit one before it.
+        That is independent confirmation the open item is a property of *any*
+        unregistered `ZmqLink`/`ZmqConsole` left for pytest's cyclic collector
+        while `close()` is neutered, not something specific to `test_link.py`'s
+        own tests. Fixed by moving `zmq_cleanup` to `conftest.py` (shared across
+        files rather than module-local) and, for the one `ZmqLink` this task's
+        test has no handle to register -- the one `main()` itself builds and
+        closes, entirely inside a background thread -- an explicit `gc.collect()`
+        after that thread joins, forcing its cyclic collection under the test's
+        own control rather than leaving it for pytest's. **The mechanism itself
+        (why a collector pass specifically invoked as pytest's own, `gc_collect_
+        main`, hangs where an explicit `gc.collect()` from a test does not) is
+        still exactly as open as the paragraph above says.** Only "nothing calls
+        `close()` in production" is resolved by this one.
         """
         self._ctx.destroy(linger=0)
 

@@ -9,8 +9,10 @@ test suite reaches any single test, `tests/test_link.py` has almost certainly al
 imported real `zmq`/`msgpack` (its `ZmqLink`/`ZmqConsole` tests need them), so a
 blocker installed in that same process would protect nothing. Only a fresh
 interpreter, with the blocker installed before either name is first imported, proves
-the property this file exists to prove: that `wl_expcontroller.link` and
-`wl_expcontroller.taskd` do not require a transport dependency to import.
+the property this file exists to prove: that `wl_expcontroller.link`,
+`wl_expcontroller.taskd`, and (since Task 6's fix round 1 added the module-level
+`from wl_expcontroller import link as _link` that `wlx console`/`wlx run --link` use)
+`wl_expcontroller.cli` do not require a transport dependency to import.
 
 **Why `find_spec`, never `find_module`.** Task 1 of this slice originally shipped a
 verification using a `sys.meta_path` finder that defined only `find_module`. Task 1's
@@ -78,6 +80,14 @@ if _failed_to_block:
 
 import wl_expcontroller.link as _link  # noqa: E402
 import wl_expcontroller.taskd as _taskd  # noqa: E402
+# Task 6's fix round 1: `cli.py` now does `from wl_expcontroller import link as
+# _link` at module level (`wlx console`, `wlx run --link` need `link.Telemetry`/
+# `ZmqLink`/etc. by name). `wlx run` with no `--link` is exactly "a rig operator
+# running wlx run from a terminal" this module's own docstring names -- if that
+# import ever stopped being lazy inside `link.py` itself, this is the file that
+# would first drag `zmq`/`msgpack` in behind it, and this check would miss that
+# regression entirely if `cli` were never added here.
+import wl_expcontroller.cli as _cli  # noqa: E402
 
 # Not just "it imported" -- imported from THIS worktree, not a stale editable-install
 # target (R9 again). A path from outside _REPO_ROOT would mean this whole script
@@ -85,7 +95,7 @@ import wl_expcontroller.taskd as _taskd  # noqa: E402
 # `str.startswith` -- fix round 1, minor: a sibling checkout named e.g.
 # "p4d1-console-link-old" would satisfy a bare string prefix match without
 # actually being inside this worktree.
-for _name, _mod in (("link", _link), ("taskd", _taskd)):
+for _name, _mod in (("link", _link), ("taskd", _taskd), ("cli", _cli)):
     _resolved = Path(_mod.__file__).resolve()
     if not _resolved.is_relative_to(_REPO_ROOT):
         print(f"ABORT: wl_expcontroller.{_name} imported from outside this worktree: {_resolved}")
@@ -93,3 +103,4 @@ for _name, _mod in (("link", _link), ("taskd", _taskd)):
 
 print(f"PASS: wl_expcontroller.link imported ({_link.__file__})")
 print(f"PASS: wl_expcontroller.taskd imported ({_taskd.__file__})")
+print(f"PASS: wl_expcontroller.cli imported ({_cli.__file__})")
