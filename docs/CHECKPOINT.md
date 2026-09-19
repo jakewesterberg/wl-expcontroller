@@ -4,11 +4,20 @@
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
-> **This file describes `p4b-session-management`, not `main`.** The branch is six
-> commits and is pushed; `main` is still at `300d7d1` and knows none of it. The branch
-> exists because `bounds.py` and `welfare.py` are welfare-critical and want a human
-> before they merge (CLAUDE.md). **`git branch --show-current` before believing
-> anything below** — on `main` this file does not describe the tree you are looking at.
+> **This file describes `p4b-session-management`, not `main` — and, for the P4d-1
+> material below, `p4d1-console-link`, built on top of it.** `p4b-session-management`
+> is **11 commits** ahead of `main`; ten are pushed (`origin/p4b-session-management`),
+> the eleventh (`8693299`) is local only. `p4d1-console-link` adds 16 more commits on
+> top of that same `8693299` and **is committed locally only — not pushed, and not
+> merged** (the push and the merge decision are the PI's, not a session's). `main` is
+> still at `300d7d1` and knows about neither branch. Both exist rather than merging
+> straight in because `bounds.py` and `welfare.py` are welfare-critical and want a
+> human before they merge (CLAUDE.md); `p4d1-console-link` adds a second, narrower ask
+> to the same review rather than opening a new one (see the P4d-1 entry under "What
+> moved on 2026-09-19", and `docs/next-session.md` §1). **`git branch --show-current`
+> before believing anything below** — on `main` this file does not describe the tree
+> you are looking at, and on `p4b-session-management` alone it describes everything
+> except P4d-1.
 >
 > **P4b has now run in CI, and the first run failed** (`34769913502`, 2026-09-13):
 > pytest green on all three Pythons, mutation gate red on `calibration` and `saccade`.
@@ -59,7 +68,7 @@ figure was one low. In order:
 
 | | |
 |---|---|
-| Tests | **383, green.** `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned |
+| Tests | **421, green** (`p4d1-console-link`; `p4b-session-management` alone is 383). `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) swept clean 2026-09-19 too — 36 target names, 0 survivors, 0 skips |
 | CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the restraint clock, the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7) |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. Chair time and trial count are ceilings and do end a session. S8 §4–§5 were written the other way round and now carry the correction |
@@ -457,9 +466,12 @@ range a coverage tool should show, not a flat number). Full transcripts in
    `_apply_staged()` gets no further pass once the loop decides to stop. The final
    frame still shows it `staged` beside `STOPPED:`, an implicit signal rather than
    silence, but `--set X --stop` over real sockets does not land both commands in
-   the same `drain()` batch (measured 20/20), so the obvious way to hit this on
-   purpose does not. Residual risk: a `SetParameter` landing on whichever pass a
-   welfare ceiling or "every block finished" resolves on.
+   the same `drain()` batch — Task 6's reviewer reproduced this 20/20 times (not
+   committed under `docs/measurements/`, and not a claim about this system's timing;
+   the number says the ordering held every time it was tried, nothing about speed) —
+   so the obvious way to hit this on purpose does not. Residual risk: a
+   `SetParameter` landing on whichever pass a welfare ceiling or "every block
+   finished" resolves on.
 3. **`wlx console --set reward_correct=...` is the first person-invocable path that
    moves a reward limit** (`Session.set` → `bounds.set`). `cli.py` does not become
    welfare-critical — the ceiling is still enforced in `bounds.py` alone — but the

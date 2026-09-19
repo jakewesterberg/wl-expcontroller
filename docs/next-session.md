@@ -2,13 +2,17 @@
 
 **State at handoff:** **421 tests passing**, working tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
-console link this file used to list as missing (§6, old text) now exists: 14 commits
-on top of `p4b-session-management`, pushed. `main` still points at `300d7d1` and knows
-about neither branch, so a check that looks only at `main` will report that nothing
-happened. Both branches exist rather than merging straight in because `bounds.py` and
-`welfare.py` are welfare-critical and want a human before they merge (§1) —
-`p4d1-console-link` adds a second, narrower ask to the same review rather than a new
-one (§1, bottom). No hardware exists.
+console link this file used to list as missing (§6, old text) now exists: 16 commits
+on top of `p4b-session-management`'s tip (`8693299`), **committed locally only — not
+pushed, and not merged.** `p4b-session-management` itself is 11 commits ahead of
+`main` (ten of them pushed; the eleventh, `8693299`, is local only) — check
+`git log --oneline main..HEAD` rather than trusting either number to stay still.
+`main` still points at `300d7d1` and knows about neither branch, so a check that
+looks only at `main` will report that nothing happened. Both branches exist rather
+than merging straight in because `bounds.py` and `welfare.py` are welfare-critical
+and want a human before they merge (§1) — `p4d1-console-link` adds a second, narrower
+ask to the same review rather than a new one (§1, bottom). The push and the merge
+decision are the PI's. No hardware exists.
 
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
 > is; this says what to do. There are 19 specs and 8 ADRs (ADR-0008 is the newest and
@@ -310,12 +314,14 @@ P4d-2 or later:**
    purpose does not, which narrows the risk rather than removing it**: `wlx console
    --set X --stop` sends `SetParameter` then `Stop` as two separate `send()` calls,
    and `ZmqConsole.send`'s lazy reply-read means `Stop` is not even transmitted
-   until `SetParameter`'s reply is read — measured 20/20 times landing in different
-   `drain()` batches, not the same one, so the ordinary case actually gives
-   `_apply_staged()` a pass in between. The residual risk is a `SetParameter` that
-   happens to land on whichever pass a *different* stop condition (a welfare
-   ceiling, or every block finishing) resolves on — a matter of timing, not of
-   anything an operator does.
+   until `SetParameter`'s reply is read — Task 6's reviewer reproduced this 20/20
+   times, landing in different `drain()` batches, not the same one (not committed
+   under `docs/measurements/`, and not a claim about this system's timing; the
+   number says the ordering held every time it was tried, nothing about speed), so
+   the ordinary case actually gives `_apply_staged()` a pass in between. The
+   residual risk is a `SetParameter` that happens to land on whichever pass a
+   *different* stop condition (a welfare ceiling, or every block finishing)
+   resolves on — a matter of timing, not of anything an operator does.
 3. **`wlx console --set reward_correct=...` is now a person-invocable path to a
    reward limit** — recorded in §1 above, beside the `bounds.py`/`welfare.py` review
    already waiting.
