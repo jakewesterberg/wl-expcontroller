@@ -19,6 +19,7 @@ import pytest
 
 from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
 from wl_expcontroller.dio import Simulated as Card
+from wl_expcontroller.link import SetParameter, Simulated, Stop
 from wl_expcontroller.scheduler import Block, Condition, Counting
 from wl_expcontroller.task import Outcome
 from wl_expcontroller.taskd import Session, SessionSpec
@@ -74,11 +75,27 @@ def _spec(tmp_path, seed: int = 1, trials: int = 50, **kwargs) -> SessionSpec:
     return spec
 
 
-def _session(spec) -> Session:
-    """A session wired to simulators, which is the only rig that exists."""
-    session = Session(spec, card=Card(), pump=Pump())
+def _session(spec, link=None) -> Session:
+    """A session wired to simulators, which is the only rig that exists.
+
+    `link` defaults to `None`, i.e. omitted from the call -- `Session.link` then
+    falls back to its own default, `link.Absent()`, exactly as a session with no
+    console attached does outside a test.
+    """
+    kwargs = {"link": link} if link is not None else {}
+    session = Session(spec, card=Card(), pump=Pump(), **kwargs)
     session.head_fixed(at=0.0)
     return session
+
+
+def _parameter_changes(session: Session) -> list[dict]:
+    """Every parameter change actually written to `parameter_changes.jsonl`, in the
+    order recorded. Reads the file on disk rather than `session._staged` or anything
+    in memory -- this backs a test about what a console's command caused to be
+    *written*, and a console that only says it changed something proves nothing
+    about what a recording could ever be aligned to."""
+    path = session.directory / "parameter_changes.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()]
 
 
 # --- what was already true --------------------------------------------------
@@ -463,3 +480,71 @@ def test_a_session_refuses_a_bounded_config_belonging_to_another_subject(tmp_pat
 
     with pytest.raises(Exceeded, match="'A'.*'B'"):
         Session(spec, card=Card(), pump=Pump())
+
+
+# --- the console link --------------------------------------------------------
+
+
+def test_a_session_publishes_once_per_trial(tmp_path):
+    """One entry before each trial runs, plus one more: `run()` publishes at the top
+    of every pass through `while True:`, and the pass where the session discovers its
+    ceiling and stops -- without drawing a sixth trial -- is such a pass too. See
+    `run()`: the `must_stop`/`scheduler.finished` checks sit *below* the publish, so
+    this last entry is the boundary the session stopped at, one index past the last
+    trial that actually ran."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=5)
+    session = _session(spec, link=link)
+
+    session.run()
+
+    assert [t.trial_index for t in link.published] == [0, 1, 2, 3, 4, 5]
+
+
+def test_a_command_from_a_console_lands_at_the_next_boundary_with_its_actor(tmp_path):
+    """The console gains no second write path: the command goes through `Session.set`,
+    so a welfare-bounded name still meets its ceiling and an undeclared name is still
+    refused."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
+
+    session.run()
+
+    changes = _parameter_changes(session)
+    assert changes[0]["name"] == "fix_hold"
+    assert changes[0]["by"] == "jake"
+
+
+def test_a_stop_command_ends_the_session_at_a_boundary_not_mid_trial(tmp_path):
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=100)
+    session = _session(spec, link=link)
+    link.queue(Stop(by="jake"))
+
+    census = session.run()
+
+    assert session.stopped_because == "stopped by jake"
+    assert sum(census.outcomes.values()) < 100
+
+
+def test_a_refused_command_does_not_stop_the_session(tmp_path):
+    """A console offering a parameter the task does not declare is a mistake by a
+    person, not a fault of the rig. The session records the refusal and runs on --
+    stopping would let a typo end a session with an animal in the chair."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    link.queue(SetParameter(name="not_a_parameter", value=1.0, by="jake"))
+
+    census = session.run()
+
+    assert sum(census.outcomes.values()) == 3, "the session ran to its trial ceiling"
+    assert len(session.refusals) == 1
+    assert session.refusals[0][0] == "not_a_parameter"
+    assert session.refusals[0][1] == "jake"

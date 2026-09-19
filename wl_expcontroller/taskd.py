@@ -11,9 +11,11 @@ a single unnamed block rather than as a second loop, because a second loop is a
 second place for the ceilings to be checked -- and a limit enforced in one of two
 paths is a limit that depends on which path a session took.
 
-What this is not, yet: a daemon. There is no console link over a socket and no
-preflight beyond the two refusals below. `Session.set` is the validated write path a
-console will hold; nothing yet connects one to it. That is P4d.
+**Wired, not yet reachable.** `Session.link` drains commands into `Session.set` and
+publishes telemetry, once per trial boundary and never per frame (below) -- but
+nothing yet puts a second process on the other end of it. The ZMQ transport and `wlx
+console` are later tasks in this same work package. There is also no preflight yet
+beyond the two refusals below.
 
 **Two refusals stand between a session and its first trial**, and both are the shape
 this file exists to hold. A task with a blocking finding does not run, because a
@@ -29,6 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from wl_expcontroller import link as _link
 from wl_expcontroller.bounds import Bounds, Exceeded
 from wl_expcontroller.check import check
 from wl_expcontroller.cli import _load_allocation, _load_trial
@@ -119,11 +122,21 @@ class Session:
     #: Optional. `(condition, values, result) -> None`, after each trial's outcome is
     #: recorded. What a calibration block collects its fixations through.
     observe: object = None
+    #: Where consoles attach. Drained and published **once per trial boundary, never
+    #: per frame** -- a socket call inside `run_trial` would put the network in the
+    #: frame budget, which S9 §1 forbids in the sentence that makes the process split
+    #: a hard rule. `Absent()` is a real configuration, not a stub: the cage-side kiosk
+    #: runs unattended.
+    link: object = field(default_factory=_link.Absent)
     welfare: Welfare = field(init=False)
     rig: Rig = field(init=False)
     allocation: Allocation = field(init=False)
     #: Why the session ended. Empty until it has.
     stopped_because: str = field(init=False, default="")
+    #: Console commands refused rather than applied: `(name, by, why)`. See
+    #: `_command` -- a person mistyping a parameter name is not a fault of the rig,
+    #: and the session records the refusal and runs on rather than ending over it.
+    refusals: list = field(init=False, default_factory=list)
     blocks_run: list = field(init=False, default_factory=list)
     _elapsed: float = field(init=False, default=0.0, repr=False)
     _staged: list = field(init=False, default_factory=list, repr=False)
@@ -220,6 +233,32 @@ class Session:
                 f"{value} is outside it"
             )
         self._staged.append((name, self.spec.values.get(name), value, by, False))
+
+    @property
+    def staged(self) -> tuple:
+        """Every accepted change not yet applied: `(name, was, now, by, bounded)`,
+        the exact shape `link.Telemetry.of` reads to build its `Staged` rows.
+
+        The public face of `_staged`. `link.py` reaches `Session` only through its
+        declared surface, never a private attribute -- this is what makes that true
+        rather than merely stated.
+        """
+        return tuple(self._staged)
+
+    def _command(self, command) -> None:
+        """A console's request, routed to the one write path.
+
+        **Refusals do not end the session.** A person mistyping a parameter name is
+        not a fault of the rig, and ending a session with an animal in the chair over
+        a typo is a worse outcome than ignoring it. The refusal is recorded.
+        """
+        if isinstance(command, _link.Stop):
+            self.stopped_because = f"stopped by {command.by}"
+            return
+        try:
+            self.set(command.name, command.value, by=command.by)
+        except Exceeded as refused:
+            self.refusals.append((command.name, command.by, str(refused)))
 
     def _params(self) -> dict[str, Param]:
         trial = self._trial if self._trial is not None else self._load()
@@ -329,6 +368,17 @@ class Session:
             index = 0
             while True:
                 self._apply_staged()
+                # Drain *after* `_apply_staged()`: a command offered at the previous
+                # boundary has already landed, so the telemetry a console sees below
+                # matches the values the next trial will actually run.
+                for command in self.link.drain():
+                    self._command(command)
+                # Publish *before* the stop check: a console watching a session that
+                # stops learns that it stopped and why, rather than seeing the stream
+                # simply cease.
+                self.link.publish(_link.Telemetry.of(self, tally, scheduler, index))
+                if self.stopped_because:
+                    break
                 stop = self.welfare.must_stop(self.now(), index)
                 if stop:
                     self.stopped_because = stop
