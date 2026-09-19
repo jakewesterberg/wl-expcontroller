@@ -395,11 +395,12 @@ It is a P4c item, not a console one.
 
 ### The console link ships (P4d-1), and three things about it stay open
 
-Built on `p4d1-console-link` (14 commits on top of `p4b-session-management`, itself
-still unmerged and waiting on the welfare review below): `Session` gains a `link`
-field, drained and published **once per trial boundary and never per frame** —
-proved by a test, not only argued (the plan's Task 4 Step 6). `link.py` (new, 672
-lines) holds the telemetry message and its schema
+Built on `p4d1-console-link` — commit counts live in this file's banner above, not
+repeated per-section after a fix round found two of three copies wrong — on top of
+`p4b-session-management`, itself still unmerged and waiting on the welfare review
+below. `Session` gains a `link` field, drained and published **once per trial
+boundary and never per frame** — proved by a test, not only argued (the plan's Task
+4 Step 6). `link.py` (new, 672 lines) holds the telemetry message and its schema
 (`Telemetry`, `Staged`, `Refused`, `SCHEMA`), the commands a console sends back
 (`SetParameter`, `Stop`), the port (`Link`, with `Absent`/`Simulated` as peers exactly
 as in `dio.py`), and the one live transport — `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB
