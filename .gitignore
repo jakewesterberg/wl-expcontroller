@@ -8,5 +8,5 @@
 .superpowers/
 .venv-spike/
 .venv/
-/wl-preproc/
+/wl-preproc
 __pycache__/
