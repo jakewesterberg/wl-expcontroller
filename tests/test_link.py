@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
+    REFUSAL_HISTORY,
     Absent,
     Refused,
     Simulated,
@@ -51,6 +52,15 @@ def _session_with(delivered_ml: float, already_today: float | None):
     so this fixture does not need to construct either the live-parameter or the
     console-command machinery to satisfy `Telemetry.of`'s shape.
 
+    **`.link` is a real `Absent()`, not omitted.** It used to be absent here and
+    `Telemetry.of` reached it through `getattr(session, "link", None)` -- a default
+    that existed only to keep this stand-in working, and that would also have
+    swallowed a `Session` genuinely built without a link, and (through the second
+    `getattr` beside it) a rename of `ZmqLink.refused`. Both defaults are gone; a
+    session with no link is an `AttributeError` now, which is why this line is here
+    rather than in `Telemetry.of`. `Absent` is what `taskd.Session` itself defaults
+    to, so this is the real object and not a further stand-in.
+
     `delivered_ml` becomes `welfare.delivered` -- the sync box's delivered-line
     figure -- rather than `welfare.commanded`, with `commanded` pinned to a small
     fixed value distinct from it. **This distinction is load-bearing.** Once
@@ -77,6 +87,7 @@ def _session_with(delivered_ml: float, already_today: float | None):
         stopped_because="",
         staged=(),
         refusals=(),
+        link=Absent(),
         now=lambda: 0.0,
     )
 
@@ -335,6 +346,94 @@ def test_an_undecodable_command_is_refused_not_raised(zmq_cleanup):
     console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
     commands = _drain_until(link)
     assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+
+
+def test_a_flood_of_undecodable_packets_cannot_grow_the_link_without_bound(zmq_cleanup):
+    """The test above proves one bad packet is recorded rather than raised. This one
+    proves the *thousandth* is not, because `link.refused` was cumulative and
+    uncapped and the party deciding its length is the peer, not this end.
+
+    The realistic source is the one `drain()`'s own docstring names: a console built
+    against a bumped `SCHEMA` fails to decode nothing -- it fails to *encode*
+    something this end understands -- and keeps trying, every packet, forever. Each
+    one appended a `Refused`, and `Telemetry.of` re-encoded the whole accumulation
+    into every PUB frame at every trial boundary, so both the per-boundary work and
+    the frame grew linearly with how long the broken console stayed connected.
+
+    `REFUSAL_HISTORY + 5` packets here rather than a thousand: the property is the
+    trim, and the trim either holds at the boundary or does not. What fell off is in
+    `refused_dropped`, which is what keeps this a cap rather than a quieter version
+    of the silent drop the docstring argues against."""
+    import msgpack
+
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    sent = REFUSAL_HISTORY + 5
+    for n in range(sent):
+        console._req.send(msgpack.packb({"kind": f"from_a_newer_console_{n}"}, use_bin_type=True))
+        console._awaiting_reply = True
+        _drain_until(link)
+        console._req.recv()
+        console._awaiting_reply = False
+
+    assert len(link.refused) == REFUSAL_HISTORY, "the refusal list is unbounded again"
+    assert link.refused_dropped == sent - REFUSAL_HISTORY
+    # The newest are the ones kept: an operator looking at a console wants what just
+    # happened, not what happened first.
+    assert f"from_a_newer_console_{sent - 1}" in link.refused[-1].why
+    assert f"from_a_newer_console_{sent - REFUSAL_HISTORY}" in link.refused[0].why
+
+
+def test_telemetry_caps_the_refusal_feed_and_counts_what_it_dropped():
+    """The same bound one hop out. `Telemetry.of` concatenates `session.refusals`
+    with `session.link.refused` and publishes the result, so capping only the link
+    would still let an operator's own refusals -- or the sum of the two -- grow a
+    frame without limit.
+
+    `refusals_dropped` adds both losses: what `ZmqLink` already trimmed off its own
+    list, and what this cap drops from the concatenation. They cannot double-count,
+    because an entry the link discarded never reaches the concatenation at all."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    session.refusals = tuple(
+        (f"param_{n}", "jake", "not a parameter this task declares")
+        for n in range(REFUSAL_HISTORY + 3)
+    )
+    session.link = Simulated(
+        refused=[Refused(name="<transport>", by="<unknown>", why="newest")],
+        refused_dropped=7,
+    )
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
+
+    assert len(telemetry.refusals) == REFUSAL_HISTORY
+    # The session's 53 plus the link's 1 is 54, so 4 fall off this end -- plus the 7
+    # the link had already discarded before any of this reached `Telemetry.of`.
+    assert telemetry.refusals_dropped == 4 + 7
+    assert telemetry.refusals[-1].why == "newest", "the newest must survive the cap"
+    assert telemetry.refusals[0].name == "param_4", "the oldest are the ones dropped"
+
+
+def test_telemetry_refuses_a_session_with_no_link_rather_than_publishing_none():
+    """Final-review m5. `Telemetry.of` used to read the link as
+    `getattr(getattr(session, "link", None), "refused", ())` -- two defaults, one of
+    which existed only to let this file's `SimpleNamespace` stand-in omit `.link`.
+
+    Both hid the same failure. A `Session` genuinely built without a link, or a
+    rename of `ZmqLink.refused`, would have made every transport refusal disappear
+    from telemetry with nothing raising and the suite still green -- which is the
+    shape `dio.Absent`, `welfare.Absent` and `run.Unwired` all exist to refuse
+    rather than paper over. `Absent` and `Simulated` now answer `refused` with
+    empties of their own, so the read has no reason to be defensive."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    del session.link
+
+    try:
+        Telemetry.of(session, Tally(), _scheduler(), index=0)
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("a session with no link published telemetry anyway")
 
 
 def test_publish_sends_with_dontwait_and_swallows_again(zmq_cleanup):

@@ -44,7 +44,39 @@ from typing import Protocol
 #: Bumped whenever a field changes meaning or disappears. ADR-0003: "schema-versioned
 #: messages ... version field from day one". A console reading an older schema than it
 #: knows must say so rather than render a field it has guessed the meaning of.
-SCHEMA = 1
+#:
+#: 2 (2026-09-19): `refusals` stopped meaning "every refusal since the session
+#: started" and became "the most recent `REFUSAL_HISTORY`", and `refusals_dropped`
+#: was added to say how many are missing. That is a field changing meaning, which is
+#: exactly what this number exists for.
+SCHEMA = 2
+
+#: How many refusals a session keeps, per source, and therefore how many one
+#: `Telemetry` frame can carry.
+#:
+#: **This is a bound on work an untrusted peer can cause, not a display preference.**
+#: `Telemetry.refusals` was cumulative and uncapped, and `Telemetry.of` re-encodes the
+#: whole of it at every trial boundary. The party that drives its growth is not the
+#: operator: `ZmqLink.drain` appends one `Refused` per wire packet it cannot decode,
+#: and any peer that can reach the REP socket can send those as fast as it likes. A
+#: console built against a bumped `SCHEMA` does it by accident, every packet, forever
+#: -- which is the realistic case, not an attack. Both the per-boundary encode and the
+#: published PUB frame then grow linearly and without limit.
+#:
+#: 50, because the number has to clear what a person can plausibly do and stay far
+#: under what a loop can. A refusal is a human act at heart -- a mistyped parameter
+#: name, a volume above its ceiling -- and fifty of them in one session is already far
+#: past the point where somebody would stop and look at the screen; the console shows
+#: a handful of lines, so nothing an operator needs is among the ones dropped. At the
+#: same time it keeps the frame small: measured on this branch (scratchpad probe, not
+#: committed under `docs/measurements/` and not a claim about this system's latency,
+#: jitter or throughput -- it is a byte count), one frame carrying the longest refusal
+#: this code can produce is 231 bytes empty, 5,433 bytes at 50, 104,233 bytes at 1,000
+#: and 1,040,233 bytes at 10,000, re-encoded every boundary.
+#:
+#: Nothing is lost silently: what falls off is counted in `Telemetry.refusals_dropped`
+#: and `ZmqLink.refused_dropped`, and `cli.render` prints the count.
+REFUSAL_HISTORY = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,11 +167,19 @@ class Telemetry:
     #: `Staged`, whose `bounded` flag says whether the value itself is still pending
     #: (ordinary parameters) or already live (welfare-bounded ones).
     staged: tuple
-    #: Every command refused since the session started, from `session.refusals` --
-    #: see `Refused`. Cumulative like `outcomes`, not cleared each boundary: a
-    #: refusal is a resolved event, not a pending one, so there is no "applied" for
-    #: it to disappear at.
+    #: The most recent `REFUSAL_HISTORY` refusals, oldest first, from
+    #: `session.refusals` and `session.link.refused` -- see `Refused`. Cumulative
+    #: like `outcomes` rather than cleared each boundary, because a refusal is a
+    #: resolved event and not a pending one, so there is no "applied" for it to
+    #: disappear at -- but **capped**, because the peer that drives its growth is
+    #: not necessarily the operator. See `REFUSAL_HISTORY`.
     refusals: tuple
+    #: How many refusals happened that are **not** in `refusals`, because they fell
+    #: off the far end of `REFUSAL_HISTORY`. Zero for any session nobody flooded.
+    #: Present so that a cap cannot be mistaken for a quiet session: a console that
+    #: showed fifty refusals and said nothing about the four hundred before them
+    #: would be the silent-drop failure this field exists to prevent.
+    refusals_dropped: int
 
     @classmethod
     def of(cls, session, tally, scheduler, index: int) -> "Telemetry":
@@ -152,7 +192,34 @@ class Telemetry:
         (`scheduler.Scheduler`) are left the same way for symmetry rather than
         annotating two parameters and not the third. Do not add these hints to
         satisfy a linter; the cycle is real.
+
+        **`session.link.refused` is read as a plain attribute, on purpose.** Both
+        steps used to be `getattr(..., default)`: the outer one so that
+        `test_link.py`'s `SimpleNamespace` stand-in needed no `link`, the inner one
+        because `Absent`/`Simulated` had no `refused`. Two silent defaults on the path
+        that carries transport refusals to the console means a rename of
+        `ZmqLink.refused`, or a `Session` built without a link, makes those refusals
+        vanish from telemetry with nothing raising and every test still green -- the
+        failure shape `dio.Absent`, `welfare.Absent` and `run.Unwired` all exist to
+        refuse. `refused` and `refused_dropped` are part of the `Link` protocol now,
+        `Absent` and `Simulated` answer them with empties of their own, and the
+        stand-in carries a real `Absent()`. An absent link is an `AttributeError`
+        here, which is the point.
+
+        **The refusal feed is capped at `REFUSAL_HISTORY`, newest kept.** What falls
+        off is counted rather than dropped -- see that constant, and
+        `refusals_dropped`.
         """
+        link = session.link
+        refusals = (
+            tuple(Refused(name=n, by=b, why=w) for n, b, w in session.refusals)
+            + tuple(link.refused)
+        )
+        kept = refusals[-REFUSAL_HISTORY:]
+        # Two sources of loss, and they do not overlap: entries `ZmqLink` already
+        # trimmed off its own list (never in `refusals` above) plus entries this
+        # slice drops here.
+        dropped = link.refused_dropped + len(refusals) - len(kept)
         return cls(
             schema=SCHEMA,
             session_id=session.spec.session_id,
@@ -183,15 +250,11 @@ class Telemetry:
             # to reach around -- plus `session.link.refused`, fix round 1's CRITICAL
             # 2: a wire packet `ZmqLink.drain()` could not decode is a refusal too,
             # and the console should see it the same way it sees a `SetParameter`
-            # `Session.set` rejected, not lose it with no record anywhere. Read via
-            # `getattr` with a default at both steps -- `session.link` is `Absent()`
-            # by default (`taskd.Session`'s own default factory) and `Simulated` has
-            # no `.refused` either, because neither ever decodes wire bytes and so
-            # can never produce this kind of refusal; only `ZmqLink` can.
-            refusals=tuple(
-                Refused(name=n, by=b, why=w) for n, b, w in session.refusals
-            )
-            + tuple(getattr(getattr(session, "link", None), "refused", ())),
+            # `Session.set` rejected, not lose it with no record anywhere. Both are
+            # assembled and capped above; see this method's docstring for why neither
+            # read goes through a `getattr` default any more.
+            refusals=kept,
+            refusals_dropped=dropped,
         )
 
 
@@ -233,6 +296,7 @@ def encode(telemetry: Telemetry) -> bytes:
             for s in telemetry.staged
         ],
         "refusals": [{"name": r.name, "by": r.by, "why": r.why} for r in telemetry.refusals],
+        "refusals_dropped": telemetry.refusals_dropped,
     }
     return msgpack.packb(payload, use_bin_type=True)
 
@@ -268,6 +332,7 @@ def decode(payload: bytes) -> Telemetry:
         owed=data["owed"],
         staged=tuple(Staged(**s) for s in data["staged"]),
         refusals=tuple(Refused(**r) for r in data["refusals"]),
+        refusals_dropped=data["refusals_dropped"],
     )
 
 
@@ -326,6 +391,18 @@ def _decode_command(payload: bytes) -> Command:
 
 
 class Link(Protocol):
+    #: Refusals this link produced itself, rather than `Session.set` -- a wire packet
+    #: that could not be turned into a `Command`. **Part of the protocol, not an
+    #: extension `ZmqLink` happens to carry**, and that is the whole point: it used to
+    #: be reached through `getattr(link, "refused", ())`, so renaming it on `ZmqLink`
+    #: would have made transport refusals disappear from telemetry with nothing
+    #: raising. An implementation that cannot produce one answers with an empty
+    #: sequence and says so, the way `dio.Absent` is explicit about having no card.
+    refused: "list[Refused] | tuple[Refused, ...]"
+    #: How many `refused` entries this link has already discarded to stay inside
+    #: `REFUSAL_HISTORY`. Rolled into `Telemetry.refusals_dropped`.
+    refused_dropped: int
+
     def publish(self, telemetry: Telemetry) -> None:
         """Offer telemetry to whoever is listening. **Must never block**: latest-wins
         telemetry that could stall a trial boundary would make a view able to delay an
@@ -345,6 +422,13 @@ class Absent:
     subscribed to loses nothing; the record is the record. A session with no console
     attached is exactly how the cage-side kiosk runs."""
 
+    #: Always empty, and it is a statement rather than an oversight: `Absent` never
+    #: sees wire bytes, so it can never fail to decode one. Declared here so that
+    #: `Telemetry.of` can read `session.link.refused` outright -- see its docstring.
+    refused: tuple = ()
+    #: Always zero, for the same reason: nothing to keep, so nothing to discard.
+    refused_dropped: int = 0
+
     def publish(self, telemetry: Telemetry) -> None:
         return None
 
@@ -363,6 +447,12 @@ class Simulated:
 
     published: list = field(default_factory=list)
     _queued: list = field(default_factory=list)
+    #: See `Absent.refused` -- same reasoning. A queued command is handed over as an
+    #: object, never as bytes, so nothing here can fail to decode. A test that needs
+    #: transport refusals in telemetry can still put `Refused` rows in this list
+    #: directly, which is what makes it a field rather than a constant.
+    refused: list = field(default_factory=list)
+    refused_dropped: int = 0
 
     def queue(self, command) -> None:
         self._queued.append(command)
@@ -420,11 +510,21 @@ class ZmqLink:
         self.rep_endpoint = self._rep.getsockopt_string(zmq.LAST_ENDPOINT)
 
         #: Wire packets `drain()` could not turn into a `Command`, as `Refused`
-        #: entries -- see `drain()`'s docstring (fix round 1, CRITICAL 2). Cumulative
-        #: like `Session.refusals`, which this is the transport-layer twin of: a
-        #: `ZmqLink`-specific extension, not part of the `Link` protocol, because
-        #: `Absent`/`Simulated` never see wire bytes and so can never produce one.
+        #: entries -- see `drain()`'s docstring (fix round 1, CRITICAL 2). The
+        #: transport-layer twin of `Session.refusals`, and **part of the `Link`
+        #: protocol** rather than an extension only this class carries: `Absent` and
+        #: `Simulated` answer with empties of their own, so `Telemetry.of` can read
+        #: `link.refused` outright instead of through a `getattr` default that would
+        #: hide a rename here.
+        #:
+        #: **Bounded at `REFUSAL_HISTORY`, newest kept.** This list is the one thing
+        #: in this file whose length an untrusted peer decides; it used to grow
+        #: forever, one entry per undecodable packet, with `Telemetry.of` re-encoding
+        #: all of it at every trial boundary.
         self.refused: list[Refused] = []
+        #: How many entries the trim in `drain()` has discarded. Published as part of
+        #: `Telemetry.refusals_dropped` so a cap never reads as a quiet session.
+        self.refused_dropped: int = 0
 
     def publish(self, telemetry: Telemetry) -> None:
         """Offer telemetry to whoever is subscribed. **Never blocks** (S9a §9: "ZMQ
@@ -476,6 +576,17 @@ class ZmqLink:
         and `by` are placeholders (`"<transport>"`, `"<unknown>"`): a packet that
         failed to decode carries no reliable actor or parameter name to report,
         unlike a `SetParameter` that decoded fine and was rejected by `Session.set`.
+
+        **Bounded, and the bound is the point.** The paragraph above is the argument
+        for recording every one of these, and it is also the reason the list cannot
+        be allowed to grow: the peer producing them is the one this end does not
+        control, and the newer-console-against-a-bumped-`SCHEMA` case named there
+        produces one per packet for as long as it keeps trying. `self.refused` is
+        trimmed to the most recent `REFUSAL_HISTORY` and the discards are counted in
+        `self.refused_dropped`, so the cap is visible on the console rather than
+        being a quieter version of the silent drop this whole passage argues against.
+        The trim is O(`REFUSAL_HISTORY`) and this runs once per trial boundary, never
+        inside a frame.
         """
         import zmq
 
@@ -489,6 +600,9 @@ class ZmqLink:
                 self.refused.append(
                     Refused(name="<transport>", by="<unknown>", why=f"could not decode command: {exc}")
                 )
+                if len(self.refused) > REFUSAL_HISTORY:
+                    self.refused_dropped += len(self.refused) - REFUSAL_HISTORY
+                    del self.refused[:-REFUSAL_HISTORY]
         return commands
 
     def close(self) -> None:

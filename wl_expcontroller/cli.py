@@ -138,6 +138,12 @@ def render(frame: _link.Telemetry) -> str:
     person who mistyped a parameter name needs to see that on screen, not only in a
     log nobody is watching.
 
+    **A capped refusal feed says so.** `Telemetry.refusals` keeps only the most
+    recent `link.REFUSAL_HISTORY`, because a peer this end does not control decides
+    how fast they arrive. `refusals_dropped` is printed above the rows rather than
+    below them -- a reader scans down, and learning at the bottom that the fifty
+    lines above were the tail of four hundred is learning it too late.
+
     **A staged row says whether the value is pending or already live, because the
     two are not the same thing.** An ordinary task parameter is applied at the
     session's next pass and the running trial still uses the old value. A
@@ -211,6 +217,14 @@ def render(frame: _link.Telemetry) -> str:
         lines.append("  staged: none")
 
     if frame.refusals:
+        # Before the rows, not after: a person reads down and would otherwise see
+        # fifty refusals and learn only at the bottom that there were four hundred.
+        if frame.refusals_dropped:
+            lines.append(
+                f"  refused: {frame.refusals_dropped} earlier refusal(s) NOT SHOWN "
+                f"-- only the most recent {len(frame.refusals)} are kept "
+                f"(link.REFUSAL_HISTORY)"
+            )
         for refusal in frame.refusals:
             lines.append(f"  refused: {refusal.name} by {refusal.by}: {refusal.why}")
     else:

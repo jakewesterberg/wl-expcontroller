@@ -325,6 +325,18 @@ view, never a source.** Schema-versioned with golden-file tests, which ADR-0003 
 requires. Trial-rate telemetry on one topic; the replica's display-rate stream, if V11
 permits one, on a separate droppable topic.
 
+**A frame is bounded, and the one list that was not is the refusal feed.** Added
+2026-09-19, schema 2. Every other field in `Telemetry` is fixed-width or bounded by the
+task (`outcomes` by the outcome enum, `owed` by the block's conditions, `staged` by what
+an operator queued in one ITI). `refusals` was cumulative and uncapped, and the party
+driving its growth is not the operator: `ZmqLink.drain` records one refusal per wire
+packet it cannot decode, so a console built against a bumped `SCHEMA` — the case this
+very section's versioning makes likely — adds one per packet, forever, with `Telemetry.of`
+re-encoding the whole accumulation at every boundary. It is capped at
+`link.REFUSAL_HISTORY` (50), newest kept, with `refusals_dropped` carrying the count of
+what fell off so that a cap can never be read as a quiet session. `wlx console` prints
+that count above the rows.
+
 ---
 
 ## 10. Preflight semantics

@@ -390,6 +390,7 @@ def _telemetry(**overrides) -> Telemetry:
         owed={},
         staged=(),
         refusals=(),
+        refusals_dropped=0,
     )
     return replace(base, **overrides) if overrides else base
 
@@ -559,6 +560,44 @@ def test_console_renders_a_refusal_that_actually_crossed_the_wire():
 
     assert "refused: reward_correct by jake" in rendered
     assert "may not exceed 0.4 mL" in rendered
+
+
+def test_console_says_when_older_refusals_were_dropped():
+    """The refusal feed is capped at `link.REFUSAL_HISTORY`, because the peer that
+    decides how fast refusals arrive is not the operator. A cap nobody is told about
+    is a silent drop with extra steps -- a screen showing fifty refusals and nothing
+    about the four hundred before them reads as "fifty things went wrong", which is
+    a different session from the one that happened.
+
+    Printed above the rows, not below: a reader scans down, and learning at the
+    bottom that everything above was a tail is learning it too late."""
+    rendered = render(
+        _telemetry(
+            refusals=(Refused(name="fx_hold", by="jake", why="not declared"),),
+            refusals_dropped=400,
+        )
+    )
+
+    first_refusal_line = next(
+        line for line in rendered.splitlines() if line.startswith("  refused:")
+    )
+
+    assert "400 earlier refusal(s) NOT SHOWN" in first_refusal_line
+    assert "fx_hold" in rendered
+
+
+def test_console_says_nothing_about_dropped_refusals_when_none_were_dropped():
+    """The other half: a line that appeared on every ordinary session would be noise,
+    and noise is what makes the line above easy to miss on the session that needs
+    it."""
+    rendered = render(
+        _telemetry(
+            refusals=(Refused(name="fx_hold", by="jake", why="not declared"),),
+            refusals_dropped=0,
+        )
+    )
+
+    assert "NOT SHOWN" not in rendered
 
 
 def test_console_renders_the_stop_reason_when_the_session_has_ended():
