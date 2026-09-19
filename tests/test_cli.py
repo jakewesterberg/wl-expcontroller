@@ -27,6 +27,8 @@ from wl_expcontroller.link import (
     Telemetry,
     ZmqConsole,
     ZmqLink,
+    decode,
+    encode,
 )
 
 TASKS = "tasks"
@@ -527,6 +529,36 @@ def test_console_shows_refusals_so_a_mistyped_write_is_not_silent():
     assert "fx_hold" in rendered
     assert "jake" in rendered
     assert "not declared" in rendered
+
+
+def test_console_renders_a_refusal_that_actually_crossed_the_wire():
+    """CLAUDE.md: **test the path, not the piece.** The test above renders a
+    `Refused` built in this process, and `tests/test_link.py`'s round-trip proves
+    `decode` rebuilds one -- but until this existed, every link in the chain was
+    tested while the chain itself was not, which is the exact shape that let `Mark`
+    and `Reward` be dropped by the trial loop with every piece green.
+
+    A real console never sees a `Refused` it constructed. It sees bytes, and the
+    first thing it does with them is `refusal.name` (`render`, below the refusals
+    line). If `decode` ever hands back the plain dicts msgpack gives it -- which
+    nothing caught before final review, because the only round-trip in the suite ran
+    on an empty `refusals` tuple -- that attribute access is an `AttributeError` on
+    the first refusal an operator causes, and the console dies rather than showing
+    them their typo."""
+    frame = _telemetry(
+        refusals=(
+            Refused(
+                name="reward_correct",
+                by="jake",
+                why="'reward_correct' may not exceed 0.4 mL",
+            ),
+        )
+    )
+
+    rendered = render(decode(encode(frame)))
+
+    assert "refused: reward_correct by jake" in rendered
+    assert "may not exceed 0.4 mL" in rendered
 
 
 def test_console_renders_the_stop_reason_when_the_session_has_ended():

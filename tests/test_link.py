@@ -16,8 +16,10 @@ from types import SimpleNamespace
 from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
     Absent,
+    Refused,
     Simulated,
     SetParameter,
+    Staged,
     Stop,
     Telemetry,
     ZmqConsole,
@@ -164,6 +166,44 @@ def test_telemetry_survives_the_wire_unchanged():
 
     assert restored == original
     assert restored.fluid_today_ml is None, "None must not become 0.0 on the wire"
+
+
+def test_staged_and_refused_rows_come_back_as_objects_not_raw_dicts():
+    """The round-trip above ran on a frame whose `staged` and `refusals` were both
+    **empty**, so for as long as it was the only one, `decode` was free to hand back
+    whatever msgpack gave it for those two fields and stay green.
+
+    Measured, final review: hand-mutating `decode`'s `refusals=` line to
+    `tuple(data["refusals"])` -- dropping the `Refused(**r)` rebuild entirely --
+    left the suite at `421 passed, 0 failed`. The same mutation on the `staged=`
+    line one row up *did* fail a test, because `tests/test_cli.py`'s `--link`
+    end-to-end reads `{s.name for s in frame.staged}` off a frame that really
+    crossed a socket. Nothing anywhere did the equivalent for `refusals`, so the
+    first refusal an operator caused over a real socket would have reached
+    `cli.render`'s `refusal.name` as a plain dict.
+
+    Both fields are non-empty here, and both are checked by attribute rather than
+    by equality alone -- `restored == original` on its own is a weaker claim than it
+    looks, since it would still hold for anything that compared equal to the
+    original tuple."""
+    original = _telemetry(
+        staged=(Staged(name="fix_hold", was=0.3, now=0.4, by="jake", bounded=False),),
+        refusals=(
+            Refused(name="reward_correct", by="jake", why="may not exceed 0.4 mL"),
+            Refused(name="fx_hold", by="sam", why="not a parameter this task declares"),
+        ),
+    )
+
+    restored = decode(encode(original))
+
+    assert restored == original
+    assert [type(r) for r in restored.refusals] == [Refused, Refused]
+    assert [r.name for r in restored.refusals] == ["reward_correct", "fx_hold"]
+    assert [r.by for r in restored.refusals] == ["jake", "sam"]
+    assert restored.refusals[0].why == "may not exceed 0.4 mL"
+    assert [type(s) for s in restored.staged] == [Staged]
+    assert restored.staged[0].name == "fix_hold"
+    assert restored.staged[0].bounded is False
 
 
 def _drain_until(link, *, tries=50, pause=0.01):
