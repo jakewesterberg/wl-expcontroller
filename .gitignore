@@ -1,9 +1,11 @@
 *.egg-info/
 *.py[cod]
 .DS_Store
+.claude/worktrees/
 .mutate-in-progress.json
 .pytest_cache/
 .ruff_cache/
+.superpowers/
 .venv-spike/
 .venv/
 /wl-preproc/
