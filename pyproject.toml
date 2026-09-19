@@ -27,6 +27,12 @@ dev = ["pytest>=8"]
 # SpikeInterface, which is exactly the pipeline stack `tests/conftest.py` says has no
 # business near a task PC. numpy and pydantic are already here.
 contract = ["pyyaml>=6"]
+# What the CONSOLE needs: the link between `taskd` and a console process.
+# ADR-0003 chose ZeroMQ with msgpack for control/telemetry on 2026-08-31 and named
+# these two as its consequence. Deliberately an extra rather than a core dependency:
+# a rig running `wlx run` from a terminal needs neither, and the 3.13 CI leg must keep
+# importing the core with no transport installed.
+console = ["pyzmq>=26", "msgpack>=1"]
 
 [tool.setuptools.packages.find]
 include = ["wl_expcontroller*"]
