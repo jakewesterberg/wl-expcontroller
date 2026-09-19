@@ -362,9 +362,10 @@ def test_a_session_ends_on_its_block_quota_and_not_on_a_trial_ceiling(tmp_path):
 
 
 def test_head_fixation_is_event_coded_at_both_ends(tmp_path):
-    """S8 §5.2: chair time is the one welfare quantity with no hardware line, so the
-    codes *are* its durable record and a restart reconstructs the clock from the sync
-    box's capture of them."""
+    """S8 §5.2: restraint is the one welfare quantity with no hardware line, so the
+    codes *are* its durable record and an offline reader recovers chair time from the
+    sync box's capture of them. Chair time stopped bounding the session on 2026-09-19;
+    that is why these two are still strobed."""
     session = _session(_spec(tmp_path, trials=5))
     session.run()
 
@@ -900,7 +901,7 @@ def test_a_recorded_refusal_says_where_in_the_session_it_happened(tmp_path):
     """A row whose whole reason for existing is "this is asked months later" has to
     say *when* within the session, or a reader has only an ordering. `trial_index`
     is the trial about to run and `session_seconds` is `Session.now()` -- the same
-    frame-derived clock the restraint ceiling uses, never a wall clock, because a
+    frame-derived clock the out-of-cage ceiling uses, never a wall clock, because a
     wall clock here would invite someone to align a refusal to the neural recording.
 
     The second refusal is queued from `observe`, after trial 0, so it drains on a

@@ -115,9 +115,9 @@ class Session:
     card: object = field(default_factory=NoCard)
     pump: object = field(default_factory=NoPump)
     #: Session time in seconds. Defaults to a clock derived from frames, which is
-    #: what makes a simulated session's chair time deterministic: a wall clock would
-    #: make "stops at its restraint ceiling" depend on how fast the machine ran. On a
-    #: rig, frames *are* the clock, so the same choice is the honest one there.
+    #: what makes a simulated session's two clocks deterministic: a wall clock would
+    #: make "stops at its out-of-cage ceiling" depend on how fast the machine ran. On
+    #: a rig, frames *are* the clock, so the same choice is the honest one there.
     clock: object = None
     #: Optional. `(trial, values, index) -> World`, called once per trial. Default:
     #: the behaviour agent. **This is the seam hardware plugs into** (S6 §6) -- until

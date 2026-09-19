@@ -179,7 +179,7 @@ class SessionRecord:
         row whose own reason for existing is "this is asked months later" has to say
         *when* within the session, or a reader has only an ordering. `session_seconds`
         is `taskd.Session.now()` -- the same frame-derived clock `chair_seconds` and
-        the restraint ceiling use, not a wall clock: a wall clock here would invite
+        the out-of-cage ceiling use, not a wall clock: a wall clock here would invite
         someone to align a refusal to the neural recording, which is exactly what
         `parameter_change`'s `sequence` exists to do properly and this cannot.
 
