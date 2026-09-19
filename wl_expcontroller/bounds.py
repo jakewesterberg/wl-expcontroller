@@ -27,7 +27,8 @@ Three properties, and each exists because of a specific way this goes wrong:
 - **A console may move a value within its ceiling and not past it.** The console is a
   human, and a human is exactly who this stops: reward volume per delivery is the
   parameter most often adjusted mid-session and the one where a slip is a dose. This
-  is a genuine ceiling and it stays one.
+  is a genuine ceiling and it stays one. **Checking and moving are two calls**
+  (`validate`, then `set`) because they happen at two moments -- see `validate`.
 - **An unknown daily total leaves the shortfall unknown**, rather than answering zero.
   Not a refusal to deliver -- a refusal to *claim*: nobody can say what to supplement
   without knowing what the animal has already had, and zero would report a day as
@@ -58,7 +59,17 @@ class Ceiling:
 
     Two numbers rather than one because the *setting* is routine and the *limit* is
     not: an experimenter moves reward volume between sessions without ceremony, and
-    the maximum is a protocol figure that changes only with a protocol.
+    the maximum is not theirs to move while a session runs.
+
+    **A maximum is not always a protocol figure, and reward is the one that is
+    not** (PI, 2026-09-19). For `chair_time` it is: restraint time is a number a
+    protocol states, and it changes only when the protocol does. For
+    `reward_correct` the maximum is 10 mL, which is not a dose anyone would write
+    into a protocol -- it is a **runaway-fluid fault bound**, the size of delivery
+    that happens only when software is broken, refused so that a fault is caught
+    rather than a ration enforced. Both are enforced identically here; what differs
+    is what a refusal *means*, and `tasks/reference_bounds.py` says which each entry
+    is at the entry itself.
     """
 
     value: float
@@ -90,12 +101,34 @@ class Bounds:
     def value(self, name: str) -> float:
         return self.ceilings[name].value
 
-    def set(self, name: str, value: float, by: str) -> None:
-        """Move a bounded value, within its ceiling.
+    def validate(self, name: str, value: float) -> None:
+        """Would this value be refused? Raises `Exceeded` if so, and **moves
+        nothing**.
+
+        **Separate from `set` because checking and moving happen at two different
+        moments** (PI, 2026-09-19). An offer from a console is checked the instant
+        it arrives, so a person hears "no" while still looking at the screen; the
+        assignment waits for the next trial boundary, where `taskd` applies every
+        staged change at once.
+
+        **What went wrong when it was one call.** `taskd.Session.set` had no way to
+        check a welfare-bounded value without also applying it, so it applied it as
+        the command was drained. The ceiling still held -- this was never
+        over-delivery -- but the reporting was welfare reporting and it was wrong
+        twice: the new reward volume was live for the trial that ran later in that
+        same pass while every console displayed it as `staged`, and its
+        `PARAM_CHANGED` strobe and `parameter_changes.jsonl` row landed one pass
+        later still, so an offline reconciliation of commanded fluid attributed one
+        trial's delivery to the wrong value.
 
         An unknown name is **refused rather than created**: a typo must not silently
         become an unbounded parameter that is then used. `rewrd_correct` set to 5.0
         would otherwise be accepted, bounded by nothing.
+
+        **No actor here.** A refusal does not depend on who asked, and every caller
+        already carries the actor beside the refusal it raises -- `link.Refused.by`
+        on the console feed and the `by` column of `refusals.jsonl` in the session
+        record. Taking one here would be a second copy of it to keep in step.
         """
         ceiling = self.ceilings.get(name)
         if ceiling is None:
@@ -106,8 +139,20 @@ class Bounds:
         if value > ceiling.maximum:
             raise Exceeded(
                 f"{name!r} may not exceed {ceiling.maximum} {ceiling.unit} "
-                f"(asked for {value} by {by}); the previous value stands"
+                f"(asked for {value}); the previous value stands"
             )
+
+    def set(self, name: str, value: float, by: str) -> None:
+        """Move a bounded value, within its ceiling.
+
+        **Validated through `validate`, never by a second copy of the rule here.**
+        Two copies of a ceiling check are two places for it to drift, and the one
+        that drifts silently is whichever a console happens to offer a value
+        against. `by` is the actor the caller records; the refusal itself does not
+        depend on who asked.
+        """
+        self.validate(name, value)
+        ceiling = self.ceilings[name]
         self.ceilings[name] = Ceiling(value, ceiling.maximum, ceiling.unit)
 
     def shortfall(self, name: str, delivered_today: float | None) -> float | None:

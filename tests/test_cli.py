@@ -493,13 +493,18 @@ def test_console_labels_a_staged_welfare_ceiling_change_distinctly():
     assert "task parameter" not in rendered
 
 
-def test_console_says_which_staged_changes_are_live_and_which_are_pending():
-    """`staged` means two different things and the screen has to say which (S9a
-    §8.1). A welfare-bounded value was applied by `Session.set` as the command was
-    drained -- the trial running now is already at the new volume -- while an
-    ordinary task parameter is genuinely still queued. Both were labelled `staged`
-    with nothing to tell them apart, so an operator who had just *lowered* a reward
-    volume read the screen as saying it had not taken effect yet. It had."""
+def test_console_says_a_staged_change_of_either_kind_is_still_pending():
+    """`staged` means one thing again (PI, 2026-09-19, S9a §8): accepted, validated,
+    and **not yet applied**, whichever vocabulary the name belongs to.
+
+    It briefly meant two things. A welfare-bounded value was applied by
+    `Session.set` as the command was drained, so the trial running in that same pass
+    was already at the new volume, and this screen said `ALREADY IN EFFECT` to keep
+    an operator from reading a live change as a queued one. Both now defer to the
+    next trial boundary, so a screen still claiming a bounded row is live would be
+    the same lie in the other direction -- and the direction that matters, because
+    an operator who has just *lowered* a reward volume must not be told it has
+    already taken effect when one more trial is still to go out at the old one."""
     bounded = render(
         _telemetry(
             staged=(
@@ -513,10 +518,11 @@ def test_console_says_which_staged_changes_are_live_and_which_are_pending():
         )
     )
 
-    assert "ALREADY IN EFFECT" in bounded
-    assert "applies at the next trial" not in bounded
+    assert "ALREADY IN EFFECT" not in bounded, "the old immediate-apply wording is back"
+    assert "applies at the next trial" in bounded
     assert "applies at the next trial" in ordinary
-    assert "ALREADY IN EFFECT" not in ordinary
+    assert "welfare-bounded ceiling" in bounded, "the two are still told apart"
+    assert "welfare-bounded ceiling" not in ordinary
 
 
 def test_console_prints_a_staged_volume_to_the_same_decimals_as_every_other_fluid():

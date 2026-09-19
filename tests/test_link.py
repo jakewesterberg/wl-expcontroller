@@ -88,6 +88,11 @@ def _session_with(delivered_ml: float, already_today: float | None):
         stopped_because="",
         staged=(),
         refusals=(),
+        # Read as a plain attribute by `Telemetry.of`, exactly like `link.refused`
+        # and for the same reason -- `Session.refusals` is capped at
+        # `REFUSAL_HISTORY` since 2026-09-19, and its discards have to reach the
+        # frame or a cap reads as a quiet session.
+        refusals_dropped=0,
         link=Absent(),
         now=lambda: 0.0,
     )

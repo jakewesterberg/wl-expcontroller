@@ -144,16 +144,19 @@ def render(frame: _link.Telemetry) -> str:
     below them -- a reader scans down, and learning at the bottom that the fifty
     lines above were the tail of four hundred is learning it too late.
 
-    **A staged row says whether the value is pending or already live, because the
-    two are not the same thing.** An ordinary task parameter is applied at the
-    session's next pass and the running trial still uses the old value. A
-    welfare-bounded one -- reward volume -- was applied by `Session.set` the moment
-    it was drained, and the trial running now is already at the new figure; only its
-    strobe and its record row are still to come. An earlier version of this
-    docstring, and the screen it describes, called both "queued", which told an
-    operator who had just lowered a reward volume that it had not taken effect yet
-    when it had. The behavior itself, and the open question of whether the two
-    *should* differ, live in `taskd.Session.set`.
+    **A staged row says which vocabulary the name belongs to, and that it applies at
+    the next trial** (PI, 2026-09-19). Both kinds defer: `Session._apply_staged`
+    writes an ordinary task parameter into `spec.values` and a welfare-bounded one
+    onto its ceiling, in the same pass, and the trial running now uses the old value
+    either way. The two are still named apart because the stakes are -- a reward
+    volume and a fixation hold are not the same row to read past.
+
+    This screen briefly said `ALREADY IN EFFECT` of a bounded row, and that was
+    true when it was written: `Session.set` moved the ceiling as the command was
+    drained. Saying it now would be the same lie in the more dangerous direction --
+    an operator who has just *lowered* a reward volume, told it has taken effect
+    while one more trial is still to go out at the old one. `taskd.Session.set` and
+    `bounds.Bounds.validate` carry the behaviour and why it changed.
 
     **A volume is printed to 2 decimal places, like every other fluid figure on this
     screen.** `reward_correct` appears on the staged line, and printing it at raw
@@ -199,13 +202,12 @@ def render(frame: _link.Telemetry) -> str:
         for change in frame.staged:
             # Fix round 1, minor: a bare "(task)"/"(bounded)" tag names an
             # internal field, not what it means to whoever is reading the
-            # screen -- spelled out instead. The clause after it says whether
-            # the value is live yet, which `Staged.bounded` also decides and
-            # which this line used to leave a reader to guess at; see this
-            # function's docstring and `taskd.Session.set`.
+            # screen -- spelled out instead. Both clauses end the same way
+            # because both rows now land at the same moment (PI, 2026-09-19);
+            # what differs is which limit the value was checked against. See
+            # this function's docstring and `taskd.Session.set`.
             kind = (
-                "welfare-bounded ceiling, ALREADY IN EFFECT -- only its record "
-                "row is still to come"
+                "welfare-bounded ceiling, applies at the next trial"
                 if change.bounded
                 else "task parameter, applies at the next trial"
             )

@@ -74,7 +74,7 @@ figure was one low. In order:
 
 | | |
 |---|---|
-| Tests | **438, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code |
+| Tests | **447, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's four decisions, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 447 passed, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7) |
 | CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the restraint clock, the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7) |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. Chair time and trial count are ceilings and do end a session. S8 §4–§5 were written the other way round and now carry the correction |
@@ -144,13 +144,17 @@ figure was one low. In order:
 - `tasks/reference_bounds.py` — a bounded config for `wlx run` and for reading.
   **Every number in it is a placeholder**; its subject is `REFERENCE`, and a session
   refuses a bounded config belonging to another subject, so it cannot quietly become
-  a real one.
+  a real one. The one number that is *not* implausibly small is `reward_correct`'s
+  maximum, 10 mL: a runaway-fluid fault bound rather than a dose cap (PI, 2026-09-19).
 - **`bounds.py` — welfare-critical, and pure.** Ceilings a task cannot express and a
   console cannot exceed, **and a daily fluid floor** — a minimum, not a budget. Fluid
   reconciled against the delivered line rather than what we commanded. No clock, no
   hardware, no state that outlives a question. `Floor` and `Ceiling` are different
   types so the two cannot be confused at a call site, which is exactly how the daily
-  figure came to be compared with `>`. **Requires human review before merge**.
+  figure came to be compared with `>`. **`validate` and `set` are separate calls**
+  (2026-09-19) because a change is checked when it is offered and applied a boundary
+  later; `set` goes through `validate`, so the rule has one home. **Requires human
+  review before merge**.
 - **`welfare.py` — welfare-critical, and the caller.** The day's fluid total including
   what another deployment already delivered, the restraint clock started by
   head-fixation, the `Pump` port, and **`Rig` — the object a task's `Reward` action
@@ -321,6 +325,52 @@ figure was one low. In order:
 
 ## What moved on 2026-09-19
 
+### The PI's four decisions, and the one open ask they closed
+
+**Taken after the whole-branch review below, and implemented on `p4d1-console-link`.**
+Three of the four touch the reward path, and one of them edits a welfare-critical file, so
+the human review this branch already waits on now covers `bounds.py` itself rather than
+only the capability beside it (`docs/next-session.md` §1).
+
+1. **A welfare-bounded change defers, like an ordinary parameter.** This **reverses
+   documentation written one commit earlier**, which correctly described the old
+   immediate-apply behaviour in `taskd.py`, `link.Staged`, `cli.render` and a new S9a
+   §8.1 — all of them now describe deferral, and §8.1 is rewritten as the history of why.
+   `bounds.Bounds.validate` answers "would this be refused" and moves nothing;
+   `Session.set` validates at offer time and stages; `_apply_staged` assigns. The value,
+   the `PARAM_CHANGED` strobe and the `parameter_changes.jsonl` row now move in the same
+   pass, which is what removes the off-by-one in fluid attribution. The cost the PI
+   weighed: an operator who has just lowered a volume watches one more trial go out at the
+   old one.
+2. **A pump fault publishes one frame before it propagates.** `welfare.py` did not change
+   and `welfare.Rig` still refuses to swallow a pump that will not answer — but the
+   exception used to leave `Session.run` with no telemetry at all, so a console watching a
+   rig break, unattended and cage-side, saw the stream simply stop. The loop boundary now
+   names the fault in `stopped_because`, publishes once, and re-raises unchanged.
+3. **A refused welfare-bounded set reaches the session record**, in a new `refusals.jsonl`
+   beside `parameter_changes.jsonl`. Telemetry is lossy by design (S9a §9), so a refusal
+   that reached only telemetry left no durable trace of an attempt to set a dose above its
+   limit. Ordinary parameter typos stay telemetry-only.
+4. **`reward_correct`'s maximum is 10 mL, and stops being a dose cap.** At 10 mL a single
+   delivery is not a protocol dose, it is the size of thing that happens only when
+   software is broken — so it is a **runaway-fluid fault bound**. That **answers the ask
+   this file has carried since 2026-09-06** (S8 open item 6, `next-session.md` §5): *"Is a
+   runaway-fluid fault limit wanted? Not a ration — a sanity bound catching a software
+   fault delivering litres, reported as a fault."* **Answered 2026-09-19: yes, and it is
+   this entry.** The *value* beside it (0.05 mL) stays a placeholder until there are
+   animals. `bounds.Ceiling`'s docstring no longer claims every maximum is a protocol
+   figure; `tasks/reference_bounds.py` says which each one is at the entry itself.
+
+**Also, same class as the work just completed:** `taskd.Session.refusals` was the third
+list growing without bound under the same untrusted peer as `ZmqLink.refused` and
+`Telemetry.refusals`. Capped at `link.REFUSAL_HISTORY` with the discards counted into
+`Telemetry.refusals_dropped`, consistently with the other two.
+
+**`SCHEMA` is 3.** `Staged.bounded` stopped meaning "already live" and became "checked
+against a welfare ceiling rather than the task's `Param`" — a field that still decodes and
+no longer means what it did, which is exactly the case that number exists for: a console
+built against schema 2 renders a just-lowered reward volume as `ALREADY IN EFFECT`.
+
 ### The whole-branch review of P4d-1, and its fixes
 
 **The last pass before the PI sees it.** Seven tasks had each been reviewed on their own;
@@ -341,9 +391,9 @@ have, because each of them is about two places disagreeing. In commit order:
   `parameter_changes.jsonl` row lands between trial 0 and trial 1. The ceiling holds and
   nothing lands mid-trial, so this is attribution, not over-delivery — but **the record is
   off by one trial for fluid attribution**. Fixed by documentation only, in all four
-  places plus three more carrying the same claim. **Whether it should defer is an open
-  question for the PI**, marked in `taskd.Session.set` and S9a §8.1: one fix edits the call
-  path into a welfare-critical module, the other rewrites S9a §8.
+  places plus three more carrying the same claim. It was then put to the PI as a question,
+  and **answered the same day: it defers** — see "The PI's four decisions" below, which
+  reverses the documentation this bullet describes.
 - **`Refused` could not survive the wire and nothing could tell.** `decode` was correct,
   but the suite's only round-trip ran on an empty `refusals` tuple — deleting the rebuild
   left `421 passed, 0 failed`. Two tests now, one of them `render(decode(encode(...)))`,

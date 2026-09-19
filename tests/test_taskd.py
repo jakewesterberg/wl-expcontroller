@@ -19,7 +19,7 @@ import pytest
 
 from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
 from wl_expcontroller.dio import Simulated as Card
-from wl_expcontroller.link import SetParameter, Simulated, Stop
+from wl_expcontroller.link import REFUSAL_HISTORY, SetParameter, Simulated, Stop
 from wl_expcontroller.scheduler import Block, Condition, Counting
 from wl_expcontroller.task import Outcome
 from wl_expcontroller.taskd import Session, SessionSpec
@@ -448,11 +448,22 @@ def test_a_live_write_to_an_undeclared_parameter_is_refused(tmp_path):
 def test_a_live_write_to_a_welfare_bounded_value_goes_through_its_ceiling(tmp_path):
     """Reward volume is the parameter most often adjusted mid-session and the one
     where a slip is a dose. The console may move it; it may not move it past the
-    ceiling, and the two paths are the same path."""
+    ceiling, and the two paths are the same path.
+
+    **Refused when it is offered, applied at the next trial boundary** (PI,
+    2026-09-19). The ceiling is checked here, in this call, so a person hears about
+    a refusal while still looking at the console; the assignment belongs to
+    `_apply_staged`, so a trial already under way is never re-priced.
+    `test_a_welfare_bounded_change_applies_at_the_next_boundary_like_any_other` is
+    the other half of that, through the loop rather than through this method.
+    """
     session = _session(_spec(tmp_path, trials=4))
 
     session.set("reward_correct", 0.30, by="console")
-    assert session.spec.bounds.value("reward_correct") == 0.30
+    assert session.spec.bounds.value("reward_correct") == 0.15, (
+        "the value moved as the command was offered rather than at the boundary"
+    )
+    assert session.staged[-1] == ("reward_correct", 0.15, 0.30, "console", True)
 
     with pytest.raises(Exceeded, match="reward_correct"):
         session.set("reward_correct", 0.90, by="console")
@@ -558,9 +569,11 @@ def test_a_console_command_moving_reward_volume_goes_through_its_ceiling(tmp_pat
     console command. `reward_correct`'s ceiling here is `Ceiling(value=0.15,
     maximum=0.40, unit="mL")` (see `_bounds`): a command asking for 0.90 is refused,
     visible as a refusal, and one asking for 0.30 is accepted, staged with
-    `bounded=True`, and takes effect on the ceiling immediately -- `Session.set`'s
-    bounded branch does not defer to `_apply_staged()` the way an ordinary
-    parameter does."""
+    `bounded=True`, and applied by `_apply_staged()` at the next trial boundary --
+    the same deferral an ordinary parameter gets (PI, 2026-09-19). The assertion on
+    the ceiling below is read after `run()`, i.e. after that boundary has passed;
+    `test_a_welfare_bounded_change_applies_at_the_next_boundary_like_any_other`
+    is what pins *which* trial first sees it."""
     link = Simulated()
     spec = _spec(tmp_path)
     spec.bounds = _bounds(max_trials=3)
@@ -684,3 +697,184 @@ def test_the_last_telemetry_names_every_block_finished(tmp_path):
     session.run()
 
     assert link.published[-1].stopped_because == "every block is finished"
+
+
+# --- the PI's four decisions of 2026-09-19 ----------------------------------
+
+
+def _changes_so_far(session: Session) -> list[dict]:
+    """`parameter_changes.jsonl` as it stands *right now*, mid-session.
+
+    Separate from `_parameter_changes` because that one reads a file a completed
+    session is known to have written, and this one is called from inside the loop,
+    where the file does not exist until the first change is recorded. A missing
+    file here means "no change recorded yet", which is the thing being measured.
+    """
+    path = session.directory / "parameter_changes.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def _watch(session: Session) -> list:
+    """Record, after every trial, what that trial actually ran under.
+
+    `observe` runs once per trial, after its outcome is recorded and before the
+    next pass, so the ceiling it reads is the one that trial's rewards were priced
+    at -- `welfare.deliver` reads `bounds.value(ref)` per delivery.
+    """
+    seen: list = []
+    session.observe = lambda condition, values, result: seen.append(
+        (session.spec.bounds.value("reward_correct"), len(_changes_so_far(session)))
+    )
+    return seen
+
+
+def test_a_welfare_bounded_change_applies_at_the_next_boundary_like_any_other(
+    tmp_path,
+):
+    """PI, 2026-09-19: a welfare-bounded change defers exactly as an ordinary
+    parameter does -- validated when offered, applied atomically at the next trial
+    boundary.
+
+    It used to move the ceiling inside `Session.set`, as the command was drained,
+    so the trial that ran later in that *same* pass was already at the new volume
+    while every console displayed it as `staged`. An operator who had just lowered
+    a reward volume was told it had not taken effect yet. It had.
+    """
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    seen = _watch(session)
+    link.queue(SetParameter(name="reward_correct", value=0.30, by="jake"))
+
+    session.run()
+
+    assert seen[0][0] == 0.15, "trial 0 ran at the new volume; the change did not defer"
+    assert seen[1][0] == 0.30, "the change never landed"
+
+
+def test_a_bounded_changes_record_row_lands_in_the_pass_that_applies_it(tmp_path):
+    """The off-by-one in fluid attribution, which is the reason the decision was
+    made rather than a side effect of it.
+
+    `_apply_staged` wrote the `PARAM_CHANGED` strobe and the
+    `parameter_changes.jsonl` row one pass *after* `set` had already moved the
+    ceiling, so the first trial rewarded at the new volume ran before its own row
+    existed. Anyone reconciling commanded fluid against that file offline assigned
+    one trial's delivery to the wrong value. Applying and recording in the same
+    pass is what puts the row immediately before the first trial it describes.
+    """
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    seen = _watch(session)
+    link.queue(SetParameter(name="reward_correct", value=0.30, by="jake"))
+
+    session.run()
+
+    assert seen[0] == (0.15, 0), "a row was recorded for a change no trial had yet run"
+    assert seen[1] == (0.30, 1), "the row and the volume it describes are a pass apart"
+
+
+def test_a_pump_fault_publishes_a_final_frame_before_it_propagates(tmp_path):
+    """PI, 2026-09-19. `welfare.deliver` raises, `welfare.Rig` deliberately does not
+    swallow it, and it used to propagate past `run()`'s `finally` with no telemetry
+    at all -- so a console watching a rig break, unattended and cage-side, saw the
+    stream simply stop with no reason anywhere on screen.
+
+    One frame naming the fault is published at the loop boundary and the exception
+    then propagates exactly as before. **The refusal is the behaviour that
+    matters**: swallowing it would produce a session's worth of correct trials
+    nobody was paid for, which is what `welfare.Absent` exists to prevent arrived
+    at by a different route.
+    """
+
+    class Broken:
+        def deliver(self, ml: float) -> None:
+            raise RuntimeError("solenoid did not answer")
+
+    link = Simulated()
+    spec = _spec(tmp_path, trials=200)
+    session = Session(spec, card=Card(), pump=Broken(), link=link)
+    session.head_fixed(at=0.0)
+
+    with pytest.raises(RuntimeError, match="solenoid"):
+        session.run()
+
+    assert "solenoid" in link.published[-1].stopped_because, (
+        "the last frame a broken rig ever publishes does not name the fault"
+    )
+    assert "solenoid" in session.stopped_because
+
+
+def test_a_refused_welfare_bounded_set_reaches_the_session_record(tmp_path):
+    """PI, 2026-09-19. A refusal used to reach telemetry and nothing else, and
+    telemetry is lossy by design (S9a §9) -- so an attempt to set a dose above its
+    limit left no durable trace at all unless a console happened to be attached and
+    happened to still have the row. The durable record is what a welfare question
+    is answered from months later."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    link.queue(SetParameter(name="reward_correct", value=0.90, by="jake"))
+
+    session.run()
+
+    rows = [
+        json.loads(line)
+        for line in (session.directory / "refusals.jsonl").read_text().splitlines()
+    ]
+    assert len(rows) == 1
+    assert rows[0]["name"] == "reward_correct"
+    assert rows[0]["by"] == "jake"
+    assert rows[0]["asked"] == 0.90
+    assert "0.4" in rows[0]["why"], "the row does not say what the ceiling was"
+
+
+def test_an_ordinary_parameter_typo_stays_out_of_the_session_record(tmp_path):
+    """The other half, and the reason this is not simply "record every refusal". A
+    mistyped task-parameter name is a person's slip at a keyboard, not a welfare
+    event; writing every one of them into the session record would bury the
+    ceiling refusals that matter among the ones that do not. It is still on the
+    live feed every console sees."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    link.queue(SetParameter(name="not_a_parameter", value=1.0, by="jake"))
+
+    session.run()
+
+    assert not (session.directory / "refusals.jsonl").exists()
+    assert len(session.refusals) == 1, "and it is still on the console's feed"
+
+
+def test_the_sessions_own_refusal_list_is_capped_like_the_other_two(tmp_path):
+    """`ZmqLink.refused` and `Telemetry.refusals` are both bounded at
+    `REFUSAL_HISTORY` with the discards counted, because the party driving their
+    growth is an untrusted network peer rather than the operator. `Session.refusals`
+    is driven by exactly the same peer -- one entry per `SetParameter` it refuses,
+    as fast as it can send them -- and was the third list, unbounded. Two bounded
+    and one not is not a policy."""
+    link = Simulated()
+    spec = _spec(tmp_path)
+    spec.bounds = _bounds(max_trials=3)
+    session = _session(spec, link=link)
+    for n in range(REFUSAL_HISTORY + 10):
+        link.queue(SetParameter(name=f"not_a_parameter_{n}", value=1.0, by="jake"))
+
+    session.run()
+
+    assert len(session.refusals) == REFUSAL_HISTORY
+    assert session.refusals_dropped == 10
+    assert session.refusals[-1][0] == f"not_a_parameter_{REFUSAL_HISTORY + 9}", (
+        "the newest must survive the cap"
+    )
+    assert link.published[0].refusals_dropped == 10, (
+        "a capped list read as a quiet session, which is the silent drop the count "
+        "exists to prevent"
+    )

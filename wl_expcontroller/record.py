@@ -124,6 +124,36 @@ class SessionRecord:
                 + "\n"
             )
 
+    def refusal(self, name: str, asked: float, by: str, why: str) -> None:
+        """A welfare-bounded write the session refused, kept durably (PI,
+        2026-09-19).
+
+        **Because telemetry is lossy by design and this is not a telemetry-shaped
+        fact.** A refusal reached `link.Refused` and nothing else, so an attempt to
+        set a dose above its limit left no trace at all unless a console happened to
+        be attached at that moment and happened to still hold the row (S9a §9 caps
+        the feed at `link.REFUSAL_HISTORY`). "Somebody tried to give this animal
+        four times its volume" is exactly the kind of thing asked months later, and
+        it is answered from the record or not at all.
+
+        **Ceiling-bounded names only**, which `taskd.Session._command` decides. A
+        mistyped task-parameter name is a slip at a keyboard, not a welfare event,
+        and writing every one of those here would bury the rows that matter.
+
+        No `sequence`, unlike `parameter_change`: that number exists to join a
+        change to the `PARAM_CHANGE` escape on the recording clock, and a change
+        that did not happen strobes nothing. This row says an attempt was made and
+        was refused, not when on the recording it sat.
+        """
+        with (self.directory / "refusals.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {"name": name, "asked": asked, "by": by, "why": why},
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+
     def close(self) -> None:
         self._trials.close()
 

@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **438 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **447 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
@@ -83,7 +83,7 @@ carried is closed, verified 2026-09-06 by reading the runs.
 
 **`bounds.py` and `welfare.py` want human review before they merge** (CLAUDE.md, S8
 §7), and that review is what `p4b-session-management` is waiting on. They are the only
-two welfare-critical files and they are deliberately small — 191 and 311 lines, most of
+two welfare-critical files and they are deliberately small — 236 and 311 lines, most of
 it argument — so that this is a job someone can actually do. `git diff main..HEAD --
 wl_expcontroller/bounds.py wl_expcontroller/welfare.py` is the whole of it.
 
@@ -108,18 +108,23 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
 - **`already_today=None` still pays the animal** and makes `shortfall()` answer `None`.
   It is a refusal to *claim* the day went well, not a refusal to deliver.
 - **A pump fault is not absorbed.** A solenoid that will not answer is a broken rig.
+  Since 2026-09-19 `taskd`'s loop boundary publishes one telemetry frame naming the
+  fault before the exception propagates; it does not catch it.
 - **`chair_time` runs from head-fixation**, and a session refuses to start without it.
   That and `max_trials` are the two real ceilings.
 - **The numbers in `tasks/reference_bounds.py` are placeholders and its subject is
   `REFERENCE`.** No protocol figure exists in this repository for reward volume, daily
   fluid floor, restraint time or trial count — the PI has said to keep it that way
   until there are animals. A session refuses a bounded config belonging to another
-  subject, which is what stops that file quietly becoming a real one.
+  subject, which is what stops that file quietly becoming a real one. **One number in
+  it is no longer a placeholder-for-a-protocol-figure**: `reward_correct`'s maximum,
+  10 mL, is a runaway-fluid fault bound (PI, 2026-09-19) — it is not waiting on a
+  protocol, because no protocol states it. The value beside it still is.
 
 **This review gained a second, smaller item on 2026-09-19.** `p4d1-console-link` (built
 on top of this branch) gives `wlx console --set reward_correct=...` as the first
-*person-invocable* path that moves a reward limit — `Session.set` staging straight
-into `bounds.set` and its ceiling. `cli.py` and `link.py` do not become
+*person-invocable* path that moves a reward limit — `Session.set` validating against
+the ceiling and staging, with `_apply_staged` assigning at the next trial boundary. `cli.py` and `link.py` do not become
 welfare-critical by `architecture.md`'s definition — the limit is still enforced in
 `bounds.py` alone, and the welfare-critical surface stays exactly two files — but the
 *capability* is new and welfare-facing, and CLAUDE.md is explicit that anything
@@ -127,35 +132,41 @@ touching reward delivery amounts or limits is reviewed by a human lab member bef
 merge. It merges into the same lineage this section already asks a person to read, so
 it goes to the same reviewer rather than opening a second thread. `git diff
 p4b-session-management..p4d1-console-link -- wl_expcontroller/cli.py
-wl_expcontroller/link.py wl_expcontroller/taskd.py` is the whole of it (ruling R23,
-`.superpowers/sdd/2026-09-19-p4d1-console-link/progress.md`).
+wl_expcontroller/link.py wl_expcontroller/taskd.py` was the whole of it at the review
+(ruling R23, `.superpowers/sdd/2026-09-19-p4d1-console-link/progress.md`). **The PI's
+four decisions since then added `wl_expcontroller/bounds.py`,
+`wl_expcontroller/record.py` and `tasks/reference_bounds.py` to that diff** — `bounds.py`
+is one of the two welfare-critical files, so this is now a review of one of them and not
+only of the capability beside it. `welfare.py` did not change.
 
-**And that reviewer now has one question to answer, not only code to read** — found by
-the whole-branch review on 2026-09-19 and deliberately not decided by a session:
+**And that reviewer has four PI decisions to check, not only code to read** — taken on
+2026-09-19 after the whole-branch review, and implemented on this branch:
 
-> **When a console lowers or raises a reward volume, should it take effect on the trial
-> that is about to run, or on the one after?**
->
-> It currently takes effect **immediately**. `Session.set` calls `bounds.set`
-> synchronously as the command is drained, and `welfare.Rig.deliver` reads
-> `bounds.value(ref)` when it opens the valve, so the trial that runs later in that same
-> pass is already at the new volume — measured: a queued
-> `SetParameter(reward_correct, 0.30)` against a starting 0.15 has trial 0 commanding
-> 0.30 mL. An *ordinary* task parameter does the opposite and waits for the next pass.
->
-> The ceiling is enforced either way and nothing lands mid-trial, so no animal gets more
-> than its limit. What is wrong is the *record*: the `PARAM_CHANGED` strobe and the
-> `parameter_changes.jsonl` row are written on the next pass, so **for a welfare-bounded
-> name the record is off by one trial**, and anyone reconciling commanded fluid offline
-> will assign one trial's delivery to the wrong value.
->
-> Deferring means an operator who has just lowered a volume watches one more trial go
-> out at the old one. Keeping it means the record needs a second strobe point, or S9a
-> §8.1 becomes the contract and offline tooling has to know it. Both are expensive in
-> the way CLAUDE.md says to ask about rather than file — one edits the call path into a
-> welfare-critical module, the other changes the spec — so this is a question for the
-> PI, marked in the source at `taskd.Session.set` and in S9a §8.1. **Every document now
-> describes the behavior truthfully; only the decision is open.**
+> 1. **A welfare-bounded change now defers, like an ordinary parameter.** `Session.set`
+>    used to call `bounds.set` synchronously as the command was drained, so a new reward
+>    volume was live for the trial that ran later in that same pass while every console
+>    displayed it as `staged`, and its `PARAM_CHANGED` strobe and `parameter_changes.jsonl`
+>    row landed a pass later still — **fluid attribution off by one trial**. Validation and
+>    application are now separate calls in `bounds.py` (`validate`, then `set`);
+>    `Session.set` validates at offer time and stages, `_apply_staged` assigns. The cost
+>    the PI weighed: an operator who has just lowered a volume watches one more trial go
+>    out at the old one. S9a §8.1 has the full account.
+> 2. **A pump fault publishes a final frame before it propagates.** `welfare.Rig` still
+>    does not swallow it — that refusal is the behaviour that matters and `welfare.py` did
+>    not change — but the loop boundary now names the fault in `stopped_because` and
+>    publishes once, so a console watching a rig break cage-side sees a reason rather than
+>    silence.
+> 3. **A refused welfare-bounded set reaches the session record**, in `refusals.jsonl`.
+>    Telemetry is lossy by design, so a refusal that reached only telemetry left no durable
+>    trace of an attempt to set a dose above its limit. Ordinary parameter typos stay
+>    telemetry-only.
+> 4. **`reward_correct`'s maximum is 10 mL and is a runaway-fluid fault bound**, not a
+>    dose cap — see §5, where the ask that raised it is now answered.
+
+**`SCHEMA` is 3.** `Staged.bounded` stopped meaning "already live" and became "checked
+against a welfare ceiling": a field that still decodes and no longer means what it did, so
+a console built against schema 2 would render a lowered reward volume as already in
+effect.
 
 ---
 
@@ -301,7 +312,7 @@ Three things S9a §6–§10 depends on that nobody has built:
 | PI | **A photometer measurement of the panel** | every chromatic task (P19); `tasks/visual_search.py` is what waits |
 | PI | **A pump calibration: millilitres per second of open time** — protocol **V10**, `docs/validation.md` | real reward delivery (new 2026-09-06) |
 | PI | **The real bounded-config numbers** — reward volume per delivery, the daily fluid **floor**, chair time, trial cap. Asked 2026-09-06; answer was *keep the placeholder until there are animals* | every session that is not a simulation |
-| PI | **Is a runaway-fluid *fault* limit wanted?** Not a ration — a sanity bound catching a software fault delivering litres, reported as a fault. Nothing enforces one today, which is correct under the protocol and leaves a bug unbounded | welfare review; S8 open item 6 |
+| ~~PI~~ | ~~**Is a runaway-fluid *fault* limit wanted?**~~ **Answered 2026-09-19: yes.** `reward_correct`'s maximum is 10 mL — far above any dose, so refusing it catches software delivering litres rather than enforcing a ration. It is a **fault bound**, and `tasks/reference_bounds.py`, `bounds.Ceiling` and S8 open item 6 all say so at the entry. The *value* beside it stays a placeholder | ✔ (S8 open item 6) |
 | PI | IPD per animal; the tandem panel's two questions | optics, panel |
 
 ---

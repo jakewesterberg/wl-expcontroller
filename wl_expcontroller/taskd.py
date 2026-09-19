@@ -136,7 +136,12 @@ class Session:
     #: Console commands refused rather than applied: `(name, by, why)`. See
     #: `_command` -- a person mistyping a parameter name is not a fault of the rig,
     #: and the session records the refusal and runs on rather than ending over it.
+    #: **Capped at `link.REFUSAL_HISTORY`, newest kept**, for the same reason
+    #: `ZmqLink.refused` is: the peer driving its growth is not the operator.
     refusals: list = field(init=False, default_factory=list)
+    #: How many refusals fell off the far end of `refusals`. Rolled into
+    #: `link.Telemetry.refusals_dropped`, so a cap can never read as a quiet session.
+    refusals_dropped: int = field(init=False, default=0)
     blocks_run: list = field(init=False, default_factory=list)
     _elapsed: float = field(init=False, default=0.0, repr=False)
     _staged: list = field(init=False, default_factory=list, repr=False)
@@ -198,65 +203,41 @@ class Session:
     def set(self, name: str, value: float, by: str) -> None:
         """The one validated write path, whatever the origin (S8 §3.3).
 
-        **Validated now. Applied later if ordinary, immediately if
-        welfare-bounded** -- and the asymmetry is real, not an artifact of how this
-        is described. A value is refused at the moment it is offered, so the console
-        hears about it while a person is still looking.
+        **Validated now, applied at the next trial boundary -- every name alike**
+        (PI, 2026-09-19). A value is refused at the moment it is offered, so the
+        console hears about it while a person is still looking; nothing is assigned
+        here, so no trial is ever re-priced under way.
 
-        Two vocabularies, deliberately: a **welfare-bounded** name goes through
-        `bounds.set` and its ceiling, and an ordinary one through the task's own
-        `Param` declaration. Reward volume is in the first, which is why the console
-        can adjust it and cannot exceed it.
+        Two vocabularies, deliberately: a **welfare-bounded** name is checked by
+        `bounds.validate` against its ceiling, and an ordinary one against the task's
+        own `Param` declaration. Reward volume is in the first, which is why the
+        console can adjust it and cannot exceed it. Both then go on `_staged` and
+        both are applied by `_apply_staged()` at the top of the pass *after* the one
+        that drained them (S8 §3.2: a parameter that changed under a running trial
+        makes that trial's record a description of neither value).
+        `test_a_queued_commands_staged_value_is_visible_before_it_applies` and
+        `test_a_welfare_bounded_change_applies_at_the_next_boundary_like_any_other`
+        pin the two halves: trial 0 runs under the old value either way.
 
-        An **ordinary** name is written to `self.spec.values` by `_apply_staged()`,
-        at the top of the pass *after* the one that drained it (S8 §3.2: a parameter
-        that changed under a running trial makes that trial's record a description of
-        neither value). `test_taskd.py`'s
-        `test_a_queued_commands_staged_value_is_visible_before_it_applies` pins that:
-        trial 0 runs under the old value.
-
-        A **welfare-bounded** name is moved by `bounds.set` on the line below, in
-        this call, and nothing defers it. `welfare.Rig.deliver` reads
-        `bounds.value(ref)` at the moment it opens the valve, so the new volume is
-        live for the trial that runs *later in the same pass* -- `Session.run` drains
-        commands, publishes, and only then calls `run_trial`. Measured on this branch
-        with a six-trial session and one queued `SetParameter(reward_correct, 0.30)`:
-        trial 0 commanded 0.30 mL, not the 0.15 it started at. Nothing lands
-        mid-trial on either path, and the ceiling is enforced either way, so this is
-        not over-delivery.
-
-        **It is a reporting inconsistency, and two of the three reports disagree with
-        the third.** The entry this appends to `_staged` is published as
-        `link.Staged` at the boundary -- correct that a change happened, wrong that it
-        is still pending -- and `_apply_staged()` emits the `PARAM_CHANGED` strobe and
-        writes the `parameter_changes.jsonl` row on the *next* pass. So for a bounded
-        name **the record is off by one trial for fluid attribution**: in the run
-        measured above the row sits between trial 0 and trial 1, while trial 0 is the
-        first trial that was actually rewarded at the new volume. Anyone reconciling
-        commanded fluid against that file, offline, will assign one trial's delivery
-        to the wrong value.
-
-        **OPEN QUESTION FOR THE PI -- not decided here, deliberately.** Should a
-        welfare-bounded change apply immediately (as it does), or defer to the next
-        boundary the way an ordinary parameter does? The two answers are not
-        equivalent for an animal: deferring means an operator who has just lowered a
-        reward volume watches one more trial go out at the old one, and applying
-        immediately means the record cannot be aligned to the trial without knowing
-        this paragraph exists. Both fixes are expensive in the way CLAUDE.md says to
-        ask about rather than file: deferring means moving the `bounds.set` call into
-        `_apply_staged()`, which edits the path a welfare-critical module is called
-        from; keeping this and making the record honest means either a second strobe
-        point or a change to S9a §8's staged-changes contract. This docstring records
-        the behavior so it cannot be mistaken for the other one; the choice is Jake's.
+        **A welfare-bounded name used to be different, and that is what this fixed.**
+        `bounds.set` was called here, as the command was drained, so the new volume
+        was live for the trial that ran later in that same pass -- `run()` drains,
+        publishes, and only then calls `run_trial` -- while `link.Staged` reported it
+        `staged` and the `PARAM_CHANGED` strobe and `parameter_changes.jsonl` row
+        landed a pass later still. The ceiling held throughout, so it was never
+        over-delivery; it was **fluid attribution off by one trial**, and anyone
+        reconciling commanded fluid against that file offline assigned one trial's
+        delivery to the wrong value. Deferring costs an operator who has just lowered
+        a volume one more trial at the old one, which the PI weighed and chose.
+        `bounds.validate` carries the welfare-side account of the same change.
         """
         if name in self.spec.bounds.ceilings:
-            was = self.spec.bounds.value(name)
-            # Live from here on -- see this method's docstring. `welfare.Rig.deliver`
-            # reads `bounds.value(ref)` per delivery, so the trial that runs later in
-            # this same pass is already rewarded at `value`. The `_staged` entry below
-            # exists for the record and the console feed, not to hold the change back.
-            self.spec.bounds.set(name, value, by=by)
-            self._staged.append((name, was, value, by, True))
+            # Checked here, assigned by `_apply_staged()` -- `bounds.validate` moves
+            # nothing. An ordinary parameter's checks below are the same shape.
+            self.spec.bounds.validate(name, value)
+            self._staged.append(
+                (name, self.spec.bounds.value(name), value, by, True)
+            )
             return
 
         declared = self._params().get(name)
@@ -280,15 +261,16 @@ class Session:
 
     @property
     def staged(self) -> tuple:
-        """Every accepted change not yet *recorded*: `(name, was, now, by, bounded)`,
+        """Every accepted change not yet applied: `(name, was, now, by, bounded)`,
         the exact shape `link.Telemetry.of` reads to build its `Staged` rows.
 
-        **"Not yet applied" is true only of the rows where `bounded` is `False`.** A
-        bounded row's value was already moved on the ceiling by `set()` and is live
-        for the trial that runs later in this same pass; what is still pending for it
-        is the `PARAM_CHANGED` strobe and the `parameter_changes.jsonl` row that
-        `_apply_staged()` writes next pass. See `set()`'s docstring, including the
-        open question that asymmetry raises for the PI.
+        **"Not yet applied" is true of every row, bounded or not** (PI, 2026-09-19).
+        It was true of only the ordinary ones until then: a bounded row's value had
+        already been moved on the ceiling by `set()` and was live for the trial that
+        ran later in the same pass, while this property's name said otherwise on
+        every attached console. `bounded` now says which *vocabulary* the name
+        belongs to -- a welfare ceiling or the task's own `Param` -- and no longer
+        says anything about when it lands.
 
         The public face of `_staged`. `link.py` reaches `Session` only through its
         declared surface, never a private attribute -- this is what makes that true
@@ -302,6 +284,20 @@ class Session:
         **Refusals do not end the session.** A person mistyping a parameter name is
         not a fault of the rig, and ending a session with an animal in the chair over
         a typo is a worse outcome than ignoring it. The refusal is recorded.
+
+        **A refusal of a ceiling-bounded name also goes into the session record**
+        (PI, 2026-09-19). Everything else here is telemetry, and telemetry is lossy
+        by design (S9a §9) -- an attempt to set a dose above its limit left no
+        durable trace unless a console happened to be attached. An ordinary
+        parameter typo stays telemetry-only; `record.SessionRecord.refusal` carries
+        why the two are not treated alike.
+
+        **The list is capped, like the two beside it.** `ZmqLink.refused` and
+        `Telemetry.refusals` are both bounded at `link.REFUSAL_HISTORY` with the
+        discards counted, because the party driving their growth is an untrusted
+        network peer rather than the operator -- one entry per `SetParameter` it
+        sends, as fast as it can send them. This list is driven by exactly the same
+        peer and was the third one, unbounded.
         """
         if isinstance(command, _link.Stop):
             self.stopped_because = f"stopped by {command.by}"
@@ -309,7 +305,17 @@ class Session:
         try:
             self.set(command.name, command.value, by=command.by)
         except Exceeded as refused:
+            if command.name in self.spec.bounds.ceilings and self._record is not None:
+                self._record.refusal(
+                    name=command.name,
+                    asked=command.value,
+                    by=command.by,
+                    why=str(refused),
+                )
             self.refusals.append((command.name, command.by, str(refused)))
+            if len(self.refusals) > _link.REFUSAL_HISTORY:
+                self.refusals_dropped += len(self.refusals) - _link.REFUSAL_HISTORY
+                del self.refusals[: -_link.REFUSAL_HISTORY]
 
     def _params(self) -> dict[str, Param]:
         trial = self._trial if self._trial is not None else self._load()
@@ -323,17 +329,26 @@ class Session:
         and the other not, and that trial is a datum from an experiment nobody
         designed.
 
-        **A bounded row is recorded here, not applied here** -- note the `if not
-        bounded` guard below. `set()` already moved it on the ceiling, a pass ago, so
-        by the time this runs the trial that ran under the new value has already run.
-        The strobe and the record row this writes for it are therefore one trial late;
-        `set()`'s docstring states that consequence and puts the choice to the PI.
+        **A bounded row is applied here too, and that is the point** (PI,
+        2026-09-19). It used to be recorded here and applied a pass earlier, inside
+        `set()`, so the strobe and the `parameter_changes.jsonl` row for a reward
+        volume were written *after* the first trial rewarded at it. Applying and
+        recording in the same pass is what puts the row immediately before the first
+        trial it describes, which is what an offline reconciliation of commanded
+        fluid reads it as. The two branches below differ only in where the value
+        lives -- a welfare ceiling or the task's own values -- never in when.
+
+        **Bounded values go back through `bounds.set`, which re-validates.** The
+        ceiling check is cheap and belongs to `bounds`; asking it again at the moment
+        of assignment costs nothing and means no path reaches a ceiling without one.
         """
         if not self._staged:
             return
         for name, was, now, by, bounded in self._staged:
             self._sequence += 1
-            if not bounded:
+            if bounded:
+                self.spec.bounds.set(name, now, by=by)
+            else:
                 self.spec.values[name] = now
             if self._record is not None:
                 self._record.parameter_change(self._sequence, name, was, now, by)
@@ -507,6 +522,30 @@ class Session:
                 index += 1
             self.head_released(self.now())
             return tally.census()
+        except Exception as fault:
+            # **One frame naming the fault, then it propagates unchanged** (PI,
+            # 2026-09-19). `welfare.deliver` raises when the pump will not answer,
+            # `welfare.Rig` deliberately does not swallow it, and it used to come
+            # straight past the `finally` below with no telemetry at all -- so a
+            # console watching a rig break, unattended and cage-side, saw the
+            # stream simply stop. That is the failure S9's "written for a stranger"
+            # rule names: an ending nobody can interpret from what is on screen.
+            #
+            # **The refusal is the behaviour that matters and is not touched.**
+            # Swallowing a pump fault would produce a session's worth of correct
+            # trials nobody was paid for, which is what `welfare.Absent` exists to
+            # prevent arrived at by another route. This sets a reason, publishes,
+            # and re-raises the same exception.
+            #
+            # `publish()` is not guarded: if telemetry itself fails here that is a
+            # second fault, and Python chains the first onto it (`__context__`), so
+            # the session still aborts and neither is hidden. A `try` around it
+            # that did nothing would be the swallow this whole path refuses.
+            self.stopped_because = (
+                f"fault, session aborted: {type(fault).__name__}: {fault}"
+            )
+            publish()
+            raise
         finally:
             record.close()
             self._record = None

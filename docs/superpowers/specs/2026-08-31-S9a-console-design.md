@@ -266,39 +266,39 @@ Three things replace it:
 Last-write-wins within an ITI, both writes recorded with their actors, and the resolution
 shown.
 
-### 8.1 "Staged" means two different things, and the code has always known which
+**"Staged" means one thing: validated, and not yet applied** (PI, 2026-09-19). A change of
+either kind — an ordinary task parameter or a welfare-bounded value such as
+`reward_correct` — is refused or accepted at the moment it is offered, and applied at the
+next trial boundary by `taskd.Session._apply_staged`, with the `PARAM_CHANGED` strobe and
+the `parameter_changes.jsonl` row written in that same pass. The trial running when a
+change is staged uses the old value, whichever kind it is. §8.1 recorded the period when
+that was true of only one of the two kinds, and why it stopped being.
 
-Corrected 2026-09-19, against the code rather than against this paragraph's earlier
-wording — which said `Session.set` "stages and applies at the next trial boundary" of
-every change alike, and was true of only one of the two kinds.
+### 8.1 A welfare-bounded change used to apply immediately, and no longer does
 
-| | Ordinary task parameter | Welfare-bounded value (e.g. `reward_correct`) |
-|---|---|---|
-| When the value moves | Next pass, in `Session._apply_staged` | **Immediately**, in `Session.set`, as the command is drained |
-| The trial running in that pass | Uses the **old** value | Uses the **new** value |
-| `PARAM_CHANGED` strobe + `parameter_changes.jsonl` row | Next pass | Next pass |
-| Shown on the console as | `staged` — pending | `staged` — **already in effect** |
+**Decided 2026-09-19 (PI): a welfare-bounded change defers, like an ordinary parameter.**
+This section is kept because the reason is worth grepping, not because anything here is
+still live.
 
-`welfare.Rig.deliver` reads `bounds.value(ref)` at the moment it opens the valve, and
-`Session.set` has already moved that ceiling, so there is nothing left to defer. Measured
-on `p4d1-console-link` with a six-trial session and one queued
-`SetParameter(reward_correct, 0.30)` against a starting value of 0.15: trial 0 commanded
-0.30 mL, and the `parameter_changes.jsonl` row for it was written between trial 0 and
-trial 1.
+`Session.set` called `bounds.set` synchronously as the command was drained, and
+`welfare.Rig.deliver` reads `bounds.value(ref)` at the moment it opens the valve — so the
+trial that ran later in that same pass was already at the new volume, while `link.Staged`
+published it as `staged` and the `PARAM_CHANGED` strobe and `parameter_changes.jsonl` row
+landed a pass later still. Measured on `p4d1-console-link` with a six-trial session and one
+queued `SetParameter(reward_correct, 0.30)` against a starting 0.15: trial 0 commanded
+0.30 mL, and its record row was written between trial 0 and trial 1.
 
-**This is not over-delivery.** The ceiling (`Ceiling.maximum`) is enforced on the way in
-whichever path is taken, and nothing lands mid-trial on either. It is an *attribution*
-problem: **for a welfare-bounded name the record is off by one trial**, so anyone
-reconciling commanded fluid against `parameter_changes.jsonl` offline will assign one
-trial's delivery to the wrong value.
+The ceiling held on every path and nothing landed mid-trial, so this was never
+over-delivery. It was **fluid attribution off by one trial**: anyone reconciling commanded
+fluid against `parameter_changes.jsonl` offline assigned one trial's delivery to the wrong
+value.
 
-**Open for the PI, not settled here.** Should a welfare-bounded change apply immediately,
-as it does, or defer like an ordinary one? Deferring means an operator who has just
-lowered a reward volume watches one more trial go out at the old one; keeping this means
-the record needs a second strobe point, or this section becomes the contract and offline
-tooling has to know it. Either fix touches something that is expensive to get wrong — the
-call path into a welfare-critical module, or this spec — so it is a question rather than a
-table entry. It is marked in the source at `taskd.Session.set`, where the behavior lives.
+**What replaced it.** `bounds.Bounds.validate` now answers "would this be refused" without
+moving anything, `Session.set` validates at offer time and stages, and
+`Session._apply_staged` performs the assignment — so the value, the strobe and the record
+row all move in the same pass, immediately before the first trial they describe. The cost
+the PI weighed and accepted: an operator who has just lowered a reward volume watches one
+more trial go out at the old one.
 
 ---
 
@@ -331,8 +331,29 @@ following `shortfall()`'s refusal to claim a day went well.
 
 **Telemetry is lossy by design.** ZMQ PUB drops rather than blocks, because latest-wins
 telemetry must never stall a frame. The consequence, stated loudly: **the console is a
-view, never a source.** Schema-versioned with golden-file tests, which ADR-0003 already
-requires. Trial-rate telemetry on one topic; the replica's display-rate stream, if V11
+view, never a source.**
+
+**And a refusal of a welfare-bounded name therefore goes into the session record as well**
+(PI, 2026-09-19). A refusal used to reach `Refused` and nothing else, so an attempt to set
+a dose above its limit left no durable trace at all unless a console happened to be
+attached and happened to still hold the row — which this same section caps. "Somebody
+tried to give this animal four times its volume" is asked months later and is answered
+from the record or not at all, so `taskd.Session._command` writes a row into
+`refusals.jsonl` for any name carrying a `bounds.Ceiling`. An ordinary parameter typo
+stays telemetry-only: a slip at a keyboard is not a welfare event, and recording every one
+of them would bury the rows that are.
+
+**A pump fault publishes one frame before it propagates** (PI, 2026-09-19). `welfare.Rig`
+deliberately does not swallow a pump that will not answer, and that exception used to
+leave `taskd.Session.run` with no telemetry at all — a console watching a rig break,
+unattended and cage-side, saw the stream simply stop. The loop boundary now sets
+`stopped_because` to name the fault, publishes once, and re-raises unchanged. The refusal
+is the behaviour that matters; the frame only means a stranger can read what happened off
+the screen, which is this spec's own rule for an abort reason. Schema-versioned with golden-file tests, which ADR-0003 already
+requires. **`SCHEMA` is 3 as of 2026-09-19**: `Staged.bounded` stopped meaning "already
+live" and became "checked against a welfare ceiling", a field that still decodes and no
+longer means what it did — a console built against schema 2 would render a lowered reward
+volume as already in effect. Trial-rate telemetry on one topic; the replica's display-rate stream, if V11
 permits one, on a separate droppable topic.
 
 **A frame is bounded, and the one list that was not is the refusal feed.** Added
@@ -346,6 +367,13 @@ re-encoding the whole accumulation at every boundary. It is capped at
 `link.REFUSAL_HISTORY` (50), newest kept, with `refusals_dropped` carrying the count of
 what fell off so that a cap can never be read as a quiet session. `wlx console` prints
 that count above the rows.
+
+**`taskd.Session.refusals` is capped the same way** (2026-09-19). It is the third list fed
+by the same peer — one entry per `SetParameter` the session refuses, as fast as a peer can
+send them — and was left unbounded when the other two were capped. Two bounded lists
+beside one unbounded one is not a policy. Its discards join `ZmqLink.refused_dropped` in
+`Telemetry.refusals_dropped`, so the printed count is of everything missing rather than of
+one source's share.
 
 ---
 

@@ -88,7 +88,12 @@ it, with no clock, no hardware and no state outliving a question. **Fluid has a 
 ceiling** (PI, 2026-09-06): the daily figure is a minimum the animal must reach, supplemented
 by hand after the session, so a delivery is never refused on volume and `Floor` is a different
 type from `Ceiling` precisely so the two cannot be confused at a call site. Chair time and
-trial count are genuine ceilings and do end a session. `welfare.py` has all three: the day's running total, the
+trial count are genuine ceilings and do end a session. **Checking a value and moving it are
+two calls** — `Bounds.validate` then `Bounds.set` (PI, 2026-09-19) — because a change is
+refused when a console offers it and applied a trial boundary later; `set` goes through
+`validate`, so the ceiling rule has exactly one home. **A `Ceiling.maximum` is not always a
+protocol figure**: `reward_correct`'s is a runaway-fluid *fault* bound, the size of delivery
+that happens only when software is broken, while `chair_time`'s is a protocol number. `welfare.py` has all three: the day's running total, the
 restraint clock started by head-fixation, the pump, and `Rig`, which is what a task's
 `Reward` action actually reaches. **The whole route from a task's declaration to fluid is
 readable in `welfare.py` alone**, which is the property to preserve — "can anything deliver

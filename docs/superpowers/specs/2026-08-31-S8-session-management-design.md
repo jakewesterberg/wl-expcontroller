@@ -223,7 +223,7 @@ Everything else may change without a welfare review. These four may not.
 |---|---|---|
 | 1 | Arbitration rule between console and control-API writers (§3.3) | S9 |
 | 2 | Whether the sync box's delivered-line record is readable by us live, or only at session end | §5.1's "continuously" — **less urgent since 2026-09-06**: with a floor rather than a ceiling nothing in-session depends on it, and session-end is enough to compute a supplement |
-| 6 | **Is a runaway-fluid fault limit wanted?** Not a protocol ration — a sanity bound that catches a software fault delivering litres, reported as a fault rather than as a limit. `Bounds` has no such entry and nothing enforces one | welfare review |
+| 6 | ~~**Is a runaway-fluid fault limit wanted?**~~ **Answered 2026-09-19 (PI): yes, and it is `reward_correct`'s maximum.** Set to **10 mL** — far above any dose, so what it refuses is software delivering litres, not an animal earning a ration. `Ceiling` therefore no longer means "a protocol figure" at every entry; `bounds.Ceiling` and `tasks/reference_bounds.py` say which each one is at the entry itself. The *value* beside it stays a placeholder until there are animals | ✔ |
 | 3 | ~~Default re-queue policy~~ **Answered: fixation break re-queued at end of block, wrong choice not, overridable per block** | — |
 | 4 | ~~Session duration from first reward or first trial~~ **Answered: chair time, from head-fixation.** Remaining: whether a hardware head-fix signal is ever worth adding beside the console action | welfare review |
 | 5 | Who plans blocks when wl.works is unreachable | S3 §7's quarantine risk |

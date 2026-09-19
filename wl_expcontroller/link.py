@@ -50,7 +50,15 @@ from typing import Protocol
 #: started" and became "the most recent `REFUSAL_HISTORY`", and `refusals_dropped`
 #: was added to say how many are missing. That is a field changing meaning, which is
 #: exactly what this number exists for.
-SCHEMA = 2
+#:
+#: 3 (2026-09-19, PI): `Staged.bounded` stopped meaning "this value is already live"
+#: and became "this name is checked against a welfare ceiling rather than the task's
+#: `Param`". No field was added or removed, which is why this one matters: a console
+#: built against schema 2 renders a `bounded=True` row as ALREADY IN EFFECT, and
+#: would now tell an operator who has just *lowered* a reward volume that it has
+#: taken effect while one more trial is still to go out at the old one. A field that
+#: still decodes and no longer means what it did is the case this number exists for.
+SCHEMA = 3
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -82,28 +90,31 @@ REFUSAL_HISTORY = 50
 
 @dataclass(frozen=True, slots=True)
 class Staged:
-    """A parameter change that has been accepted and is not yet in the record.
+    """A parameter change that has been accepted and is not yet applied.
 
     **Published to every console, not only to whoever staged it** (S9a §8). With no
     write lock, the only thing between a queued change and an invisible parameter move
     at the next trial boundary is that everybody can see it queued.
 
-    **`bounded` is not a label on the row, it changes what the row means**, and this
-    docstring used to say "has not yet landed" of both:
+    **Every row is genuinely pending, whatever `bounded` says** (PI, 2026-09-19).
+    `Session._apply_staged` applies all of them at the top of the next pass, and the
+    trial running now still uses the old value -- a welfare ceiling and an ordinary
+    task parameter alike.
 
-    - `bounded=False` -- an ordinary task parameter. Accepted, **not yet applied**:
-      `Session._apply_staged` writes it to `spec.values` at the top of the next pass,
-      and the trial running now still uses the old value.
-    - `bounded=True` -- a welfare-bounded value such as `reward_correct`. **Already
-      applied.** `Session.set` moved it on the ceiling as the command was drained, and
-      `welfare.Rig.deliver` reads `bounds.value(ref)` per delivery, so the trial that
-      runs later in this same pass is already at the new volume. What is still pending
-      is only its `PARAM_CHANGED` strobe and its `parameter_changes.jsonl` row.
+    `bounded` says which **vocabulary** the name belongs to, and nothing about when
+    it lands:
 
-    A console **must not** render a `bounded=True` row as "pending" or offer to cancel
-    it; there is nothing left to cancel. `cli.render` spells the distinction out on
-    screen. The open question of whether the two should behave alike at all is the
-    PI's, and is recorded where the behavior lives -- `taskd.Session.set`.
+    - `bounded=False` -- an ordinary task parameter, checked against the task's own
+      `Param` declaration and written to `spec.values`.
+    - `bounded=True` -- a welfare-bounded value such as `reward_correct`, checked
+      against `bounds.Ceiling.maximum` and written onto the ceiling.
+
+    It briefly meant something else, and a console must not go back to it:
+    `Session.set` used to move a bounded value on the ceiling as the command was
+    drained, so a `bounded=True` row was already live while this class called it
+    staged. `cli.render` names the vocabulary on screen and says of both rows that
+    they apply at the next trial. The behaviour, and the attribution bug that ended
+    it, live at `taskd.Session.set` and `bounds.Bounds.validate`.
     """
 
     name: str
@@ -164,12 +175,13 @@ class Telemetry:
     hangs: int
     #: `{condition: scheduler.owed(condition)}` for every condition currently queued.
     owed: dict
-    #: Every change accepted but not yet in the record, from `session.staged` -- see
-    #: `Staged`, whose `bounded` flag says whether the value itself is still pending
-    #: (ordinary parameters) or already live (welfare-bounded ones).
+    #: Every change accepted but not yet applied, from `session.staged` -- see
+    #: `Staged`, whose `bounded` flag says which vocabulary the name belongs to, not
+    #: when it lands. Every row lands at the next trial boundary.
     staged: tuple
     #: The most recent `REFUSAL_HISTORY` refusals, oldest first, from
-    #: `session.refusals` and `session.link.refused` -- see `Refused`. Cumulative
+    #: `session.refusals` (itself capped) and `session.link.refused` -- see
+    #: `Refused`. Cumulative
     #: like `outcomes` rather than cleared each boundary, because a refusal is a
     #: resolved event and not a pending one, so there is no "applied" for it to
     #: disappear at -- but **capped**, because the peer that drives its growth is
@@ -217,10 +229,18 @@ class Telemetry:
             + tuple(link.refused)
         )
         kept = refusals[-REFUSAL_HISTORY:]
-        # Two sources of loss, and they do not overlap: entries `ZmqLink` already
-        # trimmed off its own list (never in `refusals` above) plus entries this
-        # slice drops here.
-        dropped = link.refused_dropped + len(refusals) - len(kept)
+        # Three sources of loss, and none of them overlap: entries `ZmqLink` already
+        # trimmed off its own list and entries `Session` already trimmed off its own
+        # (neither is in `refusals` above), plus entries this slice drops here.
+        # `session.refusals_dropped` joined the sum on 2026-09-19, when
+        # `Session.refusals` stopped being the one uncapped list of the three; read
+        # as a plain attribute for the reason `link.refused` is.
+        dropped = (
+            link.refused_dropped
+            + session.refusals_dropped
+            + len(refusals)
+            - len(kept)
+        )
         return cls(
             schema=SCHEMA,
             session_id=session.spec.session_id,

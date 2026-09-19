@@ -128,3 +128,49 @@ def test_delivered_below_commanded_is_a_fault_not_a_reconciliation():
     assert report.total == 100.0, "the larger figure is used, conservatively"
     assert report.fault is not None
     assert "less than commanded" in report.fault
+
+
+# --- validation separated from application (PI, 2026-09-19) ------------------
+
+
+def test_validating_a_value_refuses_exactly_what_set_refuses():
+    """A welfare-bounded change is now validated when it is offered and applied at
+    the next trial boundary (PI, 2026-09-19), so the two halves have to be
+    separable. `validate` answers "would this be refused" and refuses on the same
+    two grounds `set` does: past the ceiling, and a name that has no ceiling at
+    all."""
+    bounds = _bounds()
+
+    with pytest.raises(Exceeded, match="reward_correct"):
+        bounds.validate("reward_correct", 0.9)
+
+    with pytest.raises(Exceeded, match="no ceiling"):
+        bounds.validate("rewrd_correct", 0.2)
+
+
+def test_validating_a_value_does_not_move_it():
+    """The whole reason the split exists. A check that moved the value would make
+    the *offer* the change, which is the behaviour being removed -- a console's
+    `reward_correct` used to be live for the trial that ran later in the same pass,
+    while being displayed as `staged` and recorded a trial late."""
+    bounds = _bounds()
+
+    bounds.validate("reward_correct", 0.25)
+
+    assert bounds.value("reward_correct") == 0.15, "validating moved the value"
+
+
+def test_set_refuses_through_validate_so_the_rule_cannot_drift():
+    """Structural, and deliberately so. `set` and `validate` must not each carry
+    their own copy of the ceiling rule: a second copy is a second place for it to
+    drift, and the one that drifts silently is the one a console offers a value
+    against. Stubbing `validate` here proves `set` asks it rather than re-deriving
+    the answer."""
+    bounds = _bounds()
+    asked = []
+    bounds.validate = lambda name, value: asked.append((name, value))
+
+    bounds.set("reward_correct", 0.25, by="console")
+
+    assert asked == [("reward_correct", 0.25)], "set did not go through validate"
+    assert bounds.value("reward_correct") == 0.25

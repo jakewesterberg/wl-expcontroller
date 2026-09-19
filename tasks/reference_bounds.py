@@ -12,8 +12,10 @@ Two guards, so a copy of this file cannot quietly become a real one:
 - **The subject is `REFERENCE`.** A session refuses a bounded config whose subject is
   not its own, so running this against a real animal is impossible without editing
   the name -- and the name then appears on every trial row in the record.
-- **The numbers are deliberately implausible**, small enough that nobody would mistake
-  them for a protocol figure.
+- **The numbers are deliberately implausible**, each in whichever direction makes it
+  unmistakable. Most are far too small to be a protocol figure. `reward_correct`'s
+  *maximum* is the exception and runs the other way: 10 mL is far too large to be a
+  dose, because it is not one -- see the entry itself.
 
 **The daily fluid figure is a floor, not a ceiling** (PI, 2026-09-06): a minimum the
 animal must reach, topped up by hand after the session if the work did not earn it.
@@ -30,9 +32,14 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 BOUNDS = Bounds(
     subject="REFERENCE",
     ceilings={
-        # What one correct trial pays, and the most a console may ever set it to.
-        # A real ceiling: the magnitude of a single delivery is where a slip is a dose.
-        "reward_correct": Ceiling(value=0.05, maximum=0.20, unit="mL"),
+        # What one correct trial pays, and a **runaway-fluid fault bound** on it
+        # (PI, 2026-09-19). The maximum is not a ration and not a protocol dose:
+        # 10 mL in one delivery is the size of thing that happens only when software
+        # is broken -- a loop, a unit slip, a console sending litres -- so refusing
+        # it catches a fault rather than enforcing a limit on an animal. The value
+        # beside it is still an ordinary placeholder, and the daily figure below is
+        # still a floor; nothing here caps what an animal may earn.
+        "reward_correct": Ceiling(value=0.05, maximum=10.0, unit="mL"),
         # Restraint time, from head-fixation. Not from the first trial.
         "chair_time": Ceiling(value=3_600.0, maximum=3_600.0, unit="s"),
         # Optional in a way the two above are not.
