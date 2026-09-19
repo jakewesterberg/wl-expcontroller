@@ -116,6 +116,7 @@ def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
             "--root", str(tmp_path),
             "--session-id", "2027-01-14_01",
             "--subject", "REFERENCE",
+            "--out-of-cage-ago", "0",
             "--delivered-today", "0",
             "--trials", "20",
             "--set", "fix_timeout=4.0",
@@ -134,6 +135,35 @@ def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
     assert (tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl").exists()
 
 
+def test_wlx_run_refuses_a_session_that_does_not_say_how_long_the_animal_was_out(
+    tmp_path, capsys
+):
+    """**The under-count cannot be reached by omission.** `--out-of-cage-ago` has no
+    default, for the reason `--as WHO` has none: the session clock reads zero at the
+    start, so a mark defaulted to zero makes out-of-cage time equal chair time --
+    which is precisely what the out-of-cage clock replaced chair time to remove.
+    `cli.py` passed a literal `0.0` until a review caught it. A headless run says
+    `0` and means it; nothing arrives there by not typing.
+
+    Asserts on the message rather than on the exit code alone: argparse exits 2 for
+    every missing required option, so a bare `SystemExit` would pass with this flag
+    deleted."""
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--trials", "3",
+            ]
+        )
+
+    assert "--out-of-cage-ago" in capsys.readouterr().err
+
+
 def test_wlx_run_without_a_bounded_config_refuses(tmp_path, capsys):
     """A session with no ceilings is a session with no limits, and the CLI is where
     a person would most plausibly leave one off."""
@@ -145,6 +175,7 @@ def test_wlx_run_without_a_bounded_config_refuses(tmp_path, capsys):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
                 "--subject", "REFERENCE",
+                "--out-of-cage-ago", "0",
             ]
         )
 
@@ -167,6 +198,7 @@ def test_wlx_run_without_link_still_runs(tmp_path):
             "--root", str(tmp_path),
             "--session-id", "2027-01-14_03",
             "--subject", "REFERENCE",
+            "--out-of-cage-ago", "0",
             "--delivered-today", "0",
             "--trials", "5",
             *_TASK_SETS,
@@ -191,6 +223,7 @@ def test_wlx_run_refuses_a_malformed_link_value(tmp_path):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_05",
                 "--subject", "REFERENCE",
+                "--out-of-cage-ago", "0",
                 "--delivered-today", "0",
                 "--trials", "5",
                 *_TASK_SETS,
@@ -216,6 +249,7 @@ def test_wlx_run_refuses_a_link_bound_where_the_lab_network_can_reach_it(tmp_pat
         "--root", str(tmp_path),
         "--session-id", "2027-01-14_06",
         "--subject", "REFERENCE",
+        "--out-of-cage-ago", "0",
         "--delivered-today", "0",
         "--trials", "5",
         *_TASK_SETS,
@@ -307,6 +341,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_04",
                 "--subject", "REFERENCE",
+                "--out-of-cage-ago", "0",
                 "--delivered-today", "0",
                 "--trials", "5000",
                 *_TASK_SETS,
@@ -388,6 +423,7 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
             "--root", str(tmp_path),
             "--session-id", "2027-01-14_06",
             "--subject", "REFERENCE",
+            "--out-of-cage-ago", "0",
             "--delivered-today", "0",
             "--trials", "5",
             *_TASK_SETS,
@@ -867,6 +903,7 @@ def test_wlx_run_refuses_a_set_with_no_parameter_name(tmp_path):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_07",
                 "--subject", "REFERENCE",
+                "--out-of-cage-ago", "0",
                 "--delivered-today", "0",
                 "--trials", "5",
                 "--set", "=0.5",

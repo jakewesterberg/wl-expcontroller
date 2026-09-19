@@ -155,6 +155,17 @@ supplement afterwards — is then computed against a figure that describes half 
    a real subject's bounded config. `tasks/reference_bounds.py`'s `out_of_cage` value stays
    implausible until there are animals, per that file's own two guards.
 
+   **The mark is "how long ago", and the time base is checked.** The session clock is
+   frame-derived and reads zero when the session starts, so the animal leaving its cage sits
+   at a *negative* instant in that base — counting transport and chairing requires it. A
+   timestamp parameter invited a caller to pass zero, and `wlx run` did, which made
+   out-of-cage time identical to chair time: the under-count this clock exists to remove,
+   reintroduced by the interface. So `welfare.left_cage(seconds_ago, now)` takes the number an
+   operator actually holds, refuses a value in the future, and refuses one longer ago than the
+   ceiling — which is also what catches a wall-clock timestamp handed to a session-relative
+   parameter, and is the same refusal a session already past twelve hours gets.
+   `wlx run --out-of-cage-ago` is **required with no default**, for the reason `--as WHO` is.
+
    **The absence of a mark must never disable the limit.** A rig session nobody marked and a
    cage-side session with nothing to mark are indistinguishable to anything that answers zero,
    so a session **declares** which it is: `welfare.Deployment.OUT_OF_CAGE` carries the clock
@@ -162,6 +173,19 @@ supplement afterwards — is then computed against a figure that describes half 
    never left home and the deployment therefore has no duration bound (S13 §4). The
    declaration is required on `SessionSpec`, with no default, and a cage-side config that also
    states an `out_of_cage` ceiling is refused — the two must not disagree.
+
+   **And the *presence* of both marks must not disable it either.** The mirror case, found by
+   review: two marks in the wrong order are a session that reports itself fully marked and is
+   bounded by nothing. A return before the departure gave a **negative** duration, which is
+   under every ceiling there is; a return marked mid-session **froze** the clock, so
+   `must_stop` answered `None` for the rest of it; and the opening guard allowed a *re-arm*
+   after a return, so one `Welfare` could report a fresh clock for an animal out twenty-two
+   hours. The interval is therefore **opened once, closed once, and never runs backwards**: a
+   return is refused unless it closes an open interval, is refused while the animal is
+   recorded as head-fixed (it cannot be in the chair and in its cage at once, which is what
+   puts the whole trial loop inside the refusal), and is refused before the departure. A
+   closed interval refuses a `preflight` and **stops** a running session rather than freezing
+   its clock. One session is one time out of the cage; a second interval is a second session.
 
    **Chair time is still recorded and bounds nothing.** `HEAD_FIXED` / `HEAD_RELEASED`
    (4128/4129, allocated in S2) remain, and the reasoning below stands unchanged: restraint is

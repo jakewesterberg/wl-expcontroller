@@ -190,8 +190,17 @@ class Session:
 
     # --- out of cage, and restraint ---------------------------------------
 
-    def left_cage(self, at: float) -> None:
+    def left_cage(self, seconds_ago: float) -> None:
         """The console action that starts the clock bounding this session.
+
+        **`seconds_ago`, against `now()`, and this is the whole time-base
+        contract.** `now()` is frame-derived and reads zero when the session starts,
+        so the animal leaving its cage is at a negative instant in that base and a
+        timestamp parameter would invite a caller to pass zero -- which makes
+        out-of-cage time equal chair time and reintroduces the under-count the clock
+        exists to remove. `welfare.left_cage` refuses a future value and refuses one
+        longer ago than the ceiling, so a wall clock handed to this cannot be
+        mistaken for a duration.
 
         **Not event-coded yet**, and `welfare.py`'s docstring says what that is
         waiting for: two codes are S2's and `wl-preproc`'s to allocate (ADR-0007),
@@ -199,13 +208,16 @@ class Session:
         no hardware record, so a restart cannot reconstruct it -- the same gap S8
         §5.2 closed for chair time by coding `HEAD_FIXED`.
         """
-        self.welfare.left_cage(at)
+        self.welfare.left_cage(seconds_ago, now=self.now())
 
     def returned_to_cage(self, at: float) -> None:
-        """The animal is home. **Not called by `run()`**, because it is not true
-        when the loop ends: the session finishes, then the animal is released,
-        unchaired and walked back, and every one of those seconds is inside the
-        limit."""
+        """The animal is home. `at` is an instant on `now()`'s clock.
+
+        **Not called by `run()`**, because it is not true when the loop ends: the
+        session finishes, then the animal is released, unchaired and walked back,
+        and every one of those seconds is inside the limit. `welfare` refuses this
+        while the animal is still recorded as head-fixed, so it cannot be used to
+        freeze the clock mid-session -- release the head, or send a `Stop`."""
         self.welfare.returned_to_cage(at)
 
     def head_fixed(self, at: float) -> None:

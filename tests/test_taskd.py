@@ -4,11 +4,16 @@ Roadmap M1's gate: a complete task, headless, deterministic over 1,000 trials, w
 the full record on disk. Everything below runs against simulators, and the seam it
 runs against is the same one hardware will plug into (S6 §6).
 
-**P4b added the session around the trial loop**: blocks with criterion transitions, a
-restraint clock, ceilings that end a session, one validated path for live parameter
-writes, and the reward path that reaches `bounds` -- which for a week reached nothing
-at all. Several tests below exist to keep a session from being able to run without
-those, which is a different claim from their being present.
+**P4b added the session around the trial loop**: blocks with criterion transitions,
+the clocks, the one ceiling that ends a session, one validated path for live
+parameter writes, and the reward path that reaches `bounds` -- which for a week
+reached nothing at all. Several tests below exist to keep a session from being able
+to run without those, which is a different claim from their being present.
+
+**That ceiling is time out of the cage** (PI, 2026-09-19), and it is the only one.
+This said "a restraint clock, ceilings that end a session", which was two errors in
+one clause by the time it was read: chair time is recorded and bounds nothing, and
+there is no trial cap at all.
 """
 
 from __future__ import annotations
@@ -83,7 +88,7 @@ def _spec(tmp_path, seed: int = 1, trials: int = 50, **kwargs) -> SessionSpec:
     return spec
 
 
-def _session(spec, link=None) -> Session:
+def _session(spec, link=None, left_cage_ago: float = 0.0) -> Session:
     """A session wired to simulators, which is the only rig that exists.
 
     `link` defaults to `None`, i.e. omitted from the call -- `Session.link` then
@@ -94,10 +99,15 @@ def _session(spec, link=None) -> Session:
     out-of-cage one starts the clock that bounds the session and head-fixation is
     the restraint record. `test_a_session_refuses_to_run_before_the_animal_is_out_
     of_its_cage` is the fixture's own counter-example, built without this helper.
+
+    `left_cage_ago` defaults to zero, which is the truth for a simulated session --
+    nothing was transported and nothing was chaired. A test about the *interval*
+    passes a real number; see
+    `test_transport_and_chairing_count_toward_the_sessions_limit`.
     """
     kwargs = {"link": link} if link is not None else {}
     session = Session(spec, card=Card(), pump=Pump(), **kwargs)
-    session.left_cage(at=0.0)
+    session.left_cage(seconds_ago=left_cage_ago)
     session.head_fixed(at=0.0)
     return session
 
@@ -297,7 +307,7 @@ def test_a_session_refuses_to_run_before_the_animal_is_in_the_chair(tmp_path):
     a rig session with neither code in the stream has no record of restraint at
     all."""
     session = Session(_spec(tmp_path, trials=5), card=Card(), pump=Pump())
-    session.left_cage(at=0.0)
+    session.left_cage(seconds_ago=0.0)
 
     with pytest.raises(Exceeded, match="head-fixed"):
         session.run()
@@ -332,7 +342,12 @@ def test_putting_the_animal_back_in_its_cage_closes_the_sessions_clock(tmp_path)
 
     Found by a mutation sweep: `Session.returned_to_cage` was wired to `welfare` and
     called by nothing, which is `bounds.check_delivery`'s failure exactly -- a path that
-    reads as present because it exists."""
+    reads as present because it exists.
+
+    It works **after** `run()` and not during it: `run()` releases the head as its last
+    act, and `welfare.returned_to_cage` refuses while the animal is still recorded as
+    head-fixed, so the whole loop is inside that refusal (see
+    `test_the_console_cannot_freeze_the_clock_by_marking_the_animal_home_mid_session`)."""
     session = _session(_spec(tmp_path, trials=3))
     session.run()
     in_the_chair = session.welfare.out_of_cage_seconds(session.now())
@@ -343,6 +358,52 @@ def test_putting_the_animal_back_in_its_cage_closes_the_sessions_clock(tmp_path)
     assert session.welfare.out_of_cage_seconds(now=99_999.0) == pytest.approx(
         in_the_chair + 600.0
     ), "the clock did not close, so it would have run to the end of time"
+
+
+def test_the_console_cannot_freeze_the_clock_by_marking_the_animal_home_mid_session(
+    tmp_path,
+):
+    """**A session whose animal is recorded home is one whose limit cannot move.**
+
+    Reproduced before it was fixed: marking the return mid-session froze
+    `out_of_cage_seconds` at whatever it read, so `must_stop` answered `None` for the
+    rest of a session that reported itself fully marked -- the missing-mark failure
+    reached with both marks present. `run()` head-fixes before its first frame and
+    releases after its last, so every pass of the loop is inside the refusal below."""
+    session = _session(_spec(tmp_path, trials=3))
+
+    with pytest.raises(Exceeded, match="head-fixed"):
+        session.returned_to_cage(at=10.0)
+
+    census = session.run()
+    assert sum(census.outcomes.values()) == 3, "the refusal did not end the session"
+
+
+def test_transport_and_chairing_count_toward_the_sessions_limit(tmp_path):
+    """**The whole of Ruling 2, end to end through the session's own clock.**
+
+    `Session.now()` reads zero at the start, so a mark taken "0 seconds ago" makes
+    out-of-cage time identical to chair time -- which is exactly the under-count the
+    clock replaced chair time to remove, and which `wlx run` did until a review
+    caught it. Twenty minutes of transport and chairing here, and the limit counts
+    every one of them while the restraint record counts none.
+
+    The twelve-hour ceiling rather than `_bounds`' deliberately small backstop,
+    because twenty minutes of transport is past an 800-second one -- which is
+    `left_cage` refusing a session that starts outside its own limit, and is a
+    different test (`test_welfare.py`)."""
+    spec = _spec(tmp_path, trials=3)
+    spec.bounds = _bounds(out_of_cage=43_200.0)
+    session = _session(spec, left_cage_ago=1_200.0)
+
+    session.run()
+
+    out_of_cage = session.welfare.out_of_cage_seconds(session.now())
+    chair = session.welfare.chair_seconds(session.now())
+    assert out_of_cage == pytest.approx(chair + 1_200.0)
+    assert session.welfare.left_cage_at == pytest.approx(-1_200.0), (
+        "the mark must sit before session zero, or transport is free"
+    )
 
 
 def test_a_session_ends_on_its_block_quota_and_not_on_a_trial_ceiling(tmp_path):
@@ -861,7 +922,7 @@ def test_a_pump_fault_publishes_a_final_frame_before_it_propagates(tmp_path):
     link = Simulated()
     spec = _spec(tmp_path, trials=200)
     session = Session(spec, card=Card(), pump=Broken(), link=link)
-    session.left_cage(at=0.0)
+    session.left_cage(seconds_ago=0.0)
     session.head_fixed(at=0.0)
 
     with pytest.raises(RuntimeError, match="solenoid"):

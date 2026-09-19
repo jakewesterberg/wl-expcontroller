@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **467 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **481 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
@@ -116,6 +116,17 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   answering zero** on an unmarked one — forgetting a mark must not be what disables the
   limit. A cage-side session declares `Deployment.ANIMAL_AT_HOME` and has no duration
   bound; that declaration is required on `SessionSpec` with no default.
+- **The interval is opened once, closed once, and never runs backwards.** The rule above
+  is only half of it: two marks in the *wrong order* disable the limit while the session
+  reports itself fully marked. A return before the departure gave a negative duration
+  (under every ceiling), a return marked mid-session froze the clock, and a return
+  re-armed `left_cage`. All refused now — including a return while the animal is recorded
+  head-fixed, which is what puts the whole trial loop inside the refusal. **If you add a
+  mark, ask what its mis-ordering does**, not only what its absence does.
+- **`left_cage` takes `seconds_ago`, not a timestamp**, against the frame-derived session
+  clock that reads zero at the start. A timestamp invited `0.0`, which makes out-of-cage
+  time equal chair time — the under-count the clock exists to remove. `wlx
+  run --out-of-cage-ago` is required with no default for the same reason `--as WHO` is.
 - **`chair_time` and `max_trials` are gone as ceilings.** Chair time is still recorded
   (`head_fixed`/`head_released`, codes 4128/4129, still required by a rig preflight) and
   bounds nothing; there is no session-length maximum at all. If you find either name

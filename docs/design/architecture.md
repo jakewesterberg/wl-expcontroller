@@ -115,6 +115,13 @@ which S13 §4.0 carries. The field is required on `SessionSpec` with no default,
 session nobody marked and a kiosk session with nothing to mark are indistinguishable to
 anything that answers zero — and the absence of a mark must never be what disables a limit.
 
+**Nor may the presence of both.** The interval is opened once, closed once and never runs
+backwards: a return is refused unless it closes an open interval, refused while the animal is
+recorded head-fixed, and refused before the departure; a closed interval refuses a preflight
+and stops a running session rather than freezing its clock. And the opening mark is **how long
+ago**, against the session's frame-derived clock, so that counting transport and chairing does
+not depend on a caller knowing to pass a negative instant — S8 §5.2 item 4 has both accounts.
+
 Added 2026-09-06, because ceilings alone were not enough: `bounds.check_delivery` was called
 by nothing outside its own tests for a week, so a task could command reward, a session could
 run to completion, and no ceiling was ever asked. A bound nothing calls reads as present and

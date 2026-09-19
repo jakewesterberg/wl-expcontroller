@@ -4,6 +4,14 @@
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps
 > use checkbox (`- [ ]`) syntax for tracking.
 
+> **Amended 2026-09-19.** The illustrative test snippets below bounded a session with
+> `_session(max_trials=N)`. **There is no session-length maximum** (PI, 2026-09-19) and
+> `max_trials` no longer exists anywhere; they now read `_session(_spec(tmp_path,
+> trials=N))`, which bounds a session on its **block quota** — one of the two things a
+> real session ends on, the other being the `out_of_cage` ceiling. Amended rather than
+> annotated because this is a document a session *executes*: a plan that teaches a
+> removed concept gets it written back.
+
 **Goal:** A running session publishes live telemetry and accepts commands over a socket,
 so a second process can watch a session and change a parameter with its actor recorded.
 
@@ -398,7 +406,7 @@ bug that no test will notice.
 ```python
 def test_a_session_publishes_once_per_trial():
     link = Simulated()
-    session = _session(max_trials=5, link=link)
+    session = _session(_spec(tmp_path, trials=5), link=link)
 
     session.run()
 
@@ -410,7 +418,7 @@ def test_a_command_from_a_console_lands_at_the_next_boundary_with_its_actor():
     so a welfare-bounded name still meets its ceiling and an undeclared name is still
     refused."""
     link = Simulated()
-    session = _session(max_trials=3, link=link)
+    session = _session(_spec(tmp_path, trials=3), link=link)
     link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
 
     session.run()
@@ -422,7 +430,7 @@ def test_a_command_from_a_console_lands_at_the_next_boundary_with_its_actor():
 
 def test_a_stop_command_ends_the_session_at_a_boundary_not_mid_trial():
     link = Simulated()
-    session = _session(max_trials=100, link=link)
+    session = _session(_spec(tmp_path, trials=100), link=link)
     link.queue(Stop(by="jake"))
 
     census = session.run()
@@ -436,12 +444,12 @@ def test_a_refused_command_does_not_stop_the_session():
     person, not a fault of the rig. The session records the refusal and runs on --
     stopping would let a typo end a session with an animal in the chair."""
     link = Simulated()
-    session = _session(max_trials=3, link=link)
+    session = _session(_spec(tmp_path, trials=3), link=link)
     link.queue(SetParameter(name="not_a_parameter", value=1.0, by="jake"))
 
     census = session.run()
 
-    assert sum(census.outcomes.values()) == 3, "the session ran to its trial ceiling"
+    assert sum(census.outcomes.values()) == 3, "the session ran its block quota"
     assert len(session.refusals) == 1
     assert session.refusals[0][0] == "not_a_parameter"
     assert session.refusals[0][1] == "jake"

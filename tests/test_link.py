@@ -87,7 +87,7 @@ def _session_with(delivered_ml: float, already_today: float | None):
     # unmarked rig session refuses rather than answering zero (PI, 2026-09-19). A
     # stand-in that skipped it would make every telemetry test here a test of that
     # refusal instead.
-    welfare.left_cage(at=0.0)
+    welfare.left_cage(seconds_ago=0.0, now=0.0)
     return SimpleNamespace(
         spec=SimpleNamespace(session_id="2027-01-14_01", subject="A"),
         welfare=welfare,

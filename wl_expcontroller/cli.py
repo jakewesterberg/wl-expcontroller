@@ -273,6 +273,20 @@ def main(argv: list[str] | None = None) -> int:
         help="the subject's bounded config: a Python file defining BOUNDS",
     )
     runner.add_argument(
+        "--out-of-cage-ago",
+        type=float,
+        required=True,
+        metavar="SECONDS",
+        help="how long ago this subject came out of its home cage, in seconds. "
+        "**Required, with no default**, for the reason `--as WHO` is: the session's "
+        "one welfare limit runs out of cage to back in cage (S8 5.2), and a default "
+        "of zero would silently make it equal chair time -- the under-count that "
+        "limit replaced chair time to remove. A headless run says `0` and means it. "
+        "Refused if it is in the future or longer ago than the subject's out_of_cage "
+        "ceiling, which is also what catches a wall-clock timestamp handed to a "
+        "how-long-ago",
+    )
+    runner.add_argument(
         "--delivered-today",
         type=float,
         default=None,
@@ -449,11 +463,14 @@ def main(argv: list[str] | None = None) -> int:
                 pump=SimulatedPump(),
                 **session_kwargs,
             )
-            # Headless: nothing takes an animal out of a cage or puts one in a
-            # chair, so both marks land at the session's own zero. On a rig these
-            # are the console's actions, and the difference is the whole reason S8
-            # makes them explicit ones.
-            session.left_cage(at=0.0)
+            # On a rig both of these are the console's actions, and the difference
+            # is the whole reason S8 makes them explicit. Here the out-of-cage one
+            # comes from `--out-of-cage-ago`, which has no default: a headless run
+            # with no animal says `0` and means it, rather than arriving at zero by
+            # omission and quietly reporting chair time as time out of the cage.
+            # Head-fixation lands at the session's own zero, which is what a
+            # simulated session's restraint record is.
+            session.left_cage(seconds_ago=args.out_of_cage_ago)
             session.head_fixed(at=0.0)
             census = session.run()
             total = sum(census.outcomes.values()) or 1

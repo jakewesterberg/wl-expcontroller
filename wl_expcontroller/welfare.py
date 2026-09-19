@@ -301,18 +301,111 @@ class Welfare:
 
     # --- out of cage, and back in -----------------------------------------
 
-    def left_cage(self, at: float) -> None:
-        """Start the clock the session is bounded by (PI, 2026-09-19)."""
-        if self.left_cage_at is not None and self.returned_at is None:
+    def left_cage(self, seconds_ago: float, now: float) -> None:
+        """Start the clock the session is bounded by (PI, 2026-09-19).
+
+        **"How long ago", not "at what time", and the difference is the ruling.**
+        The session clock (`taskd.Session.now`) is derived from frames and reads
+        zero when the session object starts, so the animal leaving its cage -- which
+        happened before any of this software ran -- sits at a *negative* instant in
+        that base. A timestamp parameter invited a caller to pass zero, and `wlx
+        run` did: out-of-cage time then equalled chair time, which is precisely the
+        under-count this clock replaced chair time to remove. This shape cannot be
+        got wrong that way, and it is the number an operator actually holds -- the
+        animal came out of its cage twenty minutes ago.
+
+        Three refusals, and each is a value that cannot be in this base:
+
+        - **A cage-side session cannot leave a cage it never left.** The deployment
+          already said so, and the two must not disagree.
+        - **The future is refused.** Nothing left its cage after the software
+          started asking.
+        - **Longer ago than the ceiling is refused**, which is also what catches a
+          wall clock handed to a session-relative parameter: 1.79e9 seconds is
+          fifty-seven years, not a transport. The bound is the session's own limit
+          rather than a sanity constant, because a session already past twelve hours
+          before its first frame must not start -- one refusal serves both readings.
+        """
+        if self.deployment is Deployment.ANIMAL_AT_HOME:
+            raise Exceeded(
+                f"this session declares subject {self.bounds.subject!r} is at home, "
+                f"so it cannot also be recorded as leaving its cage; the declaration "
+                f"and the mark disagree and neither is safe to prefer"
+            )
+        if self.left_cage_at is not None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is already recorded as out of its "
-                f"cage at {self.left_cage_at}; a second start would run two clocks "
-                f"and the shorter one would silently win"
+                f"cage at {self.left_cage_at}; a second mark would run two clocks and "
+                f"the shorter one would silently win. A closed interval is not "
+                f"re-armed either: one session is one time out of the cage, and an "
+                f"animal that has gone home has finished this one"
             )
-        self.left_cage_at = at
-        self.returned_at = None
+        if seconds_ago < 0.0:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} cannot have left its cage "
+                f"{-seconds_ago} seconds in the future; this is how long ago the "
+                f"animal came out, on the session's own clock"
+            )
+        ceiling = self.bounds.ceilings[OUT_OF_CAGE]
+        if seconds_ago > ceiling.value:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is recorded as out of its cage "
+                f"{seconds_ago} {ceiling.unit} ago, which is already past the "
+                f"ceiling of {ceiling.value:.0f}; a session cannot start outside the "
+                f"limit it is bounded by. If this was a timestamp, it is in the "
+                f"wrong base -- this parameter is how long ago, in seconds"
+            )
+        self.left_cage_at = now - seconds_ago
 
     def returned_to_cage(self, at: float) -> None:
+        """Close the interval: the animal is home, and this session is over.
+
+        `at` is an instant on the session clock rather than a "how long ago",
+        because unlike the opening mark this one is at or after the present -- there
+        is a clock reading for it, and `taskd.Session.returned_to_cage` passes one.
+        **The session clock stops when the frames do**, so a return marked well
+        after the loop ended carries the loop's last reading unless the caller
+        supplies a later one; that is a limit of a frame-derived clock and is named
+        rather than papered over.
+
+        **This closes an open interval and does nothing else.** Two unguarded lines
+        stood here and every one of the refusals below was reachable: a return
+        before the animal left gave a *negative* duration that passed every ceiling
+        test, and a return marked mid-session froze the clock at the value it had --
+        `must_stop` answering `None` for the rest of a session that reported itself
+        fully marked. That is the same failure as a missing mark, reached with both
+        marks present, which is why it is refused here and not merely checked later.
+        """
+        if self.deployment is Deployment.ANIMAL_AT_HOME:
+            raise Exceeded(
+                f"this session declares subject {self.bounds.subject!r} is at home, "
+                f"so there is no interval for a return to close"
+            )
+        if self.left_cage_at is None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is not recorded as having left its "
+                f"cage, so a return closes nothing; a session marked only at the end "
+                f"has no interval at all"
+            )
+        if self.returned_at is not None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is already recorded as back in its "
+                f"cage at {self.returned_at}; a second return would move a closed "
+                f"interval, and the shorter one would silently win"
+            )
+        if self.fixed_at is not None and self.released_at is None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is recorded as head-fixed at "
+                f"{self.fixed_at} and not released, so it cannot also be in its cage; "
+                f"release the head first. A session is stopped with a stop, not by "
+                f"recording the animal somewhere it is not"
+            )
+        if at < self.left_cage_at:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} cannot be back in its cage at {at} "
+                f"having left it at {self.left_cage_at}; a negative duration is not a "
+                f"duration, and an interval that runs backwards bounds nothing"
+            )
         self.returned_at = at
 
     def out_of_cage_seconds(self, now: float) -> float | None:
@@ -339,7 +432,20 @@ class Welfare:
                 f"never left it. A missing mark is not an absent limit"
             )
         end = self.returned_at if self.returned_at is not None else now
-        return end - self.left_cage_at
+        seconds = end - self.left_cage_at
+        if seconds < 0.0:
+            # The marks are guarded, so the only way here is a `now` before the
+            # opening mark -- a `Session(clock=...)` that runs backwards, or one
+            # whose base is not the base the mark was taken in. **A negative
+            # duration is not a duration**, and it is under every ceiling there is,
+            # so answering it would be a limit switched off by arithmetic.
+            raise Exceeded(
+                f"the clock for subject {self.bounds.subject!r} reads {seconds:.0f} "
+                f"{self.bounds.ceilings[OUT_OF_CAGE].unit}: {end} is before the "
+                f"animal left its cage at {self.left_cage_at}. A duration that runs "
+                f"backwards is under every ceiling and bounds nothing"
+            )
+        return seconds
 
     def preflight(self) -> None:
         """What must be true before a session runs (S8 §5.2). Raises `Exceeded`.
@@ -354,8 +460,21 @@ class Welfare:
         restraint: it stopped being a ceiling on 2026-09-19 and did not stop being
         what the event codes carry, and a rig session with no `HEAD_FIXED` in the
         stream has no record of restraint at all.
+
+        **And the interval must still be open.** A session whose animal is already
+        recorded as home is one whose limit is a fixed number that no trial can
+        move -- fully marked, and bounding nothing. `returned_to_cage` refuses a
+        return while the animal is head-fixed, so the marks cannot be closed *during*
+        a run; this is the same hole reached before one starts.
         """
         self.out_of_cage_seconds(0.0)  # for the refusal; the number is not wanted
+        if self.returned_at is not None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is already recorded as back in its "
+                f"cage at {self.returned_at}, so this session's interval is closed "
+                f"and no trial can be inside it; a session cannot start with the "
+                f"animal at home"
+            )
         if self.deployment is Deployment.OUT_OF_CAGE and self.fixed_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is not recorded as head-fixed, so "
@@ -407,7 +526,24 @@ class Welfare:
         `None` from `out_of_cage_seconds` is a cage-side session, which the PI gave
         no time-based limit; a rig session with no mark raises there rather than
         reaching this line.
+
+        **A closed interval is a stop, not a frozen clock.** If the animal is
+        recorded as home, every further trial would be outside the interval this
+        session is bounded by, and the clock would sit at whatever it read when the
+        mark landed -- a limit that cannot be reached because it cannot move.
+        `returned_to_cage` refuses while the animal is head-fixed, so a rig loop
+        cannot reach this; it is here because a limit that can be switched off by a
+        sequence of legal calls is not a limit, and because this is the branch that
+        is right whatever future call order arrives. It is a **stop reason rather
+        than a refusal** for this method's own reason: a session that must end has
+        a record to close.
         """
+        if self.returned_at is not None:
+            return (
+                f"{OUT_OF_CAGE}: subject {self.bounds.subject!r} is recorded as back "
+                f"in its cage at {self.returned_at}, so no further trial can be "
+                f"inside the interval this session is bounded by"
+            )
         seconds = self.out_of_cage_seconds(now)
         if seconds is None:
             return None
