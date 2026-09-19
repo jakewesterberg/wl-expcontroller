@@ -46,11 +46,15 @@ last two things this gate reported were a skip dressed as a failure and a syntax
 dressed as coverage.
 
 The push this section used to ask for happened on 2026-09-13 and the run failed; the fix
-is in. `tools/mutate.py` changed again, so the next push escalates to a **full sweep
-(47–61 minutes)** by rule. It should now be faster than that figure — the target lists
-lost their duplicates (120 → 94 across eight modules) — and if a sweep comes back
-*much* faster than the modules it names, that is a reason to read the output rather than
-to celebrate.
+landed on 2026-09-19 and **the branch is green end to end** — run `35433303094`, read
+rather than trusted: 21 modules, 215 caught, 0 survivors, 0 skips, `383 passed` at every
+baseline.
+
+`tools/mutate.py` changing escalates to a **full sweep** by rule, and a full sweep now
+costs **about 1h40m** (1h46m on 2026-09-13, 1h39m on 2026-09-19, read off GitHub's own
+durations). The 47–61 minute figure from 2026-09-05 is stale. And if a sweep ever comes
+back *much* faster than the modules it names, that is a reason to read the output rather
+than to celebrate.
 
 CI itself is green and needs nothing from anyone — the `WL_PREPROC_TOKEN` ask this file
 carried is closed, verified 2026-09-06 by reading the runs.
