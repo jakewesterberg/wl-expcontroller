@@ -7,7 +7,8 @@ The branch exists rather than merging straight in because `bounds.py` and `welfa
 are welfare-critical and want a human before they merge (§1). No hardware exists.
 
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
-> is; this says what to do. There are 19 specs and 8 ADRs, and **you should read the
+> is; this says what to do. There are 19 specs and 8 ADRs (ADR-0008 is the newest and
+> settles the console), and **you should read the
 > four the checkpoint's "Read this much" names** — itself, `CLAUDE.md`,
 > `docs/M0-REVIEW.md` §3–§4, and the one S-spec your package names. Reading more is how
 > a session exhausts its context before producing anything, and that is the specific
@@ -176,6 +177,26 @@ them is not repaired: S1 §5.1's worked example builds its fixation point with
 Tasks here are model-authored, so the reference tasks *are* the examples a task author
 copies — if the shortcut is right, they should use it; if it is not, S1a §6 should lose
 it. One decision, in the task layer, deliberately not made by the session that found it.
+
+---
+
+## 3d. The next decision: what the kiosk's iPad actually is
+
+**Not made 2026-09-19, deliberately.** ADR-0008 settled the console; it did not settle
+whether the iPad runs the task or is a display and touch surface for a Linux host.
+
+The argument points hard at the thin client, and it is a welfare argument rather than an
+engineering preference. S13 §4: *"the welfare-critical module stays single, written once
+and reviewed once — the less-supervised deployment gets no weaker path of its own."* An
+iPad running the task means a second task engine and either an iOS twin of `bounds` and
+`welfare` or a route around them. S13 §3 already assumes a host besides: reward is
+`wl-juicer`, whose spec wires its dose input and witness line to the sync box, which the
+kiosk has not got, *"so the host has to drive the one and read the other."*
+
+The cost of the thin client, which should be accepted out loud rather than discovered:
+kiosk display timing is not frame-accurate, and touch latency gains a network hop. Touch
+already reaches the record only as event codes (S13 §3), so it is software-timed either
+way — but the added hop wants measuring before it is relied on.
 
 ---
 

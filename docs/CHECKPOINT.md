@@ -35,9 +35,11 @@ Nothing here has touched hardware.
 
 ## Read this much, and no more
 
-**19 specs, 8 ADRs and 13 other documents exist. Do not read them all.** Counted from
-disk on 2026-09-06; the previous two figures here and in `next-session.md` disagreed with
-each other and with the directory. In order:
+**19 specs, 8 ADRs and 14 other documents exist. Do not read them all.** Counted from
+disk on 2026-09-19 (`ls docs/superpowers/specs/*.md`, and `ADR-*.md` less the template);
+before that, three figures here and in `next-session.md` had disagreed with each other and
+with the directory. The ADR figure moved because ADR-0008 was accepted, and the "other"
+figure was one low. In order:
 
 1. **This file** — where things are.
 2. **`CLAUDE.md`** — the conventions. Sixteen, and the ones that cost the most to
@@ -274,6 +276,43 @@ each other and with the directory. In order:
 ---
 
 ## What moved on 2026-09-19
+
+### The console is a web application now, and `wl-works` lists the devices
+
+**ADR-0008, accepted by the PI 2026-09-19.** It supersedes S9a §1's PySide6 decision and
+S9 §8, and it came from the PI asking whether the experimenter interface could be reached
+through `wl-works`. Three findings decided it, each read from source rather than recalled:
+
+- **`wl-works` already specifies the directory.** Its Plan 10 design opens *"It is not a
+  dashboard. It is a control plane for lab machines, with a status board as its read
+  half"*, and specifies `/infrastructure`, a responder contract and health readings. The
+  tab does not need inventing.
+- **But `wl-works` must not hold the authority.** Plan 10 §4.1, deliberately the first
+  line of its protocol document: *"Publishing an action makes it available to every member
+  of the lab. There is no permission model on the app side."* §6.2 defends that with *"the
+  host is the real boundary anyway"*. On a preprocessing server the worst case is wasted
+  compute; on a rig it is fluid, or a session started on an animal nobody is standing next
+  to. So the box authenticates, the box holds the write lock, and `wl-works` carries a link
+  and readings — which is the exclusion `architecture.md` already recorded, now with the
+  reason attached to it.
+- **"A server on the rig" stopped distinguishing the options.** S9 §8 rejected a web UI
+  because it would put a server on the rig; `labhost` (P4c) and Plan 10's responder both
+  put one there by design. What survives is S9 §1 — the hot loop serves no requests —
+  which a console process beside `taskd` honours either way.
+
+**LAN-only** (PI: *"off-site is not necessary. at least now it isn't"*), so nothing
+bridges and a `wl-works` outage cannot cost an operator the console mid-session. Nothing
+forecloses off-site later: a box that owns its origin and its auth is unchanged by a route
+placed in front of it.
+
+**One thing is gated on a measurement, not on an opinion: protocol V11.** S9a §2's
+replica pane — the animal's screen with gaze and windows drawn on top, at display rate —
+is the one thing PyQtGraph was chosen for, and this ADR claims nothing about whether a
+browser carries it. V11 measures it over the LAN with no rig. If it fails, the fallback is
+a native path for that pane, not a second console.
+
+**The kiosk's iPad is the next decision** and is deliberately not made here — see
+`next-session.md` §3d.
 
 ### The branch was pushed, and the gate caught something real
 

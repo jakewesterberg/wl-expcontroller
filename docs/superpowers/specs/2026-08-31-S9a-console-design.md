@@ -8,10 +8,18 @@
 
 ## 1. Shape, settled
 
-**A desktop application: PySide6 with PyQtGraph** (PI, 2026-08-31). Qt because the live
+**Superseded 2026-09-19 by ADR-0008: a web application served by each control box.**
+Three things changed — the kiosk became real and an iPad cannot run Qt; `labhost` and
+`wl-works`' Plan 10 responder put an HTTP server on the box by design anyway, so "a
+server on the rig" no longer distinguishes the options; and `wl-works` already specifies
+the device directory. The replica pane (§2) is the one part not settled by that ADR: it
+is gated on **protocol V11**, a measurement, not on anyone's view of browsers.
+
+What this section said, kept because it is the argument the ADR had to answer:
+*"**A desktop application: PySide6 with PyQtGraph** (PI, 2026-08-31). Qt because the live
 plots need PyQtGraph and PyQtGraph is Qt; desktop because plots at trial rates are a
 stated requirement and a browser would put an HTTP server on a machine whose whole job
-is frame-accurate timing.
+is frame-accurate timing."*
 
 **`taskd` owns the session; consoles attach.** A session survives the console closing,
 crashing, or sitting on a laptop whose lid shuts over a working animal. Several consoles

@@ -67,7 +67,7 @@ are detected at the display surface.
 | Component | Runs on | Language | Job | Simulator |
 |---|---|---|---|---|
 | `taskd` | Task PC (Linux) | Python | Trial execution, display, gaze logic, DIO, session record | Full headless run against replayed/synthetic inputs |
-| `console` | Any machine | Python | Experimenter UI, live plots, parameter writes, preflight, test screens | Runs against a fake `taskd` |
+| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and holds the write lock** — `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008) | Runs against a fake `taskd` |
 | `neurofeatd` | Acquisition PC | C++ | SpikeGLX `fetchLatest` on the filtered AP stream -> MUA features -> ZMQ PUB | Synthetic feature publisher |
 | `rhxfeatd` | Intan host | C++/Rust | RHX Spike Output socket -> features -> ZMQ PUB; bounded reader | Synthetic spike-raster publisher |
 | `labhost` | Task PC | Python | The pull-only endpoint wl-works polls | Contract tests |

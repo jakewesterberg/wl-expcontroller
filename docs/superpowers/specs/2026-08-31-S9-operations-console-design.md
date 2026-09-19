@@ -140,10 +140,18 @@ A physical start button through the sync box's GPIO is feasible later if wanted.
 
 ## 8. Toolkit
 
-**PyQtGraph** for the live plots — the boring, correct choice for rig-side scientific plotting at
-trial rates, and it stays local so the console never depends on a network or a browser. Matplotlib
-is too slow for live use; a web UI would put a server on the rig for no gain, since wl.works
-already covers anything a browser should show.
+**Superseded 2026-09-19 by ADR-0008.** The console is a web application served by each
+control box, because an iPad cannot run Qt and two operator surfaces is two sets of bugs for
+the stranger this document is written for. The "no gain" clause below did not survive contact
+with two later decisions: `labhost` (P4c) and `wl-works`' Plan 10 responder contract both put
+an HTTP server on every lab machine regardless, so the server was never the distinguishing
+cost. What survives is §1's rule — the hot loop serves no requests — which a console process
+beside `taskd` honours either way.
+
+What this section said: *"**PyQtGraph** for the live plots — the boring, correct choice for
+rig-side scientific plotting at trial rates, and it stays local so the console never depends on
+a network or a browser. Matplotlib is too slow for live use; a web UI would put a server on the
+rig for no gain, since wl.works already covers anything a browser should show."*
 
 ---
 

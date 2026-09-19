@@ -81,7 +81,15 @@ Both mechanisms (PI, 2026-08-31): the kiosk's state is visible as readings, **an
 an active alert that reaches a person.
 
 **But the kiosk cannot notify anyone.** It is a lab host, and lab hosts cannot initiate
-connections to wl.works (S3 §1). So the alert cannot originate where the fault is.
+connections to wl.works. So the alert cannot originate where the fault is.
+
+> **Citation corrected 2026-09-19.** This said "(S3 §1)", which is about what `wl-sync`
+> owns and does not say it. The claim lives in the controller architecture design §1.1 —
+> *"wl-works binds only to WireGuard; lab machines have no route in, and `wl-preproc`
+> enforces 'never initiates a connection' with an AST guardrail"* — sourcing
+> `wl-preproc`'s `pending-wl-works-amendments.md` §11.2, and is repeated in
+> `docs/design/architecture.md`. The claim was right and the pointer was not, which is
+> the kind of error that survives because the sentence reads as though it was checked.
 
 **wl.works polls and wl.works alerts.** The kiosk publishes `state` as a reading like any other;
 wl.works, which *can* reach outward, raises the notification when it polls a fault, a fluid

@@ -118,3 +118,31 @@ the pump, the tubing, the spout or the reservoir geometry.
 **Welfare-relevant, so the number is a committed artifact and not a note.** Every reward
 volume in a bounded config is expressed in millilitres, and this measurement is the only
 thing that makes those numbers mean anything at the animal's mouth.
+
+## V11 — Replica pane over the LAN, in a browser (console)
+New (2026-09-19). **ADR-0008 makes no claim that a browser can carry S9a §2's experimenter
+replica**, and this is the measurement that decides it. Trial-rate plots are not in
+question; the replica is, because it redraws the animal's screen with gaze, windows and
+disparity on top at display rate, and PyQtGraph was chosen for exactly that.
+
+**Measurable now, with no rig.** Nothing here needs a panel, a card or a tracker: the point
+is the transport and the browser, not the stimulus.
+
+Procedure: publish synthetic gaze samples and stimulus state from a host on the lab network
+at the display rates a rig will run (**120 Hz, and 60 Hz**), consume them in a browser on a
+second machine over the LAN, and render the S9a §4 replica pane. Run for **≥ 10 minutes**
+per rate, which is a block rather than a demo, and repeat on the hardware an operator will
+actually use — including the lowest-powered one, since "it was smooth on the dev laptop" is
+not a finding about the lab.
+
+Report: end-to-end latency from publish to paint (median and the upper tail, not the mean —
+a replica that is usually current and occasionally seconds stale is worse than one that is
+evenly late, because nobody can learn to trust it); dropped and coalesced samples; whether
+the browser keeps up while the same page draws the trial-rate plots beside it; and CPU on
+the control box, since that box is also running `taskd`.
+
+**What the answer decides.** If the replica holds, the console is one surface and the Qt
+stack is never added. If it does not, the fallback is a native path for *that pane only*,
+not a second whole console — and the kiosk is unaffected regardless, because it has one
+screen and no mirrors, so the animal's display is the thing itself rather than a replica
+of it.
