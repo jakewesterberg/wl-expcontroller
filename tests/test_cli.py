@@ -451,6 +451,52 @@ def test_console_labels_a_staged_welfare_ceiling_change_distinctly():
     assert "task parameter" not in rendered
 
 
+def test_console_says_which_staged_changes_are_live_and_which_are_pending():
+    """`staged` means two different things and the screen has to say which (S9a
+    §8.1). A welfare-bounded value was applied by `Session.set` as the command was
+    drained -- the trial running now is already at the new volume -- while an
+    ordinary task parameter is genuinely still queued. Both were labelled `staged`
+    with nothing to tell them apart, so an operator who had just *lowered* a reward
+    volume read the screen as saying it had not taken effect yet. It had."""
+    bounded = render(
+        _telemetry(
+            staged=(
+                Staged(name="reward_correct", was=0.15, now=0.3, by="jake", bounded=True),
+            )
+        )
+    )
+    ordinary = render(
+        _telemetry(
+            staged=(Staged(name="fix_hold", was=0.3, now=0.4, by="jake", bounded=False),)
+        )
+    )
+
+    assert "ALREADY IN EFFECT" in bounded
+    assert "applies at the next trial" not in bounded
+    assert "applies at the next trial" in ordinary
+    assert "ALREADY IN EFFECT" not in ordinary
+
+
+def test_console_prints_a_staged_volume_to_the_same_decimals_as_every_other_fluid():
+    """Final-review minor: the staged line printed raw `repr`, so a reward volume
+    read `0.15 -> 0.3` two lines under `fluid session: 1.25 mL` -- the same quantity,
+    the same screen, two conventions, and the one that looked like a typo was the
+    welfare-bounded one. `None` is `was` for a parameter with no prior value and
+    prints `unset`, not `0.00`, for the reason `fluid_today_ml` prints `UNKNOWN`."""
+    rendered = render(
+        _telemetry(
+            staged=(
+                Staged(name="reward_correct", was=0.15, now=0.3, by="jake", bounded=True),
+                Staged(name="fix_hold", was=None, now=0.4, by="jake", bounded=False),
+            )
+        )
+    )
+
+    assert "0.15 -> 0.30" in rendered, "a volume is still at raw repr"
+    assert "-> 0.3 " not in rendered, "the bare 0.3 repr is back"
+    assert "unset -> 0.40" in rendered, "an absent prior value must not read as a number"
+
+
 def test_console_does_not_compute_a_trial_total_that_excludes_hangs():
     """Fix round 1, IMPORTANT 2: `render`'s trials line used to open with
     `sum(frame.outcomes.values())` labelled "attempted" -- a computed total that

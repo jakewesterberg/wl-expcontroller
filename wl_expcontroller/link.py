@@ -49,11 +49,28 @@ SCHEMA = 1
 
 @dataclass(frozen=True, slots=True)
 class Staged:
-    """A parameter change that has been accepted and has not yet landed.
+    """A parameter change that has been accepted and is not yet in the record.
 
     **Published to every console, not only to whoever staged it** (S9a §8). With no
     write lock, the only thing between a queued change and an invisible parameter move
     at the next trial boundary is that everybody can see it queued.
+
+    **`bounded` is not a label on the row, it changes what the row means**, and this
+    docstring used to say "has not yet landed" of both:
+
+    - `bounded=False` -- an ordinary task parameter. Accepted, **not yet applied**:
+      `Session._apply_staged` writes it to `spec.values` at the top of the next pass,
+      and the trial running now still uses the old value.
+    - `bounded=True` -- a welfare-bounded value such as `reward_correct`. **Already
+      applied.** `Session.set` moved it on the ceiling as the command was drained, and
+      `welfare.Rig.deliver` reads `bounds.value(ref)` per delivery, so the trial that
+      runs later in this same pass is already at the new volume. What is still pending
+      is only its `PARAM_CHANGED` strobe and its `parameter_changes.jsonl` row.
+
+    A console **must not** render a `bounded=True` row as "pending" or offer to cancel
+    it; there is nothing left to cancel. `cli.render` spells the distinction out on
+    screen. The open question of whether the two should behave alike at all is the
+    PI's, and is recorded where the behavior lives -- `taskd.Session.set`.
     """
 
     name: str
@@ -114,8 +131,9 @@ class Telemetry:
     hangs: int
     #: `{condition: scheduler.owed(condition)}` for every condition currently queued.
     owed: dict
-    #: Every change accepted but not yet applied, from `session.staged` -- see
-    #: `Staged`.
+    #: Every change accepted but not yet in the record, from `session.staged` -- see
+    #: `Staged`, whose `bounded` flag says whether the value itself is still pending
+    #: (ordinary parameters) or already live (welfare-bounded ones).
     staged: tuple
     #: Every command refused since the session started, from `session.refusals` --
     #: see `Refused`. Cumulative like `outcomes`, not cleared each boundary: a

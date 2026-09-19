@@ -97,6 +97,22 @@ def _clock(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+def _value(value: float | None) -> str:
+    """A staged parameter value, to the same 2 decimal places every fluid figure on
+    this screen uses.
+
+    Formatting, not derivation -- see `_clock`, same reasoning. The staged line
+    printed raw `repr` until 2026-09-19, so a reward volume read `0.15 -> 0.3` two
+    lines under `fluid session: 1.25 mL`: the same quantity, the same screen, two
+    conventions, and the one that looked like a typo was the welfare-bounded one.
+
+    `None` is `Staged.was` for a parameter the session had no prior value for. It
+    prints `unset` rather than `0.00`, for the reason `fluid_today_ml` prints
+    `UNKNOWN`: a value nobody has is not a value of zero.
+    """
+    return "unset" if value is None else f"{value:.2f}"
+
+
 def render(frame: _link.Telemetry) -> str:
     """One screen's worth of a `Telemetry` frame -- S9a §4's panes this slice has
     data for: fluid, chair, trials by outcome, what is still owed, staged changes
@@ -117,10 +133,26 @@ def render(frame: _link.Telemetry) -> str:
 
     **Staged changes are shown with who staged them, and so are refusals.** S9a §8
     removed the write lock; staged visibility -- to every console, not only the one
-    that staged it -- is what replaces it, so a change already accepted but not
-    yet applied must be visible as queued. Refusals are the audit trail for a
-    write that did *not* happen: a person who mistyped a parameter name needs to
-    see that on screen, not only in a log nobody is watching.
+    that staged it -- is what replaces it, so a change already accepted must be
+    visible. Refusals are the audit trail for a write that did *not* happen: a
+    person who mistyped a parameter name needs to see that on screen, not only in a
+    log nobody is watching.
+
+    **A staged row says whether the value is pending or already live, because the
+    two are not the same thing.** An ordinary task parameter is applied at the
+    session's next pass and the running trial still uses the old value. A
+    welfare-bounded one -- reward volume -- was applied by `Session.set` the moment
+    it was drained, and the trial running now is already at the new figure; only its
+    strobe and its record row are still to come. An earlier version of this
+    docstring, and the screen it describes, called both "queued", which told an
+    operator who had just lowered a reward volume that it had not taken effect yet
+    when it had. The behavior itself, and the open question of whether the two
+    *should* differ, live in `taskd.Session.set`.
+
+    **A volume is printed to 2 decimal places, like every other fluid figure on this
+    screen.** `reward_correct` appears on the staged line, and printing it at raw
+    `repr` while the fluid lines above use `:.2f` puts `0.15 -> 0.3` and `0.30 mL` on
+    the same screen for the same quantity.
     """
     lines = [
         f"session {frame.session_id}  subject {frame.subject}  "
@@ -161,11 +193,19 @@ def render(frame: _link.Telemetry) -> str:
         for change in frame.staged:
             # Fix round 1, minor: a bare "(task)"/"(bounded)" tag names an
             # internal field, not what it means to whoever is reading the
-            # screen -- spelled out instead.
-            kind = "welfare-bounded ceiling" if change.bounded else "task parameter"
+            # screen -- spelled out instead. The clause after it says whether
+            # the value is live yet, which `Staged.bounded` also decides and
+            # which this line used to leave a reader to guess at; see this
+            # function's docstring and `taskd.Session.set`.
+            kind = (
+                "welfare-bounded ceiling, ALREADY IN EFFECT -- only its record "
+                "row is still to come"
+                if change.bounded
+                else "task parameter, applies at the next trial"
+            )
             lines.append(
-                f"  staged: {change.name} {change.was} -> {change.now} "
-                f"by {change.by} ({kind})"
+                f"  staged: {change.name} {_value(change.was)} -> "
+                f"{_value(change.now)} by {change.by} ({kind})"
             )
     else:
         lines.append("  staged: none")

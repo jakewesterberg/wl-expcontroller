@@ -198,19 +198,63 @@ class Session:
     def set(self, name: str, value: float, by: str) -> None:
         """The one validated write path, whatever the origin (S8 §3.3).
 
-        **Validated now, applied later.** A value is refused at the moment it is
-        offered, so the console hears about it while a person is still looking; it
-        takes effect at the next trial boundary, because a parameter that changed
-        under a running trial makes that trial's record a description of neither
-        value (S8 §3.2).
+        **Validated now. Applied later if ordinary, immediately if
+        welfare-bounded** -- and the asymmetry is real, not an artifact of how this
+        is described. A value is refused at the moment it is offered, so the console
+        hears about it while a person is still looking.
 
         Two vocabularies, deliberately: a **welfare-bounded** name goes through
         `bounds.set` and its ceiling, and an ordinary one through the task's own
         `Param` declaration. Reward volume is in the first, which is why the console
         can adjust it and cannot exceed it.
+
+        An **ordinary** name is written to `self.spec.values` by `_apply_staged()`,
+        at the top of the pass *after* the one that drained it (S8 §3.2: a parameter
+        that changed under a running trial makes that trial's record a description of
+        neither value). `test_taskd.py`'s
+        `test_a_queued_commands_staged_value_is_visible_before_it_applies` pins that:
+        trial 0 runs under the old value.
+
+        A **welfare-bounded** name is moved by `bounds.set` on the line below, in
+        this call, and nothing defers it. `welfare.Rig.deliver` reads
+        `bounds.value(ref)` at the moment it opens the valve, so the new volume is
+        live for the trial that runs *later in the same pass* -- `Session.run` drains
+        commands, publishes, and only then calls `run_trial`. Measured on this branch
+        with a six-trial session and one queued `SetParameter(reward_correct, 0.30)`:
+        trial 0 commanded 0.30 mL, not the 0.15 it started at. Nothing lands
+        mid-trial on either path, and the ceiling is enforced either way, so this is
+        not over-delivery.
+
+        **It is a reporting inconsistency, and two of the three reports disagree with
+        the third.** The entry this appends to `_staged` is published as
+        `link.Staged` at the boundary -- correct that a change happened, wrong that it
+        is still pending -- and `_apply_staged()` emits the `PARAM_CHANGED` strobe and
+        writes the `parameter_changes.jsonl` row on the *next* pass. So for a bounded
+        name **the record is off by one trial for fluid attribution**: in the run
+        measured above the row sits between trial 0 and trial 1, while trial 0 is the
+        first trial that was actually rewarded at the new volume. Anyone reconciling
+        commanded fluid against that file, offline, will assign one trial's delivery
+        to the wrong value.
+
+        **OPEN QUESTION FOR THE PI -- not decided here, deliberately.** Should a
+        welfare-bounded change apply immediately (as it does), or defer to the next
+        boundary the way an ordinary parameter does? The two answers are not
+        equivalent for an animal: deferring means an operator who has just lowered a
+        reward volume watches one more trial go out at the old one, and applying
+        immediately means the record cannot be aligned to the trial without knowing
+        this paragraph exists. Both fixes are expensive in the way CLAUDE.md says to
+        ask about rather than file: deferring means moving the `bounds.set` call into
+        `_apply_staged()`, which edits the path a welfare-critical module is called
+        from; keeping this and making the record honest means either a second strobe
+        point or a change to S9a §8's staged-changes contract. This docstring records
+        the behavior so it cannot be mistaken for the other one; the choice is Jake's.
         """
         if name in self.spec.bounds.ceilings:
             was = self.spec.bounds.value(name)
+            # Live from here on -- see this method's docstring. `welfare.Rig.deliver`
+            # reads `bounds.value(ref)` per delivery, so the trial that runs later in
+            # this same pass is already rewarded at `value`. The `_staged` entry below
+            # exists for the record and the console feed, not to hold the change back.
             self.spec.bounds.set(name, value, by=by)
             self._staged.append((name, was, value, by, True))
             return
@@ -236,8 +280,15 @@ class Session:
 
     @property
     def staged(self) -> tuple:
-        """Every accepted change not yet applied: `(name, was, now, by, bounded)`,
+        """Every accepted change not yet *recorded*: `(name, was, now, by, bounded)`,
         the exact shape `link.Telemetry.of` reads to build its `Staged` rows.
+
+        **"Not yet applied" is true only of the rows where `bounded` is `False`.** A
+        bounded row's value was already moved on the ceiling by `set()` and is live
+        for the trial that runs later in this same pass; what is still pending for it
+        is the `PARAM_CHANGED` strobe and the `parameter_changes.jsonl` row that
+        `_apply_staged()` writes next pass. See `set()`'s docstring, including the
+        open question that asymmetry raises for the PI.
 
         The public face of `_staged`. `link.py` reaches `Session` only through its
         declared surface, never a private attribute -- this is what makes that true
@@ -271,6 +322,12 @@ class Session:
         the window that scores it -- would otherwise run one trial with one changed
         and the other not, and that trial is a datum from an experiment nobody
         designed.
+
+        **A bounded row is recorded here, not applied here** -- note the `if not
+        bounded` guard below. `set()` already moved it on the ceiling, a pass ago, so
+        by the time this runs the trial that ran under the new value has already run.
+        The strobe and the record row this writes for it are therefore one trial late;
+        `set()`'s docstring states that consequence and puts the choice to the PI.
         """
         if not self._staged:
             return

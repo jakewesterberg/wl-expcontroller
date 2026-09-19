@@ -250,13 +250,45 @@ Three things replace it:
 - **A live change feed.** Every parameter change, reward and state transition appears on
   every attached console with its actor.
 - **Staged changes are visible to everyone, not only to whoever staged them.** This is the
-  one that carries the weight. `Session.set` stages and applies at the next trial
-  boundary, so a pending change is an action that has happened but not yet landed. With no
-  lock, the only thing standing between that and an invisible parameter move is that
-  everybody can see it queued.
+  one that carries the weight. With no lock, the only thing standing between a change and
+  an invisible parameter move is that everybody can see it.
 
 Last-write-wins within an ITI, both writes recorded with their actors, and the resolution
 shown.
+
+### 8.1 "Staged" means two different things, and the code has always known which
+
+Corrected 2026-09-19, against the code rather than against this paragraph's earlier
+wording — which said `Session.set` "stages and applies at the next trial boundary" of
+every change alike, and was true of only one of the two kinds.
+
+| | Ordinary task parameter | Welfare-bounded value (e.g. `reward_correct`) |
+|---|---|---|
+| When the value moves | Next pass, in `Session._apply_staged` | **Immediately**, in `Session.set`, as the command is drained |
+| The trial running in that pass | Uses the **old** value | Uses the **new** value |
+| `PARAM_CHANGED` strobe + `parameter_changes.jsonl` row | Next pass | Next pass |
+| Shown on the console as | `staged` — pending | `staged` — **already in effect** |
+
+`welfare.Rig.deliver` reads `bounds.value(ref)` at the moment it opens the valve, and
+`Session.set` has already moved that ceiling, so there is nothing left to defer. Measured
+on `p4d1-console-link` with a six-trial session and one queued
+`SetParameter(reward_correct, 0.30)` against a starting value of 0.15: trial 0 commanded
+0.30 mL, and the `parameter_changes.jsonl` row for it was written between trial 0 and
+trial 1.
+
+**This is not over-delivery.** The ceiling (`Ceiling.maximum`) is enforced on the way in
+whichever path is taken, and nothing lands mid-trial on either. It is an *attribution*
+problem: **for a welfare-bounded name the record is off by one trial**, so anyone
+reconciling commanded fluid against `parameter_changes.jsonl` offline will assign one
+trial's delivery to the wrong value.
+
+**Open for the PI, not settled here.** Should a welfare-bounded change apply immediately,
+as it does, or defer like an ordinary one? Deferring means an operator who has just
+lowered a reward volume watches one more trial go out at the old one; keeping this means
+the record needs a second strobe point, or this section becomes the contract and offline
+tooling has to know it. Either fix touches something that is expensive to get wrong — the
+call path into a welfare-critical module, or this spec — so it is a question rather than a
+table entry. It is marked in the source at `taskd.Session.set`, where the behavior lives.
 
 ---
 
