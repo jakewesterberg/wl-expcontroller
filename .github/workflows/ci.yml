@@ -30,6 +30,17 @@ on:
 # wl-preproc's protocol and fit their model rather than our idea of either. They are
 # not allowed to skip, so `WLX_REQUIRE_PREPROC=1` turns a skip into a failure: a
 # contract test that is allowed to not run is not a contract test.
+#
+# Both jobs install `console` (pyzmq, msgpack) as well as `dev,contract`, on every
+# Python in the matrix. Added 2026-09-19 with the console link, and the reason is the
+# same one that makes the contract tests non-skippable: `tests/test_link.py` and the
+# two `wlx run --link` end-to-end tests in `tests/test_cli.py` fail outright without a
+# transport -- nine failures, measured locally with `zmq`/`msgpack` blocked -- so the
+# extra is not optional for a green suite. It is *not* installed to make the core
+# depend on it. The core's freedom from a transport is proved instead by
+# `tests/test_no_transport_leak.py`, which blocks both imports inside a **subprocess**
+# and imports `link`, `taskd` and `cli` there; that proof is independent of what this
+# workflow installs, which is exactly why it is a test and not a CI leg.
 
 jobs:
   test:
@@ -53,7 +64,7 @@ jobs:
         with:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
-      - run: pip install -e ".[dev,contract]"
+      - run: pip install -e ".[dev,contract,console]"
       - run: pytest -q
         env:
           WLX_REQUIRE_PREPROC: "1"
@@ -87,7 +98,7 @@ jobs:
         with:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
-      - run: pip install -e ".[dev,contract]"
+      - run: pip install -e ".[dev,contract,console]"
       - name: Mutation gate
         # WLX_REQUIRE_PREPROC applies to every sweep now, not just the two that named
         # it: each sweep runs the whole suite as its baseline, and a baseline with the

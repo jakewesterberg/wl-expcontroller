@@ -30,8 +30,17 @@ contract = ["pyyaml>=6"]
 # What the CONSOLE needs: the link between `taskd` and a console process.
 # ADR-0003 chose ZeroMQ with msgpack for control/telemetry on 2026-08-31 and named
 # these two as its consequence. Deliberately an extra rather than a core dependency:
-# a rig running `wlx run` from a terminal needs neither, and the 3.13 CI leg must keep
-# importing the core with no transport installed.
+# a rig running `wlx run` from a terminal needs neither, and the core must keep
+# importing with no transport installed.
+#
+# **That property is proved by a test, not by a CI leg.** `tests/test_no_transport_leak.py`
+# blocks `zmq` and `msgpack` in a *subprocess* and imports `link`, `taskd` and `cli`
+# there, so it holds whatever the installing environment happens to have. An earlier
+# version of this comment claimed the 3.13 CI job proved it by installing only
+# `dev,contract` -- which stopped being true the moment CI had to install `console` to
+# run the console-link tests at all (`.github/workflows/ci.yml`, 2026-09-19). The
+# no-leak property did not change; only the thing that proves it did, and it is the
+# stronger of the two.
 console = ["pyzmq>=26", "msgpack>=1"]
 
 [tool.setuptools.packages.find]
