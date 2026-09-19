@@ -273,21 +273,48 @@ def main(argv: list[str] | None = None) -> int:
         "--link",
         default=None,
         metavar="PUB,REP",
-        help="open a console link, bound on these two endpoints (PUB for "
-        "telemetry, REP for commands), e.g. "
-        "tcp://127.0.0.1:5571,tcp://127.0.0.1:5572. Omitted, the session runs "
-        "with no console attached -- exactly as it did before this option "
-        "existed, and with no transport dependency acquired",
+        help="open a console link on two endpoints THIS SESSION binds: first the "
+        "PUB endpoint it publishes telemetry on, then the REP endpoint it "
+        "receives commands on, e.g. "
+        "tcp://127.0.0.1:5571,tcp://127.0.0.1:5572. A console attaches to the "
+        "same pair from the other side, passing the first to `wlx console "
+        "--sub` and the second to `--req`. Loopback only unless "
+        "--link-allow-remote is also given. Omitted, the session runs with no "
+        "console attached -- exactly as it did before this option existed, and "
+        "with no transport dependency acquired",
+    )
+    runner.add_argument(
+        "--link-allow-remote",
+        action="store_true",
+        help="permit --link to bind an endpoint other hosts can reach (0.0.0.0, a "
+        "LAN address, a wildcard). Refused by default: the console link has no "
+        "authentication yet, so `--as WHO` is whatever the sender typed, and any "
+        "host that can reach the REP port can move a reward volume or stop the "
+        "session under an invented name. S9a §6 designs the real thing and it is "
+        "P4d-3's; this flag does not make a remote bind safe, only deliberate",
     )
 
     console_parser = sub.add_parser(
         "console", help="attach to a running session's link and watch it"
     )
+    # `--link PUB,REP` names the SESSION's sockets and `--sub`/`--req` name this
+    # CONSOLE's, so the endpoints cross over: `--sub` takes the session's PUB and
+    # `--req` takes its REP. Both spellings are the right ones for the process being
+    # configured -- renaming either would make that process's own flag describe
+    # somebody else's socket -- so the help says the pairing outright instead.
     console_parser.add_argument(
-        "--sub", required=True, help="the session's PUB endpoint (telemetry)"
+        "--sub",
+        required=True,
+        metavar="SESSION_PUB",
+        help="where to SUBscribe for telemetry: the session's PUB endpoint, i.e. "
+        "the FIRST of the two given to `wlx run --link PUB,REP`",
     )
     console_parser.add_argument(
-        "--req", required=True, help="the session's REP endpoint (commands)"
+        "--req",
+        required=True,
+        metavar="SESSION_REP",
+        help="where to send commands: the session's REP endpoint, i.e. the SECOND "
+        "of the two given to `wlx run --link PUB,REP`",
     )
     console_parser.add_argument(
         "--as",
@@ -349,7 +376,17 @@ def main(argv: list[str] | None = None) -> int:
                     f"endpoints), got {args.link!r}"
                 )
             pub_endpoint, rep_endpoint = link_parts
-            link_cm = _link.ZmqLink(pub_endpoint, rep_endpoint)
+            # Refused rather than bound when an endpoint is reachable from another
+            # host, unless --link-allow-remote says otherwise -- see
+            # `ZmqLink.__init__`. Converted to `SystemExit` here so an operator gets
+            # the sentence and not a traceback; the message is the one the link
+            # wrote, which names what to pass instead.
+            try:
+                link_cm = _link.ZmqLink(
+                    pub_endpoint, rep_endpoint, allow_remote=args.link_allow_remote
+                )
+            except _link.RemoteBindRefused as refused:
+                raise SystemExit(str(refused)) from refused
         else:
             link_cm = nullcontext(None)
 

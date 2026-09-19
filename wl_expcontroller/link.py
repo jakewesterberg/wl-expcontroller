@@ -36,6 +36,7 @@ question nobody could actually answer.
 
 from __future__ import annotations
 
+import ipaddress
 import time
 import weakref
 from dataclasses import dataclass, field
@@ -465,6 +466,47 @@ class Simulated:
         return taken
 
 
+class RemoteBindRefused(Exception):
+    """A `ZmqLink` was asked to bind somewhere other hosts can reach, without being
+    told to. See `ZmqLink.__init__`'s `allow_remote`."""
+
+
+#: Transports that cannot leave this machine whatever follows them, so binding on one
+#: is never a remote bind. `inproc` is in-process; `ipc` is a Unix socket on the local
+#: filesystem.
+_LOCAL_TRANSPORTS = ("inproc://", "ipc://")
+
+
+def _binds_beyond_this_machine(endpoint: str) -> bool:
+    """Whether binding `endpoint` would accept connections from other hosts.
+
+    **Refuses by defaulting to `True` on anything it does not understand**, which is
+    the direction that fails loudly. A wildcard (`tcp://*:5571`), an interface name
+    (`tcp://eth0:5571`) and a transport not in `_LOCAL_TRANSPORTS` all come back
+    `True` rather than being parsed harder and guessed at: the cost of a wrong `True`
+    is an operator passing one more flag, and the cost of a wrong `False` is an open
+    port on the lab network that nobody chose.
+
+    `ipaddress` rather than a string prefix, so the whole of 127.0.0.0/8 and `::1`
+    count and `tcp://127.0.0.1.evil.example:5571` does not.
+    """
+    if endpoint.startswith(_LOCAL_TRANSPORTS):
+        return False
+    scheme, _, rest = endpoint.partition("://")
+    if scheme != "tcp":
+        return True
+    if rest.startswith("["):  # tcp://[::1]:5571
+        host, _, _ = rest[1:].partition("]")
+    else:
+        host, _, _ = rest.partition(":")
+    if host == "localhost":
+        return False
+    try:
+        return not ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return True
+
+
 class ZmqLink:
     """The `taskd` side of the console link, live on a real socket (S9a §7:
     `taskd ── ZMQ REQ/REP (commands) / ZMQ PUB (telemetry) ──> console`, ADR-0003's
@@ -482,32 +524,95 @@ class ZmqLink:
     `encode`'s docstring for why this file cannot afford an unconditional
     `import zmq`.
 
-    Binds to `pub_endpoint`/`rep_endpoint` as given -- `tcp://127.0.0.1:0` asks the
-    OS for an ephemeral port -- and `self.pub_endpoint`/`self.rep_endpoint` read back
-    what ZeroMQ actually bound (`zmq.LAST_ENDPOINT`), which is what a `ZmqConsole`
-    needs in order to connect.
+    Binds to `pub_endpoint`/`rep_endpoint`, **loopback only unless told otherwise**
+    (see `__init__`) -- `tcp://127.0.0.1:0` asks the OS for an ephemeral port -- and
+    `self.pub_endpoint`/`self.rep_endpoint` read back what ZeroMQ actually bound
+    (`zmq.LAST_ENDPOINT`), which is what a `ZmqConsole` needs in order to connect.
     """
 
-    def __init__(self, pub_endpoint: str, rep_endpoint: str):
+    def __init__(
+        self, pub_endpoint: str, rep_endpoint: str, *, allow_remote: bool = False
+    ):
+        """Bind both sockets. **Loopback unless `allow_remote` says otherwise.**
+
+        S9a §7 states the assumption this link runs on, in as many words: `taskd`
+        trusts the actor named in a command *"because they are the same machine and
+        the console **is** the authenticator."* Nothing enforced it. These two lines
+        used to bind whatever string they were handed, so
+        `wlx run --link tcp://0.0.0.0:5571,...` was accepted in silence, and after it
+        any host on the lab network could move `reward_correct` or issue `Stop` under
+        any `--as` name it cared to invent. The spec's premise was a sentence in a
+        document and the code was a wildcard bind.
+
+        A non-loopback endpoint is therefore refused here rather than bound, and
+        `allow_remote=True` -- `wlx run --link-allow-remote` on the command line -- is
+        how somebody says they meant it. It does not make a remote bind safe; it makes
+        it deliberate, and it is the whole of what stands between this port and the
+        network until real authentication exists.
+
+        **That authentication is P4d-3's, and this is what it is waiting for**
+        (CLAUDE.md: a "not yet" must name what it is waiting for). S9a §6 designs it:
+        the box as an OAuth2 client of `wl-works`, `Actor` as `Verified(person,
+        issuer, token id)` or `Local(box credential)` rather than the bare `by: str`
+        this link carries today. Until that lands, `by` is whatever the sender typed,
+        and a loopback-only bind is the only thing making that acceptable. Grep
+        `P4d-3` when it does.
+
+        `ZmqConsole` is deliberately not restricted the same way: it *connects*, and
+        a console reaching a session on another host is a decision the console's own
+        operator makes about where to look, not a port this process opens.
+        """
         import zmq
+
+        if not allow_remote:
+            # Before the context, so a refusal leaves nothing to clean up.
+            for role, endpoint in (("PUB", pub_endpoint), ("REP", rep_endpoint)):
+                if _binds_beyond_this_machine(endpoint):
+                    raise RemoteBindRefused(
+                        f"refusing to bind the {role} endpoint on {endpoint!r}: it is "
+                        f"reachable from other hosts, and a console link has no "
+                        f"authentication yet -- `by` is whatever the sender typed, so "
+                        f"any host that can reach this port can move a reward volume "
+                        f"or stop the session under an invented name (S9a §6 designs "
+                        f"the real thing; it is P4d-3's). Bind on loopback "
+                        f"(tcp://127.0.0.1:PORT), or pass --link-allow-remote / "
+                        f"allow_remote=True to say you meant it."
+                    )
 
         self._ctx = zmq.Context()
         # A cleanup path that does not go through close() at all -- see close()'s
         # own docstring for why that matters and what it replaced.
         weakref.finalize(self, self._ctx.destroy, 0)
 
-        self._pub = self._ctx.socket(zmq.PUB)
-        # LINGER=0 from creation, not only passed at close time: whenever this
-        # socket is closed -- by close(), or by the finalizer above -- it cannot
-        # block flushing a queued message, regardless of which path closed it.
-        self._pub.setsockopt(zmq.LINGER, 0)
-        self._pub.bind(pub_endpoint)
-        self.pub_endpoint = self._pub.getsockopt_string(zmq.LAST_ENDPOINT)
+        # **Everything from here to the end of the binds is inside the `try`, and
+        # that is not tidiness.** `bind` fails for ordinary reasons -- a port already
+        # in use, an address this host has not configured -- and until this was here,
+        # such a failure raised out of the constructor *after* the context and the
+        # PUB socket existed and *before* any caller had a handle to close. The
+        # context was then abandoned mid-construction, which is exactly the state
+        # `close()`'s docstring says makes pytest's cyclic collector stop
+        # terminating. Found by doing it: `tcp://127.0.0.2:0` is inside the loopback
+        # block, so the `allow_remote` guard above lets it through, and a stock macOS
+        # loopback has no such address -- the suite hung past 600 s.
+        try:
+            self._pub = self._ctx.socket(zmq.PUB)
+            # LINGER=0 from creation, not only passed at close time: whenever this
+            # socket is closed -- by close(), or by the finalizer above -- it cannot
+            # block flushing a queued message, regardless of which path closed it.
+            self._pub.setsockopt(zmq.LINGER, 0)
+            self._pub.bind(pub_endpoint)
+            self.pub_endpoint = self._pub.getsockopt_string(zmq.LAST_ENDPOINT)
 
-        self._rep = self._ctx.socket(zmq.REP)
-        self._rep.setsockopt(zmq.LINGER, 0)
-        self._rep.bind(rep_endpoint)
-        self.rep_endpoint = self._rep.getsockopt_string(zmq.LAST_ENDPOINT)
+            self._rep = self._ctx.socket(zmq.REP)
+            self._rep.setsockopt(zmq.LINGER, 0)
+            self._rep.bind(rep_endpoint)
+            self.rep_endpoint = self._rep.getsockopt_string(zmq.LAST_ENDPOINT)
+        except BaseException:
+            # `destroy(linger=0)`, the same call `close()` makes and for the same
+            # reason -- it force-closes whichever sockets exist rather than needing
+            # to know which ones got that far.
+            self._ctx.destroy(linger=0)
+            raise
 
         #: Wire packets `drain()` could not turn into a `Command`, as `Refused`
         #: entries -- see `drain()`'s docstring (fix round 1, CRITICAL 2). The

@@ -18,6 +18,7 @@ from wl_expcontroller.link import (
     REFUSAL_HISTORY,
     Absent,
     Refused,
+    RemoteBindRefused,
     Simulated,
     SetParameter,
     Staged,
@@ -346,6 +347,132 @@ def test_an_undecodable_command_is_refused_not_raised(zmq_cleanup):
     console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
     commands = _drain_until(link)
     assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+
+
+def test_a_link_refuses_to_bind_where_other_hosts_can_reach_it():
+    """S9a §7 justifies `taskd` trusting a command's `by` field outright -- "because
+    they are the same machine and the console *is* the authenticator" -- and nothing
+    enforced the premise. `ZmqLink` bound whatever string it was handed, so
+    `--link tcp://0.0.0.0:5571,...` was accepted in silence and any host on the lab
+    network could then move `reward_correct` or issue `Stop` under any `--as` name it
+    invented.
+
+    Every form below is a bind other hosts can reach, and a refusal is cheap: the
+    operator passes one more flag. The reverse mistake is an open port nobody chose,
+    so anything this cannot parse is refused too rather than guessed at. No cleanup
+    fixture, because the refusal happens before a `Context` exists."""
+    for endpoint in (
+        "tcp://0.0.0.0:5571",
+        "tcp://192.168.1.50:5571",
+        "tcp://*:5571",
+        "tcp://eth0:5571",
+        "tcp://[::]:5571",
+        "udp://127.0.0.1:5571",
+    ):
+        try:
+            ZmqLink(pub_endpoint=endpoint, rep_endpoint="tcp://127.0.0.1:0")
+        except RemoteBindRefused as refused:
+            assert "P4d-3" in str(refused), "the refusal must name what is waited on"
+        else:
+            raise AssertionError(f"{endpoint} was bound without being asked for")
+
+    # The REP endpoint is checked too, not only the first argument -- REP is the one
+    # that carries commands, so a check that only covered PUB would miss the half
+    # that matters most.
+    try:
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://0.0.0.0:5571")
+    except RemoteBindRefused:
+        pass
+    else:
+        raise AssertionError("a remote REP endpoint was bound without being asked for")
+
+
+def test_which_endpoints_count_as_leaving_this_machine():
+    """The classification on its own, with no socket involved, because some of the
+    cases cannot be bound on every machine and binding is not what is being checked.
+
+    `127.0.0.2` is the reason this is a separate test: it is inside 127.0.0.0/8 and
+    must classify as local, and a prefix match on the literal `127.0.0.1` would have
+    called it remote. It is *also* not assignable on a stock macOS loopback -- trying
+    to bind it here raised out of `ZmqLink.__init__` and left an abandoned `Context`
+    for pytest's cyclic collector, which is the 300 s hang `ZmqLink.close()`'s
+    docstring is about. Checking the predicate keeps the case and loses the hang."""
+    from wl_expcontroller.link import _binds_beyond_this_machine as beyond
+
+    for local in (
+        "tcp://127.0.0.1:5571",
+        "tcp://127.0.0.2:5571",
+        "tcp://127.53.19.4:0",
+        "tcp://localhost:5571",
+        "tcp://[::1]:5571",
+        "inproc://console",
+        "ipc:///tmp/wlx-console",
+    ):
+        assert not beyond(local), f"{local} is local and was called remote"
+
+    for remote in (
+        "tcp://0.0.0.0:5571",
+        "tcp://192.168.1.50:5571",
+        "tcp://10.0.0.1:5571",
+        "tcp://*:5571",
+        "tcp://eth0:5571",
+        "tcp://[::]:5571",
+        "udp://127.0.0.1:5571",
+        "nonsense",
+    ):
+        assert beyond(remote), f"{remote} would be reachable and was called local"
+
+
+def test_a_loopback_link_binds_and_an_explicit_remote_one_is_allowed(zmq_cleanup):
+    """The other side of the refusal, on real sockets. Loopback still binds with
+    nothing extra passed -- a guard that also blocked the ordinary case would be
+    worse than the hole it closes -- and `allow_remote=True` is how somebody says a
+    non-loopback bind was meant. Port 0 throughout, so neither can collide with
+    anything already listening."""
+    for endpoint in ("tcp://127.0.0.1:0", "tcp://localhost:0"):
+        zmq_cleanup(ZmqLink(pub_endpoint=endpoint, rep_endpoint="tcp://127.0.0.1:0"))
+
+    # Bound on purpose, and it works: the flag is about deliberateness, not about
+    # disabling the transport.
+    remote = zmq_cleanup(
+        ZmqLink(
+            pub_endpoint="tcp://0.0.0.0:0",
+            rep_endpoint="tcp://0.0.0.0:0",
+            allow_remote=True,
+        )
+    )
+
+    assert remote.pub_endpoint.startswith("tcp://0.0.0.0:")
+
+
+def test_a_link_that_cannot_bind_does_not_abandon_its_context(zmq_cleanup):
+    """Found by triggering it: `tcp://127.0.0.2:0` is inside the loopback block, so
+    the guard above lets it through, and on a stock macOS loopback it is not an
+    assignable address. The `ZMQError` then raised out of `__init__` **after** the
+    `Context` and the PUB socket existed and **before** any caller had a handle to
+    register with `zmq_cleanup` -- so the context was abandoned mid-construction, and
+    the suite stopped terminating. That is the failure `ZmqLink.close()`'s docstring
+    describes at length; a constructor that can raise between creating a context and
+    returning it is one of the ways in.
+
+    An unbindable endpoint is an ordinary operator mistake -- a port already in use
+    is the common one -- and it must cost an error message, not a hung session."""
+    try:
+        ZmqLink(pub_endpoint="tcp://127.0.0.2:0", rep_endpoint="tcp://127.0.0.1:0")
+    except Exception:  # noqa: BLE001 -- whatever zmq raises for this address
+        pass
+    else:  # pragma: no cover -- this address does bind on some hosts
+        return
+
+    # If the context above had been abandoned rather than destroyed, this test would
+    # not be the thing that fails: the suite would stop terminating, later, in
+    # somebody else's collection. Proving the cleanup happened is therefore the
+    # assertion -- a link built and closed normally afterwards still works, which
+    # cannot be true of a process wedged in `ctx_t::terminate()`.
+    healthy = zmq_cleanup(
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    )
+    assert healthy.drain() == []
 
 
 def test_a_flood_of_undecodable_packets_cannot_grow_the_link_without_bound(zmq_cleanup):

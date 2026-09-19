@@ -199,6 +199,36 @@ def test_wlx_run_refuses_a_malformed_link_value(tmp_path):
         )
 
 
+def test_wlx_run_refuses_a_link_bound_where_the_lab_network_can_reach_it(tmp_path):
+    """S9a §7 lets `taskd` trust a command's actor outright "because they are the
+    same machine and the console *is* the authenticator", and nothing enforced the
+    premise: `--link tcp://0.0.0.0:5571,...` bound in silence, after which any host
+    on the lab network could move `reward_correct` or issue `Stop` under an invented
+    `--as`. Refused unless `--link-allow-remote` says it was meant.
+
+    Asserts on the message, not just the exit: an operator who gets this needs to
+    know what to pass instead and that the missing piece is authentication, not a
+    firewall. Raised before any socket is bound, so this needs no cleanup."""
+    argv = [
+        "run", GOOD,
+        "--allocation", ALLOCATION,
+        "--bounds", BOUNDS,
+        "--root", str(tmp_path),
+        "--session-id", "2027-01-14_06",
+        "--subject", "REFERENCE",
+        "--delivered-today", "0",
+        "--trials", "5",
+        *_TASK_SETS,
+        "--link", "tcp://0.0.0.0:5571,tcp://0.0.0.0:5572",
+    ]
+
+    with pytest.raises(SystemExit, match="--link-allow-remote") as refused:
+        main(argv)
+
+    assert "P4d-3" in str(refused.value), "the refusal must name what is waited on"
+    assert "reward volume" in str(refused.value), "it must say what is at stake"
+
+
 def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     """The wiring this task exists for (CLAUDE.md: "a safety component ships with
     its consumer, or its absence fails"). `test_link.py` already proves

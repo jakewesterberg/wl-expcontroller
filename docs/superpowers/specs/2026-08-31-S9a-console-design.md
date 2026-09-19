@@ -219,6 +219,16 @@ the box, signed. Inside the box the console asserts the actor to `taskd` over ZM
 authenticator. Command messages therefore carry an `actor`, and the audit is written by
 `taskd`, where the validated write path already lives.
 
+**"The same machine" is now enforced at the bind, not just asserted here.** Added
+2026-09-19. `ZmqLink` binds loopback only; a wildcard, a LAN address, or anything it
+cannot classify is refused, and `wlx run --link-allow-remote` (`allow_remote=True`) is how
+an operator says a reachable bind was meant. Until P4d-3 builds §6's `Actor`, a command's
+`by` is whatever the sender typed, so a reachable REP port means any host on the lab
+network can move a reward volume or stop a session under an invented name — the paragraph
+above is the *whole* of the authentication, and a bind that leaves the machine voids it.
+`ZmqConsole` is not restricted the same way: it connects, and where a console looks is its
+own operator's decision.
+
 **`labhost` stops being its own component.** P4c's pull-only `/health` endpoint becomes a
 surface of the console process rather than a second server on the box: same process,
 separate path, separate auth, since `wl-preproc`'s lab-host protocol carries its own
