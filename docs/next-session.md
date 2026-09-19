@@ -1,10 +1,14 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **383 tests passing**, working tree clean, **and the work is on
-`p4b-session-management`, not on `main`.** Six commits, pushed. `main` still points
-at `300d7d1`, so a check that looks only at `main` will report that nothing happened.
-The branch exists rather than merging straight in because `bounds.py` and `welfare.py`
-are welfare-critical and want a human before they merge (§1). No hardware exists.
+**State at handoff:** **421 tests passing**, working tree clean, **and the work has
+moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
+console link this file used to list as missing (§6, old text) now exists: 14 commits
+on top of `p4b-session-management`, pushed. `main` still points at `300d7d1` and knows
+about neither branch, so a check that looks only at `main` will report that nothing
+happened. Both branches exist rather than merging straight in because `bounds.py` and
+`welfare.py` are welfare-critical and want a human before they merge (§1) —
+`p4d1-console-link` adds a second, narrower ask to the same review rather than a new
+one (§1, bottom). No hardware exists.
 
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
 > is; this says what to do. There are 19 specs and 8 ADRs (ADR-0008 is the newest and
@@ -98,9 +102,23 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   until there are animals. A session refuses a bounded config belonging to another
   subject, which is what stops that file quietly becoming a real one.
 
+**This review gained a second, smaller item on 2026-09-19.** `p4d1-console-link` (built
+on top of this branch) gives `wlx console --set reward_correct=...` as the first
+*person-invocable* path that moves a reward limit — `Session.set` staging straight
+into `bounds.set` and its ceiling. `cli.py` and `link.py` do not become
+welfare-critical by `architecture.md`'s definition — the limit is still enforced in
+`bounds.py` alone, and the welfare-critical surface stays exactly two files — but the
+*capability* is new and welfare-facing, and CLAUDE.md is explicit that anything
+touching reward delivery amounts or limits is reviewed by a human lab member before
+merge. It merges into the same lineage this section already asks a person to read, so
+it goes to the same reviewer rather than opening a second thread. `git diff
+p4b-session-management..p4d1-console-link -- wl_expcontroller/cli.py
+wl_expcontroller/link.py wl_expcontroller/taskd.py` is the whole of it (ruling R23,
+`.superpowers/sdd/2026-09-19-p4d1-console-link/progress.md`).
+
 ---
 
-## 2. P4c — the derived Parquet table, then `labhost`
+## 2. P4c — the derived Parquet table
 
 **Exit condition:** the columnar table is written at session close and contract-tested
 against `wl-preproc`'s published schema. Read **S10**.
@@ -111,9 +129,11 @@ a crash costs a conversion rather than a session. `trials.jsonl` now carries the
 and condition per row as well as the resolved parameters, so the derivation has what it
 needs.
 
-Then the `labhost` endpoint (S10 §4), which can be contract-tested against their
-published schema **without them answering anything** — which is what makes it the right
-next thing while four cross-repo asks are outstanding.
+~~Then the `labhost` endpoint (S10 §4)~~ — **superseded 2026-09-19, ADR-0008.**
+`labhost` stopped being its own component: S9a §7 folds P4c's pull-only `/health`
+endpoint into the console process as a second surface, same server, separate path,
+separate auth. It is built alongside the console's HTTP/WS server now, in P4d-2 (§6),
+not here. What is still this package's own is the Parquet derivation above.
 
 ---
 
@@ -245,12 +265,60 @@ Three things S9a §6–§10 depends on that nobody has built:
 
 ---
 
-## 6. After P4c
+## 6. P4d-1 shipped; P4d-2 is the console's HTTP surface
 
-P4d, the console shell against a fake `taskd`. `Session.set` is already the validated
-write path it will hold — staged, applied atomically in the ITI, recorded with its
-origin — and `Session(world=...)` is already the seam a rig plugs into. What is missing
-is the link between a console process and a session, and the preflight S9 describes.
+**What moved, 2026-09-19 (`p4d1-console-link`, on top of `p4b-session-management`).**
+This section used to describe P4d as "the link between a console process and a
+session" being missing. It is not anymore: `Session` gained a `Link` port, drained and
+published once per trial boundary and never per frame — `link.py`'s `Telemetry` (built
+only from `welfare`/`tally`/`scheduler`, S9a §9's one rule, unknown always `None`),
+`Staged`/`Refused` for S9a §8's visibility, `SetParameter`/`Stop` as the commands a
+console sends, and `ZmqLink`/`ZmqConsole` as the one live transport (ZMQ PUB/SUB +
+REQ/REP, msgpack, ADR-0003). `wlx run --link PUB,REP` opens it; `wlx console --sub PUB
+--req REP --as WHO [--set NAME=VALUE ...] [--stop]` is a terminal client for it — not
+the browser ADR-0008 chose, which is exactly what P4d-2 builds. Full account,
+including every ruling made building it, in `docs/CHECKPOINT.md`'s "What moved on
+2026-09-19" entry and `.superpowers/sdd/2026-09-19-p4d1-console-link/progress.md`.
+
+**Next is P4d-2: the console's HTTP/WS surface (S9a §7), which is also where
+`labhost` lives now.** `wlx console` today talks ZMQ directly; P4d-2 puts an HTTP
+server in the same console process — `browser ──HTTP/WS──► console ──ZMQ──► taskd`
+(S9a §7's diagram) — for the web client ADR-0008 chose, and adds `GET /health` as a
+second path on that same server for `wl-works` to poll, exactly as
+`architecture.md`'s `labhost` row already says (S9a §7: *"same process, separate
+path, separate auth"*). Read S9a §7 before starting.
+`Session.set` is already the validated write path both surfaces go through, and
+nothing in P4d-1 assumed a terminal client, so `ZmqConsole` (or a thin wrapper around
+it) should be reusable from the server rather than needing a second console-side
+implementation.
+
+**Three things this slice found and deliberately left open, for whoever picks up
+P4d-2 or later:**
+
+1. **A pump fault publishes nothing.** `welfare.deliver` raises, `Rig` deliberately
+   does not swallow it (P21's shape — never absorb a broken rig), and the exception
+   propagates past `Session.run`'s `finally` with no final `Telemetry` frame and no
+   `stopped_because`. A console watching a rig break, unattended, cage-side, sees only
+   silence. What a console should show when the rig itself is faulty is a design
+   question for this package, not a bolt-on inside P4d-1.
+2. **A change staged on a session's literal last pass is never applied.**
+   `_apply_staged()` gets no further pass once the loop decides to stop (a welfare
+   ceiling, every block finished, or a console `Stop`), so a `SetParameter` drained
+   on that same last pass is staged and then abandoned — `parameter_changes.jsonl`
+   never gets the row, though the final frame still shows it queued beside
+   `STOPPED:` (an implicit signal, not silence). **The obvious way to hit this on
+   purpose does not, which narrows the risk rather than removing it**: `wlx console
+   --set X --stop` sends `SetParameter` then `Stop` as two separate `send()` calls,
+   and `ZmqConsole.send`'s lazy reply-read means `Stop` is not even transmitted
+   until `SetParameter`'s reply is read — measured 20/20 times landing in different
+   `drain()` batches, not the same one, so the ordinary case actually gives
+   `_apply_staged()` a pass in between. The residual risk is a `SetParameter` that
+   happens to land on whichever pass a *different* stop condition (a welfare
+   ceiling, or every block finishing) resolves on — a matter of timing, not of
+   anything an operator does.
+3. **`wlx console --set reward_correct=...` is now a person-invocable path to a
+   reward limit** — recorded in §1 above, beside the `bounds.py`/`welfare.py` review
+   already waiting.
 
 **Do not skip ahead to hardware work to feel productive.** Everything on that side is
 blocked on a card, a panel, a photometer or a pump measurement, and none of the four is

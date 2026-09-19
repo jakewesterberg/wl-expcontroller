@@ -101,10 +101,27 @@ figure was one low. In order:
 - `simulate.py` — the census: outcomes, states visited, hangs, and outcomes nothing
   reached. `Tally` is shared with `taskd`, so a census counts the same things whether
   it came from an exhaustive walk of a task or from a session under its ceilings.
-- `cli.py` — `wlx check`, `wlx review`, `wlx run`; exit 1 on a blocking finding.
-  `wlx run` needs `--bounds` and reports what it commanded and why it stopped. It had
-  **no test at all** until 2026-09-06, which is how a subcommand ends up unable to
-  construct the object it exists to construct.
+- `cli.py` — `wlx check`, `wlx review`, `wlx run`, `wlx console`; exit 1 on a blocking
+  finding. `wlx run` needs `--bounds`, reports what it commanded and why it stopped,
+  and takes an optional `--link PUB,REP` that opens a console link (nothing acquires
+  the transport dependency when it is omitted). `wlx console --sub PUB --req REP --as
+  WHO` attaches to a running session, renders each `Telemetry` frame (S9a §4's panes:
+  fluid, chair, trials, still owed, staged, refused) and can `--set NAME=VALUE` or
+  `--stop` it. `wlx run` had **no test at all** until 2026-09-06, which is how a
+  subcommand ends up unable to construct the object it exists to construct.
+- `link.py` — the console link: the telemetry message and its schema (`Telemetry`,
+  `Staged`, `Refused`, `SCHEMA`), the commands a console sends back (`SetParameter`,
+  `Stop`), the port a session drains and publishes through (`Link`, `Absent`,
+  `Simulated` as peers, exactly as in `dio.py`), and the one live transport
+  (`ZmqLink`/`ZmqConsole`, ZMQ PUB/SUB + REQ/REP, msgpack, per ADR-0003). Drained and
+  published **once per trial boundary, never per frame** — S9 §1's hot-loop rule,
+  proved by a test rather than only argued. **S9a §9's one rule, enforced structurally
+  rather than by care**: every `Telemetry` field is read from `welfare`, `tally` or
+  `scheduler`, never recomputed, and unknown is `None`, never a confident `0`. **Not
+  welfare-critical, and built to stay that way** — it carries no ceiling, no clock and
+  no pump; the welfare-critical surface stays exactly `bounds.py` and `welfare.py`.
+  Added 2026-09-19 (P4d-1). Three things this slice found and deliberately left open
+  are recorded in "What moved on 2026-09-19" below.
 - `taskd.py` — **the session**: blocks from `scheduler`, criterion transitions,
   ceilings that end a run, one validated path for live parameter writes, and the
   world as an injectable seam. A flat run of N trials is the block session with one
@@ -163,9 +180,15 @@ figure was one low. In order:
   ~~**`bounds.check_delivery` is called by nothing outside its own tests**~~ —
   **both closed 2026-09-06**, and what they were is now pitfall P21. See "What moved"
   below.
-- **`taskd` is still not a daemon.** There is no console link over a socket and no
-  preflight beyond two refusals. `Session.set` is the validated write path a console
-  will hold; nothing yet connects one to it. That is P4d.
+- ~~**`taskd` is still not a daemon.** There is no console link over a socket~~ —
+  **closed 2026-09-19 (P4d-1).** `Session.link` drains commands into `Session.set` and
+  publishes telemetry, once per trial boundary, over a real ZMQ socket (`link.py`'s
+  `ZmqLink`/`ZmqConsole`); `wlx console` is a terminal client for it. Still missing:
+  the browser client and HTTP/WS server ADR-0008 chose, and the `labhost` surface that
+  rides on it (P4d-2); the OAuth `Verified`/`Local` actor split (P4d-3, this slice
+  carries `by` as a plain string); `rt_approx_ms` (P4d-4); and **preflight beyond the
+  two refusals in `Session.run`** — S9a §10's one rule (fail blocks, unknown proceeds
+  on a recorded acknowledgement) is designed but not built (P4d-5).
 - **Nothing converts millilitres to solenoid open time.** `welfare.Pump` takes
   millilitres because that is what the ceilings are denominated in; the conversion is
   a **per-rig pump calibration that has never been measured**, so the driver that
@@ -360,6 +383,88 @@ closed by being dissolved rather than answered.** Decisions, each the PI's:
 **no event-code table**, so nothing downstream can name a code without checking out the
 task at the recorded version and re-deriving it. `wlx review` builds that table already.
 It is a P4c item, not a console one.
+
+### The console link ships (P4d-1), and three things about it stay open
+
+Built on `p4d1-console-link` (14 commits on top of `p4b-session-management`, itself
+still unmerged and waiting on the welfare review below): `Session` gains a `link`
+field, drained and published **once per trial boundary and never per frame** —
+proved by a test, not only argued (the plan's Task 4 Step 6). `link.py` (new, 672
+lines) holds the telemetry message and its schema
+(`Telemetry`, `Staged`, `Refused`, `SCHEMA`), the commands a console sends back
+(`SetParameter`, `Stop`), the port (`Link`, with `Absent`/`Simulated` as peers exactly
+as in `dio.py`), and the one live transport — `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB
++ REQ/REP, msgpack, ADR-0003's transport untouched. `cli.py` gains `wlx run --link
+PUB,REP` and a new subcommand, `wlx console --sub PUB --req REP --as WHO [--set
+NAME=VALUE] [--stop]`, a terminal client. **`link.py` carries no ceiling, no clock and
+no pump and stayed off the welfare-critical list under review** — the surface is
+still exactly `bounds.py` and `welfare.py`.
+
+**S9a §9's one rule, enforced structurally rather than by care.** Every `Telemetry`
+field is read from `welfare`, `tally` or `scheduler` — `Telemetry.of` recomputes
+nothing — and unknown is `None`, never a confident `0`, following
+`welfare.shortfall()`'s own refusal to claim an unmeasured day went well.
+
+**Two Criticals were found and fixed before this shipped, both about a *sequence* of
+commands rather than one command in isolation** — S9a §8's ordinary case,
+`--set X --stop`, is two commands. A REQ socket refuses a second `send()` before the
+first reply is read, so the second command raised until `send()` was made to read the
+previous reply lazily, one send behind. And `drain()` used to decode a command before
+replying to it, so one undecodable packet — a newer console against an older
+`SCHEMA`, a realistic case since the wire is versioned by design, not only
+corruption — propagated an exception out of the trial loop *and* left the REP socket
+owing a reply, wedging every command after it too; fixed by replying unconditionally
+before decoding, and turning a bad packet into a `Refused` entry (the transport-layer
+twin of `Session.refusals`) rather than dropping it.
+
+**Mutation sweeps, read rather than trusted (CLAUDE.md; trap 7's shape is exactly
+what "read the output" guards against):**
+
+```
+python3 tools/mutate.py --all --returns None wl_expcontroller/link.py
+  baseline: 421 passed in 12.34s -- 14 functions, all caught (of, encode, decode,
+  _encode_command, _decode_command, publish, drain, queue, __init__, close,
+  __enter__, __exit__, send, receive) -- restored: 421 passed in 9.54s
+
+python3 tools/mutate.py --all --returns None wl_expcontroller/taskd.py
+  baseline: 421 passed in 13.09s -- 16 functions, all caught (__post_init__,
+  directory, now, head_fixed, head_released, set, staged, _command, _params,
+  _apply_staged, _load, _plan, _agent, make, run, publish) -- restored: 421 passed
+  in 10.24s
+
+python3 tools/mutate.py --all --returns None wl_expcontroller/cli.py
+  baseline: 421 passed in 12.37s -- 6 functions, all caught (_load_trial,
+  _load_allocation, _load_bounds, _clock, render, main) -- restored: 421 passed
+  in 9.57s
+```
+
+**Zero `SURVIVED`, zero `SKIPPED`, no hang, across all three modules — 36 functions,
+each `caught` by a real assertion failure** (`__post_init__` and `run` each fail 40+
+of the 421 tests; the narrowest, `_clock` and `head_released`, fail exactly one — the
+range a coverage tool should show, not a flat number). Full transcripts in
+`.superpowers/sdd/2026-09-19-p4d1-console-link/task-7-report.md`.
+
+**Three things found and deliberately left open, recorded rather than fixed —
+`docs/next-session.md` §6 has the full account, and item 3 is also in §1 beside the
+`bounds.py`/`welfare.py` review already waiting:**
+
+1. **A pump fault publishes nothing.** `welfare.deliver` raises, `Rig` deliberately
+   does not swallow it, and the exception propagates past `Session.run`'s `finally`
+   with no final `Telemetry` frame and no `stopped_because` — a console watching a
+   rig break, unattended, cage-side, sees only silence. What a console should show
+   when the rig itself is faulty is a design question for a later slice.
+2. **A change staged on a session's literal last pass is never applied** —
+   `_apply_staged()` gets no further pass once the loop decides to stop. The final
+   frame still shows it `staged` beside `STOPPED:`, an implicit signal rather than
+   silence, but `--set X --stop` over real sockets does not land both commands in
+   the same `drain()` batch (measured 20/20), so the obvious way to hit this on
+   purpose does not. Residual risk: a `SetParameter` landing on whichever pass a
+   welfare ceiling or "every block finished" resolves on.
+3. **`wlx console --set reward_correct=...` is the first person-invocable path that
+   moves a reward limit** (`Session.set` → `bounds.set`). `cli.py` does not become
+   welfare-critical — the ceiling is still enforced in `bounds.py` alone — but the
+   capability is new and welfare-facing, and CLAUDE.md wants a human lab member on
+   it before merge, same as `bounds.py`/`welfare.py`.
 
 ### The branch was pushed, and the gate caught something real
 
@@ -758,8 +863,9 @@ runs out of context before it produces anything.**
 | | → **roadmap M1** | 1,000 deterministic trials with full outputs | S8, S9 | — |
 | | + operator documentation | The D4 acceptance test; a stranger runs a session | S9 | — |
 | ~~P4b~~ | ~~Session management: blocks, scheduler, bounded config, welfare accounting, the live parameter path~~ | **done 2026-09-06** — a session runs blocks with criterion transitions, enforces its chair-time and trial ceilings, and reports the day's fluid shortfall at close; `welfare.py` is the second welfare-critical module and **wants human review** | — | — |
-| **P4c** | Parquet derivation at close; the `labhost` endpoint | Contract-tested against `wl-preproc`'s published schema | S10 | nothing. **This is next**; `trials.jsonl` now carries block and condition per row, so the derivation has what it needs |
-| P4d | The console shell against a fake `taskd` | An operator surface that runs with no rig | S9, S9a | nothing |
+| **P4c** | Parquet derivation at close ~~; the `labhost` endpoint~~ (`labhost` moved under `console`, ADR-0008 — see P4d-2) | Contract-tested against `wl-preproc`'s published schema | S10 | nothing. Independently ready to pick up; `trials.jsonl` now carries block and condition per row, so the derivation has what it needs |
+| ~~P4d-1~~ | ~~The console link: telemetry out, commands in, over a real socket~~ | **done 2026-09-19** — `Session` gains a `Link` port drained once per trial boundary, never per frame; `link.py`'s `Telemetry`/`Staged`/`Refused` message and `SetParameter`/`Stop` commands; `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB + REQ/REP; `wlx console` as a terminal client. Not welfare-critical and built to stay that way. Three items found and deliberately left open — see "What moved" below | — | — |
+| **P4d-2** | The console's HTTP/WS surface (S9a §7) and the `labhost` endpoint it carries (S9a §7, superseding P4c's framing — `labhost` is a surface of `console`, not its own process) | A browser reaches a running session on the LAN, and `wl-works` can pull session state from `GET /health` | S9a §7 | nothing |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
 | **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |
 | | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested | — | — |
@@ -772,10 +878,12 @@ runs out of context before it produces anything.**
 | | → the reward path above the pump | **done 2026-09-06** — a task's `Reward` reaches a ceiling-checked delivery and a `Pump` port; the driver that opens copper needs V10 | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
 
-**P1–P4b needed no hardware and are done. P4c and P4d need none either.** The
-welfare-critical surface is now two files, `bounds.py` and `welfare.py`, and **both
-want a human before merge** — that is the thing on this list that cannot be done by
-another session.
+**P1–P4b and P4d-1 needed no hardware and are done. P4c and P4d-2 need none either.**
+The welfare-critical surface is still exactly two files, `bounds.py` and `welfare.py`
+— `link.py` and the rest of P4d-1 deliberately stayed off that list — and **both want
+a human before merge** — that is the thing on this list that cannot be done by another
+session. P4d-1 adds a second, narrower ask to the same review: see "What moved on
+2026-09-19" and `docs/next-session.md` §1.
 
 **ADR-0002 is deferred to V1** (2026-08-31): neither display stack is built properly
 until a rig can measure both. So P5 is hardware-blocked, and the display spike stays a

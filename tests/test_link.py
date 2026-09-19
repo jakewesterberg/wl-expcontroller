@@ -172,17 +172,23 @@ def _drain_until(link, *, tries=50, pause=0.01):
     (0.5 s by default) and return the empty list `drain()` last gave.
 
     **Fix round 1, judgment call 2.** The original name for this gap -- "the REQ/REP
-    race" -- was a misnomer the reviewer corrected by measuring it directly: with a
-    zero-delay `console.send()` immediately followed by `link.drain()`, the first
-    `drain()` missed the command on every one of 40 trials, but *zero* were actually
-    lost -- a later `drain()` always got it. There is no race and nothing is lost:
-    ZeroMQ's I/O runs on a background thread that a zero-timeout `poll()` called in
-    the very next Python statement gives no chance to run first, so the command
-    simply is not visible *yet*. The original fix was a fixed
-    `time.sleep(0.02)`, measured clean at 0/2000 -- but a fixed sleep tuned on one
-    machine is exactly the kind of assumption that flakes on a slower or more loaded
-    one. Retrying is bounded (never longer than `tries * pause`) but adaptive: it
-    returns the instant something is visible rather than gambling on one wait.
+    race" -- was a misnomer the reviewer corrected by measuring it directly, in this
+    session's own scratchpad, on this machine -- **not committed under
+    `docs/measurements/`, and not a claim about this system's own latency, jitter or
+    throughput** (CLAUDE.md; the same disclaimer `link.py`'s `ZmqConsole` docstring
+    carries for its settle delay, which this note previously lacked -- the two were
+    inconsistent within this one file, and an unmarked number beside a marked one
+    reads as the true one). With a zero-delay `console.send()` immediately followed
+    by `link.drain()`, the first `drain()` missed the command on every one of 40
+    trials, but *zero* were actually lost -- a later `drain()` always got it. There
+    is no race and nothing is lost: ZeroMQ's I/O runs on a background thread that a
+    zero-timeout `poll()` called in the very next Python statement gives no chance to
+    run first, so the command simply is not visible *yet*. The original fix was a
+    fixed `time.sleep(0.02)`, the same probe measured clean at 0/2000 -- but a fixed
+    sleep tuned on one machine is exactly the kind of assumption that flakes on a
+    slower or more loaded one. Retrying is bounded (never longer than `tries *
+    pause`) but adaptive: it returns the instant something is visible rather than
+    gambling on one wait.
 
     **`refused` is checked by growth, not by truthiness -- found by this helper's
     own first version being flaky.** `link.refused` is cumulative, like
@@ -205,11 +211,14 @@ def test_a_console_and_a_session_talk_over_a_real_socket(zmq_cleanup):
     real socket: a protocol proven against a mock is a proof about the mock.
 
     Uses `_drain_until` rather than a fixed sleep between `console.send()` and
-    `link.drain()` -- see that helper's docstring for the full story (fix round 1).
-    An earlier version of this test's docstring also claimed its fixed sleep was
-    *why* `link.publish`/`console.receive` below needed no settle delay of their
-    own; the reviewer measured that claim false (with `ZmqConsole`'s PUB/SUB settle
-    forced to `0`, the old 20 ms gap already gave 0/40 telemetry misses on its own).
+    `link.drain()` -- see that helper's docstring for the full story (fix round 1),
+    including why its numbers are marked rather than stated as fact. An earlier
+    version of this test's docstring also claimed its fixed sleep was *why*
+    `link.publish`/`console.receive` below needed no settle delay of their own; the
+    reviewer measured that claim false (with `ZmqConsole`'s PUB/SUB settle forced to
+    `0`, the old 20 ms gap already gave 0/40 telemetry misses on its own -- same
+    scratchpad probe as `_drain_until`'s, same disclaimer: not committed under
+    `docs/measurements/`, not a claim about this system).
     `test_the_system_still_works_with_no_settle_delay` below proves the zero-settle
     case directly instead of leaving an unmeasured claim in a docstring comment.
     """
