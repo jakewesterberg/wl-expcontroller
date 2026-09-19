@@ -507,11 +507,17 @@ class ZmqLink:
         for a future session with a `sample`/`py-spy` trace of pytest's own object
         graph at the point of collection, which this round did not have time for.
 
-        Not part of the `Link` protocol. `wlx run --link` (Task 6) is the only thing
-        that will construct a `ZmqLink` outside a test, and nothing calls `close()`
-        in production yet because nothing yet owns a `ZmqLink` for a long-lived
-        process to shut down -- named so this is a grep-able "not yet" (CLAUDE.md)
-        rather than an unverifiable one.
+        Not part of the `Link` protocol. **Resolved 2026-09-19 (Task 6):** this
+        paragraph used to name `wlx run --link` as the "not yet" nothing called
+        `close()` in production was waiting for (CLAUDE.md: a "not yet" must name
+        what it is waiting for, so the next reader can grep it rather than believe
+        it). `wlx run --link` (`cli.py`'s `run` command) now constructs the
+        `ZmqLink` this method belongs to, wrapped in `with` rather than a bare
+        `try`/`finally` so `close()` cannot be forgotten -- it runs via `__exit__`
+        on every exit from that command, a normal return or an exception out of
+        `session.run()` alike. The open item immediately above this paragraph (the
+        300 s pytest-collector hang under `weakref.finalize`) is unrelated and
+        still open; this note only closes the "nothing calls it yet" half.
         """
         self._ctx.destroy(linger=0)
 
