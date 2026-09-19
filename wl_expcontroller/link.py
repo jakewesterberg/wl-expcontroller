@@ -154,31 +154,44 @@ class Stop:
     by: str
 
 
+Command = SetParameter | Stop
+
+
 class Link(Protocol):
     def publish(self, telemetry: Telemetry) -> None:
         """Offer telemetry to whoever is listening. **Must never block**: latest-wins
         telemetry that could stall a trial boundary would make a view able to delay an
         experiment."""
 
-    def drain(self) -> list:
+    def drain(self) -> list[Command]:
         """Every command that has arrived since the last call. Non-blocking, and each
         command is returned once."""
 
 
 @dataclass(frozen=True, slots=True)
 class Absent:
-    """No console, and that is a legitimate configuration -- see the test."""
+    """No console, and that is a legitimate configuration. **Unlike `dio.Absent` and
+    `run.Unwired`, this one is silent, not refusing**, because what is lost differs.
+    A dropped event code is missing from a recording forever, and a dropped reward is
+    fluid an animal worked for -- either is catastrophic. But telemetry nobody
+    subscribed to loses nothing; the record is the record. A session with no console
+    attached is exactly how the cage-side kiosk runs."""
 
     def publish(self, telemetry: Telemetry) -> None:
         return None
 
-    def drain(self) -> list:
+    def drain(self) -> list[Command]:
         return []
 
 
 @dataclass
 class Simulated:
-    """The in-process link a test drives."""
+    """The in-process link a test drives. A complete `Link` implementation that does
+    not abstract away the state -- every telemetry message is kept in `published`, and
+    every command queued by the test is delivered exactly once to the next `drain()`
+    call, never appearing again. This allows test code to verify both directions: that
+    the session published telemetry when expected, and that commands work their way in
+    only when the test staged them."""
 
     published: list = field(default_factory=list)
     _queued: list = field(default_factory=list)
@@ -189,6 +202,6 @@ class Simulated:
     def publish(self, telemetry: Telemetry) -> None:
         self.published.append(telemetry)
 
-    def drain(self) -> list:
+    def drain(self) -> list[Command]:
         taken, self._queued = self._queued, []
         return taken

@@ -15,7 +15,7 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import Absent, Simulated, SetParameter, Stop, Telemetry
 from wl_expcontroller.scheduler import Block, Condition, Scheduler
 from wl_expcontroller.simulate import Tally
-from wl_expcontroller.welfare import Simulated as WelfareSimulated, Welfare
+from wl_expcontroller.welfare import Simulated as Pump, Welfare
 
 
 def _bounds(daily_fluid: float = 250.0) -> Bounds:
@@ -51,7 +51,7 @@ def _session_with(delivered_ml: float, already_today: float | None):
     """
     welfare = Welfare(
         bounds=_bounds(),
-        pump=WelfareSimulated(),
+        pump=Pump(),
         already_today=already_today,
         commanded=0.1,
         delivered=delivered_ml,
