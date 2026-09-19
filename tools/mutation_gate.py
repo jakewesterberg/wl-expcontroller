@@ -63,6 +63,7 @@ RETURNS: dict[str, str] = {
     "bounds": "None",
     "welfare": "None",
     "scheduler": "None",
+    "link": "None",
 }
 
 #: Modules with nothing to neuter, and why. An entry here is a claim someone made,
