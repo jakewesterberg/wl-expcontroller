@@ -276,10 +276,19 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     actually ran a pass after staging it, which is what the record depends on --
     rather than trusting that any frame arriving means the write landed; **(b)** a
     `--trials` count comfortably past `tasks/reference_bounds.py`'s chair-time
-    ceiling at these task parameters (empirically ~1,500 trials), so the session
-    has hundreds of passes still to run after this early command is sent, and the
-    exact-last-pass coincidence (a) guards against has nowhere near enough room
-    to land by chance.
+    ceiling at these task parameters, so the session has hundreds of passes still to
+    run after this early command is sent, and the exact-last-pass coincidence (a)
+    guards against has nowhere near enough room to land by chance.
+
+    The trial count at which that ceiling bites was measured **on this machine, in
+    this session's scratchpad, and is not committed under `docs/measurements/`** --
+    it is roughly 1,500, and it is not a claim about this system's latency, jitter
+    or throughput (CLAUDE.md). It is also not what this test depends on: `--trials`
+    is 5,000 precisely so the exact figure does not matter, and the two assertions
+    below are on what the telemetry showed, never on how many trials ran. The same
+    disclaimer `_drain_until` carries in `test_link.py`, for the same reason -- an
+    unmarked number sitting beside a marked one reads as the true one, and these two
+    numbers were previously marked inconsistently across the two files.
     """
     probe = zmq_cleanup(
         ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
@@ -745,6 +754,80 @@ def test_console_refuses_a_non_numeric_set_value(capsys):
         f"refused for the wrong reason -- expected the --set parsing message, "
         f"not a socket timeout against an unreachable endpoint: {err!r}"
     )
+
+
+def test_console_refuses_a_set_with_no_parameter_name(capsys):
+    """Final-review minor: `--set` split on `partition("=")` and checked only the
+    value, so `--set =0.5` built a `SetParameter(name="", value=0.5)` and **sent**
+    it, to be refused by the session over a socket. `--link` had already been
+    hardened against exactly this shape of unchecked split and this had not; the
+    rule was applied in one place and not the other.
+
+    A console that can see it has nonsense should say so where the person who typed
+    it is looking, not spend a round trip to be told by a machine with an animal in
+    the chair on it. Checks the message rather than only the exit code, for the same
+    reason as the tests above: these endpoints are unreachable, so a bypassed check
+    would also return 1, later, from a socket timeout."""
+    code = main(["console", "--sub", "tcp://127.0.0.1:1", "--req",
+                 "tcp://127.0.0.1:2", "--as", "jake", "--set", "=0.5"])
+
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "name is required" in err, (
+        f"refused for the wrong reason -- expected the empty-name message, not a "
+        f"socket timeout against an unreachable endpoint: {err!r}"
+    )
+
+
+def test_console_reports_an_interrupted_watch_as_interrupted(monkeypatch, capsys):
+    """Final-review minor: `KeyboardInterrupt` fell through to `return 0`, so a
+    watch somebody walked away from and an operator who saw a session stop cleanly
+    left an identical trace. 130 is the shell's own SIGINT convention (128 + 2), so
+    a wrapper reading only the exit code can tell them apart, and the stderr line
+    says the session is still running -- because it is: nothing in this subcommand
+    stops a session except `--stop`."""
+
+    class _StubConsole:
+        def __init__(self, sub: str, req: str) -> None:
+            pass
+
+        def __enter__(self) -> "_StubConsole":
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def receive(self) -> None:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("wl_expcontroller.link.ZmqConsole", _StubConsole)
+
+    code = main(["console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2"])
+
+    assert code == 130, "an abandoned watch is indistinguishable from a clean stop"
+    assert "interrupted" in capsys.readouterr().err
+
+
+def test_wlx_run_refuses_a_set_with_no_parameter_name(tmp_path):
+    """The same unchecked split as `wlx console --set`, one subcommand over. Quieter
+    and no better: an empty name lands in `spec.values`, is written into the
+    session's parameter snapshot, and matches no `Param` any task declares -- a row
+    in the record that means nothing. Refused in both places rather than only where
+    a reviewer happened to look."""
+    with pytest.raises(SystemExit, match="name before the"):
+        main(
+            [
+                "run", GOOD,
+                "--allocation", ALLOCATION,
+                "--bounds", BOUNDS,
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_07",
+                "--subject", "REFERENCE",
+                "--delivered-today", "0",
+                "--trials", "5",
+                "--set", "=0.5",
+            ]
+        )
 
 
 def test_console_reports_a_second_commands_timeout_cleanly(monkeypatch, capsys):

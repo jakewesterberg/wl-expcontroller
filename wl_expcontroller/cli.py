@@ -351,7 +351,18 @@ def main(argv: list[str] | None = None) -> int:
 
         values: dict[str, object] = {}
         for assignment in args.set:
-            name, _, raw = assignment.partition("=")
+            name, sep, raw = assignment.partition("=")
+            # The same unchecked split `wlx console --set` had, one subcommand over
+            # -- refused here too rather than only where a reviewer happened to look.
+            # An empty name here is quieter and no better: it lands in `spec.values`,
+            # gets written into the session's own parameter snapshot, and matches no
+            # `Param` any task declares, so it is a row in the record that means
+            # nothing.
+            if not sep or not name:
+                raise SystemExit(
+                    f"--set expects NAME=VALUE with a parameter name before the "
+                    f"'=', got {assignment!r}"
+                )
             try:
                 values[name] = float(raw)
             except ValueError:
@@ -463,7 +474,21 @@ def main(argv: list[str] | None = None) -> int:
 
         commands: list[_link.Command] = []
         for assignment in args.set:
-            name, _, raw = assignment.partition("=")
+            name, sep, raw = assignment.partition("=")
+            # Final-review minor: the name was never checked, so `--set =0.5` built a
+            # `SetParameter(name="", ...)` and sent it, to be refused by the session
+            # over a socket. `--link` was hardened against exactly this shape of
+            # unchecked split and this was not. A console that can tell it has
+            # nonsense should say so here, where the person who typed it is looking,
+            # rather than spending a round trip to be told by a machine with an
+            # animal in a chair on it.
+            if not sep or not name:
+                print(
+                    f"refused: --set {assignment!r} is not NAME=VALUE -- a parameter "
+                    f"name is required before the '='",
+                    file=sys.stderr,
+                )
+                return 1
             try:
                 value = float(raw)
             except ValueError:
@@ -504,7 +529,18 @@ def main(argv: list[str] | None = None) -> int:
                     if frame.stopped_because:
                         break
             except KeyboardInterrupt:
-                pass
+                # Final-review minor: this used to fall through to `return 0`, so a
+                # watch somebody walked away from and an operator who saw the
+                # session stop cleanly left the same trace. 130 is the shell's own
+                # convention for SIGINT (128 + 2), so a wrapper that only reads the
+                # exit code can still tell them apart -- and the line says which,
+                # for a person reading a terminal rather than a status.
+                print(
+                    "console: interrupted -- the session is still running; "
+                    "nothing here stops it (use --stop for that)",
+                    file=sys.stderr,
+                )
+                return 130
             except TimeoutError as exc:
                 print(f"console: {exc}", file=sys.stderr)
                 return 1
