@@ -166,36 +166,58 @@ def test_telemetry_survives_the_wire_unchanged():
     assert restored.fluid_today_ml is None, "None must not become 0.0 on the wire"
 
 
+def _drain_until(link, *, tries=50, pause=0.01):
+    """Call `link.drain()` repeatedly until it returns a command or `link.refused`
+    has *grown* since this call started, or give up after `tries * pause` seconds
+    (0.5 s by default) and return the empty list `drain()` last gave.
+
+    **Fix round 1, judgment call 2.** The original name for this gap -- "the REQ/REP
+    race" -- was a misnomer the reviewer corrected by measuring it directly: with a
+    zero-delay `console.send()` immediately followed by `link.drain()`, the first
+    `drain()` missed the command on every one of 40 trials, but *zero* were actually
+    lost -- a later `drain()` always got it. There is no race and nothing is lost:
+    ZeroMQ's I/O runs on a background thread that a zero-timeout `poll()` called in
+    the very next Python statement gives no chance to run first, so the command
+    simply is not visible *yet*. The original fix was a fixed
+    `time.sleep(0.02)`, measured clean at 0/2000 -- but a fixed sleep tuned on one
+    machine is exactly the kind of assumption that flakes on a slower or more loaded
+    one. Retrying is bounded (never longer than `tries * pause`) but adaptive: it
+    returns the instant something is visible rather than gambling on one wait.
+
+    **`refused` is checked by growth, not by truthiness -- found by this helper's
+    own first version being flaky.** `link.refused` is cumulative, like
+    `Session.refusals` (never cleared at a boundary), so once one malformed packet
+    has been refused, `if link.refused:` is true forever -- a version that checked
+    it that way exited on the very first, empty `drain()` of every *later* call in
+    the same test, before a real command had any time to arrive.
+    """
+    refused_before = len(link.refused)
+    for _ in range(tries):
+        commands = link.drain()
+        if commands or len(link.refused) > refused_before:
+            return commands
+        time.sleep(pause)
+    return []
+
+
 def test_a_console_and_a_session_talk_over_a_real_socket():
     """Over loopback rather than a mock, for the reason `tests/test_eye.py` uses a
     real socket: a protocol proven against a mock is a proof about the mock.
 
-    **The `time.sleep(0.02)` below is not a latency claim about this system**
-    (CLAUDE.md: no timing claim without a measurement) -- it compensates for a gap
-    this test has that production never does. `console.send` and `link.drain` here
-    run in the same thread with literally nothing between them; a real console and a
-    real `taskd` are two separate processes, so a real command is always separated
-    from the `drain()` call that picks it up by genuine inter-process scheduling
-    time. Measured on this machine (200-2000 iteration loops, this session's
-    scratchpad, kept out of the repo as throwaway probes rather than committed
-    here): with zero delay, a REP socket's zero-timeout poll called immediately
-    after the paired REQ's `send()` misses the message on essentially every
-    iteration, because the actual I/O happens on ZeroMQ's background thread and two
-    adjacent Python statements give it no chance to run before the check. 20 ms gave
-    0 misses in 2000 iterations; production has no equivalent race because nothing
-    there calls `drain()` in the same instruction as a console's `send()`.
-
-    `ZmqConsole.__init__` carries its own settle delay for the companion problem on
-    the telemetry side -- ZeroMQ's well-documented PUB/SUB "slow joiner" behaviour --
-    which is why `link.publish` right after `console.send`/`link.drain` above is not
-    itself given an extra sleep here.
+    Uses `_drain_until` rather than a fixed sleep between `console.send()` and
+    `link.drain()` -- see that helper's docstring for the full story (fix round 1).
+    An earlier version of this test's docstring also claimed its fixed sleep was
+    *why* `link.publish`/`console.receive` below needed no settle delay of their
+    own; the reviewer measured that claim false (with `ZmqConsole`'s PUB/SUB settle
+    forced to `0`, the old 20 ms gap already gave 0/40 telemetry misses on its own).
+    `test_the_system_still_works_with_no_settle_delay` below proves the zero-settle
+    case directly instead of leaving an unmeasured claim in a docstring comment.
     """
     link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
     console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
     try:
         console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
-        time.sleep(0.02)
-        commands = link.drain()
+        commands = _drain_until(link)
         link.publish(_telemetry())
 
         assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
@@ -203,6 +225,136 @@ def test_a_console_and_a_session_talk_over_a_real_socket():
     finally:
         console.close()
         link.close()
+
+
+def test_a_console_can_send_a_sequence_of_commands():
+    """Fix round 1, **CRITICAL 1**, measured: a REQ socket refuses a second `send()`
+    before the first send's reply is read (`zmq.error.ZMQError: Operation cannot be
+    accomplished in current state`), and `SetParameter` then `Stop` -- an operator
+    adjusting a parameter and then ending the session -- is the ordinary sequence
+    S9a §8 is built on. The original real-socket test above sends exactly one
+    command and so never exercised this; this is the test that sends two.
+
+    `send()` now reads the *previous* send's reply lazily, on the next `send()`,
+    rather than never (see its docstring) -- proven here by the fact that the second
+    `send()` does not raise.
+    """
+    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
+    try:
+        console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+        first = _drain_until(link)
+
+        console.send(Stop(by="jake"))
+        second = _drain_until(link)
+
+        assert first == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+        assert second == [Stop(by="jake")]
+    finally:
+        console.close()
+        link.close()
+
+
+def test_an_undecodable_command_is_refused_not_raised():
+    """Fix round 1, **CRITICAL 2**, measured with `{"kind": "pause"}`: `drain()` used
+    to decode a packet before replying to it, so an undecodable packet's exception
+    propagated out of `drain` and out of `taskd.py`'s trial loop -- one garbage
+    packet, or one console built against a newer schema version (S9a §9 versions the
+    wire for exactly this reason, not hypothetically), ended a session with an
+    animal in the chair. Worse: because the REP socket was left owing a reply, the
+    *next* call's poll/recv against a perfectly valid command failed too -- one bad
+    packet took the whole channel down, not just itself.
+
+    Writes the malformed payload directly on `console._req`, bypassing
+    `console.send()` (which only ever offers a real `Command`) -- this simulates a
+    corrupted packet or a mismatched console build, neither of which goes through
+    this codebase's own encoder. Sets `console._awaiting_reply = True` to match: the
+    raw send leaves a reply outstanding on this socket exactly as a real
+    `console.send()` would, and the console wrapper's own bookkeeping (fix round 1,
+    CRITICAL 1) needs to agree with reality or the *next* `console.send()` below
+    would try to send without first reading it.
+    """
+    import msgpack
+
+    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
+    try:
+        console._req.send(msgpack.packb({"kind": "pause"}, use_bin_type=True))
+        console._awaiting_reply = True
+
+        commands = _drain_until(link)
+
+        assert commands == [], "nothing decodable arrived, so nothing is returned"
+        assert len(link.refused) == 1
+        assert "pause" in link.refused[0].why
+
+        # The other half of CRITICAL 2: the channel must still work afterwards.
+        console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+        commands = _drain_until(link)
+        assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+    finally:
+        console.close()
+        link.close()
+
+
+def test_publish_sends_with_dontwait_and_swallows_again():
+    """S9a §9's one hard requirement on `publish`: it must never block. **Fix round
+    1, IMPORTANT**: nothing previously tested that `flags=zmq.DONTWAIT` is actually
+    passed -- deleting it would not have failed a single test. Structural, per
+    CLAUDE.md ("no timing claim without a measurement"), rather than a wall-clock
+    attempt to fill a PUB queue: the reviewer measured that a real PUB socket does
+    not raise `zmq.Again` under load in the first place, it drops the message
+    instead, so `publish`'s `except zmq.Again` is correct, deliberate defensive code
+    for a documented possibility this build's sockets do not appear to reach --
+    **not dead code**, which is exactly what a wall-clock test finding no reachable
+    case would wrongly suggest to a future reader.
+    """
+    import zmq
+
+    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    try:
+        calls = []
+
+        def fake_send(data, flags=0):
+            calls.append(flags)
+            raise zmq.Again("simulated full queue")
+
+        link._pub.send = fake_send
+
+        link.publish(_telemetry())  # must not raise
+
+        assert calls == [zmq.DONTWAIT]
+    finally:
+        link.close()
+
+
+def test_the_system_still_works_with_no_settle_delay():
+    """Fix round 1, judgment call 1: `ZmqConsole.__init__`'s default 50 ms settle
+    delay reduces one real but non-critical gap (see the class docstring) -- it is
+    never a correctness requirement, because retrying (`_drain_until`, and the same
+    idea applied to `receive` below) is what actually makes delivery reliable, not a
+    sleep. Proven by setting `settle_s=0` directly rather than trusting the class
+    docstring's measurements at the nonzero default to also describe the zero case.
+
+    Uses `with` for both ends -- exercising `__enter__`/`__exit__` (fix round 1,
+    judgment call 3) rather than only the explicit `close()` every other test here
+    uses -- and checks `.closed` after both blocks exit, not only the functional
+    behaviour inside them. The mutation harness found this necessary: `__enter__`
+    returning something other than `self` breaks attribute access inside the block
+    and so is already caught, but a neutered `__exit__` that skips `self.close()`
+    entirely leaves both blocks looking identical from the inside -- only checking
+    afterwards catches it.
+    """
+    with ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0") as link:
+        with ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0) as console:
+            console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+            commands = _drain_until(link)
+            link.publish(_telemetry())
+
+            assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+            assert console.receive().session_id == _telemetry().session_id
+        assert console._sub.closed and console._req.closed, "__exit__ must close the console"
+    assert link._pub.closed and link._rep.closed, "__exit__ must close the link"
 
 
 def test_close_releases_both_sockets():

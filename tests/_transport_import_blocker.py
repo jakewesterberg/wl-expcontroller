@@ -81,10 +81,13 @@ import wl_expcontroller.taskd as _taskd  # noqa: E402
 
 # Not just "it imported" -- imported from THIS worktree, not a stale editable-install
 # target (R9 again). A path from outside _REPO_ROOT would mean this whole script
-# proved the property of a different tree.
+# proved the property of a different tree. `Path.is_relative_to`, not
+# `str.startswith` -- fix round 1, minor: a sibling checkout named e.g.
+# "p4d1-console-link-old" would satisfy a bare string prefix match without
+# actually being inside this worktree.
 for _name, _mod in (("link", _link), ("taskd", _taskd)):
-    _resolved = str(Path(_mod.__file__).resolve())
-    if not _resolved.startswith(str(_REPO_ROOT)):
+    _resolved = Path(_mod.__file__).resolve()
+    if not _resolved.is_relative_to(_REPO_ROOT):
         print(f"ABORT: wl_expcontroller.{_name} imported from outside this worktree: {_resolved}")
         sys.exit(1)
 

@@ -37,6 +37,7 @@ question nobody could actually answer.
 from __future__ import annotations
 
 import time
+import weakref
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -161,10 +162,18 @@ class Telemetry:
                 for n, w, v, b, bd in session.staged
             ),
             # `session.refusals`, already public -- unlike `_staged`, nothing private
-            # to reach around.
+            # to reach around -- plus `session.link.refused`, fix round 1's CRITICAL
+            # 2: a wire packet `ZmqLink.drain()` could not decode is a refusal too,
+            # and the console should see it the same way it sees a `SetParameter`
+            # `Session.set` rejected, not lose it with no record anywhere. Read via
+            # `getattr` with a default at both steps -- `session.link` is `Absent()`
+            # by default (`taskd.Session`'s own default factory) and `Simulated` has
+            # no `.refused` either, because neither ever decodes wire bytes and so
+            # can never produce this kind of refusal; only `ZmqLink` can.
             refusals=tuple(
                 Refused(name=n, by=b, why=w) for n, b, w in session.refusals
-            ),
+            )
+            + tuple(getattr(getattr(session, "link", None), "refused", ())),
         )
 
 
@@ -375,21 +384,14 @@ class ZmqLink:
         import zmq
 
         self._ctx = zmq.Context()
+        # A cleanup path that does not go through close() at all -- see close()'s
+        # own docstring for why that matters and what it replaced.
+        weakref.finalize(self, self._ctx.destroy, 0)
 
         self._pub = self._ctx.socket(zmq.PUB)
-        # LINGER=0 from creation, not only passed to close() below: whenever close()
-        # DOES run, this guarantees it cannot block flushing a queued message even if
-        # someone later removes the explicit `linger=0` argument there. It does NOT
-        # by itself prevent the hang `tools/mutate.py --all wl_expcontroller/link.py`
-        # found when it neutered `close()`'s body: the suite ran past the harness's
-        # 300s timeout, and `sample <pid>` against the stuck process (this session's
-        # scratchpad) showed the real mechanism -- Python's GC finalizing an abandoned
-        # `Context` calls `zmq_ctx_destroy`, which blocks in `ctx_t::terminate()`
-        # waiting for sockets that were simply never closed at all, regardless of
-        # their LINGER value. That is `close()` mattering, correctly caught -- see
-        # this file's own `close()` docstring and `tools/mutate.py`'s comment on why a
-        # hung mutation counts as caught. LINGER=0 here is real defence in depth for
-        # the paths that DO call close(), not a fix for the one that skips it.
+        # LINGER=0 from creation, not only passed at close time: whenever this
+        # socket is closed -- by close(), or by the finalizer above -- it cannot
+        # block flushing a queued message, regardless of which path closed it.
         self._pub.setsockopt(zmq.LINGER, 0)
         self._pub.bind(pub_endpoint)
         self.pub_endpoint = self._pub.getsockopt_string(zmq.LAST_ENDPOINT)
@@ -398,6 +400,13 @@ class ZmqLink:
         self._rep.setsockopt(zmq.LINGER, 0)
         self._rep.bind(rep_endpoint)
         self.rep_endpoint = self._rep.getsockopt_string(zmq.LAST_ENDPOINT)
+
+        #: Wire packets `drain()` could not turn into a `Command`, as `Refused`
+        #: entries -- see `drain()`'s docstring (fix round 1, CRITICAL 2). Cumulative
+        #: like `Session.refusals`, which this is the transport-layer twin of: a
+        #: `ZmqLink`-specific extension, not part of the `Link` protocol, because
+        #: `Absent`/`Simulated` never see wire bytes and so can never produce one.
+        self.refused: list[Refused] = []
 
     def publish(self, telemetry: Telemetry) -> None:
         """Offer telemetry to whoever is subscribed. **Never blocks** (S9a §9: "ZMQ
@@ -413,8 +422,8 @@ class ZmqLink:
             pass
 
     def drain(self) -> list[Command]:
-        """Every command waiting on the REP socket right now, replied to as it is
-        read.
+        """Every well-formed command waiting on the REP socket right now, replied to
+        as it is read.
 
         Polls with a zero timeout -- never blocks the trial loop waiting for a
         console that has nothing to say -- looping only while `poll` reports more
@@ -427,25 +436,92 @@ class ZmqLink:
         `Session.set` is where acceptance or refusal is decided, and that outcome
         reaches every console as `Staged`/`Refused` in the next `Telemetry` frame,
         not in this reply.
+
+        **Reply before decode, always -- fix round 1, CRITICAL 2, measured.** The
+        reply used to be sent only after a successful `_decode_command`, so an
+        undecodable packet's exception propagated out of `drain` and out of
+        `taskd.py`'s trial loop, ending the session -- measured with `{"kind":
+        "pause"}`. Worse, because the reply was never sent, the REP socket was left
+        owing one, so the *next* call's poll/recv against a perfectly valid command
+        also failed: one garbage packet took the whole channel down, not just
+        itself. Replying unconditionally, before the `try`, means a malformed packet
+        can never leave the REP socket in that state.
+
+        **Never raised, never dropped silently either.** Every way a wire packet can
+        fail to become a `Command` -- bad msgpack, the wrong shape, an unknown kind
+        -- is caught broadly and deliberately (`Exception`, not a narrow list) and
+        turned into a `Refused` appended to `self.refused`, because refusing quietly
+        is how a console (a newer build against a bumped `SCHEMA`, S9a §9, is a
+        realistic source of this, not just corruption) loses a command with no
+        record anywhere that anything was even attempted -- the same failure
+        `Session.refusals` exists to prevent for a rejected `SetParameter`. `name`
+        and `by` are placeholders (`"<transport>"`, `"<unknown>"`): a packet that
+        failed to decode carries no reliable actor or parameter name to report,
+        unlike a `SetParameter` that decoded fine and was rejected by `Session.set`.
         """
         import zmq
 
         commands: list[Command] = []
         while self._rep.poll(timeout=0, flags=zmq.POLLIN):
             raw = self._rep.recv()
-            commands.append(_decode_command(raw))
             self._rep.send(b"received")
+            try:
+                commands.append(_decode_command(raw))
+            except Exception as exc:  # noqa: BLE001 -- deliberately broad, see above
+                self.refused.append(
+                    Refused(name="<transport>", by="<unknown>", why=f"could not decode command: {exc}")
+                )
         return commands
 
     def close(self) -> None:
-        """Release both sockets and this link's own `Context`. Not part of the
-        `Link` protocol and nothing in `taskd.py` calls it -- a session's process
-        exit tears its sockets down regardless -- but a test process that creates
-        many links needs it so ports and file descriptors do not accumulate across
-        the suite. `linger=0` so a close never blocks on an unsent/unread message."""
-        self._pub.close(linger=0)
-        self._rep.close(linger=0)
-        self._ctx.term()
+        """Release both sockets and this link's own `Context`, promptly.
+
+        `Context.destroy(linger=0)`, not `.term()` plus two manual `.close()` calls
+        -- fix round 1, measured: `ctx.term()` blocks on ANY socket under that
+        context that is not yet closed (a bare probe script, this session's
+        scratchpad: an unclosed socket makes `term()` hang indefinitely), while
+        `destroy(linger=0)`, called the same way from ordinary application code,
+        force-closes every socket the context owns and returns immediately
+        (measured: 0.0001 s against the identical unclosed socket) -- so this stays
+        correct even if a future edit adds a third socket here and forgets to list
+        it explicitly, which the old three-line version could not say.
+
+        **An open item, recorded rather than papered over.** `__init__` also
+        registers a `weakref.finalize(self, self._ctx.destroy, 0)` -- confirmed, by
+        sampling the stuck process, to actually run (a mutated, do-nothing `close()`
+        no longer leaves the callback un-invoked) -- but neutering `close()`
+        (`tools/mutate.py --all`, proving it is covered) still hangs the full suite
+        past 300 s. The same `destroy(linger=0)` call that returns in 0.0001 s from
+        this method, from a bare script, and even from an explicit `gc.collect()` in
+        a bare script with several abandoned link/console pairs, blocks in
+        `ctx_t::terminate()` specifically when invoked as a `weakref.finalize`
+        callback from *pytest's* cyclic collector (`gc_collect_main`) -- narrowed
+        that far and no further before running out of budget for this round. Ruled
+        out by direct measurement, not assumption: an unread `drain()` reply left on
+        the REQ socket; the number of accumulated abandoned pairs; and a live peer
+        connection on the socket being destroyed -- none of these reproduce it
+        outside pytest. `tools/mutate.py`'s own docstring calls a hung mutation
+        caught, since a suite that stops terminating has certainly noticed the
+        change, and every other function in this file is caught by a fast,
+        conventional assertion failure -- only this one costs the full 300 s. Left
+        for a future session with a `sample`/`py-spy` trace of pytest's own object
+        graph at the point of collection, which this round did not have time for.
+
+        Not part of the `Link` protocol. `wlx run --link` (Task 6) is the only thing
+        that will construct a `ZmqLink` outside a test, and nothing calls `close()`
+        in production yet because nothing yet owns a `ZmqLink` for a long-lived
+        process to shut down -- named so this is a grep-able "not yet" (CLAUDE.md)
+        rather than an unverifiable one.
+        """
+        self._ctx.destroy(linger=0)
+
+    def __enter__(self) -> "ZmqLink":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        """So a `try`/`finally` around `close()` cannot be forgotten -- every test in
+        this file that opens a `ZmqLink` can use `with` instead."""
+        self.close()
 
 
 class ZmqConsole:
@@ -457,23 +533,30 @@ class ZmqConsole:
     "if V11 permits one"); today there is exactly one topic, so no filtering is
     needed here.
 
-    **The settle delay after connecting is a real design choice, not a test-only
-    hack.** ZeroMQ's PUB socket does not queue a message for a subscriber whose
-    subscription has not yet propagated to it -- the well-documented "slow joiner"
-    behaviour -- so a console that connects and is published to immediately can miss
-    that first frame. Telemetry is lossy by design (S9a §9) and the next published
-    frame will still arrive regardless, so this is never a correctness requirement;
-    it exists only so a human opening a console does not see an avoidable gap before
-    the first frame. 50 ms was measured on this machine to be well clear of the
-    problem (0 misses in 1000 back-to-back trials, this session's scratchpad probe,
-    not committed as a repo measurement because it is a ZeroMQ implementation detail
-    rather than a claim about this system's own latency, jitter or throughput).
+    **The settle delay after connecting reduces one real but non-critical gap; it is
+    never a correctness requirement.** ZeroMQ's PUB socket does not queue a message
+    for a subscriber whose subscription has not yet propagated to it -- the
+    well-documented "slow joiner" behaviour -- so a console that connects and is
+    published to immediately can miss that first frame. Telemetry is lossy by design
+    (S9a §9) and the next published frame always arrives regardless, so a console
+    that keeps reading is never actually stuck -- this delay only spares a human
+    opening a console the sight of a gap before the very first frame. `settle_s`
+    (default 0.05, i.e. 50 ms) is a parameter rather than a hard-coded sleep so a
+    test can set it to `0` and prove the system is still correct without it --
+    `test_the_system_still_works_with_no_settle_delay` in `test_link.py` does exactly
+    that, using retries rather than a second sleep to observe the (still real, just
+    unmitigated) gap resolve itself. 50 ms was measured on this machine to be well
+    clear of the problem at the default (0 misses in 1000 back-to-back trials, this
+    session's scratchpad probe, not committed as a repo measurement because it is a
+    ZeroMQ implementation detail rather than a claim about this system's own latency,
+    jitter or throughput).
     """
 
-    def __init__(self, pub_endpoint: str, req_endpoint: str):
+    def __init__(self, pub_endpoint: str, req_endpoint: str, settle_s: float = 0.05):
         import zmq
 
         self._ctx = zmq.Context()
+        weakref.finalize(self, self._ctx.destroy, 0)  # see ZmqLink.__init__
 
         self._sub = self._ctx.socket(zmq.SUB)
         self._sub.setsockopt(zmq.LINGER, 0)  # see ZmqLink.__init__ -- same reasoning
@@ -487,19 +570,57 @@ class ZmqConsole:
 
         self._req = self._ctx.socket(zmq.REQ)
         self._req.setsockopt(zmq.LINGER, 0)
+        # Same ceiling as the SUB socket above, same reasoning -- see send()'s
+        # docstring for why a bounded read happens there at all.
+        self._req.setsockopt(zmq.RCVTIMEO, 5000)
         self._req.connect(req_endpoint)
+        #: Whether the last send() has a reply on this socket still unread. REQ's
+        #: state machine forbids a second send() before the first send's reply is
+        #: read -- see send()'s docstring.
+        self._awaiting_reply = False
 
-        time.sleep(0.05)  # see the class docstring -- the PUB/SUB settle delay
+        time.sleep(settle_s)  # see the class docstring -- the PUB/SUB settle delay
 
     def send(self, command: Command) -> None:
-        """Offer a command to the session. Does not wait for `drain`'s reply -- REQ's
-        send half returns once the message is queued, not once a peer has processed
-        it, so this cannot block on a session that has not called `drain` yet. The
-        reply `drain` sends is left unread on this socket; what a console does with
-        it -- show "accepted", surface a later `Refused` from telemetry instead,
-        anything else -- is a Task 6 question about the `wlx console` CLI, not this
-        transport."""
+        """Offer a command to the session.
+
+        **Fix round 1, CRITICAL 1, measured:** a REQ socket's state machine forbids
+        a second `send()` before the first send's reply is read -- `SetParameter`
+        then `Stop`, the ordinary sequence S9a §8 is built on, raised
+        `zmq.error.ZMQError: Operation cannot be accomplished in current state` on
+        the second call, because the reply `drain()` always sends was left
+        permanently unread. Fixed by reading it here, **lazily, one send behind**:
+        this call first consumes the *previous* send's reply, if one is still
+        outstanding, and only then sends the new command. The first-ever `send()`
+        (nothing outstanding) is unaffected and still returns as soon as the message
+        is queued -- REQ's send half returns before a peer has necessarily processed
+        anything, so this cannot block on a session that has not called `drain` yet.
+        Reading eagerly, inside the *same* call that sends -- awaiting this command's
+        own reply before returning -- was rejected: nothing calls `drain()`
+        concurrently with `send()` in this codebase (no threads), so that would
+        deadlock any single caller that sends and then itself drives `drain()`,
+        which is exactly how every test here and how `wlx console` (Task 6) is
+        expected to work.
+
+        Bounded by the REQ socket's `RCVTIMEO` (set in `__init__`, same ceiling as
+        `receive`'s SUB socket): if the previous reply never arrives, this raises
+        `TimeoutError` rather than wedging silently -- consistent with `receive()`,
+        and for the same reason nothing outside this file should see a `zmq.Again`.
+        """
+        import zmq
+
+        if self._awaiting_reply:
+            try:
+                self._req.recv()
+            except zmq.Again as exc:
+                raise TimeoutError(
+                    "no reply to the previous command within the console's receive "
+                    "timeout; refusing to send another command until this socket "
+                    "is healthy again"
+                ) from exc
+            self._awaiting_reply = False
         self._req.send(_encode_command(command))
+        self._awaiting_reply = True
 
     def receive(self) -> Telemetry:
         """Block for the next telemetry frame, up to the receive timeout set in
@@ -515,6 +636,11 @@ class ZmqConsole:
 
     def close(self) -> None:
         """See `ZmqLink.close` -- same reasoning, same shape."""
-        self._sub.close(linger=0)
-        self._req.close(linger=0)
-        self._ctx.term()
+        self._ctx.destroy(linger=0)
+
+    def __enter__(self) -> "ZmqConsole":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        """See `ZmqLink.__exit__` -- same reasoning, same shape."""
+        self.close()
