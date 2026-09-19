@@ -13,6 +13,8 @@ import time
 from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
+
 from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
     Absent,
@@ -200,7 +202,52 @@ def _drain_until(link, *, tries=50, pause=0.01):
     return []
 
 
-def test_a_console_and_a_session_talk_over_a_real_socket():
+@pytest.fixture
+def zmq_cleanup():
+    """Registers `ZmqLink`/`ZmqConsole` instances for guaranteed teardown, on a code
+    path that does not go through `close()`/`__exit__` at all.
+
+    **Fix round 2 -- why this exists rather than every test's own `try`/`finally` or
+    `with`.** `tools/mutate.py --all` neuters `close()`'s entire body to prove it is
+    covered (and, because `__exit__` only calls `close()`, neuters that too). Every
+    test in this file used to clean up by calling `link.close()` or `with
+    ZmqLink(...) as link:` -- and under that mutation, the call site still ran but
+    the method did nothing, so each such test left an abandoned `Context` behind.
+    Several abandoned contexts across this file, reachable only once pytest's own
+    object graph triggers a cyclic GC pass, is what made
+    `tools/mutate.py wl_expcontroller/link.py close` hang past its 300 s timeout --
+    confirmed by `sample`-ing the stuck process (fix round 1's report has the full
+    trace), and *not* fixed by routing cleanup through `Context.destroy(linger=0)`
+    or a `weakref.finalize` safety net, because both still depend on *something*
+    eventually reaching the abandoned object -- GC-driven either way, just with a
+    different trigger.
+
+    A fixture's teardown is not GC-driven: it always runs when the requesting test
+    returns, pass or fail, and calls `Context.destroy(linger=0)` directly on the raw
+    `._ctx` -- bypassing `close()`/`__exit__` entirely, so neutering either one
+    cannot stop it. Verified this actually removes the hang before relying on it:
+    a throwaway three-test file using this exact pattern, with `close()` neutered by
+    hand, ran in 0.18s (one clean, fast, expected failure from the test that calls
+    `close()` on purpose; no hang anywhere) where the equivalent `try`/`finally`
+    version hung past 300s.
+
+    Calling `destroy()` on an already-destroyed `Context` is a safe no-op (checked
+    directly, not assumed), so a test that calls `close()`/uses `with` on purpose --
+    because that is the behaviour it is testing -- registers here too, as a backup
+    rather than a replacement for what it actually tests.
+    """
+    contexts = []
+
+    def _register(obj):
+        contexts.append(obj._ctx)
+        return obj
+
+    yield _register
+    for ctx in contexts:
+        ctx.destroy(linger=0)
+
+
+def test_a_console_and_a_session_talk_over_a_real_socket(zmq_cleanup):
     """Over loopback rather than a mock, for the reason `tests/test_eye.py` uses a
     real socket: a protocol proven against a mock is a proof about the mock.
 
@@ -213,21 +260,18 @@ def test_a_console_and_a_session_talk_over_a_real_socket():
     `test_the_system_still_works_with_no_settle_delay` below proves the zero-settle
     case directly instead of leaving an unmeasured claim in a docstring comment.
     """
-    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
-    try:
-        console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
-        commands = _drain_until(link)
-        link.publish(_telemetry())
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
 
-        assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
-        assert console.receive().session_id == _telemetry().session_id
-    finally:
-        console.close()
-        link.close()
+    console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+    commands = _drain_until(link)
+    link.publish(_telemetry())
+
+    assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+    assert console.receive().session_id == _telemetry().session_id
 
 
-def test_a_console_can_send_a_sequence_of_commands():
+def test_a_console_can_send_a_sequence_of_commands(zmq_cleanup):
     """Fix round 1, **CRITICAL 1**, measured: a REQ socket refuses a second `send()`
     before the first send's reply is read (`zmq.error.ZMQError: Operation cannot be
     accomplished in current state`), and `SetParameter` then `Stop` -- an operator
@@ -239,23 +283,20 @@ def test_a_console_can_send_a_sequence_of_commands():
     rather than never (see its docstring) -- proven here by the fact that the second
     `send()` does not raise.
     """
-    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
-    try:
-        console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
-        first = _drain_until(link)
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
 
-        console.send(Stop(by="jake"))
-        second = _drain_until(link)
+    console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+    first = _drain_until(link)
 
-        assert first == [SetParameter(name="fix_hold", value=0.4, by="jake")]
-        assert second == [Stop(by="jake")]
-    finally:
-        console.close()
-        link.close()
+    console.send(Stop(by="jake"))
+    second = _drain_until(link)
+
+    assert first == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+    assert second == [Stop(by="jake")]
 
 
-def test_an_undecodable_command_is_refused_not_raised():
+def test_an_undecodable_command_is_refused_not_raised(zmq_cleanup):
     """Fix round 1, **CRITICAL 2**, measured with `{"kind": "pause"}`: `drain()` used
     to decode a packet before replying to it, so an undecodable packet's exception
     propagated out of `drain` and out of `taskd.py`'s trial loop -- one garbage
@@ -276,28 +317,25 @@ def test_an_undecodable_command_is_refused_not_raised():
     """
     import msgpack
 
-    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
-    try:
-        console._req.send(msgpack.packb({"kind": "pause"}, use_bin_type=True))
-        console._awaiting_reply = True
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
 
-        commands = _drain_until(link)
+    console._req.send(msgpack.packb({"kind": "pause"}, use_bin_type=True))
+    console._awaiting_reply = True
 
-        assert commands == [], "nothing decodable arrived, so nothing is returned"
-        assert len(link.refused) == 1
-        assert "pause" in link.refused[0].why
+    commands = _drain_until(link)
 
-        # The other half of CRITICAL 2: the channel must still work afterwards.
-        console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
-        commands = _drain_until(link)
-        assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
-    finally:
-        console.close()
-        link.close()
+    assert commands == [], "nothing decodable arrived, so nothing is returned"
+    assert len(link.refused) == 1
+    assert "pause" in link.refused[0].why
+
+    # The other half of CRITICAL 2: the channel must still work afterwards.
+    console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+    commands = _drain_until(link)
+    assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
 
 
-def test_publish_sends_with_dontwait_and_swallows_again():
+def test_publish_sends_with_dontwait_and_swallows_again(zmq_cleanup):
     """S9a §9's one hard requirement on `publish`: it must never block. **Fix round
     1, IMPORTANT**: nothing previously tested that `flags=zmq.DONTWAIT` is actually
     passed -- deleting it would not have failed a single test. Structural, per
@@ -311,24 +349,22 @@ def test_publish_sends_with_dontwait_and_swallows_again():
     """
     import zmq
 
-    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    try:
-        calls = []
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
 
-        def fake_send(data, flags=0):
-            calls.append(flags)
-            raise zmq.Again("simulated full queue")
+    calls = []
 
-        link._pub.send = fake_send
+    def fake_send(data, flags=0):
+        calls.append(flags)
+        raise zmq.Again("simulated full queue")
 
-        link.publish(_telemetry())  # must not raise
+    link._pub.send = fake_send
 
-        assert calls == [zmq.DONTWAIT]
-    finally:
-        link.close()
+    link.publish(_telemetry())  # must not raise
+
+    assert calls == [zmq.DONTWAIT]
 
 
-def test_the_system_still_works_with_no_settle_delay():
+def test_the_system_still_works_with_no_settle_delay(zmq_cleanup):
     """Fix round 1, judgment call 1: `ZmqConsole.__init__`'s default 50 ms settle
     delay reduces one real but non-critical gap (see the class docstring) -- it is
     never a correctness requirement, because retrying (`_drain_until`, and the same
@@ -343,10 +379,13 @@ def test_the_system_still_works_with_no_settle_delay():
     returning something other than `self` breaks attribute access inside the block
     and so is already caught, but a neutered `__exit__` that skips `self.close()`
     entirely leaves both blocks looking identical from the inside -- only checking
-    afterwards catches it.
+    afterwards catches it. Also registers both ends with `zmq_cleanup` (fix round 2)
+    as a backup: this test's whole point is exercising `__exit__`, so its own
+    cleanup must not be the only thing standing between a broken `__exit__` and an
+    abandoned `Context`.
     """
-    with ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0") as link:
-        with ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0) as console:
+    with zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")) as link:
+        with zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0)) as console:
             console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
             commands = _drain_until(link)
             link.publish(_telemetry())
@@ -357,15 +396,19 @@ def test_the_system_still_works_with_no_settle_delay():
     assert link._pub.closed and link._rep.closed, "__exit__ must close the link"
 
 
-def test_close_releases_both_sockets():
+def test_close_releases_both_sockets(zmq_cleanup):
     """Found by the mutation harness (`tools/mutate.py --all wl_expcontroller/link.py`
     reported `close` surviving), the same way `test_record.py` found `close`
     surviving there. The real-socket test above calls `close()` in a `finally`
     purely for hygiene -- so a full suite run does not accumulate open sockets and
     ports across hundreds of tests -- without ever checking that anything closed;
-    gutting `close()`'s body would not have failed a single test before this one."""
-    link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    console = ZmqConsole(link.pub_endpoint, link.rep_endpoint)
+    gutting `close()`'s body would not have failed a single test before this one.
+    Also registers both ends with `zmq_cleanup` (fix round 2): this test's whole
+    point is exercising `close()`, so its own explicit calls below must not be the
+    only thing standing between a broken `close()` and an abandoned `Context` --
+    `zmq_cleanup`'s teardown does not depend on `close()` working."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
     assert not link._pub.closed and not link._rep.closed
     assert not console._sub.closed and not console._req.closed
 
