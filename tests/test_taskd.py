@@ -24,7 +24,7 @@ from wl_expcontroller.record import REFUSAL_LOG_LIMIT
 from wl_expcontroller.scheduler import Block, Condition, Counting
 from wl_expcontroller.task import Outcome
 from wl_expcontroller.taskd import Session, SessionSpec
-from wl_expcontroller.welfare import Simulated as Pump
+from wl_expcontroller.welfare import Deployment, Simulated as Pump
 
 VALUES = {
     "fix_timeout": 4.0,
@@ -41,11 +41,17 @@ VALUES = {
 def _bounds(daily_fluid: float = 250.0, **over: float) -> Bounds:
     ceilings = {
         "reward_correct": Ceiling(value=0.15, maximum=0.40, unit="mL"),
-        "chair_time": Ceiling(value=14_400.0, maximum=14_400.0, unit="s"),
-        # Small enough that a broken scheduler bounds out in seconds rather than
-        # grinding to 100,000 trials -- which under a mutation run is a 300-second
-        # timeout per function, paid once for every function in the module.
-        "max_trials": Ceiling(value=400.0, maximum=100_000.0, unit="trials"),
+        # **The session's one duration ceiling** (PI, 2026-09-19), and since
+        # `max_trials` went it is also what bounds a *broken* session here. Small
+        # enough that a scheduler whose counts stop advancing runs out of session
+        # seconds in a fraction of a wall second rather than grinding on forever --
+        # which under a mutation run is a 300-second timeout per function, paid once
+        # for every function in the module. Eight hundred seconds is a little over
+        # four hundred trials of this task, so it replaces `max_trials=400` with a
+        # bound of the same size expressed in the unit a real session ends on. Tests
+        # that need more say so, and the two stop conditions that remain -- a block
+        # quota and this -- are both ones a real session has.
+        "out_of_cage": Ceiling(value=800.0, maximum=100_000.0, unit="s"),
     }
     for name, value in over.items():
         ceiling = ceilings[name]
@@ -70,6 +76,7 @@ def _spec(tmp_path, seed: int = 1, trials: int = 50, **kwargs) -> SessionSpec:
         values=dict(VALUES),
         bounds=_bounds(),
         already_delivered_today=0.0,
+        deployment=Deployment.OUT_OF_CAGE,
     )
     for name, value in kwargs.items():
         setattr(spec, name, value)
@@ -82,9 +89,15 @@ def _session(spec, link=None) -> Session:
     `link` defaults to `None`, i.e. omitted from the call -- `Session.link` then
     falls back to its own default, `link.Absent()`, exactly as a session with no
     console attached does outside a test.
+
+    **Both marks, because a rig session needs both** (`welfare.preflight`): the
+    out-of-cage one starts the clock that bounds the session and head-fixation is
+    the restraint record. `test_a_session_refuses_to_run_before_the_animal_is_out_
+    of_its_cage` is the fixture's own counter-example, built without this helper.
     """
     kwargs = {"link": link} if link is not None else {}
     session = Session(spec, card=Card(), pump=Pump(), **kwargs)
+    session.left_cage(at=0.0)
     session.head_fixed(at=0.0)
     return session
 
@@ -160,9 +173,12 @@ def test_the_m1_gate_one_thousand_deterministic_trials_with_full_outputs(tmp_pat
     the task declares reached, nothing hanging, and the record on disk.
     """
     spec = _spec(tmp_path, trials=1_000)
-    # The gate's own claim is a thousand trials, so the trial ceiling has to admit
-    # them. Everywhere else in this file the ceiling is deliberately small.
-    spec.bounds = _bounds(max_trials=1_000.0)
+    # The gate's own claim is a thousand trials, so the session has to be able to
+    # reach them: the block quota is a thousand, and the duration ceiling is the
+    # twelve hours a real session runs under (S8 §5.2) rather than the deliberately
+    # small backstop `_bounds` uses everywhere else in this file. The gate passing
+    # is itself the statement that a thousand trials fit inside a real session.
+    spec.bounds = _bounds(out_of_cage=43_200.0)
     census = _session(spec).run()
 
     trials = (
@@ -262,37 +278,87 @@ def test_a_session_with_an_unknown_daily_total_still_pays_and_says_it_cannot_cou
     assert session.welfare.shortfall() is None
 
 
-def test_a_session_refuses_to_run_before_the_animal_is_in_the_chair(tmp_path):
-    """S8 §5.2: head-fixation is required by preflight, because it is what starts the
-    restraint clock. A session that started its own clock would be measuring work
-    rather than restraint, and setup and calibration would be free."""
+def test_a_session_refuses_to_run_before_the_animal_is_out_of_its_cage(tmp_path):
+    """**The refusal that makes the duration limit real** (PI, 2026-09-19). A rig
+    session nobody marked has no start for the twelve-hour clock, and running it
+    against an assumed zero is how a limit gets disabled by forgetting rather than
+    by deciding. `welfare.preflight` is what `run()` asks, so the rule has one
+    home; `test_welfare.py` covers the refusal's own shape."""
     session = Session(_spec(tmp_path, trials=5), card=Card(), pump=Pump())
+    session.head_fixed(at=0.0)
+
+    with pytest.raises(Exceeded, match="out of its cage"):
+        session.run()
+
+
+def test_a_session_refuses_to_run_before_the_animal_is_in_the_chair(tmp_path):
+    """S8 §5.2's other preflight mark, kept. Chair time stopped bounding the session
+    on 2026-09-19 and did not stop being what `HEAD_FIXED`/`HEAD_RELEASED` record --
+    a rig session with neither code in the stream has no record of restraint at
+    all."""
+    session = Session(_spec(tmp_path, trials=5), card=Card(), pump=Pump())
+    session.left_cage(at=0.0)
 
     with pytest.raises(Exceeded, match="head-fixed"):
         session.run()
 
 
-def test_a_session_stops_at_its_chair_time_ceiling(tmp_path):
-    """Restraint time, not work time. The clock started before the first trial."""
-    spec = _spec(tmp_path, trials=1_000)
-    spec.bounds = _bounds(chair_time=2.0)
+def test_a_session_stops_at_its_out_of_cage_ceiling(tmp_path):
+    """The session's one duration limit, and the only welfare ceiling that ends a
+    session at all since `max_trials` went. Out of the cage, not in the chair: the
+    clock started at `left_cage`, before head-fixation and before the first trial.
+
+    A hundred trials rather than a thousand because the ceiling is the thing under
+    test -- if it stops working, the block quota bounds what runs instead of a
+    mutation sweep waiting for a timeout."""
+    spec = _spec(tmp_path, trials=100)
+    spec.bounds = _bounds(out_of_cage=2.0)
     session = _session(spec)
 
     census = session.run()
 
-    assert sum(census.outcomes.values()) < 1_000
-    assert "chair_time" in session.stopped_because
+    assert sum(census.outcomes.values()) < 100
+    assert "out_of_cage" in session.stopped_because
 
 
-def test_a_session_stops_at_its_trial_ceiling(tmp_path):
-    spec = _spec(tmp_path, trials=1_000)
-    spec.bounds = _bounds(max_trials=30.0)
+def test_putting_the_animal_back_in_its_cage_closes_the_sessions_clock(tmp_path):
+    """**`run()` deliberately does not do this**, and that is the property under test.
+
+    The limit is on an interval, not on a process (S8 §5.2 item 4): when the loop ends
+    the animal is still in the chair, and the release, the unchairing and the walk back
+    are all inside the twelve hours. A `run()` that closed the clock itself would report
+    a session as shorter than the animal's day actually was, every time. So the mark is
+    the console's, and this drives it the way a console would.
+
+    Found by a mutation sweep: `Session.returned_to_cage` was wired to `welfare` and
+    called by nothing, which is `bounds.check_delivery`'s failure exactly -- a path that
+    reads as present because it exists."""
+    session = _session(_spec(tmp_path, trials=3))
+    session.run()
+    in_the_chair = session.welfare.out_of_cage_seconds(session.now())
+    assert in_the_chair > 0.0, "a session that took no time cannot test a clock"
+
+    session.returned_to_cage(at=session.now() + 600.0)
+
+    assert session.welfare.out_of_cage_seconds(now=99_999.0) == pytest.approx(
+        in_the_chair + 600.0
+    ), "the clock did not close, so it would have run to the end of time"
+
+
+def test_a_session_ends_on_its_block_quota_and_not_on_a_trial_ceiling(tmp_path):
+    """PI, 2026-09-19: *"the max trials idea makes no sense to me"*. What ends a
+    session of ordinary length is the plan running out -- the quota every condition
+    carries -- and this is that, asserted where a trial ceiling used to be. A stale
+    `max_trials` entry in the bounded config changes nothing, because nothing reads
+    one."""
+    spec = _spec(tmp_path, trials=30)
+    spec.bounds.ceilings["max_trials"] = Ceiling(5.0, 5.0, "trials")
     session = _session(spec)
 
     census = session.run()
 
     assert sum(census.outcomes.values()) == 30
-    assert "max_trials" in session.stopped_because
+    assert session.stopped_because == "every block is finished"
 
 
 def test_head_fixation_is_event_coded_at_both_ends(tmp_path):
@@ -500,15 +566,14 @@ def test_a_session_refuses_a_bounded_config_belonging_to_another_subject(tmp_pat
 def test_a_session_publishes_one_frame_per_trial_then_two_when_it_stops(tmp_path):
     """One entry before each trial runs, plus two more at the close: `run()`
     publishes at the top of every pass through `while True:`, and the pass where the
-    session discovers its ceiling and stops -- without drawing a sixth trial -- is
+    session finds its plan finished and stops -- without drawing a sixth trial -- is
     such a pass too, published once before the stop is known (`must_stop`/
     `scheduler.finished` sit *below* that publish) and once more right after, so the
     very last frame names the reason (`publish()` in `run()`). Both final frames
     share `trial_index=5`, one index past the last trial that actually ran; see
     `test_the_last_telemetry_names_a_welfare_ceilings_reason` for the reason itself."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=5)
+    spec = _spec(tmp_path, trials=5)
     session = _session(spec, link=link)
 
     session.run()
@@ -526,8 +591,7 @@ def test_a_queued_commands_staged_value_is_visible_before_it_applies(tmp_path):
     instead of the old one, because staging and applying would happen in the same
     pass rather than a boundary apart."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
 
@@ -550,8 +614,7 @@ def test_a_command_from_a_console_lands_at_the_next_boundary_with_its_actor(tmp_
     so a welfare-bounded name still meets its ceiling and an undeclared name is still
     refused."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
 
@@ -576,8 +639,7 @@ def test_a_console_command_moving_reward_volume_goes_through_its_ceiling(tmp_pat
     `test_a_welfare_bounded_change_applies_at_the_next_boundary_like_any_other`
     is what pins *which* trial first sees it."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     link.queue(SetParameter(name="reward_correct", value=0.90, by="jake"))
     link.queue(SetParameter(name="reward_correct", value=0.30, by="jake"))
@@ -602,8 +664,7 @@ def test_a_console_command_moving_reward_volume_goes_through_its_ceiling(tmp_pat
 
 def test_a_stop_command_ends_the_session_at_a_boundary_not_mid_trial(tmp_path):
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=100)
+    spec = _spec(tmp_path, trials=100)
     session = _session(spec, link=link)
     link.queue(Stop(by="jake"))
 
@@ -618,14 +679,13 @@ def test_a_refused_command_does_not_stop_the_session(tmp_path):
     person, not a fault of the rig. The session records the refusal and runs on --
     stopping would let a typo end a session with an animal in the chair."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     link.queue(SetParameter(name="not_a_parameter", value=1.0, by="jake"))
 
     census = session.run()
 
-    assert sum(census.outcomes.values()) == 3, "the session ran to its trial ceiling"
+    assert sum(census.outcomes.values()) == 3, "the session ran its block quota"
     assert len(session.refusals) == 1
     assert session.refusals[0][0] == "not_a_parameter"
     assert session.refusals[0][1] == "jake"
@@ -638,8 +698,7 @@ def test_a_refusal_appears_in_the_telemetry_a_console_reads(tmp_path):
     change feed), cumulative like `outcomes` rather than cleared per boundary, since
     a refusal is a resolved event and not a pending one."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     link.queue(SetParameter(name="not_a_parameter", value=1.0, by="jake"))
 
@@ -658,19 +717,23 @@ def test_a_refusal_appears_in_the_telemetry_a_console_reads(tmp_path):
 
 
 def test_the_last_telemetry_names_a_welfare_ceilings_reason(tmp_path):
-    """A console watching a session hit its trial ceiling must not see the stream go
-    quiet with no explanation -- that is precisely the failure the publish-before-
-    break ordering exists to prevent, and it must hold for every stop path, not only
-    a console-issued `Stop`. Asserts on the reason itself, not a frame count: a count
-    assertion would pass even with an empty `stopped_because`."""
+    """A console watching a session hit the out-of-cage ceiling must not see the
+    stream go quiet with no explanation -- that is precisely the failure the
+    publish-before-break ordering exists to prevent, and it must hold for every stop
+    path, not only a console-issued `Stop`. Asserts on the reason itself, not a
+    frame count: a count assertion would pass even with an empty `stopped_because`.
+
+    This was written against `max_trials` and now runs against the one welfare
+    ceiling there is (PI, 2026-09-19). The property is unchanged; what changed is
+    which limit can end a session."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=5)
+    spec = _spec(tmp_path, trials=100)
+    spec.bounds = _bounds(out_of_cage=2.0)
     session = _session(spec, link=link)
 
     session.run()
 
-    assert "max_trials" in link.published[-1].stopped_because
+    assert "out_of_cage" in link.published[-1].stopped_because
     assert link.published[-1].stopped_because == session.stopped_because
 
 
@@ -678,8 +741,7 @@ def test_the_last_telemetry_names_a_consoles_stop_reason(tmp_path):
     """The path this was already true for, made explicit against the telemetry a
     console actually reads rather than the session's own attribute."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=100)
+    spec = _spec(tmp_path, trials=100)
     session = _session(spec, link=link)
     link.queue(Stop(by="jake"))
 
@@ -744,8 +806,7 @@ def test_a_welfare_bounded_change_applies_at_the_next_boundary_like_any_other(
     a reward volume was told it had not taken effect yet. It had.
     """
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     seen = _watch(session)
     link.queue(SetParameter(name="reward_correct", value=0.30, by="jake"))
@@ -768,8 +829,7 @@ def test_a_bounded_changes_record_row_lands_in_the_pass_that_applies_it(tmp_path
     pass is what puts the row immediately before the first trial it describes.
     """
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     seen = _watch(session)
     link.queue(SetParameter(name="reward_correct", value=0.30, by="jake"))
@@ -800,6 +860,7 @@ def test_a_pump_fault_publishes_a_final_frame_before_it_propagates(tmp_path):
     link = Simulated()
     spec = _spec(tmp_path, trials=200)
     session = Session(spec, card=Card(), pump=Broken(), link=link)
+    session.left_cage(at=0.0)
     session.head_fixed(at=0.0)
 
     with pytest.raises(RuntimeError, match="solenoid"):
@@ -818,8 +879,7 @@ def test_a_refused_welfare_bounded_set_reaches_the_session_record(tmp_path):
     happened to still have the row. The durable record is what a welfare question
     is answered from months later."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     link.queue(SetParameter(name="reward_correct", value=0.90, by="jake"))
 
@@ -847,8 +907,7 @@ def test_a_recorded_refusal_says_where_in_the_session_it_happened(tmp_path):
     later pass: a row that hardcoded zeros, or read the wrong index, passes on the
     first refusal alone and fails here."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     link.queue(SetParameter(name="reward_correct", value=0.90, by="jake"))
     session.observe = lambda condition, values, result: (
@@ -864,7 +923,7 @@ def test_a_recorded_refusal_says_where_in_the_session_it_happened(tmp_path):
         for line in (session.directory / "refusals.jsonl").read_text().splitlines()
     ]
     # Four, not three: `observe` queues after each of the three trials, and the
-    # pass that discovers the trial ceiling drains the last one before it stops.
+    # pass that finds the block quota filled drains the last one before it stops.
     # A *refused* command is recorded on that pass; an accepted one would be staged
     # and dropped, which is the open item this commit widened -- see
     # `docs/next-session.md` §6.
@@ -883,8 +942,7 @@ def test_an_ordinary_parameter_typo_stays_out_of_the_session_record(tmp_path):
     ceiling refusals that matter among the ones that do not. It is still on the
     live feed every console sees."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     link.queue(SetParameter(name="not_a_parameter", value=1.0, by="jake"))
 
@@ -919,8 +977,7 @@ def test_the_recorded_refusal_log_keeps_the_first_rows_not_the_last(tmp_path):
     would discard the only rows a human wrote.
     """
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     _flood(link, REFUSAL_LOG_LIMIT + 12)
 
@@ -938,8 +995,7 @@ def test_a_truncated_refusal_log_says_so_and_says_how_many_are_missing(tmp_path)
     prevent -- the same argument as `Telemetry.refusals_dropped`, one layer down and
     on the durable side, where there is no live console to have noticed."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     _flood(link, REFUSAL_LOG_LIMIT + 12)
 
@@ -956,8 +1012,7 @@ def test_an_untruncated_refusal_log_carries_no_notice_row(tmp_path):
     """The notice is evidence of a cap, so a session nobody flooded must not carry
     one -- a reader who saw it on every session would stop reading it."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     _flood(link, 3)
 
@@ -976,8 +1031,7 @@ def test_the_sessions_own_refusal_list_is_capped_like_the_other_two(tmp_path):
     as fast as it can send them -- and was the third list, unbounded. Two bounded
     and one not is not a policy."""
     link = Simulated()
-    spec = _spec(tmp_path)
-    spec.bounds = _bounds(max_trials=3)
+    spec = _spec(tmp_path, trials=3)
     session = _session(spec, link=link)
     for n in range(REFUSAL_HISTORY + 10):
         link.queue(SetParameter(name=f"not_a_parameter_{n}", value=1.0, by="jake"))

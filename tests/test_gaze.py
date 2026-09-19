@@ -34,7 +34,7 @@ from wl_expcontroller.geometry import Geometry
 from wl_expcontroller.run import Recorded, run_trial
 from wl_expcontroller.scheduler import Block, Scheduler
 from wl_expcontroller.taskd import Session, SessionSpec
-from wl_expcontroller.welfare import Simulated as Pump
+from wl_expcontroller.welfare import Deployment, Simulated as Pump
 from wl_expcontroller.task import Outcome, SaccadeOnset, SaccadeTo
 from tasks.calibration import calibration
 
@@ -577,8 +577,12 @@ def _calibration_bounds() -> Bounds:
         subject="REFERENCE",
         ceilings={
             "reward_correct": Ceiling(value=0.05, maximum=0.20, unit="mL"),
-            "chair_time": Ceiling(value=3_600.0, maximum=3_600.0, unit="s"),
-            "max_trials": Ceiling(value=200.0, maximum=200.0, unit="trials"),
+            # The session's one duration ceiling (PI, 2026-09-19). A calibration
+            # block is twenty-six trials of at most a second and a half, so this
+            # admits them several times over -- and still bounds a scheduler whose
+            # counters stop advancing, which since `max_trials` went is the only
+            # backstop a criterion-free block has besides its own quota.
+            "out_of_cage": Ceiling(value=600.0, maximum=600.0, unit="s"),
         },
         minima={"daily_fluid": Floor(value=20.0, unit="mL")},
     )
@@ -612,6 +616,7 @@ def _calibration_session(tmp_path, repeats: int = 2):
         values={"cal_window": 3.0, "fix_timeout": 1.0, "cal_hold": 0.1},
         bounds=_calibration_bounds(),
         already_delivered_today=0.0,
+        deployment=Deployment.OUT_OF_CAGE,
         blocks=[block],
     )
     session = Session(
@@ -621,6 +626,7 @@ def _calibration_session(tmp_path, repeats: int = 2):
         world=driver.world,
         observe=driver.observe,
     )
+    session.left_cage(at=0.0)
     session.head_fixed(at=0.0)
     return session, driver
 
@@ -717,6 +723,7 @@ def test_the_fit_uses_the_hold_and_not_the_whole_trial(tmp_path):
         values={"cal_window": 3.0, "fix_timeout": 1.0, "cal_hold": hold_s},
         bounds=_calibration_bounds(),
         already_delivered_today=0.0,
+        deployment=Deployment.OUT_OF_CAGE,
         blocks=[
             Block(
                 name="calibration",
@@ -728,6 +735,7 @@ def test_the_fit_uses_the_hold_and_not_the_whole_trial(tmp_path):
     )
     session = Session(spec, card=Card(), pump=Pump(), world=driver.world,
                       observe=driver.observe)
+    session.left_cage(at=0.0)
     session.head_fixed(at=0.0)
 
     session.run()

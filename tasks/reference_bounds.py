@@ -2,8 +2,8 @@
 
 **Every number in this file is a placeholder and none of them is a protocol.**
 There is no approved protocol figure in this repository for reward volume, daily
-fluid, restraint time or trial count, and there will not be one until a person with
-the protocol in front of them writes it down. What this file is for is the *shape*:
+fluid or time out of the cage, and there will not be one until a person with the
+protocol in front of them writes it down. What this file is for is the *shape*:
 which entries a session needs, that each carries a current value and a maximum, and
 that the units are stated.
 
@@ -20,8 +20,7 @@ Two guards, so a copy of this file cannot quietly become a real one:
 **Each ceiling states which kind of limit its maximum is** -- a protocol figure or a
 fault bound (`bounds.Ceiling`). Both are enforced identically, so the comment is the
 only place the difference is written down, and a reviewer signing this off is entitled
-to know which refusal they are approving. `max_trials` carries neither label, and the
-entry says why.
+to know which refusal they are approving.
 
 **The daily fluid figure is a floor, not a ceiling** (PI, 2026-09-06): a minimum the
 animal must reach, topped up by hand after the session if the work did not earn it.
@@ -46,18 +45,22 @@ BOUNDS = Bounds(
         # beside it is still an ordinary placeholder, and the daily figure below is
         # still a floor; nothing here caps what an animal may earn.
         "reward_correct": Ceiling(value=0.05, maximum=10.0, unit="mL"),
-        # Restraint time, from head-fixation. Not from the first trial.
-        # **A protocol figure**: a protocol states how long an animal may be in the
-        # chair, and the number changes when the protocol does.
-        "chair_time": Ceiling(value=3_600.0, maximum=3_600.0, unit="s"),
-        # **Labelled with neither kind, because this entry is going away.** The PI
-        # has ruled (2026-09-19) that **there is no session-length maximum**: trial
-        # counts are per-task, likely per-condition targets, which the scheduler
-        # already carries. Removal is **pending**, together with an open question
-        # about which clock the surviving duration limit uses -- see
-        # `docs/next-session.md` §6. Nothing here should be read as a protocol
-        # figure or a fault bound.
-        "max_trials": Ceiling(value=2_000.0, maximum=5_000.0, unit="trials"),
+        # **The session's one duration limit** (PI, 2026-09-19): out of the home
+        # cage to back in it, which is what the twelve-hour institutional figure is
+        # about -- not chair time, which starts at head-fixation and so misses the
+        # transport and chairing before it. **A protocol figure**: an institution
+        # states it, and the number changes when the protocol does.
+        #
+        # Ten minutes, and therefore a placeholder like everything else here. The
+        # real figure is twelve hours; nobody could mistake this one for it, which
+        # is this file's second guard doing its job.
+        "out_of_cage": Ceiling(value=600.0, maximum=600.0, unit="s"),
+        # There is no `chair_time` ceiling and no `max_trials` ceiling. Both were
+        # here until 2026-09-19, when the PI ruled that **there is no session-length
+        # maximum** -- per-condition targets are a task's config and the scheduler's
+        # job -- and that the one welfare duration limit runs out of cage to back in
+        # cage. Chair time is still recorded, by `HEAD_FIXED`/`HEAD_RELEASED`; it is
+        # simply not a limit, so there is nothing here for it.
     },
     minima={
         # The day's minimum, including what another deployment already delivered

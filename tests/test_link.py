@@ -31,13 +31,13 @@ from wl_expcontroller.link import (
 )
 from wl_expcontroller.scheduler import Block, Condition, Scheduler
 from wl_expcontroller.simulate import Tally
-from wl_expcontroller.welfare import Simulated as Pump, Welfare
+from wl_expcontroller.welfare import Deployment, Simulated as Pump, Welfare
 
 
 def _bounds(daily_fluid: float = 250.0) -> Bounds:
     return Bounds(
         subject="A",
-        ceilings={"chair_time": Ceiling(value=14_400.0, maximum=14_400.0, unit="s")},
+        ceilings={"out_of_cage": Ceiling(value=43_200.0, maximum=43_200.0, unit="s")},
         minima={"daily_fluid": Floor(value=daily_fluid, unit="mL")},
     )
 
@@ -79,9 +79,15 @@ def _session_with(delivered_ml: float, already_today: float | None):
         bounds=_bounds(),
         pump=Pump(),
         already_today=already_today,
+        deployment=Deployment.OUT_OF_CAGE,
         commanded=0.1,
         delivered=delivered_ml,
     )
+    # The mark, because `Telemetry.of` asks for `out_of_cage_seconds` and an
+    # unmarked rig session refuses rather than answering zero (PI, 2026-09-19). A
+    # stand-in that skipped it would make every telemetry test here a test of that
+    # refusal instead.
+    welfare.left_cage(at=0.0)
     return SimpleNamespace(
         spec=SimpleNamespace(session_id="2027-01-14_01", subject="A"),
         welfare=welfare,
@@ -183,6 +189,19 @@ def test_telemetry_survives_the_wire_unchanged():
 
     assert restored == original
     assert restored.fluid_today_ml is None, "None must not become 0.0 on the wire"
+
+
+def test_a_cage_side_sessions_absent_duration_clock_survives_the_wire_as_none():
+    """`out_of_cage_seconds` is `None` for a session that declared the animal is at
+    home (`welfare.Deployment`, PI 2026-09-19), and a `0.0` arriving in its place
+    would render as a clock that had not started rather than one that does not
+    exist. msgpack has a native nil, so this is a claim about `encode`/`decode`
+    keeping it and not about the format being able to."""
+    original = _telemetry(out_of_cage_seconds=None)
+
+    restored = decode(encode(original))
+
+    assert restored.out_of_cage_seconds is None
 
 
 def test_staged_and_refused_rows_come_back_as_objects_not_raw_dicts():

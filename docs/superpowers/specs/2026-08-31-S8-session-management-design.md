@@ -96,7 +96,7 @@ ceilings the console cannot exceed and the task cannot touch.**
 | Bounded | Covers |
 |---|---|
 | Reward | Volume per delivery, rate. **Not a daily total** — see the correction at the head of this file: the daily fluid figure is a floor, and only the per-delivery volume is a ceiling |
-| Session | Duration, maximum trials, mandatory breaks |
+| Session | **Time out of the cage** — the one duration limit (§5.2), twelve hours. **Not maximum trials**: there is no session-length maximum (PI, 2026-09-19), and per-condition targets are a task's config, carried by `scheduler`. Mandatory breaks |
 | Tokens | Token-to-fluid conversion, maximum accumulation |
 | Stimulation | Amplitude, pulse width, frequency, train duration, duty cycle, charge per phase and charge density, refractory, deliveries per session |
 
@@ -139,21 +139,49 @@ supplement afterwards — is then computed against a figure that describes half 
    delivers, reports the day as uncountable, and a human supplies the figure —
    `Welfare.shortfall()` answers `None` rather than zero, because a day nobody measured is not a
    day that went well.
-4. **Session duration is chair time, from head-fixation** (PI, 2026-08-31) — not from the first
-   trial and not from the first reward. The limit is on restraint, not on work, so setup,
-   calibration and unrewarded shaping all count.
+4. ~~**Session duration is chair time, from head-fixation**~~ **Superseded 2026-09-19 (PI):
+   the one duration limit is out-of-cage to back-in-cage, and it is twelve hours.**
+
+   > *"The only limit we have welfare wise is that a session from out of cage to back into
+   > cage cannot be longer than 12 hours."*
+
+   Chair time was the wrong clock for that limit, not a wrong idea: it starts at
+   head-fixation, so it misses the transport and chairing that sit before it and
+   under-counts exactly the interval the institution bounds. `welfare.out_of_cage_seconds`
+   measures from the mark, and it is the only quantity `welfare.must_stop` reads.
+
+   **Twelve hours is documented, not configured.** No constant in `welfare.py` carries it —
+   a number with a name is a number something will default to — and the figure arrives with
+   a real subject's bounded config. `tasks/reference_bounds.py`'s `out_of_cage` value stays
+   implausible until there are animals, per that file's own two guards.
+
+   **The absence of a mark must never disable the limit.** A rig session nobody marked and a
+   cage-side session with nothing to mark are indistinguishable to anything that answers zero,
+   so a session **declares** which it is: `welfare.Deployment.OUT_OF_CAGE` carries the clock
+   and the ceiling and refuses without either, and `ANIMAL_AT_HOME` states that the animal
+   never left home and the deployment therefore has no duration bound (S13 §4). The
+   declaration is required on `SessionSpec`, with no default, and a cage-side config that also
+   states an `out_of_cage` ceiling is refused — the two must not disagree.
+
+   **Chair time is still recorded and bounds nothing.** `HEAD_FIXED` / `HEAD_RELEASED`
+   (4128/4129, allocated in S2) remain, and the reasoning below stands unchanged: restraint is
+   the one welfare quantity with no hardware line, so the codes *are* its durable record and an
+   offline reader recovers chair time from the sync box's `W` capture of them. Head-fixation
+   also stays a **preflight requirement** for a rig session, because a session with neither
+   code in the stream has no record of restraint at all.
 
    **This needs an input the software did not have, and it needs one for a second reason.**
    Nothing tells `taskd` when the animal was fixed: `wl-shook`'s resting pedestal proves the
    chair device is present, not that an animal is in it. So the console gains an explicit
-   **"animal fixed" / "animal released"** action, required by preflight before a session can
-   start.
+   **"animal fixed" / "animal released"** action — and, since 2026-09-19, an **"out of cage" /
+   "back in cage"** action beside it, which is what preflight now requires.
 
-   And because §5.2 requires the clock to survive a crash, **head-fixation must be event-coded**
-   (`HEAD_FIXED` / `HEAD_RELEASED`, allocated in S2) — otherwise chair time is the one quantity
-   with no hardware record to reconstruct from, and a restart would silently reset the restraint
-   limit. Fluid reconstructs from the delivered line; chair time reconstructs from the sync box's
-   `W` record of these codes. Same principle, different line.
+   **Open, and asked of the PI: the out-of-cage marks have no event code.** The argument that
+   made head-fixation event-coded — a clock with no hardware record cannot survive a restart —
+   now applies with more force to the clock that actually bounds the session. Allocating two
+   codes is S2's and `wl-preproc`'s to agree (ADR-0007), so it is asked rather than taken.
+   Until it is answered a restart loses this clock's start and a person supplies it again;
+   nothing reconstructs chair time from the sync box today either.
 
 ### 5.2b One fluid budget across rig and kiosk
 
@@ -194,7 +222,8 @@ exceed — see the correction at the head of this file.)
 | Question | Answer |
 |---|---|
 | Is the log lost? | No — streamed |
-| Is fluid lost? | No — reconstructed from the delivered line, or reward is refused (§5.2) |
+| Is fluid lost? | No — reconstructed from the delivered line; the session pays on regardless (§5.2 item 3) |
+| Is the duration clock lost? | **Yes, today.** The out-of-cage marks are not event-coded yet (§5.2 item 4), so a restart cannot reconstruct them and a person re-supplies the start |
 | Does the session resume? | The session **continues**; block and trial indices carry forward from the record |
 | Does calibration survive? | The gaze mapping is reloaded by version; if the optics moved, it does not (S5 §6) |
 | Is it recorded? | A restart is a discontinuity, event-coded like any other |
@@ -210,7 +239,9 @@ Listed here so review has a target (CLAUDE.md). Kept small deliberately:
 
 1. The bounded-config loader and its ceiling enforcement.
 2. Reward scheduling and delivery.
-3. Fluid, session-duration and token accounting, including §5.2's reconstruction and refusal.
+3. Fluid, session-duration and token accounting, including §5.2's reconstruction and refusal —
+   and §5.2 item 4's `Deployment` declaration, which decides whether a duration limit applies
+   at all.
 4. Stimulation gating, bounds and delivery counting.
 
 Everything else may change without a welfare review. These four may not.
@@ -223,8 +254,9 @@ Everything else may change without a welfare review. These four may not.
 |---|---|---|
 | 1 | Arbitration rule between console and control-API writers (§3.3) | S9 |
 | 2 | Whether the sync box's delivered-line record is readable by us live, or only at session end | §5.1's "continuously" — **less urgent since 2026-09-06**: with a floor rather than a ceiling nothing in-session depends on it, and session-end is enough to compute a supplement |
-| 6 | ~~**Is a runaway-fluid fault limit wanted?**~~ **Answered 2026-09-19 (PI): yes, and it is `reward_correct`'s maximum.** Set to **10 mL** — far above any dose, so what it refuses is software delivering litres, not an animal earning a ration. `Ceiling` therefore no longer means "a protocol figure" at every entry: `bounds.Ceiling` names the two kinds, and a bounded config states at each entry which it is — `tasks/reference_bounds.py` labels `reward_correct` a fault bound and `chair_time` a protocol figure. The *value* beside it stays a placeholder until there are animals | ✔ |
-| 7 | **There is no session-length maximum** (PI, 2026-09-19): trial counts are per-task, likely per-condition targets — which `scheduler` already carries — so `max_trials` goes. **Removal is pending**, behind an open question that decides what `welfare.must_stop` becomes: the surviving welfare limit is twelve hours **out of cage to back in cage**, while the code measures chair time **from head-fixation**. Different clocks; welfare-critical. **§5.2 still says two ceilings end a session; after the removal it is one** | PI, on the clock |
+| 6 | ~~**Is a runaway-fluid fault limit wanted?**~~ **Answered 2026-09-19 (PI): yes, and it is `reward_correct`'s maximum.** Set to **10 mL** — far above any dose, so what it refuses is software delivering litres, not an animal earning a ration. `Ceiling` therefore no longer means "a protocol figure" at every entry: `bounds.Ceiling` names the two kinds, and a bounded config states at each entry which it is — `tasks/reference_bounds.py` labels `reward_correct` a fault bound and `out_of_cage` a protocol figure. The *value* beside it stays a placeholder until there are animals | ✔ |
+| 7 | ~~**There is no session-length maximum**~~ **Done 2026-09-19.** `max_trials` is gone — from `welfare`, from `must_stop`, from `tasks/reference_bounds.py` and from every document that said two ceilings end a session. Per-condition targets were always `scheduler`'s (`Counts`, `owed()`, `upcoming()`), which the console renders as *still needed by condition*. The clock question that blocked it is answered in the same change: `welfare.must_stop` reads **out-of-cage time** against a twelve-hour ceiling, and chair time is recorded and bounds nothing. See §5.2 item 4 | ✔ |
+| 8 | **The out-of-cage marks have no event code** (§5.2 item 4). The clock that now bounds a session has no hardware record, so a restart cannot reconstruct it — the gap `HEAD_FIXED` closed for chair time. Two codes in 4096–32767 would close it; allocation is S2's and `wl-preproc`'s under ADR-0007 | PI, asked 2026-09-19 |
 | 3 | ~~Default re-queue policy~~ **Answered: fixation break re-queued at end of block, wrong choice not, overridable per block** | — |
-| 4 | ~~Session duration from first reward or first trial~~ **Answered: chair time, from head-fixation.** Remaining: whether a hardware head-fix signal is ever worth adding beside the console action | welfare review |
+| 4 | ~~Session duration from first reward or first trial~~ ~~**Answered: chair time, from head-fixation.**~~ **Re-answered 2026-09-19: out of cage to back in cage, twelve hours** (§5.2 item 4). Remaining: whether a hardware head-fix signal is ever worth adding beside the console action — still open, and now about a *recorded* quantity rather than a bounding one | welfare review |
 | 5 | Who plans blocks when wl.works is unreachable | S3 §7's quarantine risk |

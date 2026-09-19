@@ -63,8 +63,8 @@ class Ceiling:
 
     **A maximum is one of two kinds of limit and this type does not distinguish
     them** (PI, 2026-09-19). It may be a **protocol figure** -- a number a protocol
-    states, changing only when the protocol does, which is what a restraint ceiling
-    is. Or it may be a **fault bound** -- set far above anything a protocol would
+    states, changing only when the protocol does, which is what the out-of-cage
+    ceiling is. Or it may be a **fault bound** -- set far above anything a protocol would
     ask for, so that what it refuses is software commanding an impossible quantity
     rather than an animal earning a ration. Both are enforced identically here; what
     differs is what a refusal *means*, so a bounded config is expected to say at each

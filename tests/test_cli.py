@@ -412,6 +412,11 @@ def _telemetry(**overrides) -> Telemetry:
     rather than a coincidentally-zero one. Everything else defaults to empty so a
     test that cares about one pane can override just that field without the
     rendered text growing content nobody asked it to check.
+
+    `out_of_cage_seconds` defaults to a *number* rather than to `None`, unlike the
+    two above, because its `None` is the rarer case: it means a cage-side session
+    with no duration bound at all, and a default of `None` would make every
+    renderer test here quietly exercise a kiosk.
     """
     base = Telemetry(
         schema=1,
@@ -423,6 +428,7 @@ def _telemetry(**overrides) -> Telemetry:
         fluid_session_ml=1.25,
         fluid_today_ml=None,
         shortfall_ml=None,
+        out_of_cage_seconds=96.0,
         chair_seconds=42.0,
         outcomes={},
         hangs=0,
@@ -455,6 +461,38 @@ def test_console_renders_chair_time_as_a_clock_not_a_raw_float():
 
     assert "chair: 1:47" in rendered
     assert "107.0" not in rendered, "the old raw-seconds float is back"
+
+
+def test_console_shows_the_clock_that_actually_ends_the_session():
+    """PI, 2026-09-19: the session's one duration limit runs out of cage to back in
+    cage, and chair time bounds nothing. This screen showed only chair time until
+    then, so an operator would have watched a session stop on a clock the console
+    had never displayed -- S9's "written for a stranger" failure, with a welfare
+    limit on the other end of it. Both are shown, and the one that ends the session
+    is first."""
+    frame = _telemetry(out_of_cage_seconds=4_007.0, chair_seconds=107.0)
+
+    rendered = render(frame)
+
+    assert "out of cage: 1:06:47" in rendered
+    assert "chair: 1:47" in rendered
+    assert rendered.index("out of cage:") < rendered.index("chair:")
+
+
+def test_console_says_a_cage_side_session_has_no_duration_bound():
+    """`None` is not zero here either. A cage-side session (S13) has no out-of-cage
+    interval at all, and rendering `0:00` would show an operator a clock that has
+    not started rather than one that does not exist -- the same confusion
+    `fluid today: UNKNOWN` exists to prevent, on the duration path."""
+    frame = _telemetry(out_of_cage_seconds=None)
+
+    rendered = render(frame)
+
+    line = [
+        text for text in rendered.splitlines() if text.strip().startswith("out of cage")
+    ]
+    assert line == ["  out of cage: n/a -- cage-side, the animal is home"]
+    assert "0:00" not in rendered
 
 
 def test_console_shows_staged_changes_with_who_staged_them():

@@ -53,9 +53,10 @@ the project: it prevents the two-hours-recorded-with-no-eye-data class of loss.
 | SpikeGLX / RHX running and armed | Including RHX's TCP output configured within its measured margin (V8) |
 | Display at expected mode and refresh | S0 §5.3 — mode is rig configuration and V1 is per mode |
 | `stimulus_calibration_id` current | S4 §9 — invalid if anything feeding it changed |
-| **Daily fluid total reconstructable** | S8 §5.2 — if it is not, reward is refused and preflight must say so *before* the animal is in the chair |
+| **Daily fluid total reconstructable** | S8 §5.2 — if it is not, the day's supplement is unreportable and preflight must say so *before* the animal is in the chair. (This said "reward is refused"; **reversed 2026-09-06**, S8 §5.2 item 3 — there is no fluid ceiling, and an uncountable day must not stop paying an animal that is working) |
+| **Animal recorded as out of its cage** | S8 §5.2 item 4 — the session's one duration limit runs out-of-cage to back-in-cage, and `welfare` refuses a rig session whose mark is missing rather than running it unbounded. A cage-side deployment declares `ANIMAL_AT_HOME` instead (S13 §4.0) |
 | **Day's prior fluid known** | S8 §5.2b — one daily figure spans rig and kiosk. **Corrected 2026-09-06: it is a floor**, so this preflight item is what makes the end-of-session supplement computable, and an unknown prior total makes that unreportable rather than stopping reward |
-| **Head-fixation recorded** | S8 §5.2 — session duration is chair time, and the clock cannot start without it |
+| **Head-fixation recorded** | S8 §5.2 — restraint has no hardware line, so `HEAD_FIXED`/`HEAD_RELEASED` are its only durable record. (Chair time stopped being the session's duration limit on 2026-09-19; the preflight requirement stays, because a session with neither code has no record of restraint at all) |
 | Pump primed, calibration in date | S6 §4 — an uncalibrated pump makes fluid numbers fiction |
 | Disk space for a full session | |
 | **Config diff against last session** | "This rig differs in 3 ways" catches the change nobody remembers making |
@@ -78,9 +79,14 @@ so often that people route around it, at which point it protects nothing.
   awkward, so it is designed as a first-class state rather than an interruption.
 - **Emergency stop** is distinct: immediate, mid-trial, safe — stimulus blanked, stimulation
   inhibited, reward stopped, trial marked aborted. Pause is for thinking; stop is for trouble.
-- **Animal fixed / released** — an explicit console action, required before a session starts,
+- **Animal fixed / released** — an explicit console action, required before a rig session starts,
   event-coded as `HEAD_FIXED` / `HEAD_RELEASED`. It starts and stops the restraint clock, which is
-  the welfare limit; nothing else in the system knows when the animal went in.
+  **recorded and bounds nothing** since 2026-09-19; nothing else in the system knows when the
+  animal went in.
+- **Out of cage / back in cage** — the console action added 2026-09-19 beside it, and the one
+  preflight now depends on: it starts the twelve-hour clock that *is* the welfare limit (S8
+  §5.2 item 4). A rig session without it is refused; a cage-side deployment declares it has no
+  such interval (S13 §4.0). It has no event code yet — S8 open item 8.
 - **Manual reward** commands through the normal path so it logs as commanded *and* delivered,
   distinguishable from a panel press (S6 §4).
 - **Generated parameter panel**, derived from the task's declaration — typed widgets, range

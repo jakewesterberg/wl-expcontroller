@@ -55,7 +55,7 @@ Six things that changed the design, all found by reading neighbouring repositori
 | ~~1~~ | ~~MUA feature definition v0~~ **Answered: both types, selectable per experiment** — envelope on the SpikeGLX path, RHX's own threshold crossings on the Intan path. Band, threshold and window stay per-experiment | ✔ |
 | 2 | Are SpikeGLX and Intan features **deliberately matched**, or allowed to differ? | Matched, unless a study never switches source. They compute differently by default — SpikeGLX does CAR server-side, RHX filters on GPU |
 | ~~3~~ | ~~Saccade-detection algorithm~~ **Answered: Engbert–Kliegl**, matching their offline suite so disagreement measures staleness rather than algorithm. Parameters from V3(c) | ✔ |
-| ~~4~~ | ~~Session duration from first trial or first reward~~ **Answered: chair time, from head-fixation.** Needed a console action and two new event codes, since it is the one welfare quantity with no hardware line | ✔ |
+| ~~4~~ | ~~Session duration from first trial or first reward~~ ~~**Answered: chair time, from head-fixation.**~~ **Re-answered 2026-09-19 (PI): out of cage to back in cage, twelve hours** — chair time starts too late, missing transport and chairing. It is still recorded by the two event codes this row asked for, and it bounds nothing. S8 §5.2 item 4 | ✔ |
 | ~~5~~ | ~~Default re-queue policy~~ **Answered as recommended:** fixation break re-queued at end of block, wrong choice not, overridable per block | ✔ |
 | ~~6~~ | ~~Runaway thresholds~~ **Answered: rate window plus session total, numbers from protocol.** Per-delivery charge bounds already exist, so a count bound gives a session charge ceiling implicitly | ✔ numbers pending protocol |
 

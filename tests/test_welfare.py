@@ -1,12 +1,17 @@
-"""Fluid and chair-time accounting, and the only path to the pump.
+"""Fluid and duration accounting, and the only path to the pump.
 
 S8 §5 and §7. **Welfare-critical, and requires human review before merge**
 (CLAUDE.md).
 
 **Fluid has a floor, not a ceiling** (PI, 2026-09-06). A session never refuses a
 delivery on volume; it reports at close how much of the day's minimum is still owed,
-so a person can supplement it. Chair time and trial count *are* ceilings and do stop a
-session.
+so a person can supplement it.
+
+**One duration limit, and it is out-of-cage to back-in-cage** (PI, 2026-09-19).
+There is no session-length maximum and no trial cap; chair time is recorded and
+bounds nothing. Several tests below are about *which clock is measured* rather than
+about arithmetic, because the two clocks differ by transport and chairing and the
+wrong one under-counts.
 
 The reason this module exists at all is that `bounds`' fluid check was called by
 nothing outside its own tests for a week. A bound nothing calls reads as present and
@@ -17,16 +22,22 @@ from __future__ import annotations
 
 import pytest
 
+from wl_expcontroller import welfare as welfare_module
 from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
 from wl_expcontroller.dio import Simulated as Card
-from wl_expcontroller.welfare import Absent, Rig, Simulated, Welfare
+from wl_expcontroller.welfare import Absent, Deployment, Rig, Simulated, Welfare
 
 
 def _bounds(daily_fluid: float = 250.0, **over: float) -> Bounds:
+    """A rig's bounded config: a fluid floor and the out-of-cage ceiling.
+
+    Twelve hours, because that is the institutional limit S8 §5.2 states. A
+    fixture, not a protocol figure -- `tasks/reference_bounds.py` keeps its own
+    number implausible on purpose, and this one never leaves the test suite.
+    """
     ceilings = {
         "reward_correct": Ceiling(value=0.15, maximum=0.40, unit="mL"),
-        "chair_time": Ceiling(value=14_400.0, maximum=14_400.0, unit="s"),
-        "max_trials": Ceiling(value=2000.0, maximum=4000.0, unit="trials"),
+        "out_of_cage": Ceiling(value=43_200.0, maximum=43_200.0, unit="s"),
     }
     for name, value in over.items():
         ceiling = ceilings[name]
@@ -38,8 +49,37 @@ def _bounds(daily_fluid: float = 250.0, **over: float) -> Bounds:
     )
 
 
+def _home_bounds(daily_fluid: float = 250.0) -> Bounds:
+    """A cage-side config (S13): the same fluid floor and **no duration ceiling**.
+
+    The animal never left home, so there is no out-of-cage interval for a ceiling to
+    be about. That absence is declared by `Deployment.ANIMAL_AT_HOME` and never
+    inferred from this dict being short an entry, which is the whole point of the
+    declaration.
+    """
+    return Bounds(
+        subject="A",
+        ceilings={"reward_correct": Ceiling(value=0.15, maximum=0.40, unit="mL")},
+        minima={"daily_fluid": Floor(value=daily_fluid, unit="mL")},
+    )
+
+
 def _welfare(already: float | None = 0.0, **over: float) -> Welfare:
-    return Welfare(bounds=_bounds(**over), pump=Simulated(), already_today=already)
+    return Welfare(
+        bounds=_bounds(**over),
+        pump=Simulated(),
+        already_today=already,
+        deployment=Deployment.OUT_OF_CAGE,
+    )
+
+
+def _home_welfare(already: float | None = 0.0) -> Welfare:
+    return Welfare(
+        bounds=_home_bounds(),
+        pump=Simulated(),
+        already_today=already,
+        deployment=Deployment.ANIMAL_AT_HOME,
+    )
 
 
 # --- the delivery path ------------------------------------------------------
@@ -128,7 +168,12 @@ def test_the_commanded_total_is_charged_before_the_valve_opens():
         def deliver(self, ml: float) -> None:
             raise RuntimeError("solenoid did not answer")
 
-    welfare = Welfare(bounds=_bounds(), pump=Failing(), already_today=0.0)
+    welfare = Welfare(
+        bounds=_bounds(),
+        pump=Failing(),
+        already_today=0.0,
+        deployment=Deployment.OUT_OF_CAGE,
+    )
 
     with pytest.raises(RuntimeError):
         welfare.deliver("reward_correct")
@@ -139,7 +184,12 @@ def test_the_commanded_total_is_charged_before_the_valve_opens():
 def test_an_absent_pump_refuses_rather_than_delivering_nothing():
     """The `dio.Absent` argument, one layer up: a session that runs a full protocol
     and dispenses nothing has worked an animal for no reward."""
-    welfare = Welfare(bounds=_bounds(), pump=Absent(), already_today=0.0)
+    welfare = Welfare(
+        bounds=_bounds(),
+        pump=Absent(),
+        already_today=0.0,
+        deployment=Deployment.OUT_OF_CAGE,
+    )
 
     with pytest.raises(RuntimeError, match="no pump"):
         welfare.deliver("reward_correct")
@@ -148,24 +198,32 @@ def test_an_absent_pump_refuses_rather_than_delivering_nothing():
 def test_a_bounded_config_without_a_daily_fluid_floor_refuses_to_start():
     """A missing floor is not a floor of zero. A session with no daily minimum can
     report no shortfall, so nobody would ever be told to supplement."""
-    bounds = Bounds(
-        subject="A",
-        ceilings={
-            "reward_correct": Ceiling(0.15, 0.4, "mL"),
-            "chair_time": Ceiling(14_400.0, 14_400.0, "s"),
-        },
-    )
+    bounds = _bounds()
+    del bounds.minima["daily_fluid"]
 
     with pytest.raises(Exceeded, match="daily_fluid"):
-        Welfare(bounds=bounds, pump=Simulated(), already_today=0.0)
+        Welfare(
+            bounds=bounds,
+            pump=Simulated(),
+            already_today=0.0,
+            deployment=Deployment.OUT_OF_CAGE,
+        )
 
 
-def test_a_bounded_config_without_a_chair_time_ceiling_refuses_to_start():
-    bounds = _bounds()
-    del bounds.ceilings["chair_time"]
+def test_a_cage_side_config_without_a_daily_fluid_floor_refuses_too():
+    """The floor is not the rig's alone. Kiosk fluid counts toward the same daily
+    figure (S8 §5.2b), so a cage-side session that could report no shortfall is the
+    same failure with nobody in the room to notice it."""
+    bounds = _home_bounds()
+    del bounds.minima["daily_fluid"]
 
-    with pytest.raises(Exceeded, match="chair_time"):
-        Welfare(bounds=bounds, pump=Simulated(), already_today=0.0)
+    with pytest.raises(Exceeded, match="daily_fluid"):
+        Welfare(
+            bounds=bounds,
+            pump=Simulated(),
+            already_today=0.0,
+            deployment=Deployment.ANIMAL_AT_HOME,
+        )
 
 
 # --- reconciliation ---------------------------------------------------------
@@ -204,17 +262,75 @@ def test_reconciliation_is_what_the_shortfall_is_computed_from():
     assert welfare.shortfall() == pytest.approx(50.0)
 
 
-# --- chair time -------------------------------------------------------------
+# --- the clock the limit is actually about ----------------------------------
 
 
-def test_chair_time_runs_from_head_fixation_not_from_the_first_trial():
-    """PI, 2026-08-31: the limit is on restraint, not on work, so setup,
-    calibration and unrewarded shaping all count."""
+def test_the_welfare_clock_runs_from_leaving_the_cage_not_from_head_fixation():
+    """PI, 2026-09-19: *"a session from out of cage to back into cage cannot be
+    longer than 12 hours"*. The clock ran from head-fixation until then, which
+    under-counts by exactly the transport and chairing that sit between the two
+    marks -- here, five of the six minutes."""
     welfare = _welfare()
 
-    welfare.head_fixed(at=100.0)
+    welfare.left_cage(at=100.0)
+    welfare.head_fixed(at=400.0)
 
-    assert welfare.chair_seconds(now=160.0) == pytest.approx(60.0)
+    assert welfare.out_of_cage_seconds(now=460.0) == pytest.approx(360.0)
+    assert welfare.chair_seconds(now=460.0) == pytest.approx(60.0)
+
+
+def test_the_clock_reads_zero_at_the_moment_the_animal_leaves():
+    """Its zero-point is the mark, not the session start. There is deliberately no
+    "zero before the mark" case -- see
+    `test_a_rig_session_with_no_out_of_cage_mark_refuses_rather_than_running_free`,
+    which is what happens instead."""
+    welfare = _welfare()
+
+    welfare.left_cage(at=100.0)
+
+    assert welfare.out_of_cage_seconds(now=100.0) == 0.0
+
+
+def test_putting_the_animal_back_stops_the_welfare_clock():
+    """The limit is on the interval, not on the process: the clock closes when the
+    animal is home, and nothing after that is transport or restraint."""
+    welfare = _welfare()
+    welfare.left_cage(at=100.0)
+
+    welfare.returned_to_cage(at=460.0)
+
+    assert welfare.out_of_cage_seconds(now=9_999.0) == pytest.approx(360.0)
+
+
+def test_taking_out_an_animal_that_is_already_out_is_refused():
+    """`head_fixed`'s argument, on the clock that now bounds the session: two starts
+    means one of the two is wrong, and the shorter one would silently win."""
+    welfare = _welfare()
+    welfare.left_cage(at=100.0)
+
+    with pytest.raises(Exceeded, match="already"):
+        welfare.left_cage(at=200.0)
+
+
+def test_a_session_must_stop_at_the_out_of_cage_ceiling():
+    welfare = _welfare(out_of_cage=60.0)
+    welfare.left_cage(at=0.0)
+
+    assert welfare.must_stop(now=59.0) is None
+    assert "out_of_cage" in welfare.must_stop(now=61.0)
+
+
+def test_chair_time_is_recorded_and_bounds_nothing():
+    """**Chair time stopped being a ceiling on 2026-09-19**, and `head_fixed` /
+    `head_released` remain because their codes (4128/4129) are still the durable
+    record of restraint (S8 §5.2). Ten hours in the chair, inside a twelve-hour
+    out-of-cage window, is a session that runs on."""
+    welfare = _welfare()
+    welfare.left_cage(at=0.0)
+    welfare.head_fixed(at=0.0)
+
+    assert welfare.chair_seconds(now=36_000.0) == pytest.approx(36_000.0)
+    assert welfare.must_stop(now=36_000.0) is None
 
 
 def test_chair_time_is_zero_before_the_animal_is_in_the_chair():
@@ -240,32 +356,122 @@ def test_fixing_a_head_that_is_already_fixed_is_refused():
         welfare.head_fixed(at=200.0)
 
 
-def test_a_session_must_stop_when_the_chair_time_ceiling_is_reached():
-    welfare = _welfare(chair_time=60.0)
-    welfare.head_fixed(at=0.0)
-
-    assert welfare.must_stop(now=59.0, trials=0) is None
-    assert "chair_time" in welfare.must_stop(now=61.0, trials=0)
+# --- there is no session-length maximum -------------------------------------
 
 
-def test_a_session_must_stop_at_its_trial_ceiling():
-    welfare = _welfare(max_trials=10.0)
-    welfare.head_fixed(at=0.0)
-
-    assert welfare.must_stop(now=1.0, trials=9) is None
-    assert "max_trials" in welfare.must_stop(now=1.0, trials=10)
-
-
-def test_a_session_with_no_trial_ceiling_runs_on_its_other_limits():
-    """`max_trials` is optional in a way `daily_fluid` and `chair_time` are not: a
-    session that reports its shortfall and is bounded by restraint is complete, and a
-    lab that states no trial cap has stated a policy rather than forgotten one."""
+def test_nothing_ends_a_session_on_a_trial_count():
+    """PI, 2026-09-19: *"the max trials idea makes no sense to me"*. Per-condition
+    targets are `scheduler`'s `Counts`/`owed()`/`upcoming()` and always were; the
+    session-level cap was the part with no meaning. A bounded config written before
+    the ruling still carries `max_trials`, and nothing reads it."""
     bounds = _bounds()
-    del bounds.ceilings["max_trials"]
-    welfare = Welfare(bounds=bounds, pump=Simulated(), already_today=0.0)
-    welfare.head_fixed(at=0.0)
+    bounds.ceilings["max_trials"] = Ceiling(value=1.0, maximum=1.0, unit="trials")
+    welfare = Welfare(
+        bounds=bounds,
+        pump=Simulated(),
+        already_today=0.0,
+        deployment=Deployment.OUT_OF_CAGE,
+    )
+    welfare.left_cage(at=0.0)
 
-    assert welfare.must_stop(now=1.0, trials=100_000) is None
+    assert welfare.must_stop(now=1.0) is None
+    assert not hasattr(welfare_module, "MAX_TRIALS"), "the concept came back"
+
+
+# --- a missing mark must never disable a limit ------------------------------
+
+
+def test_a_rig_session_with_no_out_of_cage_mark_refuses_rather_than_running_free():
+    """**The absence of a mark must never silently disable a welfare limit.** A
+    session whose out-of-cage time nobody recorded is one a person forgot to mark,
+    not one the animal is home for -- and answering zero would run it unbounded for
+    as long as it liked. `dio.Absent`, `welfare.Absent` and `run.Unwired` all refuse
+    rather than quietly doing nothing; this is that shape on the duration path, and
+    it refuses on *every* call rather than only at preflight, because a limit that
+    can be switched off by forgetting is not a limit."""
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded, match="out of its cage"):
+        welfare.preflight()
+
+    with pytest.raises(Exceeded, match="out of its cage"):
+        welfare.must_stop(now=100_000.0)
+
+
+def test_a_rig_session_still_refuses_to_run_before_the_animal_is_head_fixed():
+    """S8 §5.2's preflight requirement, kept. Chair time stopped bounding the
+    session on 2026-09-19; it did not stop being what the event codes record, and a
+    rig session with no `HEAD_FIXED` in the stream has no record of restraint at
+    all."""
+    welfare = _welfare()
+    welfare.left_cage(at=0.0)
+
+    with pytest.raises(Exceeded, match="head-fixed"):
+        welfare.preflight()
+
+
+def test_a_marked_rig_session_passes_preflight():
+    welfare = _welfare()
+    welfare.left_cage(at=0.0)
+    welfare.head_fixed(at=100.0)
+
+    assert welfare.preflight() is None
+
+
+def test_a_cage_side_session_declares_that_it_has_no_duration_bound():
+    """S13: the animal never left home, so there is no out-of-cage event and no
+    head-fixation, and the PI chose no time-based limit cage-side. The session says
+    so with `Deployment.ANIMAL_AT_HOME` -- explicit, greppable, and impossible to
+    arrive at by forgetting, which is the difference between a limit nobody set and
+    a limit nobody marked."""
+    welfare = _home_welfare()
+
+    assert welfare.preflight() is None
+    assert welfare.out_of_cage_seconds(now=100_000.0) is None
+    assert welfare.must_stop(now=100_000.0) is None
+
+
+def test_a_rig_config_with_no_out_of_cage_ceiling_refuses_to_start():
+    """A missing limit is not an absent one. A bounded config stating no duration
+    ceiling for an animal that left its cage is one nobody finished."""
+    bounds = _bounds()
+    del bounds.ceilings["out_of_cage"]
+
+    with pytest.raises(Exceeded, match="out_of_cage"):
+        Welfare(
+            bounds=bounds,
+            pump=Simulated(),
+            already_today=0.0,
+            deployment=Deployment.OUT_OF_CAGE,
+        )
+
+
+def test_a_cage_side_session_carrying_a_duration_ceiling_is_refused():
+    """The declaration and the config must not disagree. A bounded config stating a
+    twelve-hour limit, under a deployment declaring that the limit does not apply,
+    is a limit switched off by a flag -- the failure the declaration exists to
+    prevent, arrived at from the other side."""
+    bounds = _home_bounds()
+    bounds.ceilings["out_of_cage"] = Ceiling(43_200.0, 43_200.0, "s")
+
+    with pytest.raises(Exceeded, match="out_of_cage"):
+        Welfare(
+            bounds=bounds,
+            pump=Simulated(),
+            already_today=0.0,
+            deployment=Deployment.ANIMAL_AT_HOME,
+        )
+
+
+def test_a_cage_side_session_pays_and_counts_the_day_like_any_other():
+    """One mechanism across rig and kiosk (S13 §4). What a kiosk session lacks is
+    the duration bound, not the fluid accounting -- the daily figure is shared."""
+    welfare = _home_welfare(already=100.0)
+
+    welfare.deliver("reward_correct")
+
+    assert welfare.pump.delivered == [0.15]
+    assert welfare.shortfall() == pytest.approx(149.85)
 
 
 # --- the port a trial's actions actually reach ------------------------------
@@ -313,7 +519,12 @@ def test_a_pump_fault_reaches_the_session_rather_than_being_absorbed():
 
     rig = Rig(
         card=Card(),
-        welfare=Welfare(bounds=_bounds(), pump=Failing(), already_today=0.0),
+        welfare=Welfare(
+            bounds=_bounds(),
+            pump=Failing(),
+            already_today=0.0,
+            deployment=Deployment.OUT_OF_CAGE,
+        ),
     )
 
     with pytest.raises(RuntimeError, match="solenoid"):

@@ -77,7 +77,7 @@ for:
 
 | Group | Carries |
 |---|---|
-| **Animal** | Fluid against ceiling, chair time against ceiling, both reconciled (P17) not tallied |
+| **Animal** | Fluid against the day's **floor** (PI, 2026-09-06 — not a ceiling), reconciled (P17) not tallied; **time out of the cage** against its ceiling, which is the one limit that ends a session; chair time beside it, recorded and bounding nothing (PI, 2026-09-19) |
 | **Working?** | Running / paused / fault, trials attempted / completed / correct, recent performance |
 | **Wrong?** | Abort reasons, dropped frames from the flip patch, tracker staleness, RHX backpressure margin |
 | **Still needed** | Per-condition achieved against target — the question actually asked at a rig |
@@ -311,7 +311,8 @@ defence is structural rather than careful.
 | Pane | Source |
 |---|---|
 | Fluid delivered / floor / supplement | `welfare.session_total`, `total_today`, `shortfall()`, `bounds.minima` |
-| Chair time | `welfare.chair_seconds` — frame-derived, so it matches the ceiling that ends the session |
+| Time out of cage | `welfare.out_of_cage_seconds` — frame-derived, so it matches the ceiling that ends the session. `None`, rendered *cage-side, the animal is home*, for a deployment with no duration bound (S13 §4.0) |
+| Chair time | `welfare.chair_seconds` — shown beside it, and **not** what ends the session since 2026-09-19. Showing only this one meant an operator would watch a session stop on a clock the console never displayed |
 | Trials, outcomes, aborts by reason | `simulate.Tally`, already shared with `taskd` |
 | Still needed, by condition | `scheduler` quotas |
 | Parameter row | The task's own `Param` declarations; writes return through `Session.set` |
@@ -351,12 +352,15 @@ unattended and cage-side, saw the stream simply stop. The loop boundary now sets
 is the behaviour that matters; the frame only means a stranger can read what happened off
 the screen, which is this spec's own rule for an abort reason.
 
-Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is 3
-as of 2026-09-19**: `Staged.bounded` stopped meaning "already live" and became "checked
-against a welfare ceiling", a field that still decodes and no longer means what it did —
-a console built against schema 2 would render a lowered reward volume as already in
-effect. Trial-rate telemetry on one topic; the replica's display-rate stream, if V11
-permits one, on a separate droppable topic.
+Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is 4
+as of 2026-09-19**, and both bumps that day are the same case — a field that still decodes
+and no longer means what it did. At 3, `Staged.bounded` stopped meaning "already live" and
+became "checked against a welfare ceiling", so a console built against 2 would render a
+lowered reward volume as already in effect. At 4, `chair_seconds` stopped being the number
+that ends the session: `out_of_cage_seconds` is what the ceiling is read against, and a
+console built against 3 would show chair time as *the* clock and then watch a session stop
+on a limit it never displayed. Trial-rate telemetry on one topic; the replica's
+display-rate stream, if V11 permits one, on a separate droppable topic.
 
 **A frame is bounded, and the one list that was not is the refusal feed.** Added
 2026-09-19, schema 2. Every other field in `Telemetry` is fixed-width or bounded by the

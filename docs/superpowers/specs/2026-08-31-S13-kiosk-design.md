@@ -79,16 +79,47 @@ Two consequences that matter more than the numbers:
 - The precedence chain gains a layer: **deployment → rig → subject → task → session → live
   edits**, still under one ceiling.
 
+### 4.0 A kiosk session has no duration bound, and says so
+
+**Ruled 2026-09-19 (PI).** The one welfare duration limit is twelve hours out of the home cage
+to back in it (S8 §5.2 item 4). A cage-side session has no out-of-cage event, because the
+animal never left home — so the limit has nothing to measure, and the PI chose no time-based
+limit here rather than a different number.
+
+**That absence is declared, never inferred.** A rig session where somebody forgot to mark the
+animal coming out of its cage looks exactly like a cage-side one to any code that answers
+zero, and treating the two alike would run an unmarked rig session unbounded. So
+`welfare.Deployment` is a required field with no default: `OUT_OF_CAGE` carries the clock and
+the ceiling and **refuses** a session missing either, and `ANIMAL_AT_HOME` is the explicit,
+greppable statement that this deployment is cage-side and the animal is home. A cage-side
+bounded config that also states an `out_of_cage` ceiling is refused, because the declaration
+and the config disagreeing is the same limit-by-omission failure reached from the other side.
+
+`welfare.out_of_cage_seconds` answers `None` for such a session — never `0.0` — and the
+console renders that as *cage-side, the animal is home* rather than as a clock at zero.
+
+**What does not change: the fluid floor.** A cage-side session is refused without one, exactly
+as a rig session is (§4's shared daily figure, S8 §5.2b). Losing the duration bound does not
+loosen the accounting.
+
 **Kiosk fluid counts toward the same daily figure as rig work** (PI, 2026-08-31; that figure is
 a **floor** rather than a budget — PI, 2026-09-06, see S8's head), so the two
 deployments share a total neither can see directly. wl-works holds the
-ledger and pushes the day's already-delivered figure in `prepare-session`; each deployment enforces
-`ceiling − already_delivered_today` (S8 §5.2b). Sequential use is the only real case, since an
-animal cannot be in the chair and at the kiosk at once, so a start-time figure suffices.
+ledger and pushes the day's already-delivered figure in `prepare-session`; each deployment
+reports `floor − already_delivered_today − earned_here` as what is still to supplement
+(S8 §5.2b, as corrected 2026-09-06 — written here as `ceiling − already_delivered_today`
+before that). Sequential use is the only real case, since an animal cannot be in the chair and
+at the kiosk at once, so a start-time figure suffices.
 
-**S8 §5.2's fail-closed rule applies here with more force, not less.** If the daily fluid total
-cannot be reconstructed after a restart, reward is refused until a human confirms — and
-cage-side, nobody is watching to notice that it should have been.
+> ~~**S8 §5.2's fail-closed rule applies here with more force, not less.** If the daily fluid
+> total cannot be reconstructed after a restart, reward is refused until a human confirms — and
+> cage-side, nobody is watching to notice that it should have been.~~
+>
+> **Reversed 2026-09-06 with S8 §5.2 item 3, and corrected here 2026-09-19.** That rule follows
+> from a fluid *ceiling*, and there is none. Under a floor the argument runs the other way, and
+> hardest cage-side: a deployment that cannot learn the day's prior total still pays the animal
+> and reports the day as uncountable (`Welfare.shortfall()` answers `None`). Refusing reward
+> where nobody is watching would be an unrewarded session rather than an unreportable one.
 
 ### 4.1 Supervision, and why the alert cannot come from the kiosk
 
@@ -107,9 +138,10 @@ connections to wl.works. So the alert cannot originate where the fault is.
 > the kind of error that survives because the sentence reads as though it was checked.
 
 **wl.works polls and wl.works alerts.** The kiosk publishes `state` as a reading like any other;
-wl.works, which *can* reach outward, raises the notification when it polls a fault, a fluid
-ceiling, or a fail-closed refusal. One mechanism serves both answers, and the kiosk stays a
-pure responder.
+wl.works, which *can* reach outward, raises the notification when it polls a fault, a stop, or
+a refusal. (This said "a fluid ceiling"; there is none — PI, 2026-09-06. What a cage-side
+session can raise is a pump fault, a console refusal, or a day it could not count.) One
+mechanism serves both answers, and the kiosk stays a pure responder.
 
 **One residual, stated rather than solved:** a network-dependent alert cannot report a network
 failure. If the kiosk is unreachable, wl.works sees silence — which is indistinguishable from a

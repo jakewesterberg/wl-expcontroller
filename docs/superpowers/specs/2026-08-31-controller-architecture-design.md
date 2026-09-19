@@ -292,8 +292,9 @@ what makes it work for model-authored tasks.
 
 Welfare-critical parameters are **live-editable by a human through the console, bounded by
 ceilings in the rig/subject config that the console cannot exceed and the task cannot
-touch.** Covers reward volume per delivery and rate, session duration, token
-conversion, and every stimulation bound in §10.4.
+touch.** Covers reward volume per delivery and rate, **time out of the cage** (the
+session's one duration limit — PI, 2026-09-19; there is no session-length maximum and
+chair time bounds nothing), token conversion, and every stimulation bound in §10.4.
 
 **Fluid has a floor, not a ceiling** (PI, 2026-09-06; this paragraph said "daily fluid
 budget" until then). The daily figure is a *minimum* the animal must reach, supplemented
@@ -617,7 +618,7 @@ verdict shape, published JSON Schemas — rather than inventing a second protoco
 | Direction | Carries | Mechanism |
 |---|---|---|
 | ELN -> rig | subject, probe serials, `insertion_number`, `trajectory_id`, planned task, session intent | wl-works pushes a `prepare-session` action; three of six fields already exist in the bundle it sends `wl-preproc` |
-| rig -> wl-works, live | session, subject, task, state, trial counts, fluid against ceiling, preflight result | **readings on `GET /health`**, polled at the protocol's 60 s cadence |
+| rig -> wl-works, live | session, subject, task, state, trial counts, fluid against the day's **floor** (PI, 2026-09-06 — not a ceiling), time out of the cage against its ceiling, preflight result | **readings on `GET /health`**, polled at the protocol's 60 s cadence |
 | rig -> ELN, finished | trials run, performance by condition, fluid delivered, task and config versions, parameter-change log, abort census | **a file in the session directory**, ingested by `wl-preproc`, reaching the ELN by the path that already exists |
 
 The split is not arbitrary. `lab-host-protocol.md` declines a job-status endpoint and states

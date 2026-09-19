@@ -74,7 +74,7 @@ are detected at the display surface.
 | `openiris` | OpenIris PC | (existing C#) | dDPI tracking; UDP 9003; remote API; analog out | UDP replay server |
 
 Welfare-critical modules requiring human review: reward scheduling and per-delivery limits,
-fluid and session-duration accounting (a fluid **floor**, a restraint **ceiling**),
+fluid and session-duration accounting (a fluid **floor**, an out-of-cage **ceiling**),
 token-to-fluid conversion, stimulation bounds and gating, and the bounded-config loader.
 
 **In code, that is `wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`, and
@@ -87,24 +87,33 @@ ceilings, the daily *floor*, and the arithmetic of whether a number is past one 
 it, with no clock, no hardware and no state outliving a question. **Fluid has a floor, not a
 ceiling** (PI, 2026-09-06): the daily figure is a minimum the animal must reach, supplemented
 by hand after the session, so a delivery is never refused on volume and `Floor` is a different
-type from `Ceiling` precisely so the two cannot be confused at a call site. Chair time and
-trial count are genuine ceilings and do end a session — though the PI has ruled (2026-09-19)
-that **there is no session-length maximum** and the trial one is pending removal, behind an
-open question about which clock the surviving twelve-hour limit uses. When it goes, this
-sentence and `welfare.must_stop` change together. **Checking a value and moving it are
+type from `Ceiling` precisely so the two cannot be confused at a call site. **One ceiling ends
+a session, and it is time out of the cage** (PI, 2026-09-19): out of the home cage to back in
+it, twelve hours, which is the interval the institutional limit is about. Chair time and trial
+count were the two until then; there is no session-length maximum, per-condition targets are
+`scheduler`'s, and chair time is recorded by `HEAD_FIXED`/`HEAD_RELEASED` and bounds nothing.
+**Checking a value and moving it are
 two calls** — `Bounds.validate` then `Bounds.set` (PI, 2026-09-19) — because a change is
 refused when a console offers it and applied a trial boundary later; `set` goes through
 `validate`, so the ceiling rule has exactly one home. **A `Ceiling.maximum` is not always a
 protocol figure**: it is either that, or a *fault bound* set far above anything a protocol
 would ask for, so that what it refuses is software commanding an impossible quantity rather
 than an animal earning a ration. `reward_correct`'s maximum is the second kind and
-`chair_time`'s the first; a bounded config is expected to say which at each entry.
+`out_of_cage`'s the first; a bounded config is expected to say which at each entry.
 
-`welfare.py` has all three: the day's running total, the
-restraint clock started by head-fixation, the pump, and `Rig`, which is what a task's
-`Reward` action actually reaches. **The whole route from a task's declaration to fluid is
-readable in `welfare.py` alone**, which is the property to preserve — "can anything deliver
-reward without asking the ceiling" should stay a question one file answers.
+`welfare.py` has all three: the day's running total, two clocks — the out-of-cage one that
+bounds the session and the restraint one that is recorded beside it — the pump, and `Rig`,
+which is what a task's `Reward` action actually reaches. **The whole route from a task's
+declaration to fluid is readable in `welfare.py` alone**, which is the property to preserve —
+"can anything deliver reward without asking the ceiling" should stay a question one file
+answers.
+
+**Whether a duration limit applies at all is declared, not inferred** (`welfare.Deployment`,
+PI 2026-09-19). A rig session declares `OUT_OF_CAGE` and is refused without both its mark and
+its ceiling; a cage-side kiosk session declares `ANIMAL_AT_HOME` and has no duration bound,
+which S13 §4.0 carries. The field is required on `SessionSpec` with no default, because a rig
+session nobody marked and a kiosk session with nothing to mark are indistinguishable to
+anything that answers zero — and the absence of a mark must never be what disables a limit.
 
 Added 2026-09-06, because ceilings alone were not enough: `bounds.check_delivery` was called
 by nothing outside its own tests for a week, so a task could command reward, a session could

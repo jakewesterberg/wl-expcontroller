@@ -20,10 +20,12 @@ beyond the two refusals below.
 **Two refusals stand between a session and its first trial**, and both are the shape
 this file exists to hold. A task with a blocking finding does not run, because a
 session that begins and *then* discovers the task is malformed has already put an
-animal in a chair. And a session whose animal is not recorded as head-fixed does not
-run, because head-fixation is what starts the restraint clock (S8 §5.2) and a session
-that started its own would be measuring work rather than restraint -- making setup,
-calibration and unrewarded shaping free.
+animal in a chair. And a session that has not satisfied `welfare.preflight` does not
+run: a rig session needs the mark that starts the twelve-hour out-of-cage clock (PI,
+2026-09-19) and the head-fixation that records restraint, while a cage-side one
+declares `Deployment.ANIMAL_AT_HOME` and needs neither. The declaration is on
+`SessionSpec` rather than inferred, because a rig session nobody marked and a kiosk
+session with nothing to mark are indistinguishable to anything that guesses.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ from wl_expcontroller.scheduler import Block, Condition, Scheduler
 from wl_expcontroller.simulate import Census, Subject, Tally, prepare
 from wl_expcontroller.run import run_trial
 from wl_expcontroller.task import Entered, Exited, Outcome, Param, SaccadeTo, Trial
-from wl_expcontroller.welfare import Absent as NoPump, Rig, Welfare
+from wl_expcontroller.welfare import Absent as NoPump, Deployment, Rig, Welfare
 
 
 @dataclass
@@ -73,6 +75,10 @@ class SessionSpec:
     #: assuming zero -- and it does *not* stop the session paying the animal, because
     #: the daily figure is a floor rather than a ceiling (PI, 2026-09-06).
     already_delivered_today: float | None
+    #: Rig or cage-side. **Required, with no default**, because the two differ in
+    #: which welfare limits exist at all (`welfare.Deployment`) and a default would
+    #: be a limit acquired -- or lost -- by omission.
+    deployment: Deployment
     #: The session's plan. `None` means one block of `trials` trials, which is the
     #: same code path with one block in it.
     blocks: list[Block] | None = None
@@ -89,8 +95,8 @@ class SessionSpec:
     engagement: float = 0.85
     #: Per second, so a trial of a few seconds lapses occasionally.
     lapse: float = 0.15
-    #: The gap between trials, in seconds. Chair time counts it, because the animal
-    #: is in the chair for it.
+    #: The gap between trials, in seconds. Both clocks count it, because the animal
+    #: is out of its cage and in the chair for it.
     iti: float = 0.5
 
 
@@ -165,6 +171,7 @@ class Session:
             bounds=self.spec.bounds,
             pump=self.pump,
             already_today=self.spec.already_delivered_today,
+            deployment=self.spec.deployment,
         )
         self.rig = Rig(card=self.card, welfare=self.welfare)
 
@@ -181,15 +188,34 @@ class Session:
             return self.clock()
         return self._elapsed
 
-    # --- restraint --------------------------------------------------------
+    # --- out of cage, and restraint ---------------------------------------
+
+    def left_cage(self, at: float) -> None:
+        """The console action that starts the clock bounding this session.
+
+        **Not event-coded yet**, and `welfare.py`'s docstring says what that is
+        waiting for: two codes are S2's and `wl-preproc`'s to allocate (ADR-0007),
+        and it is asked of the PI rather than taken here. Until then this clock has
+        no hardware record, so a restart cannot reconstruct it -- the same gap S8
+        §5.2 closed for chair time by coding `HEAD_FIXED`.
+        """
+        self.welfare.left_cage(at)
+
+    def returned_to_cage(self, at: float) -> None:
+        """The animal is home. **Not called by `run()`**, because it is not true
+        when the loop ends: the session finishes, then the animal is released,
+        unchaired and walked back, and every one of those seconds is inside the
+        limit."""
+        self.welfare.returned_to_cage(at)
 
     def head_fixed(self, at: float) -> None:
-        """The console action S8 §5.2 requires before a session may start.
+        """The console action S8 §5.2 requires before a rig session may start.
 
-        Event-coded at both ends, because chair time is the one welfare quantity with
-        no hardware line: the codes *are* its durable record, and a restart
-        reconstructs the clock from the sync box's capture of them rather than from
-        anything of ours that the crash took with it.
+        Event-coded at both ends, because restraint has no hardware line: the codes
+        *are* its durable record, and an offline reader recovers chair time from the
+        sync box's capture of them rather than from anything of ours that a crash
+        took with it. Chair time stopped bounding the session on 2026-09-19; that is
+        why it is still recorded.
         """
         self.welfare.head_fixed(at)
         self.card.emit(self.allocation.code_for("HEAD_FIXED"))
@@ -423,11 +449,12 @@ class Session:
         return make
 
     def run(self) -> Census:
-        """Check, then require an animal, then run, then record.
+        """Check, then require the marks, then run, then record.
 
         **In that order, and it is load-bearing.** A malformed task is refused before
         anything else happens -- ideally before the animal is in the chair at all --
-        and a session with no restraint clock is refused before its first frame.
+        and a session whose welfare marks are missing is refused before its first
+        frame, by `welfare.preflight` rather than by a second copy of the rule here.
         """
         trial = self._load()
         findings = check(trial, self.allocation)
@@ -437,12 +464,7 @@ class Session:
                 "task refused, session not started:\n"
                 + "\n".join(f"  {f.code}: {f.detail}" for f in blocking)
             )
-        if self.welfare.fixed_at is None:
-            raise Exceeded(
-                f"subject {self.spec.subject!r} is not recorded as head-fixed, so "
-                f"the restraint clock has not started and a session cannot be "
-                f"bounded by it; call head_fixed() first (S8 §5.2)"
-            )
+        self.welfare.preflight()
 
         scheduler = Scheduler(blocks=self._plan(), seed=self.spec.seed)
         make_world = self.world if self.world is not None else self._agent()
@@ -460,6 +482,8 @@ class Session:
         )
         try:
             index = 0
+            #: Block transitions taken. Bounded by the plan -- see the check below.
+            advanced = 0
 
             def publish() -> None:
                 """Telemetry for the current boundary, to whoever is attached.
@@ -473,7 +497,7 @@ class Session:
                 carries it. S9's "Written for a stranger" requirement says an error
                 that requires knowing the design to interpret is a bug and abort
                 reasons must be self-explanatory; a console that watched the stream
-                simply go quiet on a chair-time or trial ceiling would have neither.
+                simply go quiet on the out-of-cage ceiling would have neither.
                 The extra frame this costs on a natural stop is free: telemetry is
                 lossy and latest-wins by design (S9a §9), so nothing downstream cares
                 that two frames share a `trial_index`.
@@ -498,7 +522,7 @@ class Session:
                 publish()
                 if self.stopped_because:
                     break
-                stop = self.welfare.must_stop(self.now(), index)
+                stop = self.welfare.must_stop(self.now())
                 if stop:
                     self.stopped_because = stop
                     publish()
@@ -508,6 +532,35 @@ class Session:
                         self.stopped_because = "every block is finished"
                         publish()
                         break
+                    # **A plan can be advanced through only as many times as it has
+                    # blocks.** This `continue` runs no trial, draws no condition
+                    # and moves no clock, so a scheduler that reported `finished`
+                    # and then did not leave the block would spin here forever: no
+                    # telemetry would change, `must_stop` would never fire because
+                    # `self._elapsed` never moves, and a rig would look like it was
+                    # running with an animal in the chair and nothing happening.
+                    #
+                    # `Scheduler.advance` raises on the last block, so no path
+                    # reaches this today. It is counted here anyway, and **counted
+                    # rather than compared**: a plan may legitimately list the same
+                    # `Block` object twice -- "multiple blocks of the same tasks"
+                    # is how the PI described a session (2026-09-19) -- so a guard
+                    # asking whether the block *changed* would abort one of those
+                    # with an animal in the chair. A count cannot: a session
+                    # advances exactly `len(blocks) - 1` times, and the next one is
+                    # impossible whatever the blocks are.
+                    #
+                    # It is also what makes a mutation of `advance` fail a test
+                    # instead of hanging the suite until a 300-second timeout, which
+                    # is the harness noticing rather than a test noticing.
+                    advanced += 1
+                    if advanced >= len(scheduler.blocks):
+                        raise RuntimeError(
+                            f"this session has advanced {advanced} times through a "
+                            f"plan of {len(scheduler.blocks)} blocks, so the "
+                            f"scheduler is not leaving {scheduler.block.name!r}; it "
+                            f"can draw no further trial and must not spin"
+                        )
                     scheduler.advance()
                     self.blocks_run.append(scheduler.block.name)
                     continue

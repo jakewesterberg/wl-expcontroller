@@ -1,4 +1,4 @@
-"""Fluid and chair-time accounting, and the only path from a task to the pump.
+"""Fluid and session-duration accounting, and the only path from a task to the pump.
 
 **Welfare-critical. Human review required before merge** (CLAUDE.md, S8 §7, items 2
 and 3). The second such module, and it exists because the first one was not enough:
@@ -11,8 +11,8 @@ examined nothing. This module is the caller.
 The split between the two files is deliberate and is what keeps each reviewable.
 `bounds.py` is pure: the limits themselves -- ceilings, a daily floor -- and the
 arithmetic of whether a number is past one or short of it. It has no clock, no hardware
-and no state that outlives a question. This file has all three -- a running total, a
-restraint clock, and a pump -- and joining them to the limits is the whole of its job.
+and no state that outlives a question. This file has all three -- a running total, two
+clocks, and a pump -- and joining them to the limits is the whole of its job.
 
 **Fluid has a floor, not a ceiling** (PI, 2026-09-06). This file was written the
 other way round first, and the difference matters: a fluid *ceiling* refuses a
@@ -21,14 +21,33 @@ protocol withholds fluid to satisfy a limit nobody set. The daily figure is a
 **minimum**, and what this module does with it is report at session close how much is
 still owed, so a person can supplement it. **No delivery is ever refused on volume.**
 
-Chair time and trial count *are* ceilings, and they do stop a session.
+**There is one duration limit, and it runs out of cage to back in cage** (PI,
+2026-09-19): *"The only limit we have welfare wise is that a session from out of cage
+to back into cage cannot be longer than 12 hours."* Twelve hours is the institutional
+figure. It is **documented here and not configured here** -- no constant in this
+module carries it, because a number with a name is a number something will default
+to, and the real figure arrives with a real subject's bounded config.
 
-Two things fail closed here, and neither is fluid:
+Two things this ruling removed. **Chair time is no longer a ceiling**: it is still
+recorded, because `HEAD_FIXED`/`HEAD_RELEASED` are the durable record of restraint
+(S8 §5.2), but a clock that starts at head-fixation under-counts the limit by the
+transport and chairing that precede it, and it is not what the limit is about. And
+**there is no session-length maximum**: per-condition targets live in `scheduler`
+(`Counts`, `owed()`, `upcoming()`) and always did, so `max_trials` said nothing a
+task's own config did not say better.
 
-- **A missing floor or a missing chair-time ceiling refuses to start.** A bounded
-  config lacking either is one nobody finished, and a missing floor reads exactly like
-  a floor of zero to anything that does not check -- so nobody would ever be told to
-  supplement.
+Three things fail closed here, and none of them is fluid:
+
+- **A missing floor refuses to start.** A bounded config lacking one is a config
+  nobody finished, and a missing floor reads exactly like a floor of zero to anything
+  that does not check -- so nobody would ever be told to supplement.
+- **A missing mark refuses, rather than running unbounded.** `Deployment` is the
+  whole of this: a session either declares that the animal left its cage -- and then
+  must carry the mark and the ceiling that bound it -- or declares that the animal is
+  home, cage-side, with no such interval to measure (S13). **The absence of a mark
+  must never be the thing that disables a limit.** A rig session nobody marked looks
+  exactly like a cage-side one to any code that answers zero, which is why
+  `out_of_cage_seconds` refuses on every call rather than only at preflight.
 - **An unconfigured pump refuses** rather than delivering nothing, for `dio.Absent`'s
   reason one layer up: a session that runs a full protocol and dispenses nothing has
   worked an animal for no reward and said so nowhere.
@@ -45,11 +64,20 @@ volume it yields is a per-rig pump calibration that has never been measured. Wri
 one now would be inventing a dose. So `Pump` takes millilitres, the implementations
 here account and simulate, and the driver that opens copper is P7's -- blocked on the
 same measurement as everything else on that side.
+
+**The out-of-cage marks have no event code yet, and that is an ask rather than an
+oversight.** S8 §5.2's argument for coding head-fixation -- a clock with no hardware
+record cannot survive a restart -- now applies with more force to this clock, since
+it is the one that bounds the session. Allocating two codes is S2's and `wl-preproc`'s
+to agree (ADR-0007), so it is asked of the PI rather than taken here. Until it is
+answered, a restart loses this clock's start and a person has to supply it again;
+nothing reconstructs chair time from the sync box today either.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Protocol
 
 from wl_expcontroller.bounds import (
@@ -65,23 +93,42 @@ from wl_expcontroller.bounds import (
 #: reward size cannot silently escape the day's accounting.
 DAILY_FLUID = "daily_fluid"
 
-#: The restraint ceiling, in seconds. **Chair time, from head-fixation** (S8 §5.2,
-#: PI 2026-08-31) -- not from the first trial and not from the first reward. The name
-#: is where that survives: `session_duration` invites someone to start it when the
-#: session starts, and setup, calibration and unrewarded shaping all count.
-CHAIR_TIME = "chair_time"
+#: The duration ceiling, in seconds. **From leaving the home cage to returning to
+#: it** (PI, 2026-09-19) -- not from head-fixation, which under-counts by transport
+#: and chairing, and not from the first trial. Twelve hours is the institutional
+#: figure; the number itself lives in a subject's bounded config and nowhere in this
+#: module, so that nothing can default to it.
+OUT_OF_CAGE = "out_of_cage"
 
-#: Optional, unlike the two above. A session bounded by fluid and by restraint is
-#: bounded; a lab that states no trial cap has stated a policy rather than forgotten
-#: one.
-MAX_TRIALS = "max_trials"
+
+class Deployment(Enum):
+    """Where the animal is for this session, and therefore whether a duration bound
+    exists at all. **Required, with no default and no third answer.**
+
+    It is a declaration rather than an inference because the two cases are
+    indistinguishable from the absence of a mark: a rig session where someone forgot
+    to record the animal coming out of its cage has no out-of-cage time, and so does
+    a cage-side one where the animal never left. Defaulting either way is wrong --
+    one direction refuses every kiosk session, the other runs an unmarked rig session
+    with no limit at all -- so the session says which it is, and `welfare` refuses
+    what does not match.
+    """
+
+    #: A rig session: the animal left its home cage, was transported, chaired and
+    #: head-fixed. The twelve-hour clock binds it, and it must carry both marks.
+    OUT_OF_CAGE = "out_of_cage"
+
+    #: A cage-side kiosk session (S13): the animal never left home, so there is no
+    #: out-of-cage event, no head-fixation, and **no duration bound** -- which the PI
+    #: chose, and which this member is how a session states rather than acquires.
+    ANIMAL_AT_HOME = "animal_at_home"
 
 
 class Pump(Protocol):
     """Whatever turns a volume into fluid in front of the animal.
 
-    Millilitres, because millilitres are what the ceilings are denominated in and a
-    unit conversion between the limit and the delivery is a place for a factor of
+    Millilitres, because millilitres are what the bounded config is denominated in and
+    a unit conversion between the limit and the delivery is a place for a factor of
     sixty to hide.
     """
 
@@ -137,6 +184,9 @@ class Welfare:
     #: commonest way this is unknown, and continuing on an assumed zero is how a
     #: daily budget silently doubles.
     already_today: float | None
+    #: Rig or cage-side. **Required, with no default**, so that every construction
+    #: site states which welfare limits apply to it -- see `Deployment`.
+    deployment: Deployment
     #: What this session has commanded. A **lower bound** on what the animal got
     #: (P17), which is why it is never used alone.
     commanded: float = 0.0
@@ -145,6 +195,11 @@ class Welfare:
     #: at session end, and this shape does not care which.
     delivered: float | None = None
     deliveries: int = 0
+    #: The clock that bounds the session: when the animal came out of its home cage,
+    #: and when it went back in.
+    left_cage_at: float | None = None
+    returned_at: float | None = None
+    #: The restraint clock. Recorded, and it bounds nothing (PI, 2026-09-19).
     fixed_at: float | None = None
     released_at: float | None = None
     #: Anything a person should see in the session summary, in order.
@@ -157,11 +212,22 @@ class Welfare:
                 f"{DAILY_FLUID!r} minimum, so a session could never say what the day "
                 f"still owes; a missing floor is not a floor of zero"
             )
-        if CHAIR_TIME not in self.bounds.ceilings:
+        declared = OUT_OF_CAGE in self.bounds.ceilings
+        if self.deployment is Deployment.OUT_OF_CAGE and not declared:
             raise Exceeded(
                 f"the bounded config for subject {self.bounds.subject!r} has no "
-                f"{CHAIR_TIME!r} ceiling, so restraint is unbounded; a missing limit "
-                f"is not an absent one"
+                f"{OUT_OF_CAGE!r} ceiling, so a session out of the cage would be "
+                f"unbounded; a missing limit is not an absent one"
+            )
+        if self.deployment is Deployment.ANIMAL_AT_HOME and declared:
+            # The declaration and the config disagreeing is a limit switched off by
+            # a flag, which is what the declaration exists to prevent -- reached
+            # from the other side. One of the two is wrong and neither is safe to
+            # prefer silently.
+            raise Exceeded(
+                f"the bounded config for subject {self.bounds.subject!r} states an "
+                f"{OUT_OF_CAGE!r} ceiling while this session declares the animal is "
+                f"at home; a session cannot both have that interval and not have it"
             )
 
     # --- fluid ------------------------------------------------------------
@@ -170,7 +236,7 @@ class Welfare:
         """This session's contribution to the day, reconciled where possible.
 
         **Through `bounds.reconcile`, never by taking a maximum here.** Which of the
-        two figures a ceiling is enforced against is a welfare rule with a written
+        two figures a total is computed from is a welfare rule with a written
         argument behind it -- including that a delivered line *below* commanded is a
         fault rather than a smaller total -- and a second copy of that rule is a
         second place for it to drift.
@@ -233,10 +299,79 @@ class Welfare:
         self.pump.deliver(ml)
         return ml
 
-    # --- restraint --------------------------------------------------------
+    # --- out of cage, and back in -----------------------------------------
+
+    def left_cage(self, at: float) -> None:
+        """Start the clock the session is bounded by (PI, 2026-09-19)."""
+        if self.left_cage_at is not None and self.returned_at is None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is already recorded as out of its "
+                f"cage at {self.left_cage_at}; a second start would run two clocks "
+                f"and the shorter one would silently win"
+            )
+        self.left_cage_at = at
+        self.returned_at = None
+
+    def returned_to_cage(self, at: float) -> None:
+        self.returned_at = at
+
+    def out_of_cage_seconds(self, now: float) -> float | None:
+        """How long the animal has been out of its home cage.
+
+        `None` -- never zero -- when the session declared the animal is at home,
+        because a cage-side session has no such interval at all and a zero would
+        read on a console as a clock that has not started yet.
+
+        **A missing mark raises rather than answering zero.** An unmarked rig
+        session is indistinguishable from a cage-side one to anything that answers
+        a number, so answering one would let forgetting a mark disable the only
+        duration limit there is. This is `dio.Absent`'s rule on the clock that
+        bounds a session, and it refuses here rather than only at `preflight` so
+        that no later caller can reach an unbounded answer.
+        """
+        if self.deployment is Deployment.ANIMAL_AT_HOME:
+            return None
+        if self.left_cage_at is None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is not recorded as out of its "
+                f"cage, so the session's one duration limit has no start; call "
+                f"left_cage(), or declare Deployment.ANIMAL_AT_HOME if the animal "
+                f"never left it. A missing mark is not an absent limit"
+            )
+        end = self.returned_at if self.returned_at is not None else now
+        return end - self.left_cage_at
+
+    def preflight(self) -> None:
+        """What must be true before a session runs (S8 §5.2). Raises `Exceeded`.
+
+        Called by `taskd.Session.run` before its first frame, so a missing mark is
+        a refusal a person sees at the console rather than a fault partway into a
+        session with an animal already in the chair.
+
+        Two marks for a rig, and each refuses for its own reason. The out-of-cage
+        one **bounds** the session, and `out_of_cage_seconds` is asked for it here
+        rather than re-checked, so the rule has one home. Head-fixation **records**
+        restraint: it stopped being a ceiling on 2026-09-19 and did not stop being
+        what the event codes carry, and a rig session with no `HEAD_FIXED` in the
+        stream has no record of restraint at all.
+        """
+        self.out_of_cage_seconds(0.0)  # for the refusal; the number is not wanted
+        if self.deployment is Deployment.OUT_OF_CAGE and self.fixed_at is None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is not recorded as head-fixed, so "
+                f"the session would carry no record of restraint; call head_fixed() "
+                f"first (S8 §5.2)"
+            )
+
+    # --- restraint, which is recorded and bounds nothing ------------------
 
     def head_fixed(self, at: float) -> None:
-        """Start the restraint clock. Required before a session may run (S8 §5.2)."""
+        """Start the restraint clock.
+
+        Recorded rather than bounding: chair time stopped being a ceiling on
+        2026-09-19, and `HEAD_FIXED`/`HEAD_RELEASED` (4128/4129) remain the durable
+        record of restraint that S8 §5.2 made them.
+        """
         if self.fixed_at is not None and self.released_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is already recorded as head-fixed "
@@ -256,25 +391,33 @@ class Welfare:
         end = self.released_at if self.released_at is not None else now
         return end - self.fixed_at
 
-    # --- the session's own limits ----------------------------------------
+    # --- the session's own limit ------------------------------------------
 
-    def must_stop(self, now: float, trials: int) -> str | None:
+    def must_stop(self, now: float) -> str | None:
         """Why this session must end, or `None`. **Never about fluid.**
 
         Returned rather than raised: a session ending on its ceiling is the design
         working, and it has a record to close, a map to write and a summary to
         report. An exception would make the correct ending look like a fault.
+
+        **One limit, and no trial count** (PI, 2026-09-19). The parameter that
+        carried one is gone rather than ignored, so that nothing can pass a number
+        here and believe it was weighed.
+
+        `None` from `out_of_cage_seconds` is a cage-side session, which the PI gave
+        no time-based limit; a rig session with no mark raises there rather than
+        reaching this line.
         """
-        chair = self.bounds.ceilings[CHAIR_TIME]
-        if self.chair_seconds(now) > chair.value:
+        seconds = self.out_of_cage_seconds(now)
+        if seconds is None:
+            return None
+        ceiling = self.bounds.ceilings[OUT_OF_CAGE]
+        if seconds > ceiling.value:
             return (
-                f"chair_time: subject {self.bounds.subject!r} has been restrained "
-                f"{self.chair_seconds(now):.0f} {chair.unit} against a ceiling of "
-                f"{chair.value:.0f}"
+                f"{OUT_OF_CAGE}: subject {self.bounds.subject!r} has been out of "
+                f"its cage {seconds:.0f} {ceiling.unit} against a ceiling of "
+                f"{ceiling.value:.0f}"
             )
-        cap = self.bounds.ceilings.get(MAX_TRIALS)
-        if cap is not None and trials >= cap.value:
-            return f"max_trials: {trials} trials against a ceiling of {cap.value:.0f}"
         return None
 
 

@@ -83,11 +83,25 @@ def test_a_wrong_choice_is_not_requeued():
 
 
 def test_a_block_with_a_fixed_length_ends_when_every_condition_is_owed_nothing():
+    """**Bounded, and the bound is an assertion rather than a `while` that trusts
+    the code under test.** This ran `while not scheduler.finished:` until 2026-09-19,
+    so a `record` that stopped advancing the counts made this test spin forever --
+    and a mutation sweep reported `caught record  timed out after 300s`, which is the
+    harness noticing a hang rather than a test noticing a defect. Every trial of this
+    block pays its debt, so twenty draws is the whole of it; forty is slack for the
+    requeue path and still finite."""
     scheduler = Scheduler([_block()], seed=1)
 
-    while not scheduler.finished:
+    for _ in range(40):
+        if scheduler.finished:
+            break
         trial = scheduler.next_trial()
         scheduler.record(trial.name, Outcome.CORRECT)
+    else:
+        raise AssertionError(
+            "the block never finished in 40 correct trials, though its two "
+            "conditions owe 10 each and a correct trial pays"
+        )
 
     assert scheduler.counts("near").completed == 10
     assert scheduler.counts("far").completed == 10

@@ -30,7 +30,7 @@ def _bounds() -> Bounds:
         subject="A",
         ceilings={
             "reward_correct": Ceiling(value=0.15, maximum=0.40, unit="mL"),
-            "chair_time": Ceiling(value=14_400.0, maximum=14_400.0, unit="s"),
+            "out_of_cage": Ceiling(value=43_200.0, maximum=43_200.0, unit="s"),
         },
         minima={"daily_fluid": Floor(value=250.0, unit="mL")},
     )

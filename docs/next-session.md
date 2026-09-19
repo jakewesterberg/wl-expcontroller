@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **452 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **467 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
@@ -110,13 +110,19 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
 - **A pump fault is not absorbed.** A solenoid that will not answer is a broken rig.
   Since 2026-09-19 `taskd`'s loop boundary publishes one telemetry frame naming the
   fault before the exception propagates; it does not catch it.
-- **`chair_time` runs from head-fixation**, and a session refuses to start without it.
-  That and `max_trials` are the two ceilings that end a session today. **The PI has
-  ruled there is no session-length maximum** (§6), so `max_trials` is pending removal,
-  behind an open question about which clock the surviving duration limit uses.
+- **One ceiling ends a session: `out_of_cage`**, from the animal leaving its home cage
+  to going back in, bounded at twelve hours (PI, 2026-09-19). A rig session refuses to
+  start without the mark, and **`welfare.out_of_cage_seconds` raises rather than
+  answering zero** on an unmarked one — forgetting a mark must not be what disables the
+  limit. A cage-side session declares `Deployment.ANIMAL_AT_HOME` and has no duration
+  bound; that declaration is required on `SessionSpec` with no default.
+- **`chair_time` and `max_trials` are gone as ceilings.** Chair time is still recorded
+  (`head_fixed`/`head_released`, codes 4128/4129, still required by a rig preflight) and
+  bounds nothing; there is no session-length maximum at all. If you find either name
+  used as a limit, it is a regression.
 - **The numbers in `tasks/reference_bounds.py` are placeholders and its subject is
-  `REFERENCE`.** No protocol figure exists in this repository for reward volume, daily
-  fluid floor, restraint time or trial count — the PI has said to keep it that way
+  `REFERENCE`.** No protocol figure exists in this repository for reward volume, the
+  daily fluid floor or time out of the cage — the PI has said to keep it that way
   until there are animals. A session refuses a bounded config belonging to another
   subject, which is what stops that file quietly becoming a real one. **One number in
   it is no longer a placeholder-for-a-protocol-figure**: `reward_correct`'s maximum,
@@ -137,9 +143,13 @@ p4b-session-management..p4d1-console-link -- wl_expcontroller/cli.py
 wl_expcontroller/link.py wl_expcontroller/taskd.py` was the whole of it at the review
 (ruling R23, `.superpowers/sdd/2026-09-19-p4d1-console-link/progress.md`). **The PI's
 four decisions since then added `wl_expcontroller/bounds.py`,
-`wl_expcontroller/record.py` and `tasks/reference_bounds.py` to that diff** — `bounds.py`
-is one of the two welfare-critical files, so this is now a review of one of them and not
-only of the capability beside it. `welfare.py` did not change.
+`wl_expcontroller/record.py` and `tasks/reference_bounds.py` to that diff**, and **the
+four welfare-clock rulings later the same day added `wl_expcontroller/welfare.py`** —
+which had been at zero diff for the whole branch until then. **So this is now a review of
+both welfare-critical files.** `welfare.py`'s diff is the one to read closest: it removes
+a concept (`max_trials`), changes which clock bounds a session, and adds the declaration
+that decides whether a duration limit applies at all. `docs/CHECKPOINT.md`'s "The welfare
+clock, and the four rulings that reshaped it" is the account to read beside it.
 
 **And that reviewer has four PI decisions to check, not only code to read** — taken on
 2026-09-19 after the whole-branch review, and implemented on this branch:
@@ -197,12 +207,16 @@ not here. What is still this package's own is the Parquet derivation above.
   guardrails sat unwired behind one for a week. If you write one, name what it is
   waiting for so the next reader can grep it.
 - **The session clock is derived from frames, not the wall.** That is what keeps "stops
-  at its chair-time ceiling" deterministic. `Session(clock=...)` takes a real one for a
+  at its out-of-cage ceiling" deterministic. `Session(clock=...)` takes a real one for a
   rig. Do not quietly swap the default.
-- **A block test that can run past its criterion runs to `max_trials`.** Under mutation
-  that is a 300-second timeout per function. `tests/test_taskd.py` caps it at 400 for
-  exactly this reason, and the M1 gate raises its own to 1,000 because its claim needs
-  them.
+- **A block test that can run past its criterion now runs to the `out_of_cage` ceiling.**
+  Under mutation an unbounded one is a 300-second timeout per function.
+  `tests/test_taskd.py` sets that ceiling to 800 s — a little over four hundred trials of
+  that task, so the same size of backstop `max_trials=400` was, expressed in the unit a
+  real session ends on. The M1 gate raises its own to the twelve-hour figure because its
+  claim needs a thousand trials. **Do not reintroduce a trial cap to bound a test**: the
+  two stop conditions a real session has are a block quota and this ceiling, and a test
+  bounded by anything else is a test of something that cannot happen.
 - **A limit whose direction is load-bearing must say so in its name** (trap 22).
   `minima` beside `ceilings`; `shortfall` rather than `check_delivery`.
 - **Never `git add` after a mutation run that did not print `restored:`** (trap 12).
@@ -210,6 +224,15 @@ not here. What is still this package's own is the Parquet derivation above.
   which happened twice this session and read exactly like a real regression both times.
   Editing a *test* file mid-run is the same hazard from the other side: the suite the
   harness is measuring changes underneath it.
+- **`caught … timed out after 300s` is the harness noticing a hang, not a test noticing
+  a defect** (trap 7's shape again, found 2026-09-19 sweeping `scheduler`). Two
+  functions reported it and both were real gaps, not harness bugs. `Scheduler.record`
+  hung because `test_scheduler.py` drove a block with `while not scheduler.finished:` —
+  a loop that trusts the code under test; it counts to a finite bound and asserts now.
+  `Scheduler.advance` hung because `taskd.run()`'s block-advance `continue` runs no
+  trial and moves no clock, so a scheduler that reported `finished` and then stayed put
+  would spin with an animal in the chair and nothing on any console changing; `run()`
+  refuses that now. **If a sweep prints `timed out`, the fix is a bound, not a shrug.**
 - **Read the harness's output, not its exit code** (trap 7, now seven occurrences).
   `caught deliver  3 errors in 0.60s` is a collection error, not a test failing — and it
   was reporting the welfare-critical reward path as covered. `caught recenter  2 errors
@@ -313,9 +336,10 @@ Three things S9a §6–§10 depends on that nobody has built:
 | `wl-works` | `prepare-session`, **including the day's already-delivered fluid total** | the day's shortfall is computed from it; without it a session pays the animal but can report no supplement |
 | PI | **A photometer measurement of the panel** | every chromatic task (P19); `tasks/visual_search.py` is what waits |
 | PI | **A pump calibration: millilitres per second of open time** — protocol **V10**, `docs/validation.md` | real reward delivery (new 2026-09-06) |
-| PI | **The real bounded-config numbers** — reward volume per delivery, the daily fluid **floor**, chair time, trial cap. Asked 2026-09-06; answer was *keep the placeholder until there are animals* | every session that is not a simulation |
+| PI | **The real bounded-config numbers** — reward volume per delivery, the daily fluid **floor**, time out of the cage. Asked 2026-09-06; answer was *keep the placeholder until there are animals*. (Chair time and a trial cap were on this list until 2026-09-19; neither is a limit any more, so neither needs a number.) The twelve-hour figure is documented in S8 §5.2 item 4 and in `welfare.py`, deliberately not carried by any constant | every session that is not a simulation |
 | ~~PI~~ | ~~**Is a runaway-fluid *fault* limit wanted?**~~ **Answered 2026-09-19: yes.** `reward_correct`'s maximum is 10 mL — far above any dose, so refusing it catches software delivering litres rather than enforcing a ration. It is a **fault bound**, and `tasks/reference_bounds.py`, `bounds.Ceiling` and S8 open item 6 all say so at the entry. The *value* beside it stays a placeholder | ✔ (S8 open item 6) |
-| PI | **Which clock is the twelve-hour out-of-cage limit measured on?** The PI has ruled there is no session-length maximum (§6); the one welfare duration limit is 12 h out of cage to back in cage. `welfare.chair_seconds` runs from head-fixation, which is a different clock — transport and chairing sit between them. Welfare-critical, and it blocks removing `max_trials` | `welfare.must_stop` (new 2026-09-19) |
+| ~~PI~~ | ~~**Which clock is the twelve-hour out-of-cage limit measured on?**~~ **Answered 2026-09-19 and implemented the same day:** the clock runs out of cage to back in cage. `welfare.out_of_cage_seconds` measures it, `must_stop` reads it against `out_of_cage`, and `chair_seconds` is recorded beside it and bounds nothing. `max_trials` went with it | ✔ (S8 open item 7) |
+| PI | **Do the out-of-cage marks get event codes?** The clock that now bounds a session has no hardware record, so a restart cannot reconstruct it — the gap `HEAD_FIXED`/`HEAD_RELEASED` closed for chair time, and the argument is stronger here because this is the limit. Two codes in 4096–32767; allocation is S2's and `wl-preproc`'s under ADR-0007, so it is asked rather than taken | S8 open item 8; restart/resume of the duration clock |
 | PI | IPD per animal; the tandem panel's two questions | optics, panel |
 
 ---
@@ -347,9 +371,9 @@ nothing in P4d-1 assumed a terminal client, so `ZmqConsole` (or a thin wrapper a
 it) should be reusable from the server rather than needing a second console-side
 implementation.
 
-**One PI ruling to carry forward, not to act on yet.**
+**The PI ruling this section carried forward is now done.**
 
-> ### There is no session-length maximum, and `max_trials` goes
+> ### There is no session-length maximum, and `max_trials` is gone
 >
 > **PI, 2026-09-19:** *"There is no session length max. Sessions will be comprised of
 > multiple tasks with perhaps multiple blocks of the same tasks. Each task, depending on
@@ -358,17 +382,17 @@ implementation.
 > wise is that a session from out of cage to back into cage cannot be longer than 12
 > hours."*
 >
-> Most of what replaces it already exists: per-condition targets are `scheduler`'s
+> Most of what replaces it already existed: per-condition targets are `scheduler`'s
 > `owed()`, `Counts` and `upcoming()`, and the console already renders them as *still
 > needed by condition*. It was the session-level cap that made no sense.
 >
-> **Do not implement the removal yet.** It changes what `welfare.must_stop` is, and
-> there is an open question with the PI first: the surviving welfare limit is a
-> **twelve-hour out-of-cage-to-back-in-cage** duration, while the code measures
-> `chair_seconds` **from head-fixation** (`welfare.head_fixed`, which a session refuses
-> to start without). Those are not the same clock — transport and chairing sit between
-> them — and resolving it is welfare-critical. The full instruction comes once the
-> clock is settled.
+> **Implemented 2026-09-19**, once the PI settled the clock question that blocked it.
+> `welfare.must_stop` reads `out_of_cage` against a twelve-hour ceiling; `chair_seconds`
+> is recorded and bounds nothing; `head_fixed`/`head_released` and codes 4128/4129 stay;
+> a cage-side session declares `Deployment.ANIMAL_AT_HOME` and has no duration bound,
+> while an unmarked rig session **raises** rather than running unbounded. `docs/CHECKPOINT.md`'s
+> "The welfare clock, and the four rulings that reshaped it" is the full account, and
+> S8 §5.2 item 4 is the spec.
 
 **Three things this slice found and deliberately left open, for whoever picks up
 P4d-2 or later:**

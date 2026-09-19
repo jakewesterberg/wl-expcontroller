@@ -58,7 +58,15 @@ from typing import Protocol
 #: would now tell an operator who has just *lowered* a reward volume that it has
 #: taken effect while one more trial is still to go out at the old one. A field that
 #: still decodes and no longer means what it did is the case this number exists for.
-SCHEMA = 3
+#:
+#: 4 (2026-09-19, PI): `chair_seconds` stopped being the number that ends the
+#: session and became a recorded quantity beside it; `out_of_cage_seconds` is the
+#: one the ceiling is now read against, and is `None` for a cage-side session that
+#: declared it has no duration bound at all. A console built against schema 3 shows
+#: chair time as *the* clock and would watch a session stop on a limit it never
+#: displayed -- the same "a field still decodes and no longer means what it did"
+#: case as 3, with a welfare limit on the other end of it.
+SCHEMA = 4
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -166,8 +174,15 @@ class Telemetry:
     #: `welfare.shortfall()`. `None` for the same reason as `fluid_today_ml` -- a
     #: shortfall against an unmeasured day is not a number, it is a guess.
     shortfall_ml: float | None
-    #: `welfare.chair_seconds(now)` -- frame-derived, so it matches the ceiling that
-    #: ends the session rather than a wall clock that would not.
+    #: `welfare.out_of_cage_seconds(now)` -- **the clock the session's one duration
+    #: ceiling is read against** (PI, 2026-09-19), frame-derived rather than a wall
+    #: clock so that the console's number and the ceiling's are the same number.
+    #: `None` for a cage-side session, which declared it has no duration bound
+    #: (`welfare.Deployment`); never `0.0`, which would read as a clock not started.
+    out_of_cage_seconds: float | None
+    #: `welfare.chair_seconds(now)` -- restraint, **recorded and bounding nothing**
+    #: since 2026-09-19. Still shown because an operator wants to know how long an
+    #: animal has been in the chair; it is simply not what ends the session.
     chair_seconds: float
     #: Keyed by the outcome's wire string (`Outcome.value`), not the enum member --
     #: this dict is what a msgpack-encoded message will carry.
@@ -255,6 +270,7 @@ class Telemetry:
             fluid_session_ml=session.welfare.session_total(),
             fluid_today_ml=session.welfare.total_today(),
             shortfall_ml=session.welfare.shortfall(),
+            out_of_cage_seconds=session.welfare.out_of_cage_seconds(session.now()),
             chair_seconds=session.welfare.chair_seconds(session.now()),
             outcomes={k.value: v for k, v in tally.outcomes.items()},
             hangs=tally.hangs,
@@ -308,6 +324,7 @@ def encode(telemetry: Telemetry) -> bytes:
         "fluid_session_ml": telemetry.fluid_session_ml,
         "fluid_today_ml": telemetry.fluid_today_ml,
         "shortfall_ml": telemetry.shortfall_ml,
+        "out_of_cage_seconds": telemetry.out_of_cage_seconds,
         "chair_seconds": telemetry.chair_seconds,
         "outcomes": telemetry.outcomes,
         "hangs": telemetry.hangs,
@@ -328,8 +345,11 @@ def decode(payload: bytes) -> Telemetry:
 
     **`None` survives.** msgpack has a native nil, distinct from `0`/`0.0`, and
     `unpackb`'s default `raw=False` returns Python `str` rather than `bytes` for text
-    -- so `fluid_today_ml`/`shortfall_ml` round-trip as `None` when that is what they
-    were, never silently becoming a number. See this module's docstring: an unknown
+    -- so `fluid_today_ml`/`shortfall_ml`/`out_of_cage_seconds` round-trip as `None`
+    when that is what they were, never silently becoming a number. For the first two
+    that is an unknown day; for the third it is a cage-side session that has no such
+    interval, and a `0.0` on the wire would read as a clock that had not started.
+    See this module's docstring: an unknown
     day rendered as a confident `0.0` is exactly the failure `welfare.shortfall()`
     exists to prevent, and a console showing it would be the same failure one hop
     further downstream.
@@ -347,6 +367,7 @@ def decode(payload: bytes) -> Telemetry:
         fluid_session_ml=data["fluid_session_ml"],
         fluid_today_ml=data["fluid_today_ml"],
         shortfall_ml=data["shortfall_ml"],
+        out_of_cage_seconds=data["out_of_cage_seconds"],
         chair_seconds=data["chair_seconds"],
         outcomes=data["outcomes"],
         hangs=data["hangs"],

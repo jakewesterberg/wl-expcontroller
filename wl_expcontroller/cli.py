@@ -184,6 +184,15 @@ def render(frame: _link.Telemetry) -> str:
         if frame.shortfall_ml is None
         else f"  supplement: {frame.shortfall_ml:.2f} mL to reach the day's floor"
     )
+    # The out-of-cage line is first because it is the one that ends the session
+    # (PI, 2026-09-19). Chair time is below it and bounds nothing; showing only
+    # chair time, as this screen did until then, meant an operator watched a
+    # session stop on a clock the console had never displayed.
+    lines.append(
+        "  out of cage: n/a -- cage-side, the animal is home"
+        if frame.out_of_cage_seconds is None
+        else f"  out of cage: {_clock(frame.out_of_cage_seconds)}"
+    )
     lines.append(f"  chair: {_clock(frame.chair_seconds)}")
 
     # Fix round 1, IMPORTANT 2: this used to open with `sum(frame.outcomes.values())
@@ -349,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         from wl_expcontroller.dio import Simulated as SimulatedCard
         from wl_expcontroller.taskd import Session, SessionSpec
-        from wl_expcontroller.welfare import Simulated as SimulatedPump
+        from wl_expcontroller.welfare import Deployment, Simulated as SimulatedPump
 
         values: dict[str, object] = {}
         for assignment in args.set:
@@ -425,6 +434,12 @@ def main(argv: list[str] | None = None) -> int:
                     values=values,
                     bounds=_load_bounds(args.bounds),
                     already_delivered_today=args.delivered_today,
+                    # A simulated rig run, so the rig's limits apply. There is no
+                    # flag for the cage-side deployment because there is no kiosk
+                    # to run one on: S13 is a proposed spec, and `wl-touchtrain`
+                    # owns the hardware (S13 §6 item 2). When one exists this is
+                    # where its declaration is chosen.
+                    deployment=Deployment.OUT_OF_CAGE,
                 ),
                 # Simulators, because that is what this subcommand is for. The
                 # refusing implementations are the defaults everywhere else, and a
@@ -434,9 +449,11 @@ def main(argv: list[str] | None = None) -> int:
                 pump=SimulatedPump(),
                 **session_kwargs,
             )
-            # Headless: nothing puts an animal in a chair, so the restraint clock
-            # starts with the session. On a rig this is the console's action, and
-            # the difference is the whole reason S8 makes it an explicit one.
+            # Headless: nothing takes an animal out of a cage or puts one in a
+            # chair, so both marks land at the session's own zero. On a rig these
+            # are the console's actions, and the difference is the whole reason S8
+            # makes them explicit ones.
+            session.left_cage(at=0.0)
             session.head_fixed(at=0.0)
             census = session.run()
             total = sum(census.outcomes.values()) or 1
