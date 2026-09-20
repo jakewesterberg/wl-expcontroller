@@ -92,6 +92,13 @@ def _magnitude(what: str, value: float) -> None:
     of the cage and the token figures all are. S8 §4 also lists stimulation bounds,
     which do not exist yet; if one of those ever needs a sign -- a cathodic-first
     amplitude, say -- it wants its own type rather than a hole in this one.
+
+    **Zero is allowed here, and that is not an exception to this rule.** Zero is a
+    quantity; this refuses things that are not quantities. The one place it matters
+    is a reward volume of zero, which the PI allowed on 2026-09-20 -- pausing reward
+    without ending a session -- **because it is visible on the console and in the
+    day's accounting**. That is a policy choice sitting on top of this rule for one
+    quantity, with its own condition, not a gap in it. S8 §5.2c.
     """
     _finite(what, value)
     if value < 0.0:

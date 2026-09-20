@@ -526,6 +526,24 @@ the family this whole module exists to close.
    already refused everywhere (only the mark route refused it), and that `preflight`
    checks the ceiling (it does not; `left_cage` and `must_stop` do).
 
+   **And one PI ruling came out of that round** (2026-09-20). A reward volume of
+   **exactly zero** is a quantity, so neither guard refuses it; the question was whether
+   a *policy* refusal belonged on top, since a console zeroing the volume leaves every
+   subsequent correct trial unpaid. **Answered: allow it, because it is not silent** —
+   and because it is a legitimate operational move, pausing reward without ending a
+   session. The consequence he weighed and accepted: while it holds, an animal working
+   correctly is paid nothing.
+
+   **That makes two console numbers welfare-load-bearing.** `fluid session: 0.00 mL`
+   (from `welfare.session_total`) is how an operator sees it, and `supplement` keeps
+   reporting the whole floor as owed so the animal is topped up. **A change that stopped
+   showing either would turn a permitted operation into a silent one** — a welfare
+   regression reached by simplifying a display. The sentence is in `cli.render`,
+   `link.Telemetry` and S9a §9 as well as S8 §5.2c, because a P4d-2 or P4d-4 session
+   editing a console pane is where it would otherwise be lost. It is also **the one
+   place a magnitude of zero is deliberately allowed**, so the rule itself keeps no
+   exception.
+
 `welfare` and `bounds` re-swept at a 557 baseline — 27 names, 0 survivors, 0 skips, 0
 timeouts. `_finite` fails 50 tests and `_magnitude` 46, which is the enumeration reaching
 every door. Full account in `welfare-clock-report.md`.

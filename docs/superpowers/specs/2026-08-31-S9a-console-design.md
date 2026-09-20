@@ -310,7 +310,7 @@ defence is structural rather than careful.
 
 | Pane | Source |
 |---|---|
-| Fluid delivered / floor / supplement | `welfare.session_total`, `total_today`, `shortfall()`, `bounds.minima` |
+| Fluid delivered / floor / supplement | `welfare.session_total`, `total_today`, `shortfall()`, `bounds.minima`. **These two are welfare-load-bearing and may not be dropped or folded away** — see below |
 | Time out of cage | `welfare.out_of_cage_seconds` — frame-derived, so it matches the ceiling that ends the session. `None`, rendered *cage-side, the animal is home*, for a deployment with no duration bound (S13 §4.0) |
 | Chair time | `welfare.chair_seconds` — shown beside it, and **not** what ends the session since 2026-09-19. Showing only this one meant an operator would watch a session stop on a clock the console never displayed |
 | Trials, outcomes, aborts by reason | `simulate.Tally`, already shared with `taskd` |
@@ -321,6 +321,17 @@ defence is structural rather than careful.
 **If the console needs a number that is not in those objects, the fix is to add it to the
 object.** A console-only number cannot be in the record, cannot be checked, and will
 eventually be read off a screen into a paper.
+
+**And two of those numbers may not be removed, because a welfare ruling rests on them.**
+A reward volume of **zero** is allowed — pausing reward without ending a session — and the
+PI allowed it on 2026-09-20 **because it is visible** (S8 §5.2c). `fluid session` going
+`0.00 mL` is how an operator sees that a correctly-working animal is being paid nothing, and
+`supplement` keeps reporting the whole floor as owed so it is topped up afterwards. The
+consequence he weighed and accepted is that, while it holds, the animal earns nothing. **So
+a console change that stopped showing either — a simplified pane, a folded summary, a
+reconciliation that no longer published `fluid_session_ml` — would turn a permitted operation
+into a silent one.** That is a welfare regression arrived at by editing a display, which is
+the reason this sits in the console spec rather than only in S8.
 
 **Approximation is in the name.** `rt_approx_ms`, never `rt_ms` — online RT is
 approximate by decision (PI, 2026-09-19: *"an approximate rt online is fine enough"*),

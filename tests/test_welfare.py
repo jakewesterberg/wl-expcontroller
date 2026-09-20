@@ -668,23 +668,32 @@ def test_a_cage_side_session_carrying_a_duration_ceiling_is_refused():
         )
 
 
-def test_a_reward_volume_of_exactly_zero_is_accepted_and_the_day_still_reports_it():
-    """**Pinned as current behaviour, not endorsed — a question for the PI.**
+def test_a_reward_volume_of_exactly_zero_is_allowed_because_it_is_visible():
+    """**Allowed — PI, asked and answered 2026-09-20.** Not merely current behaviour.
 
     Zero is a quantity, so neither `_finite` nor `_magnitude` refuses it: they
-    refuse values that are not quantities. But a console setting a reward volume to
-    zero mid-session makes every subsequent correct trial unpaid, which is
-    `welfare.Absent`'s failure reached by another route.
+    refuse values that are not quantities. The question put to the PI was whether a
+    *policy* refusal belonged on top, because a console setting the volume to zero
+    mid-session leaves every subsequent correct trial unpaid -- `welfare.Absent`'s
+    failure reached by another route.
 
-    What saves it from being silent is the day's accounting, asserted here: the
-    animal earns nothing, and `shortfall()` reports the whole floor as still owed,
-    so a person is told to supplement it. The console also shows `fluid session:
-    0.00 mL` throughout.
+    **His ruling: allow it, because it is not silent**, and it is a legitimate
+    operational move -- pausing reward without ending a session. The consequence he
+    weighed and accepted is that an animal working correctly is paid nothing while
+    it holds.
 
-    Whether a zero volume is ever legitimate is animal-facing, so it is asked
-    rather than assumed (CLAUDE.md, "ask, do not file"). If the answer is no, the
-    refusal belongs in `Bounds.validate` beside the negative one, and this test
-    inverts. S8 §5.2c carries the question.
+    **The visibility is therefore the condition of the ruling, not a nicety.** Both
+    halves are asserted below: the day's accounting reports the whole floor as still
+    owed, so the supplement figure stays correct, and `cli.render` shows `fluid
+    session: 0.00 mL` throughout. Anything that stopped reporting either would turn
+    a permitted operation into a silent one. `cli.render`, `link.Telemetry` and
+    S9a §9 all carry that sentence, because a session simplifying a console pane is
+    where it would be lost.
+
+    **This is the one place a magnitude of zero is deliberately allowed on the
+    welfare path.** The rule -- *a magnitude is finite and not negative* -- is
+    unchanged and has no exception; what sits on top of it is a policy choice about
+    zero for this one quantity. S8 §5.2c carries the ruling.
     """
     bounds = _bounds()
     bounds.ceilings["reward_correct"] = Ceiling(0.0, 0.40, "mL")
@@ -699,6 +708,12 @@ def test_a_reward_volume_of_exactly_zero_is_accepted_and_the_day_still_reports_i
         welfare.deliver("reward_correct")
 
     assert welfare.pump.delivered == [0.0] * 20, "twenty trials, no fluid"
+    # The two numbers the ruling rests on. `session_total()` is what
+    # `link.Telemetry.fluid_session_ml` reads and `cli.render` prints as "fluid
+    # session"; `shortfall()` is what both it and `wlx run` print as "supplement".
+    assert welfare.session_total() == 0.0, (
+        "the console must show the operator that nothing is being paid"
+    )
     assert welfare.shortfall() == pytest.approx(250.0), (
         "the day's accounting must still report the whole floor as owed"
     )

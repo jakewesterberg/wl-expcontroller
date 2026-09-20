@@ -131,6 +131,16 @@ def render(frame: _link.Telemetry) -> str:
     headless run disagreeing about whether a day is known would be the same
     failure surfacing twice, differently.
 
+    **The two fluid lines are the condition of a welfare ruling, not a readout.**
+    A reward volume of zero is *allowed* -- pausing reward without ending a session
+    -- and the PI allowed it on 2026-09-20 **because it is visible**: `fluid
+    session: 0.00 mL` is how an operator sees that a correctly-working animal is
+    being paid nothing, and `supplement:` keeps reporting the whole floor as owed so
+    it is topped up afterwards. **A change that stopped showing either would turn a
+    permitted operation into a silent one** -- a welfare regression reached by
+    simplifying a console pane, which is exactly why this sentence is here and not
+    only in S8 §5.2c.
+
     **Staged changes are shown with who staged them, and so are refusals.** S9a §8
     removed the write lock; staged visibility -- to every console, not only the one
     that staged it -- is what replaces it, so a change already accepted must be

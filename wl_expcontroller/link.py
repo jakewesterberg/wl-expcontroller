@@ -167,12 +167,24 @@ class Telemetry:
     #: Empty until the session has stopped (mirrors `taskd.Session.stopped_because`).
     stopped_because: str
     #: `welfare.session_total()` -- this session's reconciled contribution to today.
+    #:
+    #: **Welfare-load-bearing, and not only informational** (PI, 2026-09-20). A
+    #: reward volume of zero is *allowed* -- pausing reward without ending a session
+    #: -- and the PI allowed it **because it is visible**: this field going `0.00`
+    #: is how an operator sees that a correctly-working animal is being paid
+    #: nothing. Reporting it is the condition of that ruling, so a change that
+    #: stopped publishing it, or a pane that stopped showing it, would turn a
+    #: permitted operation into a silent one. S8 §5.2c.
     fluid_session_ml: float
     #: `welfare.total_today()`. `None` when the day's prior total is unknown, never a
     #: confident `0.0`.
     fluid_today_ml: float | None
     #: `welfare.shortfall()`. `None` for the same reason as `fluid_today_ml` -- a
     #: shortfall against an unmeasured day is not a number, it is a guess.
+    #:
+    #: The other half of the zero-reward ruling above: with the volume at zero this
+    #: keeps reporting the whole floor as owed, so the supplement figure stays
+    #: correct and the animal is topped up afterwards.
     shortfall_ml: float | None
     #: `welfare.out_of_cage_seconds(now)` -- **the clock the session's one duration
     #: ceiling is read against** (PI, 2026-09-19), frame-derived rather than a wall

@@ -261,12 +261,31 @@ those two modules — which arithmetic can do, and is why `out_of_cage_seconds` 
 computed duration and `reconcile_report` checks both inputs rather than trusting their
 sources.
 
-**Open, for the PI:** a reward volume of **exactly zero** is accepted. It is a quantity, not a
-non-quantity, so neither guard refuses it — but a console setting it mid-session makes every
-subsequent correct trial unpaid, which is `welfare.Absent`'s failure reached another way. The
-day's accounting does catch it at close (the full floor is reported as owed) and the console
-shows `fluid session: 0.00 mL` throughout. Not decided here, because whether a zero volume is
-ever legitimate is an animal-facing question.
+**A reward volume of exactly zero is allowed, because it is visible** — PI, asked and answered
+2026-09-20.
+
+Zero is a quantity, not a non-quantity, so neither guard refuses it; the question put to him
+was whether a *policy* refusal belonged on top. A console setting the volume to zero
+mid-session leaves every subsequent correct trial unpaid, which is `welfare.Absent`'s failure
+reached another way. **He allowed it, on the reasoning that it is not silent** — and because
+it is a legitimate operational move: pausing reward without ending a session.
+
+**The consequence he weighed and accepted:** while it holds, an animal working correctly is
+paid nothing.
+
+**So the visibility is the condition of the ruling, not an incidental property.** Two numbers
+carry it, and both must keep reporting: `welfare.session_total()` — which
+`link.Telemetry.fluid_session_ml` reads and `cli.render` prints as `fluid session: 0.00 mL` —
+and `welfare.shortfall()`, which keeps the supplement figure correct by reporting the whole
+floor as still owed. **A change that stopped reporting either would turn a permitted operation
+into a silent one**, and would be a welfare regression even though it touched only a console
+pane. `cli.render`, `link.Telemetry` and S9a §9 each carry that sentence, because a session
+simplifying the renderer or the reconciliation is where it would otherwise be lost.
+
+**This is the one place a magnitude of zero is deliberately allowed on the welfare path.** The
+rule above — *an instant is finite; a magnitude is finite and not negative* — is unchanged and
+has no exception. What sits on top of it is a policy choice about zero, for this one quantity,
+made by the PI and conditional on the reporting above.
 
 ### 5.2b One fluid budget across rig and kiosk
 

@@ -143,6 +143,13 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   unexplained gap. Do not "fix" this into a resume without asking him — it was asked once
   precisely because it looked like an inference, and the answer is on the record in S8
   §5.2 item 4.
+- **A reward volume of zero is allowed, and the console showing it is the condition
+  of that** (PI, 2026-09-20). Zeroing reward pauses payment without ending a session;
+  he allowed it because `fluid session: 0.00 mL` and the unchanged `supplement` figure
+  make it visible, accepting that an animal working correctly is paid nothing while it
+  holds. **So `Telemetry.fluid_session_ml` and `shortfall_ml` are welfare-load-bearing:
+  dropping either from a pane is a welfare regression, not a display change.** It is
+  also the one place a magnitude of zero is deliberately allowed.
 - **The rule, in two words: an instant is finite; a magnitude is finite and not
   negative.** Three Criticals in three review rounds were one class — a guard on a
   *limit* with the *measurement* compared against it unchecked — found one surface at a
@@ -408,6 +415,14 @@ REQ/REP, msgpack, ADR-0003). `wlx run --link PUB,REP` opens it; `wlx console --s
 the browser ADR-0008 chose, which is exactly what P4d-2 builds. Full account,
 including every ruling made building it, in `docs/CHECKPOINT.md`'s "What moved on
 2026-09-19" entry and `.superpowers/sdd/2026-09-19-p4d1-console-link/progress.md`.
+
+> **Before you touch a console pane, read S9a §9's "two of those numbers may not be
+> removed".** The PI allowed a reward volume of zero *because the console shows it*
+> (2026-09-20), so `fluid session` and `supplement` are welfare-load-bearing: a
+> simplified pane or a folded summary that stopped showing either would turn a
+> permitted operation into a silent one, and an animal working correctly for nothing
+> would appear nowhere. This is the one welfare regression P4d-2 could reach without
+> touching a welfare-critical file.
 
 **Next is P4d-2: the console's HTTP/WS surface (S9a §7), which is also where
 `labhost` lives now.** `wlx console` today talks ZMQ directly; P4d-2 puts an HTTP
