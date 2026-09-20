@@ -42,7 +42,11 @@ def _bounds(daily_fluid: float = 250.0) -> Bounds:
     )
 
 
-def _session_with(delivered_ml: float, already_today: float | None):
+def _session_with(
+    delivered_ml: float,
+    already_today: float | None,
+    deployment: Deployment = Deployment.RIG_FIXED,
+):
     """A stand-in for `Session`, carrying exactly what `Telemetry.of` reads from it.
 
     Not a real `Session`: constructing one loads a task file and an allocation from
@@ -79,7 +83,7 @@ def _session_with(delivered_ml: float, already_today: float | None):
         bounds=_bounds(),
         pump=Pump(),
         already_today=already_today,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=deployment,
         commanded=0.1,
         delivered=delivered_ml,
     )
@@ -87,9 +91,15 @@ def _session_with(delivered_ml: float, already_today: float | None):
     # unmarked rig session refuses rather than answering zero (PI, 2026-09-19). A
     # stand-in that skipped it would make every telemetry test here a test of that
     # refusal instead.
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=0.0, wall_now=0.0, now=0.0)
     return SimpleNamespace(
-        spec=SimpleNamespace(session_id="2027-01-14_01", subject="A"),
+        spec=SimpleNamespace(
+            session_id="2027-01-14_01",
+            subject="A",
+            # Read by `Telemetry.of` since 2026-09-20: two of the three kinds
+            # answer `None` for chair time and a console has to say which.
+            deployment=deployment,
+        ),
         welfare=welfare,
         stopped_because="",
         staged=(),
@@ -202,6 +212,52 @@ def test_a_cage_side_sessions_absent_duration_clock_survives_the_wire_as_none():
     restored = decode(encode(original))
 
     assert restored.out_of_cage_seconds is None
+
+
+def test_a_chaired_sessions_absent_chair_clock_survives_the_wire_as_none():
+    """**The same rule on the restraint clock** (PI, 2026-09-20). `chair_seconds` is
+    `None` for the two deployment kinds that take no head-fixation marks, and a
+    `0.00` arriving in its place would tell an operator a restrained animal had been
+    restrained for no time at all.
+
+    Assembled from a real chaired session rather than by overriding the field, so
+    this is a claim about `Telemetry.of` reading `welfare` as well as about the wire.
+    """
+    session = _session_with(
+        delivered_ml=1.0, already_today=None, deployment=Deployment.RIG_CHAIRED
+    )
+    original = Telemetry.of(session, Tally(), _scheduler(), index=0)
+
+    restored = decode(encode(original))
+
+    assert original.chair_seconds is None, "welfare reports absent, not 0.00"
+    assert restored.chair_seconds is None
+    assert restored.deployment == "rig_chaired"
+
+
+def test_telemetry_carries_the_deployment_so_a_console_can_say_which_absence():
+    """Two of the three kinds answer `None` for chair time, for different reasons: a
+    cage-side animal is never restrained and a chaired one is restrained and
+    unmarked. A console that derived the kind from which fields were `None` would be
+    computing, which `cli.render` promises not to do -- so the declaration is on the
+    wire."""
+    original = _telemetry(deployment="rig_chaired")
+
+    restored = decode(encode(original))
+
+    assert restored.deployment == "rig_chaired"
+
+
+def test_telemetry_carries_the_warning_as_the_limit_approaches():
+    """`welfare.approaching_limit` read, not recomputed -- the console's whole
+    reason for showing it is that it is the same sentence the session would use."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    session.welfare.warn_within = 43_200.0
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
+
+    assert telemetry.duration_warning == session.welfare.approaching_limit(0.0)
+    assert telemetry.duration_warning is not None, "the threshold spans the ceiling"
 
 
 def test_staged_and_refused_rows_come_back_as_objects_not_raw_dicts():

@@ -66,7 +66,16 @@ from typing import Protocol
 #: chair time as *the* clock and would watch a session stop on a limit it never
 #: displayed -- the same "a field still decodes and no longer means what it did"
 #: case as 3, with a welfare limit on the other end of it.
-SCHEMA = 4
+#:
+#: 5 (2026-09-20, PI): head-fixation stopped being a blanket rig requirement, so
+#: there are three deployment kinds rather than two. `chair_seconds` became
+#: `float | None` -- **absent, never `0.00`, for the two kinds that take no
+#: head-fixation marks** -- `deployment` was added so a console can say *which*
+#: absence it is looking at rather than deriving it, and `duration_warning` was added
+#: for the warning that now precedes the out-of-cage limit. A console built against 4
+#: renders `chair_seconds` with a `None` in it, and one that coerced would tell an
+#: operator a restrained animal had been restrained for no time at all.
+SCHEMA = 5
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -195,7 +204,24 @@ class Telemetry:
     #: `welfare.chair_seconds(now)` -- restraint, **recorded and bounding nothing**
     #: since 2026-09-19. Still shown because an operator wants to know how long an
     #: animal has been in the chair; it is simply not what ends the session.
-    chair_seconds: float
+    #:
+    #: **`None`, never `0.0`, for `RIG_CHAIRED` and `CAGE_SIDE`** (PI, 2026-09-20).
+    #: A chaired-but-unfixed animal *is* restrained and simply has no head-fixation
+    #: marks, so a zero here would report a measurement nothing took -- the
+    #: `shortfall()`-answering-zero-for-an-unmeasured-day failure, on the restraint
+    #: clock. `deployment` below is how a console says which of the two reasons it
+    #: is.
+    chair_seconds: float | None
+    #: `session.spec.deployment.value` -- which of `welfare.Deployment`'s three kinds
+    #: this session declared. On the wire rather than inferred from which fields are
+    #: `None`, because `cli.render` promises to name a field per line and derive
+    #: nothing, and because two kinds share one `None`.
+    deployment: str
+    #: `welfare.approaching_limit(now)` -- the sentence the session would use as the
+    #: out-of-cage ceiling comes into view (PI, 2026-09-20), or `None` while there is
+    #: nothing to say. Read rather than recomputed, so the console's warning and the
+    #: session's are the same statement and cannot drift.
+    duration_warning: str | None
     #: Keyed by the outcome's wire string (`Outcome.value`), not the enum member --
     #: this dict is what a msgpack-encoded message will carry.
     outcomes: dict
@@ -284,6 +310,8 @@ class Telemetry:
             shortfall_ml=session.welfare.shortfall(),
             out_of_cage_seconds=session.welfare.out_of_cage_seconds(session.now()),
             chair_seconds=session.welfare.chair_seconds(session.now()),
+            deployment=session.spec.deployment.value,
+            duration_warning=session.welfare.approaching_limit(session.now()),
             outcomes={k.value: v for k, v in tally.outcomes.items()},
             hangs=tally.hangs,
             owed={c: scheduler.owed(c) for c in scheduler.upcoming()},
@@ -338,6 +366,8 @@ def encode(telemetry: Telemetry) -> bytes:
         "shortfall_ml": telemetry.shortfall_ml,
         "out_of_cage_seconds": telemetry.out_of_cage_seconds,
         "chair_seconds": telemetry.chair_seconds,
+        "deployment": telemetry.deployment,
+        "duration_warning": telemetry.duration_warning,
         "outcomes": telemetry.outcomes,
         "hangs": telemetry.hangs,
         "owed": telemetry.owed,
@@ -357,10 +387,13 @@ def decode(payload: bytes) -> Telemetry:
 
     **`None` survives.** msgpack has a native nil, distinct from `0`/`0.0`, and
     `unpackb`'s default `raw=False` returns Python `str` rather than `bytes` for text
-    -- so `fluid_today_ml`/`shortfall_ml`/`out_of_cage_seconds` round-trip as `None`
-    when that is what they were, never silently becoming a number. For the first two
-    that is an unknown day; for the third it is a cage-side session that has no such
-    interval, and a `0.0` on the wire would read as a clock that had not started.
+    -- so `fluid_today_ml`/`shortfall_ml`/`out_of_cage_seconds`/`chair_seconds`
+    round-trip as `None` when that is what they were, never silently becoming a
+    number. For the first two that is an unknown day; for the third it is a cage-side
+    session that has no such interval, and a `0.0` on the wire would read as a clock
+    that had not started; for the fourth it is a deployment that takes no
+    head-fixation marks, where a `0.00` would report an animal as unrestrained that
+    is sitting in a chair.
     See this module's docstring: an unknown
     day rendered as a confident `0.0` is exactly the failure `welfare.shortfall()`
     exists to prevent, and a console showing it would be the same failure one hop
@@ -381,6 +414,8 @@ def decode(payload: bytes) -> Telemetry:
         shortfall_ml=data["shortfall_ml"],
         out_of_cage_seconds=data["out_of_cage_seconds"],
         chair_seconds=data["chair_seconds"],
+        deployment=data["deployment"],
+        duration_warning=data["duration_warning"],
         outcomes=data["outcomes"],
         hangs=data["hangs"],
         owed=data["owed"],

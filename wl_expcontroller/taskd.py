@@ -22,14 +22,21 @@ this file exists to hold. A task with a blocking finding does not run, because a
 session that begins and *then* discovers the task is malformed has already put an
 animal in a chair. And a session that has not satisfied `welfare.preflight` does not
 run: a rig session needs the mark that starts the twelve-hour out-of-cage clock (PI,
-2026-09-19) and the head-fixation that records restraint, while a cage-side one
-declares `Deployment.ANIMAL_AT_HOME` and needs neither. The declaration is on
-`SessionSpec` rather than inferred, because a rig session nobody marked and a kiosk
-session with nothing to mark are indistinguishable to anything that guesses.
+2026-09-19), and `Deployment.RIG_FIXED` additionally needs the head-fixation that
+records restraint, while a cage-side one declares `Deployment.CAGE_SIDE` and needs
+neither. The declaration is on `SessionSpec` rather than inferred, because a rig
+session nobody marked and a kiosk session with nothing to mark are indistinguishable
+to anything that guesses.
+
+**Three deployment kinds since 2026-09-20 (PI)**, and this file is where two of the
+consequences land: `head_released` is emitted at the end of a run only for the kind
+that was fixed, and `link.Telemetry` carries the declaration so a console can say
+which absence it is looking at. `welfare.Deployment` has the table.
 """
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -44,7 +51,13 @@ from wl_expcontroller.scheduler import Block, Condition, Scheduler
 from wl_expcontroller.simulate import Census, Subject, Tally, prepare
 from wl_expcontroller.run import run_trial
 from wl_expcontroller.task import Entered, Exited, Outcome, Param, SaccadeTo, Trial
-from wl_expcontroller.welfare import Absent as NoPump, Deployment, Rig, Welfare
+from wl_expcontroller.welfare import (
+    WARN_WITHIN_DEFAULT,
+    Absent as NoPump,
+    Deployment,
+    Rig,
+    Welfare,
+)
 
 
 @dataclass
@@ -75,13 +88,19 @@ class SessionSpec:
     #: assuming zero -- and it does *not* stop the session paying the animal, because
     #: the daily figure is a floor rather than a ceiling (PI, 2026-09-06).
     already_delivered_today: float | None
-    #: Rig or cage-side. **Required, with no default**, because the two differ in
-    #: which welfare limits exist at all (`welfare.Deployment`) and a default would
-    #: be a limit acquired -- or lost -- by omission.
+    #: Which of the three deployment kinds this is. **Required, with no default**,
+    #: because they differ in which welfare limits exist at all and in which marks
+    #: the session may carry (`welfare.Deployment`), and a default would be a limit
+    #: acquired -- or lost -- by omission.
     deployment: Deployment
     #: The session's plan. `None` means one block of `trials` trials, which is the
     #: same code path with one block in it.
     blocks: list[Block] | None = None
+    #: How close to the out-of-cage ceiling the session starts warning, in seconds
+    #: (PI, 2026-09-20). Defaulted rather than required, unlike the fields above,
+    #: because it bounds nothing: the session ends at the same instant whatever it
+    #: is. See `welfare.WARN_WITHIN_DEFAULT` for the figure and why it is a proposal.
+    warn_within: float = WARN_WITHIN_DEFAULT
     #: Rates per second, not per frame (S9/simulate). Roughly: acquires fixation
     #: within a few hundred ms, saccades to a target at a plausible latency, and
     #: breaks fixation about once every twenty seconds of holding.
@@ -119,6 +138,12 @@ class Session:
     #: make "stops at its out-of-cage ceiling" depend on how fast the machine ran. On
     #: a rig, frames *are* the clock, so the same choice is the honest one there.
     clock: object = None
+    #: The **wall** clock, in POSIX seconds, and a different base from `clock`.
+    #: `time.time` by default. It exists for exactly one thing -- the out-of-cage
+    #: mark, which an operator gives as a clock time (PI, 2026-09-20) and which
+    #: `welfare.left_cage` maps onto the frame clock -- and it is injectable so that
+    #: no test of that mapping reads a real clock.
+    wall_clock: object = None
     #: Optional. `(trial, values, index) -> World`, called once per trial. Default:
     #: the behaviour agent. **This is the seam hardware plugs into** (S6 §6) -- until
     #: it existed, a session could only ever run against a simulated animal, and the
@@ -172,6 +197,7 @@ class Session:
             pump=self.pump,
             already_today=self.spec.already_delivered_today,
             deployment=self.spec.deployment,
+            warn_within=self.spec.warn_within,
         )
         self.rig = Rig(card=self.card, welfare=self.welfare)
 
@@ -188,27 +214,36 @@ class Session:
             return self.clock()
         return self._elapsed
 
+    def wall_now(self) -> float:
+        """The wall clock, in POSIX seconds -- a different base from `now()`.
+
+        Read in exactly one place, `left_cage`, because that is the one mark an
+        operator states in clock time. See `wall_clock`.
+        """
+        if self.wall_clock is not None:
+            return self.wall_clock()
+        return time.time()
+
     # --- out of cage, and restraint ---------------------------------------
 
-    def left_cage(self, seconds_ago: float) -> None:
+    def left_cage(self, at: float) -> None:
         """The console action that starts the clock bounding this session.
 
-        **`seconds_ago`, against `now()`, and this is the whole time-base
-        contract.** `now()` is frame-derived and reads zero when the session starts,
-        so the animal leaving its cage is at a negative instant in that base and a
-        timestamp parameter would invite a caller to pass zero -- which makes
-        out-of-cage time equal chair time and reintroduces the under-count the clock
-        exists to remove. `welfare.left_cage` refuses a future value and refuses one
-        longer ago than the ceiling, so a wall clock handed to this cannot be
-        mistaken for a duration.
+        **`at` is a wall-clock instant, in POSIX seconds** (PI, 2026-09-20): a clock
+        time is what an operator reads. This hands `welfare.left_cage` both clocks --
+        the wall reading and `now()`, which is frame-derived and zero at the start --
+        and the mapping between them happens there, in the welfare-critical file,
+        rather than in this one. A caller that did its own subtraction would be a
+        second place for the two bases to meet, and the first one passed a plain
+        zero, which made out-of-cage time equal chair time.
 
-        **Not event-coded yet**, and `welfare.py`'s docstring says what that is
-        waiting for: two codes are S2's and `wl-preproc`'s to allocate (ADR-0007),
-        and it is asked of the PI rather than taken here. Until then this clock has
-        no hardware record, so a restart cannot reconstruct it -- the same gap S8
-        §5.2 closed for chair time by coding `HEAD_FIXED`.
+        **Deliberately not event-coded** (PI, 2026-09-20, closing S8 open item 8):
+        the marks are operator-entered rather than measured, so a hardware timestamp
+        would add precision to a number that never had it, and our own log and the
+        session directory already carry them. The consequence he accepted is that a
+        restart re-asks a person for the departure time.
         """
-        self.welfare.left_cage(seconds_ago, now=self.now())
+        self.welfare.left_cage(at, wall_now=self.wall_now(), now=self.now())
 
     def returned_to_cage(self, at: float) -> None:
         """The animal is home. `at` is an instant on `now()`'s clock.
@@ -221,13 +256,18 @@ class Session:
         self.welfare.returned_to_cage(at)
 
     def head_fixed(self, at: float) -> None:
-        """The console action S8 §5.2 requires before a rig session may start.
+        """The console action S8 §5.2 requires before a `RIG_FIXED` session starts.
 
         Event-coded at both ends, because restraint has no hardware line: the codes
         *are* its durable record, and an offline reader recovers chair time from the
         sync box's capture of them rather than from anything of ours that a crash
         took with it. Chair time stopped bounding the session on 2026-09-19; that is
         why it is still recorded.
+
+        **`welfare.head_fixed` refuses the other two deployment kinds** (PI,
+        2026-09-20), which is what keeps `4128`/`4129` out of a stream that has no
+        head-fixation to record -- the refusal is there rather than here so the one
+        rule has one home.
         """
         self.welfare.head_fixed(at)
         self.card.emit(self.allocation.code_for("HEAD_FIXED"))
@@ -615,7 +655,14 @@ class Session:
                 if self.observe is not None:
                     self.observe(condition, values, result)
                 index += 1
-            self.head_released(self.now())
+            # **Only the kind that was fixed is released** (PI, 2026-09-20).
+            # `welfare.head_released` would accept the call for any deployment, and
+            # `self.card.emit` would then put a `HEAD_RELEASED` in the stream of a
+            # session that had no `HEAD_FIXED` -- a restraint record for restraint
+            # nothing marked, which is the zero-where-an-absence-belongs failure
+            # `chair_seconds` refuses on the other surface.
+            if self.spec.deployment is Deployment.RIG_FIXED:
+                self.head_released(self.now())
             return tally.census()
         except Exception as fault:
             # **One frame naming the fault, then it propagates unchanged** (PI,

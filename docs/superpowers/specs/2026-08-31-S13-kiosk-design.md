@@ -89,14 +89,20 @@ limit here rather than a different number.
 **That absence is declared, never inferred.** A rig session where somebody forgot to mark the
 animal coming out of its cage looks exactly like a cage-side one to any code that answers
 zero, and treating the two alike would run an unmarked rig session unbounded. So
-`welfare.Deployment` is a required field with no default: `OUT_OF_CAGE` carries the clock and
-the ceiling and **refuses** a session missing either, and `ANIMAL_AT_HOME` is the explicit,
-greppable statement that this deployment is cage-side and the animal is home. A cage-side
+`welfare.Deployment` is a required field with no default. `RIG_FIXED` and `RIG_CHAIRED` both
+carry the clock and the ceiling and **refuse** a session missing either, and `CAGE_SIDE` is the
+explicit, greppable statement that this deployment is cage-side and the animal is home.
+(The three kinds date from 2026-09-20, when the PI made head-fixation a property of the
+deployment rather than of being on a rig; the members were `OUT_OF_CAGE` and `ANIMAL_AT_HOME`
+until then. S8 §5.2 item 4 has the table.) A cage-side
 bounded config that also states an `out_of_cage` ceiling is refused, because the declaration
 and the config disagreeing is the same limit-by-omission failure reached from the other side.
 
 `welfare.out_of_cage_seconds` answers `None` for such a session — never `0.0` — and the
 console renders that as *cage-side, the animal is home* rather than as a clock at zero.
+`welfare.chair_seconds` answers `None` too, and `welfare.head_fixed` **refuses** a cage-side
+session outright: an animal that never left home was never restrained, and a `0.00` restraint
+figure would be a measurement nothing took.
 
 **What does not change: the fluid floor.** A cage-side session is refused without one, exactly
 as a rig session is (§4's shared daily figure, S8 §5.2b). Losing the duration bound does not

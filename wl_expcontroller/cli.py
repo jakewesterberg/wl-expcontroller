@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import sys
+import time
 from contextlib import nullcontext
+from datetime import datetime
 from pathlib import Path
 
 from wl_expcontroller import link as _link
@@ -20,6 +22,7 @@ from wl_expcontroller.check import check
 from wl_expcontroller.review import render as render_review
 from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.task import Trial
+from wl_expcontroller.welfare import Deployment
 
 
 def _load_trial(path: Path) -> Trial:
@@ -97,6 +100,77 @@ def _clock(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+#: What `--out-of-cage-at` accepts, named once so the flag's help, its refusal and
+#: this module's tests all quote the same list.
+_TIME_FORMATS = "HH:MM, HH:MM:SS, or an ISO 8601 date-time such as 2027-01-13T22:40"
+
+
+def _wall_clock_time(text: str) -> float:
+    """An operator's clock time to POSIX seconds. `argparse`'s `type=` for the mark.
+
+    **Two resolutions are stated here rather than left implicit**, because the PI
+    asked for both to be decided (2026-09-20):
+
+    - **Timezone: this host's local zone.** A value with no offset is read in the
+      zone the lab machine is configured for, which is the clock on the wall the
+      operator is reading. A value that carries its own offset is honoured as given.
+      An ambiguous local time -- the repeated hour when the clocks go back -- takes
+      the first occurrence, which `astimezone()` gives by leaving `fold` at 0.
+    - **Date: today, on this host, and never rolled back.** A bare `HH:MM` later than
+      now is refused as being in the future rather than quietly becoming a departure
+      twenty-three hours ago. An overnight departure is typed with its date.
+
+    Rolling back would have been the convenient choice and is the wrong one: it turns
+    `23:59` mistyped in the morning into an animal recorded as out for most of a day,
+    which is precisely the plausible-typo class this flag's refusals exist for.
+
+    Returning a POSIX float, not a `datetime`: `welfare.left_cage` is the one place
+    the wall clock and the session clock meet, and handing it a rich object would put
+    calendar arithmetic inside a welfare-critical file.
+    """
+    raw = text.strip()
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            clock = datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+        today = datetime.now()
+        parsed = today.replace(
+            hour=clock.hour, minute=clock.minute, second=clock.second, microsecond=0
+        )
+        break
+    else:
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"{text!r} is not a clock time; give {_TIME_FORMATS}. A bare time is "
+                f"today's date in this host's local timezone"
+            ) from None
+    if parsed.tzinfo is None:
+        # Attaches this host's local offset for the instant in question, which is
+        # what makes "local" a resolution rather than an assumption.
+        parsed = parsed.astimezone()
+    return parsed.timestamp()
+
+
+def _hours_minutes(seconds: float) -> str:
+    """`seconds` as `N hours M minutes` -- the phrasing the PI asked for.
+
+    Separate from `_clock` and deliberately wordier than it: `_clock`'s `9:15:00`
+    is for a figure an operator glances at repeatedly on a running console, and this
+    is for the one sentence that has to be *read* once, at session start, so that a
+    nine-hour typo registers as nine hours.
+    """
+    total = max(0, int(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes = remainder // 60
+    return (
+        f"{hours} hour{'' if hours == 1 else 's'} "
+        f"{minutes} minute{'' if minutes == 1 else 's'}"
+    )
+
+
 def _value(value: float | None) -> str:
     """A staged parameter value, to the same 2 decimal places every fluid figure on
     this screen uses.
@@ -130,6 +204,15 @@ def render(frame: _link.Telemetry) -> str:
     rather than a confident zero. This must agree with it -- a console and a
     headless run disagreeing about whether a day is known would be the same
     failure surfacing twice, differently.
+
+    **An absent number says which absence it is, and never prints as zero.**
+    `chair_seconds` is `None` for the two deployment kinds that take no
+    head-fixation marks (PI, 2026-09-20), and the two have different reasons: a
+    cage-side animal is never restrained, and a chaired one is restrained and
+    unmarked. Rendering either as `0:00` would report a measurement nothing took,
+    which on the restraint clock is the same failure `fluid today: UNKNOWN` exists
+    to prevent on the fluid one. `deployment` is on the frame so this line can name
+    the reason rather than infer it from which fields came through empty.
 
     **The two fluid lines are the condition of a welfare ruling, not a readout.**
     A reward volume of zero is *allowed* -- pausing reward without ending a session
@@ -177,8 +260,17 @@ def render(frame: _link.Telemetry) -> str:
         f"session {frame.session_id}  subject {frame.subject}  "
         f"trial {frame.trial_index}  block {frame.block}",
     ]
+    # Named rather than derived. Two of the three kinds answer `None` for chair time
+    # for different reasons, and a console that worked out which from the pattern of
+    # `None`s would be computing -- see this function's second paragraph.
+    lines.append(f"  deployment: {frame.deployment}")
     if frame.stopped_because:
         lines.append(f"  STOPPED: {frame.stopped_because}")
+    # Beside the stop reason and above everything else, because that is where a
+    # person looks when something is wrong. The session's own sentence, read from
+    # `welfare.approaching_limit` and not rebuilt here (PI, 2026-09-20).
+    if frame.duration_warning:
+        lines.append(f"  WARNING: {frame.duration_warning}")
 
     lines.append(f"  fluid session: {frame.fluid_session_ml:.2f} mL")
     lines.append(
@@ -203,7 +295,23 @@ def render(frame: _link.Telemetry) -> str:
         if frame.out_of_cage_seconds is None
         else f"  out of cage: {_clock(frame.out_of_cage_seconds)}"
     )
-    lines.append(f"  chair: {_clock(frame.chair_seconds)}")
+    # **Absent is not zero, and the two absences are not each other** (PI,
+    # 2026-09-20). `chair: 0:00` on a chaired-but-unfixed session would tell an
+    # operator a restrained animal had been restrained for no time at all -- a
+    # welfare quantity reported as a measured zero by something that measured
+    # nothing, which is `shortfall()` answering `0` for an unmeasured day in another
+    # costume. So the word UNMEASURED appears, and the cage-side case gets its own
+    # sentence because "never restrained" and "restrained and unmarked" are
+    # different facts about an animal.
+    if frame.chair_seconds is not None:
+        lines.append(f"  chair: {_clock(frame.chair_seconds)}")
+    elif frame.deployment == Deployment.CAGE_SIDE.value:
+        lines.append("  chair: n/a -- cage-side, the animal is home and unrestrained")
+    else:
+        lines.append(
+            "  chair: n/a -- this deployment takes no head-fixation marks, so "
+            "restraint is UNMEASURED here, not zero; the animal is in a chair"
+        )
 
     # Fix round 1, IMPORTANT 2: this used to open with `sum(frame.outcomes.values())
     # attempted`, a computed total that also silently excluded hangs (5 outcomes
@@ -283,18 +391,43 @@ def main(argv: list[str] | None = None) -> int:
         help="the subject's bounded config: a Python file defining BOUNDS",
     )
     runner.add_argument(
-        "--out-of-cage-ago",
-        type=float,
+        "--out-of-cage-at",
+        type=_wall_clock_time,
         required=True,
+        metavar="TIME",
+        help=f"the clock time this subject came out of its home cage: {_TIME_FORMATS}. "
+        "A bare time is TODAY's date in THIS HOST's local timezone, never yesterday's "
+        "-- give the date too for an overnight departure. **Required, with no "
+        "default**, for the reason `--as WHO` is: the session's one welfare limit "
+        "runs out of cage to back in cage (S8 5.2), and a default would make it equal "
+        "chair time, which is the under-count that limit replaced chair time to "
+        "remove. Refused if it is in the future or longer ago than the subject's "
+        "out_of_cage ceiling. The session prints the resulting interval as it starts, "
+        "because a plausible typo -- 08:45 for 18:45 -- is inside a twelve-hour "
+        "ceiling and nothing else would catch it",
+    )
+    runner.add_argument(
+        "--deployment",
+        choices=("rig-fixed", "rig-chaired"),
+        default="rig-fixed",
+        help="which kind of session this is (welfare.Deployment). `rig-fixed` is the "
+        "animal chaired and head-fixed; `rig-chaired` is chaired and unfixed, which "
+        "takes no head-fixation marks and therefore reports restraint time as ABSENT "
+        "rather than as zero. Both are bounded by the same out-of-cage clock. "
+        "Defaulted -- unlike --out-of-cage-at -- because omission lands on the "
+        "stricter kind, which requires a mark the other does not. `cage-side` is not "
+        "offered: there is no kiosk host to run one on (S13 §6 item 2), and a "
+        "cage-side bounded config would be refused by this one anyway",
+    )
+    runner.add_argument(
+        "--warn-within",
+        type=float,
+        default=None,
         metavar="SECONDS",
-        help="how long ago this subject came out of its home cage, in seconds. "
-        "**Required, with no default**, for the reason `--as WHO` is: the session's "
-        "one welfare limit runs out of cage to back in cage (S8 5.2), and a default "
-        "of zero would silently make it equal chair time -- the under-count that "
-        "limit replaced chair time to remove. A headless run says `0` and means it. "
-        "Refused if it is in the future or longer ago than the subject's out_of_cage "
-        "ceiling, which is also what catches a wall-clock timestamp handed to a "
-        "how-long-ago",
+        help="how close to the out-of-cage ceiling the session starts warning (PI, "
+        "2026-09-20), so a block can be finished deliberately rather than cut "
+        "mid-sequence. Omitted uses welfare.WARN_WITHIN_DEFAULT, which is 1800 and is "
+        "a proposal rather than a settled figure. Zero switches the warning off",
     )
     runner.add_argument(
         "--delivered-today",
@@ -382,7 +515,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         from wl_expcontroller.dio import Simulated as SimulatedCard
         from wl_expcontroller.taskd import Session, SessionSpec
-        from wl_expcontroller.welfare import Deployment, Simulated as SimulatedPump
+        from wl_expcontroller.welfare import (
+            WARN_WITHIN_DEFAULT,
+            Simulated as SimulatedPump,
+        )
+
+        # `--deployment` arrives as a hyphenated word because that is how a flag
+        # reads; the enum's own value is the underscored one that goes on the wire.
+        deployment = Deployment(args.deployment.replace("-", "_"))
 
         values: dict[str, object] = {}
         for assignment in args.set:
@@ -468,12 +608,18 @@ def main(argv: list[str] | None = None) -> int:
                         values=values,
                         bounds=_load_bounds(args.bounds),
                         already_delivered_today=args.delivered_today,
-                        # A simulated rig run, so the rig's limits apply. There is no
-                        # flag for the cage-side deployment because there is no kiosk
-                        # to run one on: S13 is a proposed spec, and `wl-touchtrain`
-                        # owns the hardware (S13 §6 item 2). When one exists this is
-                        # where its declaration is chosen.
-                        deployment=Deployment.OUT_OF_CAGE,
+                        # A simulated rig run, so the rig's limits apply -- which of
+                        # the two rig kinds is `--deployment`'s to say since
+                        # 2026-09-20 (PI). There is still no flag for the cage-side
+                        # deployment because there is no kiosk to run one on: S13 is
+                        # a proposed spec, and `wl-touchtrain` owns the hardware
+                        # (S13 §6 item 2).
+                        deployment=deployment,
+                        warn_within=(
+                            WARN_WITHIN_DEFAULT
+                            if args.warn_within is None
+                            else args.warn_within
+                        ),
                     ),
                     # Simulators, because that is what this subcommand is for.
                     # The refusing implementations are the defaults everywhere
@@ -485,16 +631,30 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 # On a rig both of these are the console's actions, and the
                 # difference is the whole reason S8 makes them explicit. Here the
-                # out-of-cage one comes from `--out-of-cage-ago`, which has no
-                # default: a headless run with no animal says `0` and means it,
-                # rather than arriving at zero by omission and quietly reporting
-                # chair time as time out of the cage. Head-fixation lands at the
-                # session's own zero, which is a simulated session's restraint
-                # record.
-                session.left_cage(seconds_ago=args.out_of_cage_ago)
-                session.head_fixed(at=0.0)
+                # out-of-cage one comes from `--out-of-cage-at`, which has no
+                # default: a headless run states the departure as a clock time and
+                # means it, rather than arriving at the session's own zero by
+                # omission and quietly reporting chair time as time out of the cage.
+                # Head-fixation lands at the session's own zero -- and only for the
+                # kind that has it, since `welfare.head_fixed` refuses the other.
+                session.left_cage(at=args.out_of_cage_at)
+                if deployment is Deployment.RIG_FIXED:
+                    session.head_fixed(at=0.0)
             except Exceeded as refused:
                 raise SystemExit(f"refused: {refused}") from refused
+            # **The consequence of a clock time, made visible** (PI, 2026-09-20).
+            # He accepted losing the automatic wall-clock refusal on the condition
+            # that a mistyped hour is legible rather than silent: `08:45` for
+            # `18:45` sits comfortably inside a twelve-hour ceiling, and nothing
+            # else on this path would remark on it. Read from `welfare`, never
+            # recomputed here -- `render`'s rule, on the headless path.
+            print(
+                f"  out of cage: the animal has been out "
+                f"{_hours_minutes(session.welfare.out_of_cage_seconds(session.now()))}"
+                f", having left its cage at "
+                f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(args.out_of_cage_at))}"
+                f" ({time.strftime('%Z') or 'local time'}, this host's local time)"
+            )
             census = session.run()
             total = sum(census.outcomes.values()) or 1
             for outcome, count in census.outcomes.most_common():

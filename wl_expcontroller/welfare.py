@@ -12,6 +12,13 @@ refusal messages an operator actually reads.
   volume, and the day's shortfall is reported at close so a person can supplement.
 - **One duration limit: out of the cage to back in it**, twelve hours (PI,
   2026-09-19). Chair time is recorded and bounds nothing; there is no trial cap.
+  **The session warns as that limit approaches** (PI, 2026-09-20) so a block can be
+  finished deliberately rather than cut mid-sequence -- `approaching_limit`, with
+  `WARN_WITHIN_DEFAULT` as a proposed figure the PI has yet to accept.
+- **Three deployment kinds, not two** (PI, 2026-09-20): head-fixation is a property
+  of the deployment rather than of being on a rig. `Deployment`'s docstring is the
+  table; the one thing to carry away is that `chair_seconds` is **absent, never
+  zero**, for a kind that takes no head-fixation marks.
 - **`Rig` is the only route from a task's `Reward` to fluid**, so "can anything
   deliver reward without the day's accounting seeing it" is a one-file question.
 - A missing floor, a missing mark, an unconfigured pump, a value that is not a real
@@ -24,8 +31,10 @@ refusal messages an operator actually reads.
 
 **No millilitres-to-open-time conversion lives here**: the pump calibration has never
 been measured, so `Pump` takes millilitres and P7 owns the driver. **The out-of-cage
-marks have no event code yet** -- two codes are S2's and `wl-preproc`'s to allocate
-(ADR-0007), asked of the PI, S8 open item 8.
+marks get no event code** -- PI, 2026-09-20, closing S8 open item 8: they are
+operator-entered rather than measured, so a hardware timestamp would add precision to
+a number that never had it, and our own log and the session directory already carry
+them. A restart therefore re-asks a person for the departure time, by design.
 """
 
 from __future__ import annotations
@@ -56,25 +65,73 @@ DAILY_FLUID = "daily_fluid"
 #: module, so that nothing can default to it.
 OUT_OF_CAGE = "out_of_cage"
 
+#: How long before the `out_of_cage` ceiling a session starts saying so, in seconds.
+#: **Thirty minutes, and it is a proposal rather than a settled figure** (put to the
+#: PI 2026-09-20 with the change that introduced it).
+#:
+#: **Why this may carry a name where twelve hours may not.** The ceiling has no
+#: constant here because a number with a name is a number something will default to,
+#: and a duration *limit* acquired by default is a welfare failure. This bounds
+#: nothing: at any value the session stops at exactly the same instant, so the worst
+#: a wrong one does is warn too early or too late.
+#:
+#: **The number is not derived from any measurement of this system.** No block
+#: duration has been measured -- nothing under `docs/measurements/` states one -- so
+#: this makes no claim to clear a block. What it is: a twenty-fourth of the twelve-
+#: hour limit, long enough for an operator to finish what is running and walk an
+#: animal back, and short enough that it is not on screen for most of a session.
+#: `Welfare.warn_within` is where a lab that knows its block length sets its own.
+WARN_WITHIN_DEFAULT = 1_800.0
+
 
 class Deployment(Enum):
-    """Where the animal is for this session, and therefore whether a duration bound
-    exists at all. **Required, with no default and no third answer.**
+    """Where the animal is for this session, and what that means it can be marked
+    with. **Required, with no default.**
 
     A declaration rather than an inference: a rig session nobody marked and a
     cage-side one with nothing to mark are indistinguishable to anything that
     answers zero. Defaulting either way is wrong, so the session says which it is
     and `welfare` refuses what does not match (S13 §4.0).
+
+    **Three kinds since 2026-09-20 (PI)**, because head-fixation is a property of the
+    deployment and not of being on a rig:
+
+    ====================  ==============  ==============  ==============  ===========
+    kind                  out-of-cage     head-fixation   duration bound  chair time
+    ====================  ==============  ==============  ==============  ===========
+    ``RIG_FIXED``         required        required        yes             a number
+    ``RIG_CHAIRED``       required        **refused**     yes             **absent**
+    ``CAGE_SIDE``         **refused**     **refused**     no              **absent**
+    ====================  ==============  ==============  ==============  ===========
+
+    **"Absent" is the load-bearing word in that table.** A chaired-but-unfixed animal
+    *is* restrained; what it has no marks for is head-fixation. `chair_seconds`
+    therefore answers `None` rather than `0.00` for the two kinds that take no such
+    marks -- a restrained session reporting zero restraint is `shortfall()` answering
+    `0` for a day nobody measured, in another costume. `4128`/`4129` are emitted only
+    where the marks exist, which is `RIG_FIXED` and nowhere else.
     """
 
     #: A rig session: the animal left its home cage, was transported, chaired and
     #: head-fixed. The twelve-hour clock binds it, and it must carry both marks.
-    OUT_OF_CAGE = "out_of_cage"
+    RIG_FIXED = "rig_fixed"
+
+    #: A rig session with no head-fixation -- a chaired animal working at a screen.
+    #: The twelve-hour clock binds it exactly as above, and it carries the
+    #: out-of-cage mark; it has no restraint marks, so it reports no restraint time.
+    RIG_CHAIRED = "rig_chaired"
 
     #: A cage-side kiosk session (S13): the animal never left home, so there is no
     #: out-of-cage event, no head-fixation, and **no duration bound** -- which the PI
     #: chose, and which this member is how a session states rather than acquires.
-    ANIMAL_AT_HOME = "animal_at_home"
+    CAGE_SIDE = "cage_side"
+
+
+#: The kinds where the animal left its home cage, and which the twelve-hour ceiling
+#: therefore binds. A tuple rather than a method on `Deployment`, so that the whole
+#: three-way behaviour of this file is readable as `is` and `in` against the table
+#: above and nothing dispatches.
+_OUT_OF_THE_CAGE = (Deployment.RIG_FIXED, Deployment.RIG_CHAIRED)
 
 
 class Pump(Protocol):
@@ -162,9 +219,14 @@ class Welfare:
     #: wrong-but-ordered instant.
     left_cage_at: float | None = None
     returned_at: float | None = None
-    #: The restraint clock. Recorded, and it bounds nothing (PI, 2026-09-19).
+    #: The restraint clock. Recorded, and it bounds nothing (PI, 2026-09-19). Only
+    #: `Deployment.RIG_FIXED` can carry these at all.
     fixed_at: float | None = None
     released_at: float | None = None
+    #: How close to the `out_of_cage` ceiling `approaching_limit` starts saying so,
+    #: in seconds. See `WARN_WITHIN_DEFAULT` -- including why a warning threshold may
+    #: have a default where the limit itself may not. Zero means never warn.
+    warn_within: float = WARN_WITHIN_DEFAULT
     #: Anything a person should see in the session summary, in order.
     notes: list = field(default_factory=list)
 
@@ -185,14 +247,15 @@ class Welfare:
                 f"{DAILY_FLUID!r} minimum, so a session could never say what the day "
                 f"still owes; a missing floor is not a floor of zero"
             )
+        _magnitude("the out-of-cage warning threshold", self.warn_within)
         declared = OUT_OF_CAGE in self.bounds.ceilings
-        if self.deployment is Deployment.OUT_OF_CAGE and not declared:
+        if self.deployment in _OUT_OF_THE_CAGE and not declared:
             raise Exceeded(
                 f"the bounded config for subject {self.bounds.subject!r} has no "
                 f"{OUT_OF_CAGE!r} ceiling, so a session out of the cage would be "
                 f"unbounded; a missing limit is not an absent one"
             )
-        if self.deployment is Deployment.ANIMAL_AT_HOME and declared:
+        if self.deployment is Deployment.CAGE_SIDE and declared:
             # A limit switched off by a flag -- what the declaration exists to
             # prevent, reached from the other side.
             raise Exceeded(
@@ -200,6 +263,15 @@ class Welfare:
                 f"{OUT_OF_CAGE!r} ceiling while this session declares the animal is "
                 f"at home; a session cannot both have that interval and not have it"
             )
+        # **And no refusal for a threshold wider than the ceiling**, which was
+        # written and removed on 2026-09-20. It would have made every short-ceiling
+        # config -- `tasks/reference_bounds.py`'s deliberately implausible ten
+        # minutes among them -- refuse to construct a `Welfare` at all, and a
+        # placeholder limit turning `wlx run` into a hard failure is a worse outcome
+        # than a warning that is on for the whole of a ten-minute session. It is also
+        # not nonsense there: a session whose entire allowance is under the threshold
+        # genuinely is inside it throughout. This is a warning, not a limit, so the
+        # only guard it earns is the one above.
 
     # --- fluid ------------------------------------------------------------
 
@@ -270,20 +342,35 @@ class Welfare:
 
     # --- out of cage, and back in -----------------------------------------
 
-    def left_cage(self, seconds_ago: float, now: float) -> None:
+    def left_cage(self, at: float, wall_now: float, now: float) -> None:
         """Start the clock the session is bounded by (PI, 2026-09-19).
 
-        **How long ago, not at what time.** The session clock reads zero at the
-        start, so the animal leaving its cage is at a *negative* instant in that
-        base; a timestamp parameter invited a caller to pass zero, which made
-        out-of-cage time equal chair time. S8 §5.2 item 4 has that account.
+        **At what time, and the mapping between the two clocks lives here** (PI,
+        2026-09-20). `at` and `wall_now` are wall-clock instants in POSIX seconds --
+        a clock time is what an operator reads, and 9,143 seconds ago is not. `now`
+        is the frame-derived session clock, which reads zero at the start, so the
+        departure lands at a *negative* instant in that base and transport and
+        chairing are inside the interval. Doing that arithmetic here rather than in a
+        caller is the point: a caller that computed `seconds_ago` itself is a second
+        place for the two bases to meet, and the first one passed a plain zero.
 
-        Refused: a cage-side deployment (it never left); a value that is not a real
-        number or is negative (S8 §5.2c); and one **at or past** the ceiling, which
-        also catches a wall clock, and is *at* because an animal out for exactly the
-        limit has no room for a trial.
+        **This parameter was `seconds_ago` until 2026-09-20, and the change cost a
+        guard the PI was shown and accepted.** An interval of 1.7e9 seconds is
+        self-evidently absurd and the ceiling caught it; an *instant* of 1.7e9 is
+        simply now. So the wall clock catches what the ceiling used to: a departure
+        later than `wall_now` is refused, and one longer ago than the ceiling is
+        refused by the same rule that already existed. What is no longer caught is a
+        plausible typo -- `08:45` for `18:45` is nine hours of slack -- which is why
+        the computed interval is put in front of the operator at session start
+        (`cli.main`) rather than only being bounded.
+
+        Refused: a cage-side deployment (it never left); any of the three readings
+        not being a real number, and the interval computed from two of them likewise
+        (S8 §5.2c); a departure in the future; and one **at or past** the ceiling,
+        which is *at* because an animal out for exactly the limit has no room for a
+        trial.
         """
-        if self.deployment is Deployment.ANIMAL_AT_HOME:
+        if self.deployment is Deployment.CAGE_SIDE:
             raise Exceeded(
                 f"this session declares subject {self.bounds.subject!r} is at home, "
                 f"so it cannot also be recorded as leaving its cage; the declaration "
@@ -297,13 +384,20 @@ class Welfare:
                 f"re-armed either (PI, 2026-09-20): out and back is one session, so "
                 f"an animal brought out again starts a new one"
             )
-        _finite("the time since this subject left its cage", seconds_ago)
+        _finite("the time this subject left its cage", at)
+        _finite("the wall clock this session is reading", wall_now)
         _finite("the session clock", now)
+        # The interval is a third value computed from two checked ones, which S8
+        # §5.2c names as a door no enumeration of parameters can close.
+        seconds_ago = wall_now - at
+        _finite("the time since this subject left its cage", seconds_ago)
         if seconds_ago < 0.0:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} cannot have left its cage "
-                f"{-seconds_ago} seconds in the future; this is how long ago the "
-                f"animal came out, on the session's own clock"
+                f"{-seconds_ago:.0f} seconds in the future; the departure is a "
+                f"clock time, and this one is later than the clock this session is "
+                f"reading. A bare time is today's date on this host -- give the "
+                f"date too if the animal came out yesterday"
             )
         ceiling = self.bounds.ceilings[OUT_OF_CAGE]
         if seconds_ago >= ceiling.value:
@@ -312,8 +406,8 @@ class Welfare:
                 f"{seconds_ago} {ceiling.unit} ago, against a ceiling of "
                 f"{ceiling.value:.0f}; a session cannot start at or outside the "
                 f"limit it is bounded by, because its first trial is already past "
-                f"it. If this was a timestamp, it is in the wrong base -- this "
-                f"parameter is how long ago, in seconds"
+                f"it. Check the date and the hour -- a departure typed a day early, "
+                f"or in the wrong half of the day, lands here"
             )
         self.left_cage_at = now - seconds_ago
 
@@ -331,7 +425,7 @@ class Welfare:
         S8 §5.2 item 4 has the ruling and the consequence he accepted.
         """
         _finite("the time the animal went back into its cage", at)
-        if self.deployment is Deployment.ANIMAL_AT_HOME:
+        if self.deployment is Deployment.CAGE_SIDE:
             raise Exceeded(
                 f"this session declares subject {self.bounds.subject!r} is at home, "
                 f"so there is no interval for a return to close"
@@ -374,13 +468,13 @@ class Welfare:
         indistinguishable from a cage-side one to anything that answers a number.
         `dio.Absent`'s rule, on the clock that bounds a session.
         """
-        if self.deployment is Deployment.ANIMAL_AT_HOME:
+        if self.deployment is Deployment.CAGE_SIDE:
             return None
         if self.left_cage_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is not recorded as out of its "
                 f"cage, so the session's one duration limit has no start; call "
-                f"left_cage(), or declare Deployment.ANIMAL_AT_HOME if the animal "
+                f"left_cage(), or declare Deployment.CAGE_SIDE if the animal "
                 f"never left it. A missing mark is not an absent limit"
             )
         end = self.returned_at if self.returned_at is not None else now
@@ -410,10 +504,16 @@ class Welfare:
         a refusal a person sees at the console rather than a fault mid-session.
 
         Three things must hold for a rig: the **out-of-cage mark** (asked of
-        `out_of_cage_seconds`, so that refusal has one home), **head-fixation**
-        (S8 §5.2 -- without it there is no record of restraint), and an interval
-        still **open** (a session whose animal is recorded home is bounded by a
-        number no trial can move).
+        `out_of_cage_seconds`, so that refusal has one home), an interval still
+        **open** (a session whose animal is recorded home is bounded by a number no
+        trial can move), and **head-fixation for the kind that has it**.
+
+        **Head-fixation is asked of `RIG_FIXED` only** (PI, 2026-09-20). It was a
+        blanket rig requirement until then, which made a chaired-but-unfixed session
+        impossible to declare and therefore impossible to run honestly. It is still
+        required where the deployment says the marks exist, for the reason it always
+        was: a session with neither code in the stream would carry no record of a
+        restraint that happened.
 
         **It does not check the ceiling**, and claimed to until a review read it:
         `left_cage` refuses a mark at or past the limit and `must_stop` refuses
@@ -428,7 +528,7 @@ class Welfare:
                 f"and no trial can be inside it; a session cannot start with the "
                 f"animal at home"
             )
-        if self.deployment is Deployment.OUT_OF_CAGE and self.fixed_at is None:
+        if self.deployment is Deployment.RIG_FIXED and self.fixed_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is not recorded as head-fixed, so "
                 f"the session would carry no record of restraint; call head_fixed() "
@@ -442,8 +542,22 @@ class Welfare:
 
         Recorded rather than bounding since 2026-09-19; `HEAD_FIXED`/`HEAD_RELEASED`
         (4128/4129) remain the durable record of restraint (S8 §5.2).
+
+        **Refused unless the deployment says these marks exist** (PI, 2026-09-20).
+        The declaration binds in both directions, as it already does for the
+        out-of-cage mark: without this, `chair_seconds` answering `None` for the
+        other two kinds would be *discarding* a measurement somebody took rather than
+        reporting one nobody could take. A cage-side session could be recorded as
+        head-fixed until this existed, and nothing anywhere disagreed.
         """
         _finite("the time the animal was head-fixed", at)
+        if self.deployment is not Deployment.RIG_FIXED:
+            raise Exceeded(
+                f"this session declares subject {self.bounds.subject!r} is "
+                f"{self.deployment.value}, which takes no head-fixation marks, so "
+                f"the animal cannot be recorded as fixed; the declaration and the "
+                f"mark disagree and neither is safe to prefer"
+            )
         if self.fixed_at is not None and self.released_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is already recorded as head-fixed "
@@ -457,9 +571,25 @@ class Welfare:
         _finite("the time the animal was released", at)
         self.released_at = at
 
-    def chair_seconds(self, now: float) -> float:
-        """Restraint time so far. Zero before the animal is in the chair."""
+    def chair_seconds(self, now: float) -> float | None:
+        """Head-fixation time so far, or `None` where nothing measures it.
+
+        **`None` for `RIG_CHAIRED` and `CAGE_SIDE`, never `0.00`** (PI, 2026-09-20).
+        The two have different reasons and the same answer: a cage-side animal is
+        never restrained, and a chaired one *is* restrained and simply has no
+        head-fixation marks. A restrained session reporting zero restraint is
+        `shortfall()` answering `0` for a day nobody measured, wearing another
+        costume -- a welfare quantity reported as a measured zero by something that
+        measured nothing. Callers say which reason on screen (`cli.render`); this
+        says only that there is no number.
+
+        Zero *is* the answer for a `RIG_FIXED` session before head-fixation: that
+        kind takes the marks, and none has been taken, so no restraint has happened
+        yet. `preflight` refuses to start such a session anyway.
+        """
         _finite("the session clock", now)
+        if self.deployment is not Deployment.RIG_FIXED:
+            return None
         if self.fixed_at is None:
             return 0.0
         end = self.released_at if self.released_at is not None else now
@@ -499,6 +629,42 @@ class Welfare:
                 f"{ceiling.value:.0f}"
             )
         return None
+
+    def approaching_limit(self, now: float) -> str | None:
+        """How little of the out-of-cage interval is left, once it is worth saying.
+
+        **PI, 2026-09-20: warn as the twelve-hour limit approaches**, so an operator
+        can finish a block deliberately rather than have a session cut mid-sequence.
+        The console showed the clock and nothing drew attention as it ran out, which
+        made the limit arrive as an interruption instead of as a deadline.
+
+        A string like `must_stop`, and never an exception, for the same reason: this
+        is the design working. It is `None` for a cage-side session (no bound to
+        approach), `None` while more than `warn_within` is left, and `None` again
+        once the limit is past -- there `must_stop` speaks, and a warning beside a
+        stop would read as though a choice were still open. `warn_within` of zero
+        therefore never warns, which is how the warning is switched off.
+
+        **This bounds nothing**, which is why `warn_within` may have a default at all
+        (`WARN_WITHIN_DEFAULT`): whatever it is set to, the session ends at the same
+        instant.
+        """
+        seconds = self.out_of_cage_seconds(now)
+        if seconds is None:
+            return None
+        ceiling = self.bounds.ceilings[OUT_OF_CAGE]
+        # Two guarded, non-negative, finite values, so the difference is finite too;
+        # checked anyway because §5.2c's standing lesson is that a computed third
+        # value is a door, and this one is read against a threshold.
+        remaining = ceiling.value - seconds
+        _finite("the time left out of the cage", remaining)
+        if remaining <= 0.0 or remaining > self.warn_within:
+            return None
+        return (
+            f"{OUT_OF_CAGE}: subject {self.bounds.subject!r} has {remaining:.0f} "
+            f"{ceiling.unit} left of its {ceiling.value:.0f} {ceiling.unit} out of "
+            f"the cage; finish the block and start bringing the animal back"
+        )
 
 
 @dataclass

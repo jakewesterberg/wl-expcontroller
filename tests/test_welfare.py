@@ -53,7 +53,7 @@ def _home_bounds(daily_fluid: float = 250.0) -> Bounds:
     """A cage-side config (S13): the same fluid floor and **no duration ceiling**.
 
     The animal never left home, so there is no out-of-cage interval for a ceiling to
-    be about. That absence is declared by `Deployment.ANIMAL_AT_HOME` and never
+    be about. That absence is declared by `Deployment.CAGE_SIDE` and never
     inferred from this dict being short an entry, which is the whole point of the
     declaration.
     """
@@ -64,12 +64,33 @@ def _home_bounds(daily_fluid: float = 250.0) -> Bounds:
     )
 
 
+#: A fixed wall-clock instant for the mark tests, in POSIX seconds. The mark became
+#: a clock time on 2026-09-20 (PI), so every test that takes one supplies both ends
+#: of the mapping -- the departure and the wall clock the session read it against --
+#: rather than letting a real clock into the suite. Only the differences matter.
+WALL_NOW = 1_700_000_000.0
+
+
 def _welfare(already: float | None = 0.0, **over: float) -> Welfare:
     return Welfare(
         bounds=_bounds(**over),
         pump=Simulated(),
         already_today=already,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=Deployment.RIG_FIXED,
+    )
+
+
+def _chaired_welfare(already: float | None = 0.0, **over: float) -> Welfare:
+    """A rig session with no head-fixation: the animal is chaired and unfixed.
+
+    **Restrained, and with no restraint marks**, which is the whole reason this kind
+    exists as a declaration rather than as a rig session missing something.
+    """
+    return Welfare(
+        bounds=_bounds(**over),
+        pump=Simulated(),
+        already_today=already,
+        deployment=Deployment.RIG_CHAIRED,
     )
 
 
@@ -78,7 +99,7 @@ def _home_welfare(already: float | None = 0.0) -> Welfare:
         bounds=_home_bounds(),
         pump=Simulated(),
         already_today=already,
-        deployment=Deployment.ANIMAL_AT_HOME,
+        deployment=Deployment.CAGE_SIDE,
     )
 
 
@@ -172,7 +193,7 @@ def test_the_commanded_total_is_charged_before_the_valve_opens():
         bounds=_bounds(),
         pump=Failing(),
         already_today=0.0,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=Deployment.RIG_FIXED,
     )
 
     with pytest.raises(RuntimeError):
@@ -188,7 +209,7 @@ def test_an_absent_pump_refuses_rather_than_delivering_nothing():
         bounds=_bounds(),
         pump=Absent(),
         already_today=0.0,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=Deployment.RIG_FIXED,
     )
 
     with pytest.raises(RuntimeError, match="no pump"):
@@ -206,7 +227,7 @@ def test_a_bounded_config_without_a_daily_fluid_floor_refuses_to_start():
             bounds=bounds,
             pump=Simulated(),
             already_today=0.0,
-            deployment=Deployment.OUT_OF_CAGE,
+            deployment=Deployment.RIG_FIXED,
         )
 
 
@@ -222,7 +243,7 @@ def test_a_cage_side_config_without_a_daily_fluid_floor_refuses_too():
             bounds=bounds,
             pump=Simulated(),
             already_today=0.0,
-            deployment=Deployment.ANIMAL_AT_HOME,
+            deployment=Deployment.CAGE_SIDE,
         )
 
 
@@ -278,7 +299,7 @@ def test_the_mark_precedes_session_zero_so_transport_and_chairing_count():
     times chair time, and both start before the first trial."""
     welfare = _welfare()
 
-    welfare.left_cage(seconds_ago=300.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW - 300.0, wall_now=WALL_NOW, now=0.0)
     welfare.head_fixed(at=0.0)
 
     assert welfare.left_cage_at == pytest.approx(-300.0), "the mark is before zero"
@@ -293,32 +314,39 @@ def test_the_clock_reads_zero_at_the_moment_the_animal_leaves():
     which is what happens instead."""
     welfare = _welfare()
 
-    welfare.left_cage(seconds_ago=0.0, now=100.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=100.0)
 
     assert welfare.out_of_cage_seconds(now=100.0) == 0.0
 
 
 def test_an_animal_that_leaves_its_cage_in_the_future_is_refused():
-    """The parameter is how long *ago*. A negative one is a mark nothing could have
-    taken, and it would make the interval shorter than the session."""
+    """A departure later than the clock the session is reading is a mark nothing
+    could have taken, and it would make the interval shorter than the session.
+
+    **This guard changed job on 2026-09-20 and kept its wording.** It caught a
+    negative "how long ago" then; it catches a clock time later than now since. It is
+    also the one of the two replacement guards that does the new work: a bare `23:59`
+    typed in the morning is in the future, and is refused rather than rolled back to
+    yesterday and accepted as a departure twenty-three hours old."""
     welfare = _welfare()
 
     with pytest.raises(Exceeded, match="future"):
-        welfare.left_cage(seconds_ago=-60.0, now=0.0)
+        welfare.left_cage(at=WALL_NOW + 60.0, wall_now=WALL_NOW, now=0.0)
 
 
-def test_a_wall_clock_handed_to_the_mark_is_refused():
-    """**The time base is checked, not assumed.** A caller with a `time.time()` in
-    hand and a parameter named for seconds is one substitution away from a mark
-    fifty-seven years old, whose interval is enormous and whose `must_stop` would
-    therefore fire on the first pass -- or, given the old signature, one whose
-    *instant* was so far in the future that `must_stop` answered `None` forever.
-    The subject's own ceiling is the bound, so the refusal is the same one a
-    session already past twelve hours gets, and needs no sanity constant."""
+def test_a_departure_before_the_epoch_is_refused_by_the_ceiling():
+    """**What is left of the wall-clock catch, and what it became.**
+
+    Until 2026-09-20 the parameter was an interval, so `time.time()` handed to it was
+    a mark fifty-seven years old and the ceiling refused it as an absurd duration.
+    The parameter is a wall-clock instant now, so 1.7e9 is simply *now* and that
+    catch is gone -- a cost the PI was shown and accepted. A value that is absurd as
+    an *instant* still lands in the same refusal, by the same arithmetic: the
+    interval it implies is longer ago than the subject's ceiling."""
     welfare = _welfare()
 
-    with pytest.raises(Exceeded, match="wrong base"):
-        welfare.left_cage(seconds_ago=1.79e9, now=0.0)
+    with pytest.raises(Exceeded, match="against a ceiling of"):
+        welfare.left_cage(at=0.0, wall_now=WALL_NOW, now=0.0)
 
 
 def test_a_session_that_starts_already_past_its_ceiling_is_refused():
@@ -327,7 +355,7 @@ def test_a_session_that_starts_already_past_its_ceiling_is_refused():
     welfare = _welfare(out_of_cage=60.0)
 
     with pytest.raises(Exceeded, match="at or outside"):
-        welfare.left_cage(seconds_ago=61.0, now=0.0)
+        welfare.left_cage(at=WALL_NOW - 61.0, wall_now=WALL_NOW, now=0.0)
 
 
 def test_a_session_that_starts_exactly_at_its_ceiling_is_refused():
@@ -339,7 +367,7 @@ def test_a_session_that_starts_exactly_at_its_ceiling_is_refused():
     welfare = _welfare(out_of_cage=60.0)
 
     with pytest.raises(Exceeded, match="at or outside"):
-        welfare.left_cage(seconds_ago=60.0, now=0.0)
+        welfare.left_cage(at=WALL_NOW - 60.0, wall_now=WALL_NOW, now=0.0)
 
 
 def test_a_mark_that_is_not_a_number_is_refused():
@@ -350,23 +378,26 @@ def test_a_mark_that_is_not_a_number_is_refused():
     so it answered `None` for the whole session.
 
     Reproduced end to end through `wlx run --out-of-cage-ago nan`, whose `type=float`
-    accepts it: four hundred rewarded trials, 13.55 mL, a clean summary, and no
-    duration limit at all. `inf` breaks the same guards the other way -- ordered but
+    accepted it: four hundred rewarded trials, 13.55 mL, a clean summary, and no
+    duration limit at all. That flag became `--out-of-cage-at TIME` on 2026-09-20, so
+    the command line can no longer produce a NaN at all -- but every other caller
+    still can, which is why this door stays guarded rather than being declared closed
+    by a parser. `inf` breaks the same guards the other way -- ordered but
     unreachable -- and was *not* already refused; see
     `test_every_numeric_entry_point_refuses_an_infinity`."""
     welfare = _welfare()
 
     with pytest.raises(Exceeded, match="not a real number"):
-        welfare.left_cage(seconds_ago=float("nan"), now=0.0)
+        welfare.left_cage(at=WALL_NOW - float("nan"), wall_now=WALL_NOW, now=0.0)
 
 
 def test_a_session_clock_that_is_not_a_number_is_refused_at_the_mark():
-    """The other half of the same arithmetic: `left_cage_at = now - seconds_ago`,
-    so a NaN on either side produces a NaN mark."""
+    """The other half of the same arithmetic: `left_cage_at = now - (wall_now - at)`,
+    so a NaN on any of the three produces a NaN mark."""
     welfare = _welfare()
 
     with pytest.raises(Exceeded, match="not a real number"):
-        welfare.left_cage(seconds_ago=0.0, now=float("nan"))
+        welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=float("nan"))
 
 
 def test_a_duration_that_is_not_a_number_is_refused_when_it_is_read():
@@ -375,21 +406,21 @@ def test_a_duration_that_is_not_a_number_is_refused_when_it_is_read():
     before one is compared. Reached here by a clock handed in later; a `Welfare`
     built field-by-field rather than marked reaches it the same way."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
 
     with pytest.raises(Exceeded, match="not a real number"):
         welfare.out_of_cage_seconds(now=float("nan"))
 
 
 def test_an_infinite_mark_is_refused_like_any_other_non_number():
-    """`inf` at the one door that always refused it -- `seconds_ago >= ceiling.value`
-    is `True` for `inf` against a finite ceiling. That single case was mistaken for
-    "`inf` is safe everywhere" through two review rounds; every other door is covered
-    by `test_every_numeric_entry_point_refuses_an_infinity`."""
+    """`inf` at the one door that always refused it -- the implied interval is `inf`,
+    and `inf >= ceiling.value` is `True` against a finite ceiling. That single case
+    was mistaken for "`inf` is safe everywhere" through two review rounds; every
+    other door is covered by `test_every_numeric_entry_point_refuses_an_infinity`."""
     welfare = _welfare()
 
     with pytest.raises(Exceeded):
-        welfare.left_cage(seconds_ago=float("inf"), now=0.0)
+        welfare.left_cage(at=WALL_NOW - float("inf"), wall_now=WALL_NOW, now=0.0)
 
 
 def test_a_cage_side_session_cannot_be_marked_as_leaving_its_cage():
@@ -397,7 +428,7 @@ def test_a_cage_side_session_cannot_be_marked_as_leaving_its_cage():
     welfare = _home_welfare()
 
     with pytest.raises(Exceeded, match="at home"):
-        welfare.left_cage(seconds_ago=0.0, now=0.0)
+        welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
 
 
 def test_putting_the_animal_back_closes_the_interval_and_ends_the_session():
@@ -410,7 +441,7 @@ def test_putting_the_animal_back_closes_the_interval_and_ends_the_session():
     present. The interval still reports what it was -- the record needs it -- and
     the session is told to end."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=100.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=100.0)
     welfare.head_released(at=400.0)
 
     welfare.returned_to_cage(at=460.0)
@@ -426,7 +457,7 @@ def test_marking_a_return_while_the_animal_is_head_fixed_is_refused():
     releases after its last, so the whole loop is inside this refusal. A session is
     ended with a `Stop`, not by recording the animal somewhere it is not."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
     welfare.head_fixed(at=0.0)
 
     with pytest.raises(Exceeded, match="head-fixed"):
@@ -438,7 +469,7 @@ def test_a_return_before_the_animal_left_is_refused():
     a **negative** interval, which is under every ceiling there is -- so the limit
     switched off while the session reported both marks present."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=1_000.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=1_000.0)
 
     with pytest.raises(Exceeded, match="negative duration"):
         welfare.returned_to_cage(at=10.0)
@@ -455,7 +486,7 @@ def test_a_return_with_no_matching_departure_is_refused():
 
 def test_a_second_return_is_refused():
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
     welfare.returned_to_cage(at=400.0)
 
     with pytest.raises(Exceeded, match="already recorded as back"):
@@ -475,11 +506,11 @@ def test_a_closed_interval_is_never_re_armed():
     than one with an unexplained gap. So this refusal is a ruling, not an
     arithmetic convenience, and changing it is a question for him."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
     welfare.returned_to_cage(at=43_000.0)
 
     with pytest.raises(Exceeded, match="not re-armed"):
-        welfare.left_cage(seconds_ago=0.0, now=43_100.0)
+        welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=43_100.0)
 
 
 def test_a_clock_that_runs_backwards_is_refused():
@@ -488,7 +519,7 @@ def test_a_clock_that_runs_backwards_is_refused():
     in. A negative duration is under every ceiling, so answering it would be a
     limit switched off by arithmetic rather than by a missing mark."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=1_000.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=1_000.0)
 
     with pytest.raises(Exceeded, match="runs backwards"):
         welfare.out_of_cage_seconds(now=0.0)
@@ -499,7 +530,7 @@ def test_a_session_may_not_start_with_the_animal_already_home():
     marks are both present, the interval is fixed, and no trial could be inside
     it."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
     welfare.returned_to_cage(at=100.0)
     welfare.head_fixed(at=200.0)
 
@@ -511,15 +542,15 @@ def test_taking_out_an_animal_that_is_already_out_is_refused():
     """`head_fixed`'s argument, on the clock that now bounds the session: two starts
     means one of the two is wrong, and the shorter one would silently win."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=100.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=100.0)
 
     with pytest.raises(Exceeded, match="already"):
-        welfare.left_cage(seconds_ago=0.0, now=200.0)
+        welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=200.0)
 
 
 def test_a_session_must_stop_at_the_out_of_cage_ceiling():
     welfare = _welfare(out_of_cage=60.0)
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
 
     assert welfare.must_stop(now=59.0) is None
     assert "out_of_cage" in welfare.must_stop(now=61.0)
@@ -531,7 +562,7 @@ def test_chair_time_is_recorded_and_bounds_nothing():
     record of restraint (S8 §5.2). Ten hours in the chair, inside a twelve-hour
     out-of-cage window, is a session that runs on."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
     welfare.head_fixed(at=0.0)
 
     assert welfare.chair_seconds(now=36_000.0) == pytest.approx(36_000.0)
@@ -575,9 +606,9 @@ def test_nothing_ends_a_session_on_a_trial_count():
         bounds=bounds,
         pump=Simulated(),
         already_today=0.0,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=Deployment.RIG_FIXED,
     )
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
 
     assert welfare.must_stop(now=1.0) is None
     assert not hasattr(welfare_module, "MAX_TRIALS"), "the concept came back"
@@ -609,7 +640,7 @@ def test_a_rig_session_still_refuses_to_run_before_the_animal_is_head_fixed():
     rig session with no `HEAD_FIXED` in the stream has no record of restraint at
     all."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
 
     with pytest.raises(Exceeded, match="head-fixed"):
         welfare.preflight(now=0.0)
@@ -617,7 +648,7 @@ def test_a_rig_session_still_refuses_to_run_before_the_animal_is_head_fixed():
 
 def test_a_marked_rig_session_passes_preflight():
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
     welfare.head_fixed(at=100.0)
 
     assert welfare.preflight(now=0.0) is None
@@ -626,7 +657,7 @@ def test_a_marked_rig_session_passes_preflight():
 def test_a_cage_side_session_declares_that_it_has_no_duration_bound():
     """S13: the animal never left home, so there is no out-of-cage event and no
     head-fixation, and the PI chose no time-based limit cage-side. The session says
-    so with `Deployment.ANIMAL_AT_HOME` -- explicit, greppable, and impossible to
+    so with `Deployment.CAGE_SIDE` -- explicit, greppable, and impossible to
     arrive at by forgetting, which is the difference between a limit nobody set and
     a limit nobody marked."""
     welfare = _home_welfare()
@@ -647,7 +678,7 @@ def test_a_rig_config_with_no_out_of_cage_ceiling_refuses_to_start():
             bounds=bounds,
             pump=Simulated(),
             already_today=0.0,
-            deployment=Deployment.OUT_OF_CAGE,
+            deployment=Deployment.RIG_FIXED,
         )
 
 
@@ -664,7 +695,7 @@ def test_a_cage_side_session_carrying_a_duration_ceiling_is_refused():
             bounds=bounds,
             pump=Simulated(),
             already_today=0.0,
-            deployment=Deployment.ANIMAL_AT_HOME,
+            deployment=Deployment.CAGE_SIDE,
         )
 
 
@@ -701,7 +732,7 @@ def test_a_reward_volume_of_exactly_zero_is_allowed_because_it_is_visible():
         bounds=bounds,
         pump=Simulated(),
         already_today=0.0,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=Deployment.RIG_FIXED,
     )
 
     for _ in range(20):
@@ -728,6 +759,237 @@ def test_a_cage_side_session_pays_and_counts_the_day_like_any_other():
 
     assert welfare.pump.delivered == [0.15]
     assert welfare.shortfall() == pytest.approx(149.85)
+
+
+# --- the mark is a clock time, and the three deployment kinds ---------------
+
+
+def test_the_departure_is_a_clock_time_mapped_onto_the_session_clock():
+    """**A clock time is what an operator reads** (PI, 2026-09-20).
+
+    The parameter was `seconds_ago` until then, which is a number nobody holds: an
+    operator knows the animal came out at 08:45, not that it came out 9,143 seconds
+    ago. The arithmetic that turns one into the other lives here rather than in a
+    caller, so there is one place where the two time bases meet -- `at` and
+    `wall_now` are on the wall clock, `now` is the frame-derived session clock, and
+    the mark still lands at a negative instant in the latter.
+    """
+    welfare = _welfare()
+
+    welfare.left_cage(at=WALL_NOW - 300.0, wall_now=WALL_NOW, now=0.0)
+
+    assert welfare.left_cage_at == pytest.approx(-300.0), "the mark is before zero"
+    assert welfare.out_of_cage_seconds(now=60.0) == pytest.approx(360.0)
+
+
+def test_a_departure_later_than_the_wall_clock_is_refused():
+    """**The replacement for the guard the clock time cost us** (PI, 2026-09-20).
+
+    A 1.7e9-second *interval* was self-evidently absurd and the ceiling caught it; a
+    1.7e9 *instant* is simply now, so that catch is gone. What replaces it is a
+    comparison against the wall clock this session is reading: a departure later than
+    the present is a mark nothing could have taken.
+    """
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded, match="in the future"):
+        welfare.left_cage(at=WALL_NOW + 60.0, wall_now=WALL_NOW, now=0.0)
+
+
+def test_a_departure_longer_ago_than_the_ceiling_is_still_refused():
+    """The second replacement, and it is the refusal that already existed: a session
+    cannot start at or outside the limit it is bounded by. It still catches the gross
+    error -- a date typed a day early, a clock an operator's phone was in -- which is
+    why the PI accepted losing the wall-clock catch above."""
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded, match="against a ceiling of"):
+        welfare.left_cage(at=WALL_NOW - 43_300.0, wall_now=WALL_NOW, now=0.0)
+
+
+def test_a_wall_clock_that_is_not_a_number_is_refused_at_the_mark():
+    """Both wall-clock readings are instants, and the interval computed from them is
+    a third value neither guard covers (S8 §5.2c's own rule: arithmetic on two
+    checked values can still produce an unchecked one)."""
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded, match="not a real number"):
+        welfare.left_cage(at=float("nan"), wall_now=WALL_NOW, now=0.0)
+
+
+def test_a_chaired_session_reports_chair_time_absent_rather_than_zero():
+    """**The trap this repository has a scar from** (PI, 2026-09-20).
+
+    A chaired-but-unfixed animal *is* restrained; it simply has no head-fixation
+    marks. `0.00` here would be `shortfall()` answering `0` for a day nobody measured
+    in a different costume -- a welfare quantity reported as a measured zero when
+    nothing measured it. `None` is the only honest answer, and the console renders it
+    as *unmeasured*, not as a clock at zero.
+    """
+    welfare = _chaired_welfare()
+    welfare.left_cage(at=WALL_NOW - 3_600.0, wall_now=WALL_NOW, now=0.0)
+
+    assert welfare.chair_seconds(now=3_600.0) is None
+
+
+def test_a_cage_side_session_reports_chair_time_absent_too():
+    """For the other reason: the animal never left home, so there is no restraint at
+    all. Both answer `None`; the console says which, because *the animal is home* and
+    *chaired and unfixed* are different facts about an animal."""
+    assert _home_welfare().chair_seconds(now=3_600.0) is None
+
+
+def test_a_head_fixed_session_still_reports_chair_time_as_a_number():
+    """The kind that has the marks keeps the number. `RIG_FIXED` is the only one of
+    the three where `chair_seconds` is a measurement rather than an absence."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+    welfare.head_fixed(at=0.0)
+
+    assert welfare.chair_seconds(now=600.0) == pytest.approx(600.0)
+
+
+def test_a_chaired_session_refuses_a_head_fixation_mark():
+    """The declaration binds in both directions, as it already does for the cage-side
+    kind: a deployment that states it takes no head-fixation marks cannot then record
+    one. Without this, `chair_seconds` answering `None` would be discarding a
+    measurement somebody took rather than reporting one nobody could."""
+    welfare = _chaired_welfare()
+
+    with pytest.raises(Exceeded, match="takes no head-fixation marks"):
+        welfare.head_fixed(at=0.0)
+
+
+def test_a_cage_side_session_refuses_a_head_fixation_mark():
+    """Same refusal, same reason. This was accepted silently until 2026-09-20: a
+    session that declared the animal was at home could still be recorded as
+    head-fixed, and nothing anywhere disagreed."""
+    with pytest.raises(Exceeded, match="takes no head-fixation marks"):
+        _home_welfare().head_fixed(at=0.0)
+
+
+def test_a_chaired_session_runs_without_head_fixation():
+    """**Head-fixation stops being a blanket rig requirement** (PI, 2026-09-20).
+    It is a property of the deployment, not of being on a rig, so preflight asks for
+    it only where the deployment says it exists."""
+    welfare = _chaired_welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    welfare.preflight(now=0.0)
+
+
+def test_a_chaired_session_is_bounded_by_the_same_out_of_cage_clock():
+    """Restraint is what differs between the two rig kinds; the twelve-hour limit is
+    not. A chaired session is out of its cage and the clock binds it identically."""
+    welfare = _chaired_welfare(out_of_cage=60.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    assert welfare.must_stop(now=61.0) is not None
+
+
+def test_a_chaired_session_still_refuses_a_config_with_no_duration_ceiling():
+    """The rig kinds share the requirement as well as the clock: `RIG_CHAIRED` is not
+    a way to reach a session out of the cage with no limit on it."""
+    with pytest.raises(Exceeded, match="has no 'out_of_cage' ceiling"):
+        Welfare(
+            bounds=_home_bounds(),
+            pump=Simulated(),
+            already_today=0.0,
+            deployment=Deployment.RIG_CHAIRED,
+        )
+
+
+def test_a_chaired_session_still_refuses_to_run_with_no_out_of_cage_mark():
+    """The mark is the other thing both rig kinds require. Dropping head-fixation
+    from `RIG_CHAIRED` must not drop the mark with it."""
+    welfare = _chaired_welfare()
+
+    with pytest.raises(Exceeded, match="is not recorded as out of its cage"):
+        welfare.preflight(now=0.0)
+
+
+# --- the warning before the limit -------------------------------------------
+
+
+def test_the_session_warns_before_the_limit_rather_than_only_at_it():
+    """**PI, 2026-09-20: warn as the twelve-hour limit approaches**, so an operator
+    can finish a block deliberately instead of having a session cut mid-sequence.
+    The console showed the clock and nothing drew attention as it ran out."""
+    welfare = _welfare(out_of_cage=3_600.0)
+    welfare.warn_within = 600.0
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    warning = welfare.approaching_limit(now=3_100.0)
+
+    assert warning is not None
+    assert "500" in warning, "the warning says how much is left"
+
+
+def test_nothing_warns_while_there_is_more_than_the_threshold_left():
+    """A warning that is always on is one nobody reads."""
+    welfare = _welfare(out_of_cage=3_600.0)
+    welfare.warn_within = 600.0
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    assert welfare.approaching_limit(now=2_900.0) is None
+
+
+def test_the_warning_stops_once_the_limit_is_past_because_must_stop_speaks():
+    """Two different statements about the same clock. Past the ceiling the session is
+    ending, and a warning beside a stop would read as though there were still a
+    choice to make."""
+    welfare = _welfare(out_of_cage=3_600.0)
+    welfare.warn_within = 600.0
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    assert welfare.approaching_limit(now=3_700.0) is None
+    assert welfare.must_stop(now=3_700.0) is not None
+
+
+def test_a_cage_side_session_never_warns():
+    """It has no duration bound to approach (S13 §4.0), and `None` here is the same
+    `None` `out_of_cage_seconds` answers -- not a warning suppressed."""
+    assert _home_welfare().approaching_limit(now=99_999.0) is None
+
+
+def test_the_warning_threshold_is_configurable_and_defaults_to_a_named_figure():
+    """**Welfare-facing, so it is a named default rather than a literal** -- and it
+    is the PI's to accept or change. Thirty minutes is this session's proposal, not a
+    measurement: no block duration has been measured on this system, so nothing here
+    may claim the threshold clears one."""
+    assert welfare_module.WARN_WITHIN_DEFAULT == 1_800.0
+    assert _welfare().warn_within == welfare_module.WARN_WITHIN_DEFAULT
+
+
+def test_a_threshold_wider_than_the_ceiling_warns_for_the_whole_session():
+    """**And is not refused**, which was written and then removed on 2026-09-20.
+
+    Refusing it would have made every short-ceiling config fail to construct a
+    `Welfare` -- including `tasks/reference_bounds.py`'s deliberately implausible ten
+    minutes, which would have turned `wlx run` into a hard failure over a
+    placeholder. It is also a true statement rather than a nonsensical one: a session
+    whose whole allowance is under the threshold is inside it throughout.
+    """
+    welfare = Welfare(
+        bounds=_bounds(out_of_cage=600.0),
+        pump=Simulated(),
+        already_today=0.0,
+        deployment=Deployment.RIG_FIXED,
+        warn_within=1_800.0,
+    )
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    assert welfare.approaching_limit(now=0.0) is not None
+
+
+def test_a_zero_threshold_switches_the_warning_off():
+    """Configurable includes off. A lab that does not want the line says so with a
+    number rather than by a flag that means something else."""
+    welfare = _welfare(out_of_cage=3_600.0)
+    welfare.warn_within = 0.0
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    assert welfare.approaching_limit(now=3_599.0) is None
 
 
 # --- the port a trial's actions actually reach ------------------------------
@@ -779,7 +1041,7 @@ def test_a_pump_fault_reaches_the_session_rather_than_being_absorbed():
             bounds=_bounds(),
             pump=Failing(),
             already_today=0.0,
-            deployment=Deployment.OUT_OF_CAGE,
+            deployment=Deployment.RIG_FIXED,
         ),
     )
 
@@ -855,9 +1117,12 @@ MAGNITUDE = "magnitude"
 INSTANT = "instant"
 
 #: Where a magnitude's negative refusal is worded for its own parameter rather than
-#: by `_magnitude`. `seconds_ago` is the one: "left its cage in the future" tells an
-#: operator what is wrong, where "cannot be negative" would only say that it is.
-NEGATIVE_MESSAGE = {"Welfare.left_cage.seconds_ago": "in the future"}
+#: by `_magnitude`. **Empty since 2026-09-20**, and kept rather than deleted: the one
+#: entry was `Welfare.left_cage.seconds_ago`, whose "left its cage in the future" is
+#: still the wording an operator reads -- but the mark became a clock time (PI), so
+#: the parameters either side of it are *instants*, which the negative case never
+#: drives. The next magnitude with a refusal of its own needs this.
+NEGATIVE_MESSAGE: dict = {}
 
 #: How to drive each numeric entry point with a bad value, and which rule it is
 #: under. Each callable arranges a subject so the value is the only thing wrong.
@@ -897,7 +1162,7 @@ ENTRY_POINTS = {
             bounds=_bounds(),
             pump=Simulated(),
             already_today=0.0,
-            deployment=Deployment.OUT_OF_CAGE,
+            deployment=Deployment.RIG_FIXED,
             commanded=v,
         ),
     ),
@@ -907,7 +1172,7 @@ ENTRY_POINTS = {
             bounds=_bounds(),
             pump=Simulated(),
             already_today=0.0,
-            deployment=Deployment.OUT_OF_CAGE,
+            deployment=Deployment.RIG_FIXED,
             delivered=v,
         ),
     ),
@@ -917,13 +1182,21 @@ ENTRY_POINTS = {
     ),
     "Welfare.reconcile.delivered": (MAGNITUDE, lambda v: _welfare().reconcile(v)),
     # --- welfare: the clocks -------------------------------------------------
-    "Welfare.left_cage.seconds_ago": (
-        MAGNITUDE,
-        lambda v: _welfare().left_cage(seconds_ago=v, now=0.0),
+    # Three readings, two bases, one mapping (PI, 2026-09-20). All three are
+    # *instants*: a wall-clock reading is merely finite, and the interval computed
+    # from two of them is checked inside `left_cage` rather than being a door this
+    # table can name -- S8 §5.2c's fifth blind spot, closed where it lives.
+    "Welfare.left_cage.at": (
+        INSTANT,
+        lambda v: _welfare().left_cage(at=v, wall_now=WALL_NOW, now=0.0),
+    ),
+    "Welfare.left_cage.wall_now": (
+        INSTANT,
+        lambda v: _welfare().left_cage(at=WALL_NOW, wall_now=v, now=0.0),
     ),
     "Welfare.left_cage.now": (
         INSTANT,
-        lambda v: _welfare().left_cage(seconds_ago=0.0, now=v),
+        lambda v: _welfare().left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=v),
     ),
     "Welfare.returned_to_cage.at": (
         INSTANT,
@@ -938,6 +1211,23 @@ ENTRY_POINTS = {
     ),
     "Welfare.preflight.now": (INSTANT, lambda v: _marked().preflight(v)),
     "Welfare.must_stop.now": (INSTANT, lambda v: _marked().must_stop(v)),
+    "Welfare.approaching_limit.now": (
+        INSTANT,
+        lambda v: _marked().approaching_limit(v),
+    ),
+    # A duration, so a magnitude -- and on the welfare path even though it bounds
+    # nothing: a NaN threshold makes `remaining > warn_within` False forever, so the
+    # warning would never fire and a welfare-facing line would be silently off.
+    "Welfare.warn_within": (
+        MAGNITUDE,
+        lambda v: Welfare(
+            bounds=_bounds(),
+            pump=Simulated(),
+            already_today=0.0,
+            deployment=Deployment.RIG_FIXED,
+            warn_within=v,
+        ),
+    ),
 }
 
 #: Numeric surface that is deliberately *not* an entry point, each with its reason.
@@ -979,7 +1269,7 @@ NOT_ENTRY_POINTS = {
 def _marked() -> Welfare:
     """A rig `Welfare` with its interval open, so a clock call is the only fault."""
     welfare = _welfare()
-    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
     return welfare
 
 

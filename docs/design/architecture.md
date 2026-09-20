@@ -109,8 +109,8 @@ declaration to fluid is readable in `welfare.py` alone**, which is the property 
 answers.
 
 **Whether a duration limit applies at all is declared, not inferred** (`welfare.Deployment`,
-PI 2026-09-19). A rig session declares `OUT_OF_CAGE` and is refused without both its mark and
-its ceiling; a cage-side kiosk session declares `ANIMAL_AT_HOME` and has no duration bound,
+PI 2026-09-19). A rig session declares `RIG_FIXED` or `RIG_CHAIRED` and is refused without both
+its mark and its ceiling; a cage-side kiosk session declares `CAGE_SIDE` and has no duration bound,
 which S13 §4.0 carries. The field is required on `SessionSpec` with no default, because a rig
 session nobody marked and a kiosk session with nothing to mark are indistinguishable to
 anything that answers zero — and the absence of a mark must never be what disables a limit.
@@ -128,7 +128,9 @@ all three accounts.
 
 **Nor may a value that is not a number.** Every guard above is an *ordered* comparison and
 **NaN is `False` against all of them**, so one NaN switched the duration limit off entirely —
-through a bounded config's ceiling, and through `wlx run --out-of-cage-ago nan`. `bounds`
+through a bounded config's ceiling, and through `wlx run --out-of-cage-ago nan` (that flag is
+`--out-of-cage-at TIME` since 2026-09-20 and can no longer carry a NaN; the guard stands for
+every other caller). `bounds`
 refuses a non-finite value at `Ceiling`, at `Floor` and at `validate`, so a limit that is not
 a number cannot be constructed at all; `welfare` refuses one at the mark and on the computed
 duration. **`inf` breaks them the other way and was not already refused**: it is ordered

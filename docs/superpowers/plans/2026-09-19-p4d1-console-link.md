@@ -203,7 +203,9 @@ class Telemetry:
     fluid_session_ml: float
     fluid_today_ml: float | None
     shortfall_ml: float | None
-    chair_seconds: float
+    chair_seconds: float | None  # None for RIG_CHAIRED/CAGE_SIDE (PI, 2026-09-20)
+    deployment: str               # added with the third kind, same date
+    duration_warning: str | None  # added with the approaching-limit warning
     outcomes: dict
     hangs: int
     owed: dict

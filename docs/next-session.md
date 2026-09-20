@@ -132,8 +132,17 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   to going back in, bounded at twelve hours (PI, 2026-09-19). A rig session refuses to
   start without the mark, and **`welfare.out_of_cage_seconds` raises rather than
   answering zero** on an unmarked one — forgetting a mark must not be what disables the
-  limit. A cage-side session declares `Deployment.ANIMAL_AT_HOME` and has no duration
+  limit. A cage-side session declares `Deployment.CAGE_SIDE` and has no duration
   bound; that declaration is required on `SessionSpec` with no default.
+- **Three deployment kinds, and "absent" is not "zero"** (PI, 2026-09-20). `RIG_FIXED`
+  takes both marks; `RIG_CHAIRED` takes the out-of-cage mark only and is bounded by the
+  same clock; `CAGE_SIDE` takes neither. **A chaired-but-unfixed animal is restrained**,
+  so `chair_seconds` answers `None` rather than `0.00` for the two kinds with no
+  head-fixation marks, `welfare.head_fixed` refuses them, `taskd` strobes 4128/4129 only
+  for `RIG_FIXED`, and the console says which absence it is looking at. A restrained
+  session reporting zero restraint is `shortfall()` answering `0` for an unmeasured day,
+  in another costume — if you add a welfare quantity, ask what it reports where nothing
+  measured it.
 - **The interval is opened once, closed once, and never runs backwards.** The rule above
   is only half of it: two marks in the *wrong order* disable the limit while the session
   reports itself fully marked. A return before the departure gave a negative duration
@@ -167,20 +176,37 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
 - **NaN is `False` against every ordered comparison, so it switches a limit off rather
   than exceeding it.** This got further than anything else on the branch: `wlx run
   --out-of-cage-ago nan` ran 400 rewarded trials with a clean summary and no duration
-  limit, and a NaN ceiling in a bounded config did the same. `bounds._finite` guards
+  limit, and a NaN ceiling in a bounded config did the same. (That flag is
+  `--out-of-cage-at TIME` since 2026-09-20 and can no longer carry a NaN; the guards
+  stand for every other caller, and the enumeration is what proves it.) `bounds._finite` guards
   `Ceiling`, `Floor`, `validate`, the mark, the measurements and the computed
   duration. **`inf` is just as bad and was *not* already refused** — an earlier note
   here said it was, and that was measured false: `seconds > inf` is `False` for every
   real duration, so an `inf` ceiling is never exceeded either. Only the mark route
   refused it. **If you write a guard as `<` or `>`, ask what `nan`, `inf` and a
   negative value each do to it.**
-- **`left_cage` takes `seconds_ago`, not a timestamp**, against the frame-derived session
-  clock that reads zero at the start. A timestamp invited `0.0`, which makes out-of-cage
-  time equal chair time — the under-count the clock exists to remove. `wlx
-  run --out-of-cage-ago` is required with no default for the same reason `--as WHO` is.
+- **`left_cage` takes a clock time and maps it itself** (PI, 2026-09-20: *"a clock time
+  is what an operator reads"*). It takes the departure and the wall clock as wall-clock
+  instants and the session clock beside them, and does the subtraction inside
+  `welfare.py` — **one place where the two bases meet**, because the caller that had that
+  job passed a plain `0.0` and made out-of-cage time equal chair time. `wlx
+  run --out-of-cage-at` is required with no default for the same reason `--as WHO` is.
+  The cost, which the PI weighed: a 1.7e9 *instant* is just now, so the ceiling no longer
+  doubles as a wall-clock catch, and `08:45` for `18:45` is nine hours inside a
+  twelve-hour limit. What replaces it: a refusal for a departure in the future, the
+  ceiling refusal unchanged, and **the computed interval printed at session start** —
+  *"the animal has been out N hours M minutes"*. A bare time is **today** on this host,
+  in **this host's local zone**, and is never rolled back to yesterday.
+- **The session warns before the limit, and the threshold is not settled** (PI,
+  2026-09-20 asked for the warning). `welfare.approaching_limit` at
+  `WARN_WITHIN_DEFAULT` = 1,800 s, configurable by `--warn-within`. **That number is this
+  session's proposal and is waiting on the PI** — it is not derived from any measurement
+  of this system, because no block duration has been measured. If he names a figure, it
+  goes in that constant and nowhere else.
 - **`chair_time` and `max_trials` are gone as ceilings.** Chair time is still recorded
-  (`head_fixed`/`head_released`, codes 4128/4129, still required by a rig preflight) and
-  bounds nothing; there is no session-length maximum at all. If you find either name
+  (`head_fixed`/`head_released`, codes 4128/4129, required by a `RIG_FIXED` preflight and
+  refused by the other two kinds since 2026-09-20) and bounds nothing; there is no
+  session-length maximum at all. If you find either name
   used as a limit, it is a regression.
 - **The numbers in `tasks/reference_bounds.py` are placeholders and its subject is
   `REFERENCE`.** No protocol figure exists in this repository for reward volume, the
@@ -401,7 +427,8 @@ Three things S9a §6–§10 depends on that nobody has built:
 | PI | **The real bounded-config numbers** — reward volume per delivery, the daily fluid **floor**, time out of the cage. Asked 2026-09-06; answer was *keep the placeholder until there are animals*. (Chair time and a trial cap were on this list until 2026-09-19; neither is a limit any more, so neither needs a number.) The twelve-hour figure is documented in S8 §5.2 item 4 and in `welfare.py`, deliberately not carried by any constant | every session that is not a simulation |
 | ~~PI~~ | ~~**Is a runaway-fluid *fault* limit wanted?**~~ **Answered 2026-09-19: yes.** `reward_correct`'s maximum is 10 mL — far above any dose, so refusing it catches software delivering litres rather than enforcing a ration. It is a **fault bound**, and `tasks/reference_bounds.py`, `bounds.Ceiling` and S8 open item 6 all say so at the entry. The *value* beside it stays a placeholder | ✔ (S8 open item 6) |
 | ~~PI~~ | ~~**Which clock is the twelve-hour out-of-cage limit measured on?**~~ **Answered 2026-09-19 and implemented the same day:** the clock runs out of cage to back in cage. `welfare.out_of_cage_seconds` measures it, `must_stop` reads it against `out_of_cage`, and `chair_seconds` is recorded beside it and bounds nothing. `max_trials` went with it | ✔ (S8 open item 7) |
-| PI | **Do the out-of-cage marks get event codes?** The clock that now bounds a session has no hardware record, so a restart cannot reconstruct it — the gap `HEAD_FIXED`/`HEAD_RELEASED` closed for chair time, and the argument is stronger here because this is the limit. Two codes in 4096–32767; allocation is S2's and `wl-preproc`'s under ADR-0007, so it is asked rather than taken | S8 open item 8; restart/resume of the duration clock |
+| ~~PI~~ | ~~**Do the out-of-cage marks get event codes?**~~ **Answered 2026-09-20: no.** They are **operator-entered rather than measured**, so a hardware timestamp would add precision to a number that never had it, and our own log and the session directory already carry them. A restart re-asks a person for the departure time — the same clock time they typed the first time. Withdrawn from S2's and `wl-preproc`'s plate | ✔ (S8 open item 8) |
+| PI | **Is 30 minutes the right warning before the twelve-hour limit?** `welfare.WARN_WITHIN_DEFAULT` = 1,800 s since 2026-09-20, chosen so a block can be finished deliberately — but **not derived from any measurement**, because no block duration has been measured here. Configurable by `--warn-within`; his number replaces the constant | welfare-facing default, in use now |
 | PI | IPD per animal; the tandem panel's two questions | optics, panel |
 
 ---
@@ -459,7 +486,7 @@ implementation.
 > **Implemented 2026-09-19**, once the PI settled the clock question that blocked it.
 > `welfare.must_stop` reads `out_of_cage` against a twelve-hour ceiling; `chair_seconds`
 > is recorded and bounds nothing; `head_fixed`/`head_released` and codes 4128/4129 stay;
-> a cage-side session declares `Deployment.ANIMAL_AT_HOME` and has no duration bound,
+> a cage-side session declares `Deployment.CAGE_SIDE` and has no duration bound,
 > while an unmarked rig session **raises** rather than running unbounded. `docs/CHECKPOINT.md`'s
 > "The welfare clock, and the four rulings that reshaped it" is the full account, and
 > S8 §5.2 item 4 is the spec.

@@ -312,7 +312,9 @@ defence is structural rather than careful.
 |---|---|
 | Fluid delivered / floor / supplement | `welfare.session_total`, `total_today`, `shortfall()`, `bounds.minima`. **These two are welfare-load-bearing and may not be dropped or folded away** — see below |
 | Time out of cage | `welfare.out_of_cage_seconds` — frame-derived, so it matches the ceiling that ends the session. `None`, rendered *cage-side, the animal is home*, for a deployment with no duration bound (S13 §4.0) |
-| Chair time | `welfare.chair_seconds` — shown beside it, and **not** what ends the session since 2026-09-19. Showing only this one meant an operator would watch a session stop on a clock the console never displayed |
+| Chair time | `welfare.chair_seconds` — shown beside it, and **not** what ends the session since 2026-09-19. Showing only this one meant an operator would watch a session stop on a clock the console never displayed. **`None` for `RIG_CHAIRED` and `CAGE_SIDE`** (PI, 2026-09-20), rendered as *n/a* with the reason — never `0:00`, which on a chaired animal would report restraint nothing measured |
+| Deployment | `Telemetry.deployment` — which of the three kinds this session declared. On the wire rather than derived, because two kinds share one `None` for chair time and this pane names fields rather than inferring them |
+| Time left out of the cage | `welfare.approaching_limit` as a `WARNING:` line beside the stop reason, once the ceiling is within `warn_within` (PI, 2026-09-20). Silent otherwise, and silent again past the limit, where the stop reason speaks |
 | Trials, outcomes, aborts by reason | `simulate.Tally`, already shared with `taskd` |
 | Still needed, by condition | `scheduler` quotas |
 | Parameter row | The task's own `Param` declarations; writes return through `Session.set` |
@@ -367,7 +369,10 @@ Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCH
 as of 2026-09-19**, and both bumps that day are the same case — a field that still decodes
 and no longer means what it did. At 3, `Staged.bounded` stopped meaning "already live" and
 became "checked against a welfare ceiling", so a console built against 2 would render a
-lowered reward volume as already in effect. At 4, `chair_seconds` stopped being the number
+lowered reward volume as already in effect. At 5, `chair_seconds` became `float | None` and
+`deployment`/`duration_warning` arrived — a console built against 4 renders a `None` chair
+clock, and one that coerced would tell an operator a restrained animal had been restrained for
+no time at all. At 4, `chair_seconds` stopped being the number
 that ends the session: `out_of_cage_seconds` is what the ceiling is read against, and a
 console built against 3 would show chair time as *the* clock and then watch a session stop
 on a limit it never displayed. Trial-rate telemetry on one topic; the replica's

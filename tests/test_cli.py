@@ -15,7 +15,9 @@ from __future__ import annotations
 import gc
 import json
 import threading
+import time
 from dataclasses import replace
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -117,7 +119,7 @@ def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
             "--root", str(tmp_path),
             "--session-id", "2027-01-14_01",
             "--subject", "REFERENCE",
-            "--out-of-cage-ago", "0",
+            "--out-of-cage-at", _hhmm(),
             "--delivered-today", "0",
             "--trials", "20",
             "--set", "fix_timeout=4.0",
@@ -139,12 +141,16 @@ def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
 def test_wlx_run_refuses_a_session_that_does_not_say_how_long_the_animal_was_out(
     tmp_path, capsys
 ):
-    """**The under-count cannot be reached by omission.** `--out-of-cage-ago` has no
+    """**The under-count cannot be reached by omission.** `--out-of-cage-at` has no
     default, for the reason `--as WHO` has none: the session clock reads zero at the
-    start, so a mark defaulted to zero makes out-of-cage time equal chair time --
-    which is precisely what the out-of-cage clock replaced chair time to remove.
-    `cli.py` passed a literal `0.0` until a review caught it. A headless run says
-    `0` and means it; nothing arrives there by not typing.
+    start, so a mark defaulted to the session's own zero makes out-of-cage time equal
+    chair time -- which is precisely what the out-of-cage clock replaced chair time
+    to remove. `cli.py` passed a literal `0.0` until a review caught it. A headless
+    run states a clock time and means it; nothing arrives there by not typing.
+
+    The flag was `--out-of-cage-ago SECONDS` until 2026-09-20, when the PI replaced
+    it with a clock time. That it is still required, and still has no default, is the
+    half of the old argument that survived unchanged.
 
     Asserts on the message rather than on the exit code alone: argparse exits 2 for
     every missing required option, so a bare `SystemExit` would pass with this flag
@@ -162,52 +168,14 @@ def test_wlx_run_refuses_a_session_that_does_not_say_how_long_the_animal_was_out
             ]
         )
 
-    assert "--out-of-cage-ago" in capsys.readouterr().err
-
-
-def test_wlx_run_refuses_a_mark_that_is_not_a_number(tmp_path):
-    """**The surface an operator actually touches, for the defect that got
-    furthest.** `--out-of-cage-ago` is `type=float`, and argparse happily parses
-    `nan`. Every guard on the mark was an ordered comparison, and NaN is `False`
-    against all of them -- so this exact command line ran a full session with its
-    duration limit switched off:
-
-        --out-of-cage-ago 0    -> ended: out_of_cage: 601 s against a ceiling of 600
-        --out-of-cage-ago nan  -> ended: every block is finished
-                                  400 trials, ~760 session-seconds, 13.55 mL
-
-    A reward-delivering session to completion, unbounded, with a summary that read
-    entirely normally. Asserted here rather than only in `test_welfare.py` because
-    the unit test would have passed while this command line still worked -- the
-    parser is part of the path."""
-    with pytest.raises(SystemExit, match="not a real number"):
-        main(
-            [
-                "run",
-                "tasks/fixation_detection.py",
-                "--allocation", "tasks/allocation.py",
-                "--bounds", "tasks/reference_bounds.py",
-                "--root", str(tmp_path),
-                "--session-id", "2027-01-14_01",
-                "--subject", "REFERENCE",
-                "--out-of-cage-ago", "nan",
-                "--delivered-today", "0",
-                "--trials", "3",
-                "--set", "fix_timeout=4.0",
-                "--set", "fix_hold=0.3",
-                "--set", "response_window=0.6",
-                "--set", "target_hold=0.2",
-                "--set", "fix_window=2.0",
-                "--set", "target_window=3.0",
-                "--set", "target_position=10.0",
-            ]
-        )
+    assert "--out-of-cage-at" in capsys.readouterr().err
 
 
 def test_wlx_run_refuses_a_days_prior_total_that_is_not_a_number(tmp_path):
     """**The same command, the same kind of bad value, the same treatment.**
 
     `--out-of-cage-ago nan` gave a clean `refused:` and `--delivered-today nan`
+    (the mark flag was that, and took seconds, until 2026-09-20)
     gave a raw traceback out of `SessionSpec` construction -- two flags of one
     subcommand, one sentence and one stack trace. S9's written-for-a-stranger rule
     is about exactly that. The whole construction is guarded now, so a refusal
@@ -223,7 +191,7 @@ def test_wlx_run_refuses_a_days_prior_total_that_is_not_a_number(tmp_path):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
                 "--subject", "REFERENCE",
-                "--out-of-cage-ago", "0",
+                "--out-of-cage-at", _hhmm(),
                 "--delivered-today", "nan",
                 "--trials", "3",
             ]
@@ -242,7 +210,7 @@ def test_wlx_run_refuses_a_negative_days_prior_total(tmp_path):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
                 "--subject", "REFERENCE",
-                "--out-of-cage-ago", "0",
+                "--out-of-cage-at", _hhmm(),
                 "--delivered-today", "-1000",
                 "--trials", "3",
             ]
@@ -260,7 +228,7 @@ def test_wlx_run_without_a_bounded_config_refuses(tmp_path, capsys):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
                 "--subject", "REFERENCE",
-                "--out-of-cage-ago", "0",
+                "--out-of-cage-at", _hhmm(),
             ]
         )
 
@@ -283,7 +251,7 @@ def test_wlx_run_without_link_still_runs(tmp_path):
             "--root", str(tmp_path),
             "--session-id", "2027-01-14_03",
             "--subject", "REFERENCE",
-            "--out-of-cage-ago", "0",
+            "--out-of-cage-at", _hhmm(),
             "--delivered-today", "0",
             "--trials", "5",
             *_TASK_SETS,
@@ -308,7 +276,7 @@ def test_wlx_run_refuses_a_malformed_link_value(tmp_path):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_05",
                 "--subject", "REFERENCE",
-                "--out-of-cage-ago", "0",
+                "--out-of-cage-at", _hhmm(),
                 "--delivered-today", "0",
                 "--trials", "5",
                 *_TASK_SETS,
@@ -334,7 +302,7 @@ def test_wlx_run_refuses_a_link_bound_where_the_lab_network_can_reach_it(tmp_pat
         "--root", str(tmp_path),
         "--session-id", "2027-01-14_06",
         "--subject", "REFERENCE",
-        "--out-of-cage-ago", "0",
+        "--out-of-cage-at", _hhmm(),
         "--delivered-today", "0",
         "--trials", "5",
         *_TASK_SETS,
@@ -426,7 +394,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_04",
                 "--subject", "REFERENCE",
-                "--out-of-cage-ago", "0",
+                "--out-of-cage-at", _hhmm(),
                 "--delivered-today", "0",
                 "--trials", "5000",
                 *_TASK_SETS,
@@ -508,7 +476,7 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
             "--root", str(tmp_path),
             "--session-id", "2027-01-14_06",
             "--subject", "REFERENCE",
-            "--out-of-cage-ago", "0",
+            "--out-of-cage-at", _hhmm(),
             "--delivered-today", "0",
             "--trials", "5",
             *_TASK_SETS,
@@ -537,7 +505,11 @@ def _telemetry(**overrides) -> Telemetry:
     `out_of_cage_seconds` defaults to a *number* rather than to `None`, unlike the
     two above, because its `None` is the rarer case: it means a cage-side session
     with no duration bound at all, and a default of `None` would make every
-    renderer test here quietly exercise a kiosk.
+    renderer test here quietly exercise a kiosk. `chair_seconds` defaults to a
+    number for the same reason, and `deployment` to the kind that has one.
+
+    `duration_warning` defaults to `None` -- the quiet case -- so a test that does
+    not ask for the warning does not get a line it never checked.
     """
     base = Telemetry(
         schema=1,
@@ -551,6 +523,8 @@ def _telemetry(**overrides) -> Telemetry:
         shortfall_ml=None,
         out_of_cage_seconds=96.0,
         chair_seconds=42.0,
+        deployment="rig_fixed",
+        duration_warning=None,
         outcomes={},
         hangs=0,
         owed={},
@@ -988,7 +962,7 @@ def test_wlx_run_refuses_a_set_with_no_parameter_name(tmp_path):
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_07",
                 "--subject", "REFERENCE",
-                "--out-of-cage-ago", "0",
+                "--out-of-cage-at", _hhmm(),
                 "--delivered-today", "0",
                 "--trials", "5",
                 "--set", "=0.5",
@@ -1048,3 +1022,266 @@ def test_console_reports_a_second_commands_timeout_cleanly(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "console:" in err, f"expected the one-line console: ... message, got: {err!r}"
     assert "Traceback" not in err
+
+
+# ---------------------------------------------------------------------------
+# The out-of-cage mark as a clock time, and the third deployment kind
+# ---------------------------------------------------------------------------
+
+
+def _hhmm() -> str:
+    """This host's local clock, to the minute -- what an operator would type.
+
+    Truncating to the minute puts it between 0 and 60 seconds in the past, which is
+    inside every ceiling these tests use and never in the future.
+    """
+    return time.strftime("%H:%M")
+
+
+def test_wlx_run_takes_the_departure_as_a_clock_time(tmp_path, capsys):
+    """**PI, 2026-09-20: a clock time is what an operator reads.** `--out-of-cage-ago
+    SECONDS` is gone rather than aliased -- an operator who types the old flag gets an
+    argparse error, not a number interpreted in a base nobody meant."""
+    exit_code = main(
+        [
+            "run",
+            "tasks/fixation_detection.py",
+            "--allocation", "tasks/allocation.py",
+            "--bounds", "tasks/reference_bounds.py",
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_01",
+            "--subject", "REFERENCE",
+            "--out-of-cage-at", _hhmm(),
+            "--delivered-today", "0",
+            "--trials", "5",
+            "--set", "fix_timeout=4.0",
+            "--set", "fix_hold=0.3",
+            "--set", "response_window=0.6",
+            "--set", "target_hold=0.2",
+            "--set", "fix_window=2.0",
+            "--set", "target_window=3.0",
+            "--set", "target_position=10.0",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "--out-of-cage-ago" not in capsys.readouterr().out
+
+
+def test_wlx_run_prints_how_long_the_animal_has_been_out(tmp_path, capsys):
+    """**The visibility the PI asked for in exchange for the guard he gave up.**
+
+    A clock time cannot be refused for being implausible the way a 1.7e9-second
+    interval could, and `08:45` typed for `18:45` is nine hours of slack that lands
+    inside a twelve-hour ceiling. So the computed interval is printed where an
+    operator sees it as the session starts -- a nine-hour error is then legible
+    rather than silent."""
+    main(
+        [
+            "run",
+            "tasks/fixation_detection.py",
+            "--allocation", "tasks/allocation.py",
+            "--bounds", "tasks/reference_bounds.py",
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_01",
+            "--subject", "REFERENCE",
+            "--out-of-cage-at", _hhmm(),
+            "--delivered-today", "0",
+            "--trials", "2",
+            "--set", "fix_timeout=4.0",
+            "--set", "fix_hold=0.3",
+            "--set", "response_window=0.6",
+            "--set", "target_hold=0.2",
+            "--set", "fix_window=2.0",
+            "--set", "target_window=3.0",
+            "--set", "target_position=10.0",
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert "the animal has been out 0 hours 0 minutes" in out
+    assert "local time" in out, "the zone the clock time was read in is stated"
+
+
+def test_wlx_run_refuses_a_departure_in_the_future(tmp_path):
+    """The first of the two guards that replace the wall-clock catch. A bare time is
+    today's date on this host and is never rolled back to yesterday, so `23:59` typed
+    in the morning is refused rather than silently becoming a departure twenty-three
+    hours ago."""
+    tomorrow = datetime.now().astimezone() + timedelta(hours=2)
+
+    with pytest.raises(SystemExit, match="refused: .*in the future"):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--allocation", "tasks/allocation.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", tomorrow.isoformat(timespec="minutes"),
+                "--delivered-today", "0",
+                "--trials", "2",
+            ]
+        )
+
+
+def test_wlx_run_refuses_a_departure_longer_ago_than_the_ceiling(tmp_path):
+    """The second. `tasks/reference_bounds.py`'s placeholder ceiling is ten minutes,
+    so an hour ago is outside it -- which is the same refusal a real twelve-hour
+    config gives a departure typed a day early."""
+    an_hour_ago = datetime.now().astimezone() - timedelta(hours=1)
+
+    with pytest.raises(SystemExit, match="refused: .*against a ceiling of"):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--allocation", "tasks/allocation.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", an_hour_ago.isoformat(timespec="minutes"),
+                "--delivered-today", "0",
+                "--trials", "2",
+            ]
+        )
+
+
+def test_wlx_run_refuses_a_departure_that_is_not_a_time(tmp_path, capsys):
+    """**The surface an operator actually touches**, which is where the worst defect
+    of this whole branch got furthest.
+
+    `--out-of-cage-ago` was `type=float` and argparse happily parsed `nan`. Every
+    guard on the mark was an ordered comparison and NaN is `False` against all of
+    them, so this exact command line ran a full session with its duration limit
+    switched off:
+
+        --out-of-cage-ago 0    -> ended: out_of_cage: 601 s against a ceiling of 600
+        --out-of-cage-ago nan  -> ended: every block is finished
+                                  400 trials, ~760 session-seconds, 13.55 mL
+
+    A reward-delivering session to completion, unbounded, with a summary that read
+    entirely normally. **A clock time closes that at the parser rather than at the
+    guard** -- `datetime` accepts no spelling of `nan`, and nothing this flag can
+    produce is non-finite -- and the message names what to type instead.
+    `welfare._finite` still stands behind it for every other caller, which
+    `test_welfare.py` covers. Asserted here rather than only there because the unit
+    test would have passed while the old command line still worked: the parser is
+    part of the path."""
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", "nan",
+                "--trials", "2",
+            ]
+        )
+
+    assert "HH:MM" in capsys.readouterr().err
+
+
+def test_wlx_run_can_run_a_chaired_session_with_no_head_fixation(tmp_path, capsys):
+    """**Head-fixation is a property of the deployment** (PI, 2026-09-20). A chaired
+    session runs, is bounded by the same out-of-cage clock, and emits no
+    `HEAD_FIXED`/`HEAD_RELEASED` -- because it has none to record."""
+    exit_code = main(
+        [
+            "run",
+            "tasks/fixation_detection.py",
+            "--allocation", "tasks/allocation.py",
+            "--bounds", "tasks/reference_bounds.py",
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_01",
+            "--subject", "REFERENCE",
+            "--out-of-cage-at", _hhmm(),
+            "--deployment", "rig-chaired",
+            "--delivered-today", "0",
+            "--trials", "5",
+            "--set", "fix_timeout=4.0",
+            "--set", "fix_hold=0.3",
+            "--set", "response_window=0.6",
+            "--set", "target_hold=0.2",
+            "--set", "fix_window=2.0",
+            "--set", "target_window=3.0",
+            "--set", "target_position=10.0",
+        ]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    # `wlx run` is headless -- `render` is the console's, and `test_taskd.py` is
+    # where the absent 4128/4129 are asserted, because that is where the card is.
+    # What this proves is that the session ran at all: before 2026-09-20 preflight
+    # refused every rig session with no head-fixation mark.
+    assert "ended:" in out
+    assert "chair" not in out
+
+
+def test_the_console_reports_a_chaired_sessions_chair_time_as_unmeasured(tmp_path):
+    """**Not applicable must be distinguishable from zero on the console too.**
+    A chaired animal is restrained, so `chair: 0:00` would be a claim that nothing
+    measured -- the trap this repository has a scar from."""
+    frame = _telemetry(chair_seconds=None, deployment="rig_chaired")
+
+    rendered = render(frame)
+
+    line = [t for t in rendered.splitlines() if t.strip().startswith("chair:")]
+    assert len(line) == 1
+    assert "n/a" in line[0]
+    assert "UNMEASURED" in line[0], "the word that separates absent from zero"
+    assert "0:00" not in line[0]
+
+
+def test_the_console_says_a_cage_side_session_has_no_restraint_at_all(tmp_path):
+    """The other `None`, and a different fact about an animal: cage-side it was never
+    restrained, rather than restrained and unmarked."""
+    frame = _telemetry(
+        chair_seconds=None, out_of_cage_seconds=None, deployment="cage_side"
+    )
+
+    line = [
+        t for t in render(frame).splitlines() if t.strip().startswith("chair:")
+    ]
+    assert len(line) == 1
+    assert "the animal is home" in line[0]
+
+
+def test_the_console_still_shows_a_head_fixed_sessions_chair_clock():
+    """The kind that has the marks keeps the number, formatted as a clock."""
+    frame = _telemetry(chair_seconds=107.0, deployment="rig_fixed")
+
+    assert "chair: 1:47" in render(frame)
+
+
+def test_the_console_names_the_deployment_it_is_watching():
+    """Read, not derived. Two kinds share one `None` for chair time, and `render`
+    promises to name a field per line rather than infer one."""
+    assert "deployment: rig_chaired" in render(_telemetry(deployment="rig_chaired"))
+
+
+def test_the_console_warns_as_the_out_of_cage_limit_approaches():
+    """**PI, 2026-09-20.** The console showed the clock and nothing drew attention as
+    it ran out, so a session ended as an interruption rather than as a deadline an
+    operator had been working towards. The warning is high on the screen, beside the
+    stop reason, because that is where a person looks when something is wrong."""
+    frame = _telemetry(duration_warning="out_of_cage: subject 'A' has 900 s left")
+
+    rendered = render(frame)
+
+    assert "WARNING: out_of_cage: subject 'A' has 900 s left" in rendered
+    assert rendered.index("WARNING:") < rendered.index("fluid session:")
+
+
+def test_the_console_is_quiet_when_there_is_nothing_to_warn_about():
+    """A warning line that is always present is a line nobody reads."""
+    assert "WARNING" not in render(_telemetry(duration_warning=None))
+
+

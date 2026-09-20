@@ -81,11 +81,18 @@ def _spec(tmp_path, seed: int = 1, trials: int = 50, **kwargs) -> SessionSpec:
         values=dict(VALUES),
         bounds=_bounds(),
         already_delivered_today=0.0,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=Deployment.RIG_FIXED,
     )
     for name, value in kwargs.items():
         setattr(spec, name, value)
     return spec
+
+
+#: A fixed wall-clock instant, in POSIX seconds, injected as every session's wall
+#: clock here. The out-of-cage mark became a clock time on 2026-09-20 (PI), and a
+#: test that read the real one would make "stops at its ceiling" depend on when the
+#: suite ran. Only the differences from it matter.
+WALL_NOW = 1_700_000_000.0
 
 
 def _session(spec, link=None, left_cage_ago: float = 0.0) -> Session:
@@ -95,20 +102,27 @@ def _session(spec, link=None, left_cage_ago: float = 0.0) -> Session:
     falls back to its own default, `link.Absent()`, exactly as a session with no
     console attached does outside a test.
 
-    **Both marks, because a rig session needs both** (`welfare.preflight`): the
-    out-of-cage one starts the clock that bounds the session and head-fixation is
-    the restraint record. `test_a_session_refuses_to_run_before_the_animal_is_out_
-    of_its_cage` is the fixture's own counter-example, built without this helper.
+    **The marks this deployment kind needs** (`welfare.preflight`): the out-of-cage
+    one starts the clock that bounds the session, and head-fixation is the restraint
+    record -- required by `RIG_FIXED`, which `_spec` declares, and *refused* by the
+    other two kinds since 2026-09-20.
+    `test_a_session_refuses_to_run_before_the_animal_is_out_of_its_cage` is the
+    fixture's own counter-example, built without this helper.
 
-    `left_cage_ago` defaults to zero, which is the truth for a simulated session --
-    nothing was transported and nothing was chaired. A test about the *interval*
-    passes a real number; see
+    `left_cage_ago` stays expressed as an interval because that is what a test about
+    the *interval* means; it is turned into a clock time against the injected
+    `WALL_NOW` here, which is the one place a test has to know that the parameter
+    changed base. It defaults to zero, which is the truth for a simulated session --
+    nothing was transported and nothing was chaired. See
     `test_transport_and_chairing_count_toward_the_sessions_limit`.
     """
     kwargs = {"link": link} if link is not None else {}
-    session = Session(spec, card=Card(), pump=Pump(), **kwargs)
-    session.left_cage(seconds_ago=left_cage_ago)
-    session.head_fixed(at=0.0)
+    session = Session(
+        spec, card=Card(), pump=Pump(), wall_clock=lambda: WALL_NOW, **kwargs
+    )
+    session.left_cage(at=WALL_NOW - left_cage_ago)
+    if spec.deployment is Deployment.RIG_FIXED:
+        session.head_fixed(at=0.0)
     return session
 
 
@@ -301,16 +315,45 @@ def test_a_session_refuses_to_run_before_the_animal_is_out_of_its_cage(tmp_path)
         session.run()
 
 
-def test_a_session_refuses_to_run_before_the_animal_is_in_the_chair(tmp_path):
-    """S8 §5.2's other preflight mark, kept. Chair time stopped bounding the session
-    on 2026-09-19 and did not stop being what `HEAD_FIXED`/`HEAD_RELEASED` record --
-    a rig session with neither code in the stream has no record of restraint at
-    all."""
-    session = Session(_spec(tmp_path, trials=5), card=Card(), pump=Pump())
-    session.left_cage(seconds_ago=0.0)
+def test_a_head_fixed_session_refuses_to_run_before_the_animal_is_in_the_chair(
+    tmp_path,
+):
+    """S8 §5.2's other preflight mark, kept -- **for the kind that declares it**
+    (PI, 2026-09-20). Chair time stopped bounding the session on 2026-09-19 and did
+    not stop being what `HEAD_FIXED`/`HEAD_RELEASED` record: a `RIG_FIXED` session
+    with neither code in the stream has no record of a restraint that happened."""
+    session = Session(
+        _spec(tmp_path, trials=5),
+        card=Card(),
+        pump=Pump(),
+        wall_clock=lambda: WALL_NOW,
+    )
+    session.left_cage(at=WALL_NOW)
 
     with pytest.raises(Exceeded, match="head-fixed"):
         session.run()
+
+
+def test_a_chaired_session_runs_and_strobes_no_restraint_codes(tmp_path):
+    """**Head-fixation is a property of the deployment, not of being on a rig** (PI,
+    2026-09-20). A `RIG_CHAIRED` session runs with no head-fixation mark, is bounded
+    by the same out-of-cage clock, and puts **neither 4128 nor 4129** in the stream --
+    because it has no restraint to record, and a `HEAD_RELEASED` with no `HEAD_FIXED`
+    before it would be a restraint record for restraint nothing marked.
+
+    `run()` released the head unconditionally until this test existed, which would
+    have strobed 4129 into exactly such a stream."""
+    spec = _spec(tmp_path, trials=5)
+    spec.deployment = Deployment.RIG_CHAIRED
+    session = _session(spec)
+
+    session.run()
+
+    assert 4128 not in session.card.codes
+    assert 4129 not in session.card.codes
+    assert session.welfare.chair_seconds(session.now()) is None, (
+        "restrained and unmarked is ABSENT, never 0.00"
+    )
 
 
 def test_a_session_stops_at_its_out_of_cage_ceiling(tmp_path):
@@ -921,8 +964,10 @@ def test_a_pump_fault_publishes_a_final_frame_before_it_propagates(tmp_path):
 
     link = Simulated()
     spec = _spec(tmp_path, trials=200)
-    session = Session(spec, card=Card(), pump=Broken(), link=link)
-    session.left_cage(seconds_ago=0.0)
+    session = Session(
+        spec, card=Card(), pump=Broken(), link=link, wall_clock=lambda: WALL_NOW
+    )
+    session.left_cage(at=WALL_NOW)
     session.head_fixed(at=0.0)
 
     with pytest.raises(RuntimeError, match="solenoid"):

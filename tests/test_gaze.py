@@ -616,7 +616,7 @@ def _calibration_session(tmp_path, repeats: int = 2):
         values={"cal_window": 3.0, "fix_timeout": 1.0, "cal_hold": 0.1},
         bounds=_calibration_bounds(),
         already_delivered_today=0.0,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=Deployment.RIG_FIXED,
         blocks=[block],
     )
     session = Session(
@@ -626,7 +626,7 @@ def _calibration_session(tmp_path, repeats: int = 2):
         world=driver.world,
         observe=driver.observe,
     )
-    session.left_cage(seconds_ago=0.0)
+    session.left_cage(at=session.wall_now())
     session.head_fixed(at=0.0)
     return session, driver
 
@@ -723,7 +723,7 @@ def test_the_fit_uses_the_hold_and_not_the_whole_trial(tmp_path):
         values={"cal_window": 3.0, "fix_timeout": 1.0, "cal_hold": hold_s},
         bounds=_calibration_bounds(),
         already_delivered_today=0.0,
-        deployment=Deployment.OUT_OF_CAGE,
+        deployment=Deployment.RIG_FIXED,
         blocks=[
             Block(
                 name="calibration",
@@ -735,7 +735,7 @@ def test_the_fit_uses_the_hold_and_not_the_whole_trial(tmp_path):
     )
     session = Session(spec, card=Card(), pump=Pump(), world=driver.world,
                       observe=driver.observe)
-    session.left_cage(seconds_ago=0.0)
+    session.left_cage(at=session.wall_now())
     session.head_fixed(at=0.0)
 
     session.run()

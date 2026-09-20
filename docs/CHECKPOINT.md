@@ -1,6 +1,6 @@
 # Where this build actually is
 
-**Last updated 2026-09-19**, at the commit this file was committed in. Check
+**Last updated 2026-09-20**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
@@ -74,11 +74,11 @@ figure was one low. In order:
 
 | | |
 |---|---|
-| Tests | **560, green — with `.[dev,contract,console]` installed** (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below |
+| Tests | **601, green — with `.[dev,contract,console]` installed** (560 before the PI's round-2 rulings of 2026-09-20) (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below |
 | CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the two clocks (out-of-cage, which bounds the session; restraint, which is recorded), the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7), and **both have moved on this branch** |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. S8 §4–§5 were written the other way round and now carry the correction |
-| Session duration | **One limit: out of the cage to back in the cage, twelve hours** (PI, 2026-09-19). Chair time and a trial cap were the two ceilings until then; neither is a limit now — chair time is recorded by `HEAD_FIXED`/`HEAD_RELEASED` and there is no session-length maximum at all. A rig session is **refused** without its out-of-cage mark; a cage-side one declares `welfare.Deployment.ANIMAL_AT_HOME` and has no duration bound. Twelve hours is documented (S8 §5.2 item 4, `welfare.py`) and carried by no constant |
+| Session duration | **One limit: out of the cage to back in the cage, twelve hours** (PI, 2026-09-19). Chair time and a trial cap were the two ceilings until then; neither is a limit now — chair time is recorded by `HEAD_FIXED`/`HEAD_RELEASED` and there is no session-length maximum at all. A rig session is **refused** without its out-of-cage mark; a cage-side one declares `welfare.Deployment.CAGE_SIDE` and has no duration bound. Twelve hours is documented (S8 §5.2 item 4, `welfare.py`) and carried by no constant. **Since 2026-09-20 (PI)** the mark is a **clock time** (`--out-of-cage-at`, mapped onto the frame clock inside `welfare`), there are **three deployment kinds** — `RIG_FIXED`, `RIG_CHAIRED`, `CAGE_SIDE` — with restraint reported **absent rather than zero** where nothing marks it, and the session **warns** at `welfare.WARN_WITHIN_DEFAULT` (1,800 s, a proposal awaiting him) before the limit |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos**; one blocking ask closed 2026-09-05 — see below |
@@ -324,6 +324,99 @@ figure was one low. In order:
 
 ---
 
+## What moved on 2026-09-20
+
+### The PI's round-2 rulings: a clock time, a third deployment kind, a warning, and a closed ask
+
+He reviewed the completed welfare change and made four rulings. **Two of them revise
+interfaces this same branch introduced**, which is the shape to expect here — the thing
+to carry forward is that he changed an interface a session had already justified in
+writing, and was right to.
+
+1. **The out-of-cage mark is a clock time, not an interval.** *"A clock time is what an
+   operator reads."* `welfare.left_cage(at, wall_now, now)` takes the departure and the
+   wall clock as wall-clock instants and the session clock beside them, and **does the
+   mapping itself** — he asked for it there rather than in the caller, and the caller is
+   exactly where the last version of this went wrong (`cli.py` passed a literal `0.0`).
+   `wlx run --out-of-cage-ago SECONDS` is now `--out-of-cage-at TIME`.
+
+   **What it cost, shown to him and accepted.** The ceiling refusal doubled as a
+   wall-clock catch — an *interval* of 1.79e9 seconds is fifty-seven years and absurd on
+   its face. An *instant* of 1.79e9 is now, so that is gone; and `08:45` typed for
+   `18:45` is nine hours of slack inside a twelve-hour ceiling. What replaces it: a
+   refusal for a departure **in the future** (against the wall clock the session reads),
+   the **ceiling refusal unchanged**, and — the condition he set — **the computed interval
+   printed at session start**: `out of cage: the animal has been out 9 hours 15 minutes,
+   having left its cage at 2027-01-14 08:45 (CET, this host's local time)`.
+
+   **Date and timezone are resolved, not implicit** (`cli._wall_clock_time`): a naive
+   value is read in **this host's local zone**, one with an offset is honoured, an
+   ambiguous local hour takes the first occurrence, and a bare `HH:MM` is **today and
+   never rolled back to yesterday** — rolling back would turn `23:59` mistyped in the
+   morning into an animal recorded as out for most of a day, which is the exact class of
+   error the guards are for. Overnight departures are typed with a date.
+
+2. **Head-fixation is a property of the deployment, not of being on a rig** —
+   `RIG_FIXED` / `RIG_CHAIRED` / `CAGE_SIDE`, replacing `OUT_OF_CAGE` / `ANIMAL_AT_HOME`.
+   He was shown exactly this shape and chose it.
+
+   **The trap, and it is the one this repository has a scar from: a chaired-but-unfixed
+   animal *is* restrained.** So `chair_seconds` answers **`None`, never `0.00`**, for the
+   two kinds that take no head-fixation marks. A restrained session reporting zero
+   restraint is `shortfall()` answering `0` for a day nobody measured, in a different
+   costume. Worked through on every surface: `welfare.head_fixed` **refuses** the two
+   kinds that declare no marks (otherwise `None` would be *discarding* a measurement
+   somebody took); `taskd.Session.run` releases the head only for `RIG_FIXED`, so no
+   stream carries a `HEAD_RELEASED` with no `HEAD_FIXED` before it; `Telemetry.deployment`
+   goes on the wire so the console can name *which* absence — `n/a -- cage-side, the
+   animal is home and unrestrained` against `n/a -- this deployment takes no
+   head-fixation marks, so restraint is UNMEASURED here, not zero` — rather than deriving
+   it from the pattern of nulls.
+
+3. **The session warns as the twelve-hour limit approaches.** `welfare.approaching_limit`
+   returns the sentence, `Telemetry.duration_warning` carries it, `cli.render` prints it
+   beside the stop reason. Silent past the limit, where `must_stop` speaks.
+
+   **`WARN_WITHIN_DEFAULT` is 1,800 s and is a proposal, not a settled figure — it is in
+   the outstanding-asks table for him.** It is **not derived from any measurement of this
+   system**: no block duration has been measured and nothing under `docs/measurements/`
+   states one, so nothing anywhere claims it clears a block. It is a twenty-fourth of the
+   limit, long enough to finish what is running and walk an animal back, short enough not
+   to sit on screen for most of a session. `--warn-within` configures it; zero switches it
+   off. **It may carry a named default where twelve hours may not, because it bounds
+   nothing** — the session ends at the same instant whatever it is. A threshold wider than
+   the ceiling is **not** refused: such a session genuinely is inside it throughout, and a
+   refusal would make `tasks/reference_bounds.py`'s ten-minute placeholder fail to
+   construct a `Welfare` at all. (That refusal was written, measured against the
+   placeholder config, and removed — the note is in `welfare.__post_init__`.)
+
+4. **The out-of-cage marks get no event code. S8 open item 8 is closed** (2026-09-20).
+   His reasoning: they are **operator-entered rather than measured**, so a hardware
+   timestamp would add precision to a number that never had it, and our own log plus the
+   session directory already carry them. The head-fixation argument does not carry over,
+   because that clock is about an event with a defined instant and this one is about a
+   recollection. The consequence follows rather than being conceded: a restart re-asks a
+   person for the departure time — the same clock time they typed the first time. It is
+   struck through rather than deleted in S8 §8, S2 §5, S9 §3 and `docs/next-session.md`,
+   and **removed from the outstanding-ask lists**: it is no longer a question for
+   `wl-preproc`.
+
+**`link.SCHEMA` is 5.** `chair_seconds` became `float | None`, `deployment` and
+`duration_warning` were added. A console built against 4 renders a `None` chair clock, and
+one that coerced it would tell an operator a restrained animal had been restrained for no
+time at all — the same "a field still decodes and no longer means what it did" case as 3
+and 4, with a welfare quantity on the other end.
+
+**What the refusal index did, and it is why §5.2d exists.** The one new refusal in a
+welfare-critical file (`which takes no head-fixation marks`) and the two reworded ones
+failed `test_every_refusal_has_a_row_in_the_table_and_every_row_still_greps` before
+anything else noticed. It also caught a sentence nobody had checked: §5.2d claimed
+"nine of them are the two guards of §5.2c and fourteen are structural", and nine
+reproduces neither the row count nor the `raise`-site count. Replaced with two figures the
+test checks.
+
+---
+
 ## What moved on 2026-09-19
 
 ### The PI's four decisions, and the one open ask they closed
@@ -400,11 +493,13 @@ console path.
    it — it under-counted exactly the interval the institution bounds. `welfare` gained
    `left_cage` / `returned_to_cage` / `out_of_cage_seconds`, and `out_of_cage` is the one
    ceiling `must_stop` reads. **`head_fixed` / `head_released` and their codes 4128/4129
-   remain**: chair time is still recorded, still required by a rig session's preflight,
-   and bounds nothing. S8 §5.2 item 4 carries the whole account.
+   remain**: chair time is still recorded and bounds nothing. (It was required by *every*
+   rig preflight until 2026-09-20, when it became a property of the deployment — see the
+   round-2 rulings below.) S8 §5.2 item 4 carries the whole account.
 3. **A kiosk session has no duration bound and must declare it.** `welfare.Deployment` is
-   a required field with no default: `OUT_OF_CAGE` refuses a session missing its mark or
-   its ceiling, `ANIMAL_AT_HOME` states that the animal never left home (S13 §4.0). **The
+   a required field with no default: the rig kinds refuse a session missing its mark or
+   its ceiling, `CAGE_SIDE` states that the animal never left home (S13 §4.0). (The
+   members were `OUT_OF_CAGE`/`ANIMAL_AT_HOME`, and there were two, until 2026-09-20.) **The
    absence of a mark must never be what disables a limit** — an unmarked rig session and
    a cage-side one are indistinguishable to anything that answers zero, so
    `out_of_cage_seconds` **raises** on an unmarked rig session at every call rather than
@@ -416,7 +511,8 @@ console path.
    minutes and stays implausible, per that file's own two guards and the PI's standing
    rule that its placeholders stay placeholders until there are animals.
 
-**Two consequences outside `welfare.py`.** `SCHEMA` is **4**: `chair_seconds` stopped
+**Two consequences outside `welfare.py`.** `SCHEMA` was **4** here and is **5** since the
+round-2 rulings: `chair_seconds` stopped
 being the number that ends the session and `Telemetry.out_of_cage_seconds` is what the
 ceiling is read against, so a console built against 3 would show chair time as *the*
 clock and then watch a session stop on a limit it never displayed. And the loop bound in
@@ -425,10 +521,8 @@ trials of that task) where it used to be `max_trials=400` — the same size of b
 expressed in the unit a real session ends on, so a scheduler mutation still bounds out in
 a fraction of a wall second rather than timing out at 300.
 
-**Open, and asked of the PI rather than filed:** the out-of-cage marks have **no event
-code**. The argument that made head-fixation event-coded — a clock with no hardware record
-cannot survive a restart — now applies with more force to the clock that bounds the
-session. Allocating two codes is S2's and `wl-preproc`'s under ADR-0007. S8 open item 8.
+~~**Open, and asked of the PI rather than filed:** the out-of-cage marks have **no event
+code**.~~ **Answered 2026-09-20: they get none** — see "The PI's round-2 rulings" below.
 
 ### And the fix round that followed, which found the mirror of the rule above
 
@@ -469,18 +563,22 @@ the family this whole module exists to close.
    counting transport and chairing needs a mark *before* zero — and `cli.py` passed `0.0`,
    which made out-of-cage time identical to chair time. The under-count the clock replaced
    chair time to remove, reintroduced by the interface, with no test pinning it.
-   `welfare.left_cage(seconds_ago, now)` now takes the number an operator holds; it refuses
-   the future, and refuses longer ago than the subject's own ceiling — which is what catches
+   `welfare.left_cage(seconds_ago, now)` took the number an operator holds; it refused
+   the future, and refused longer ago than the subject's own ceiling — which is what caught
    a wall clock handed to a session-relative parameter, and is the same refusal a session
    already past twelve hours gets. **`wlx run --out-of-cage-ago` is required with no
    default**, for the reason `--as WHO` is: a headless run types `0` and means it.
+   (**The parameter is `left_cage(at, wall_now, now)` and the flag is `--out-of-cage-at`
+   since 2026-09-20** — the PI ruled that a clock time is what an operator reads. The
+   time-base argument above is unchanged and the mapping moved *into* `welfare`; what the
+   change cost, and what replaces it, is under "The PI's round-2 rulings".)
 
 3. **And then a value that is unordered against every bound.** Found by review after the
    two above were closed, and the sharpest of the three: every guard on this path is an
    *ordered* comparison, and **NaN is `False` against all of them** — not in the future, not
    past the ceiling, not backwards. `left_cage(nan)` made the mark NaN, the duration NaN, and
    `must_stop` answer `None` forever. Reachable from the surface an operator touches:
-   `--out-of-cage-ago` is `type=float` and argparse parses `nan`, so `wlx run` ran **400
+   `--out-of-cage-ago` was `type=float` and argparse parses `nan`, so `wlx run` ran **400
    rewarded trials, 13.55 mL, a clean summary and no duration limit at all**. A NaN
    `out_of_cage` **ceiling** in a bounded config did the same with an honest mark.
 
@@ -571,7 +669,8 @@ the family this whole module exists to close.
    `bounds.py` got `welfare.py`'s treatment, which it had not had: **327 → 285 lines,
    99 executable**, narrative moved to S8, every refusal message verbatim. And `wlx
    run` now refuses *every* bad welfare value with a message rather than a traceback —
-   `--out-of-cage-ago nan` was wrapped and `--delivered-today nan` was not.
+   `--out-of-cage-ago nan` was wrapped and `--delivered-today nan` was not (that flag
+   is `--out-of-cage-at TIME` since 2026-09-20 and refuses a non-time at the parser).
 
 `welfare` and `bounds` re-swept at a 560 baseline — 28 names, **0 survivors, 0 skips, 0
 timeouts, 1 `NOT MUTABLE`** (`Card.emit`, a Protocol stub whose implementations live in
@@ -999,15 +1098,18 @@ invisible in every artifact the session produces. Now pitfall **P21**.
   **Fluid is not one.** **Chair time is not one either, since 2026-09-19**, and
   neither is a trial count: `max_trials` is gone and chair time is recorded beside
   the limit rather than being it. A rig session refuses to start without the
-  out-of-cage mark; a cage-side one declares `ANIMAL_AT_HOME` and has no duration
-  bound at all. See "The welfare clock, and the four rulings that reshaped it". The
+  out-of-cage mark; a cage-side one declares `CAGE_SIDE` and has no duration
+  bound at all. A `RIG_CHAIRED` one carries the mark, no head-fixation, and reports
+  restraint as **absent rather than zero**. See "The welfare clock, and the four rulings that reshaped it". The
   session clock is derived from frames rather than the wall, which is what keeps
   "stops at its duration ceiling" deterministic; on a rig frames *are* the clock, so
   it is the honest choice there too.
 - **`HEAD_FIXED`/`HEAD_RELEASED` are strobed** (4128/4129). Restraint is the one
   welfare quantity with no hardware line, so the codes *are* its durable record —
-  which is why they stayed when chair time stopped bounding anything. **The
-  out-of-cage marks have no codes yet** and that is an open ask (S8 item 8).
+  which is why they stayed when chair time stopped bounding anything — **for
+  `RIG_FIXED` only** since 2026-09-20. **The out-of-cage marks get no codes**, ruled
+  2026-09-20: operator-entered rather than measured, so a hardware timestamp would add
+  precision to a number that never had it (S8 item 8, closed).
 - **The terminal `Marker` is emitted by the framework**, not the task: a task declares
   an `Outcome` and never a marker. Without it a recording has no trial boundaries at
   all, whatever else is in the stream.
