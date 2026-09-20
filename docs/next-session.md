@@ -134,6 +134,13 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   re-armed `left_cage`. All refused now — including a return while the animal is recorded
   head-fixed, which is what puts the whole trial loop inside the refusal. **If you add a
   mark, ask what its mis-ordering does**, not only what its absence does.
+- **Out and back is one session — the PI's ruling of 2026-09-20, not our reading.** An
+  animal returned to its cage briefly and brought out again starts a **new** session;
+  `left_cage` refuses to re-arm a closed interval. He accepted the consequence: an animal
+  returned mid-day gives **two session directories and two records**, not one with an
+  unexplained gap. Do not "fix" this into a resume without asking him — it was asked once
+  precisely because it looked like an inference, and the answer is on the record in S8
+  §5.2 item 4.
 - **NaN is `False` against every ordered comparison, so it switches a limit off rather
   than exceeding it.** This got further than anything else on the branch: `wlx run
   --out-of-cage-ago nan` ran 400 rewarded trials with a clean summary and no duration

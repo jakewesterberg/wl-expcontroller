@@ -461,11 +461,17 @@ def test_a_second_return_is_refused():
 
 
 def test_a_closed_interval_is_never_re_armed():
-    """**One session is one time out of the cage.** The guard was `left_cage_at is
-    not None and returned_at is None`, so a return re-armed the opening mark: out
-    at 0, home at 43,000, out again at 43,100 reported a fresh clock for an animal
-    that had been out twenty-two hours. `Welfare` is constructed per session; a
-    second interval is a second session."""
+    """**Out and back is one session** (PI, asked and answered 2026-09-20).
+
+    The guard was `left_cage_at is not None and returned_at is None`, so a return
+    re-armed the opening mark: out at 0, home at 43,000, out again at 43,100
+    reported a fresh clock for an animal that had been out twenty-two hours.
+
+    Whether that should instead *resume* a session was put to the PI rather than
+    inferred from his wording, and he ruled it starts a new one -- accepting that an
+    animal returned mid-day produces two session directories and two records rather
+    than one with an unexplained gap. So this refusal is a ruling, not an
+    arithmetic convenience, and changing it is a question for him."""
     welfare = _welfare()
     welfare.left_cage(seconds_ago=0.0, now=0.0)
     welfare.returned_to_cage(at=43_000.0)

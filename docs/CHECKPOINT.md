@@ -451,8 +451,18 @@ the family this whole module exists to close.
    head-fixed — it cannot be in the chair and in its cage at once, and `run()` fixes before
    its first frame and releases after its last, so the whole loop sits inside that refusal —
    and refused before the departure. A closed interval refuses a `preflight` and **stops** a
-   running session rather than freezing it. **One session is one time out of the cage**;
-   `Welfare` is per-session, so a second interval is a second session.
+   running session rather than freezing it.
+
+   **Out and back is one session — PI, asked and answered 2026-09-20.** The code was
+   written that way first, on the reading that a session *is* "out of cage to back into
+   cage"; the question of whether an animal returned briefly and brought out again resumes
+   its session or starts a new one went to the PI rather than being left as an inference,
+   and he confirmed it starts a new one. Recorded as his ruling and not as our reading,
+   because three of the first four decisions this repo revisited as inferences changed the
+   moment somebody asked (CLAUDE.md, "ask, do not file"). **The consequence he weighed and
+   accepted:** an animal returned mid-day produces **two session directories and two
+   records**, not one record with an unexplained gap — which is the more honest account,
+   since nothing downstream could tell such a gap from a session that simply ran long.
 
 2. **Nothing said what time base the mark was in, and as wired the change did not achieve
    the ruling.** `Session.now()` is frame-derived and reads zero at session start, so

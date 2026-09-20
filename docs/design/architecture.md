@@ -118,9 +118,13 @@ anything that answers zero — and the absence of a mark must never be what disa
 **Nor may the presence of both.** The interval is opened once, closed once and never runs
 backwards: a return is refused unless it closes an open interval, refused while the animal is
 recorded head-fixed, and refused before the departure; a closed interval refuses a preflight
-and stops a running session rather than freezing its clock. And the opening mark is **how long
-ago**, against the session's frame-derived clock, so that counting transport and chairing does
-not depend on a caller knowing to pass a negative instant — S8 §5.2 item 4 has both accounts.
+and stops a running session rather than freezing its clock. **Out and back is one session**
+(PI, asked and answered 2026-09-20): an animal returned briefly and brought out again starts a
+new one, at the cost — which he weighed and accepted — of two session directories for an
+animal returned mid-day, rather than one record with an unexplained gap. And the opening mark
+is **how long ago**, against the session's frame-derived clock, so that counting transport and
+chairing does not depend on a caller knowing to pass a negative instant — S8 §5.2 item 4 has
+all three accounts.
 
 **Nor may a value that is not a number.** Every guard above is an *ordered* comparison and
 **NaN is `False` against all of them**, so one NaN switched the duration limit off entirely —

@@ -353,8 +353,8 @@ class Welfare:
                 f"subject {self.bounds.subject!r} is already recorded as out of its "
                 f"cage at {self.left_cage_at}; a second mark would run two clocks and "
                 f"the shorter one would silently win. A closed interval is not "
-                f"re-armed either: one session is one time out of the cage, and an "
-                f"animal that has gone home has finished this one"
+                f"re-armed either (PI, 2026-09-20): out and back is one session, so "
+                f"an animal brought out again starts a new one"
             )
         _finite("the time since this subject left its cage", seconds_ago)
         _finite("the session clock", now)
@@ -394,6 +394,13 @@ class Welfare:
         `must_stop` answering `None` for the rest of a session that reported itself
         fully marked. That is the same failure as a missing mark, reached with both
         marks present, which is why it is refused here and not merely checked later.
+
+        **And it closes the session, not just the interval** (PI, asked and answered
+        2026-09-20). A session *is* out of cage to back into cage, so an animal
+        returned briefly and brought out again starts a **new** session rather than
+        resuming this one -- `left_cage` refuses to re-arm. The PI weighed and
+        accepted the consequence: an animal returned mid-day produces **two session
+        directories and two records** rather than one with an unexplained gap in it.
         """
         if self.deployment is Deployment.ANIMAL_AT_HOME:
             raise Exceeded(

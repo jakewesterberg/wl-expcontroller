@@ -197,7 +197,21 @@ supplement afterwards — is then computed against a figure that describes half 
    recorded as head-fixed (it cannot be in the chair and in its cage at once, which is what
    puts the whole trial loop inside the refusal), and is refused before the departure. A
    closed interval refuses a `preflight` and **stops** a running session rather than freezing
-   its clock. One session is one time out of the cage; a second interval is a second session.
+   its clock.
+
+   **Out and back is one session** — PI, asked and answered 2026-09-20, after the code was
+   written the way the rest of this item describes. It is recorded as a ruling rather than as
+   an inference from the wording above because this repository has learned the difference:
+   three of the first four decisions revisited as inferences were changed once somebody
+   actually asked (CLAUDE.md, "ask, do not file"). The question was whether an animal returned
+   to its cage briefly and brought out again resumes its session or starts a new one. It
+   starts a new one, so `left_cage` refuses to re-arm a closed interval.
+
+   **The consequence the PI weighed and accepted:** an animal returned mid-day produces **two
+   session directories and two records**, not one record with a gap in it. He judged that the
+   more honest account — a single record spanning a period the animal was not in the rig would
+   have to leave that period unexplained, and nothing downstream could tell it from a session
+   that simply ran long.
 
    **Chair time is still recorded and bounds nothing.** `HEAD_FIXED` / `HEAD_RELEASED`
    (4128/4129, allocated in S2) remain, and the reasoning below stands unchanged: restraint is
