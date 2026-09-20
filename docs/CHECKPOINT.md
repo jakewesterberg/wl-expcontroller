@@ -326,6 +326,53 @@ figure was one low. In order:
 
 ## What moved on 2026-09-20
 
+### The sweep is green, and four of its entries are green for a reason that is not a test
+
+The full sweep on `31a3283` passed: 22 modules, ~2h, a 674-test baseline, **0 SURVIVED and
+0 SKIPPED**. It escalated from the selective gate to all 22 because `tasks/` changed, which
+is `mutation_gate.GLOBAL` working as intended. Reading its output rather than its verdict —
+the rule that has now paid for itself twice on this branch — turned up four entries in
+`geometry` that say `caught` and mean something weaker:
+
+```
+caught    half_width_cm                    1 error in 1.20s
+caught    half_height_cm                   1 error in 1.21s
+caught    half_field_h_deg                 1 error in 1.21s
+caught    half_field_v_deg                 1 error in 1.22s
+```
+
+**These four are caught by an import, not by an assertion.** Neutering `half_width_cm`
+makes `tests/test_gaze.py:42` — `TARGETS = constellation(GEOMETRY)`, which runs at *module
+scope* — raise `TypeError: unsupported operand type(s) for /: 'NoneType' and 'float'` from
+inside `calibration.constellation`. pytest prints `Interrupted: 1 error during collection`,
+runs **zero tests**, and exits 2. `_run_suite` returns `result.returncode == 0`, so every
+non-zero exit is recorded as `caught`.
+
+**This is not the old false clean, and saying so matters.** In the recorded incident the
+collection error came from the *harness*: a regex inserted a statement into a parameter list,
+the file stopped parsing, and a function that had never been mutated was reported covered.
+Here the mutation is applied correctly by the AST path and the `TypeError` is its own
+consequence, so CI really would be red. The catch is real. It is *incidental*: nothing in the
+suite asserts anything about those four properties, and the whole verdict rests on one line
+in an unrelated test module that happens to compute at import. **Move that line into a
+fixture — an ordinary, desirable cleanup — and all four flip to SURVIVED with no change to
+production code.** That is the sense in which the gate is reporting safety it does not have.
+
+The one `timed out after 300s (mutation hangs)` entry, `simulate.signal`, is a different
+thing and stands: the harness documents that call and its reasoning, and a suite that stops
+terminating has detected the change.
+
+**What this costs the next session.** The harness cannot currently tell an incidental catch
+from an earned one, because exit 1 (tests ran, a test failed) and exit 2 (collection aborted,
+nothing ran) both reach it as "non-zero". Splitting those in `_run_suite` is small, and the
+honest third state is not `caught` — it is *inconclusive*, and it should fail the gate rather
+than pass it, because a run in which no test executed is not evidence. Then `geometry`'s four
+properties need tests that assert on them, and `tests/test_gaze.py:42` can move into a
+fixture where it belongs.
+
+None of this touches P4d-1. `geometry.py` is not on this branch's diff, and the finding is
+pre-existing — the first full sweep in a while is simply the first thing to look at it.
+
 ### The PI's round-3 rulings: a person on a far mark, a wall-clock return, and three records made
 
 Six rulings in one pass, on the branch the round-2 work is already on. **Two change
