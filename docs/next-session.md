@@ -164,6 +164,13 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   holds. **So `Telemetry.fluid_session_ml` and `shortfall_ml` are welfare-load-bearing:
   dropping either from a pane is a welfare regression, not a display change.** It is
   also the one place a magnitude of zero is deliberately allowed.
+- **And zero is a *designed trial outcome*, which is new information** (PI, 2026-09-20,
+  confirming the ruling with its reason): *"some trials will have a reward period, but
+  they may not receive a juice reward. they may get an on-screen token reward that
+  eventually becomes a real reward."* **A session at `0.00 mL` may be running exactly as
+  intended**, so nothing may treat that figure as a fault signal — `supplement` is the
+  line that still says what is owed, because a token is not fluid. **Nothing in the task
+  vocabulary models that token** (see §7).
 - **The rule, in two words: an instant is finite; a magnitude is finite and not
   negative.** Three Criticals in three review rounds were one class — a guard on a
   *limit* with the *measurement* compared against it unchecked — found one surface at a
@@ -197,12 +204,40 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   ceiling refusal unchanged, and **the computed interval printed at session start** —
   *"the animal has been out N hours M minutes"*. A bare time is **today** on this host,
   in **this host's local zone**, and is never rolled back to yesterday.
-- **The session warns before the limit, and the threshold is not settled** (PI,
-  2026-09-20 asked for the warning). `welfare.approaching_limit` at
-  `WARN_WITHIN_DEFAULT` = 1,800 s, configurable by `--warn-within`. **That number is this
-  session's proposal and is waiting on the PI** — it is not derived from any measurement
-  of this system, because no block duration has been measured. If he names a figure, it
-  goes in that constant and nowhere else.
+- **The daylight-saving gap is closed, not fixed** (PI, 2026-09-20): *"the dst switches happen
+  in the night, when no experiments occur."* The unsafe half is the spring-forward hour —
+  `02:30` resolves to `03:30` and reports the animal as out up to an hour *less* than it has
+  been. **The description is kept** in `cli._wall_clock_time` and S8 §5.2 item 4, because the
+  dismissal rests on when experiments run and not on the arithmetic. **If night sessions ever
+  start, this is live again.**
+- **The session warns before the limit, and the threshold is now his** (PI, 2026-09-20
+  asked for the warning, and accepted the figure the same day). `welfare.approaching_limit`
+  at `WARN_WITHIN_DEFAULT` = 1,800 s, configurable by `--warn-within`. ~~That number is this
+  session's proposal and is waiting on the PI.~~ **Accepted as a *starting* value** — and it
+  is still derived from no measurement of this system, because no block duration has been
+  measured. Keep that disclaimer: accepting a number is not measuring one.
+- **A mark more than thirty minutes from now is a person's to confirm or amend** (PI,
+  2026-09-20). Thirty minutes is *his* number, in `welfare.CONFIRM_MARK_WITHIN`, and it is
+  1,800 like `WARN_WITHIN_DEFAULT` by coincidence rather than by derivation — the two are
+  separate constants so that tuning a console warning cannot quietly move a welfare guard.
+  The band sits **between** the refusals, which all still stand: a future mark and a
+  departure at or past the ceiling are refused outright and never offered for confirmation.
+  `wlx run` asks when there is a terminal, **refuses when there is not** unless
+  `--confirm-out-of-cage` says so explicitly, and an amendment needs `--amend-reason` and
+  `--as` with no default and no blank. **The guard is on `left_cage`/`returned_to_cage`
+  themselves** (a `confirmed` flag), not only in `wlx run`, because both are console actions
+  and P4d-2's console would otherwise reach around the prompt. Amendments and confirmations
+  land in `welfare_notes.jsonl` in the session directory — not `parameter_changes.jsonl`,
+  whose `sequence` joins to a strobe these marks deliberately do not have, and not
+  `refusals.jsonl`, which is for writes that did not happen and is capped.
+- **Both ends of the twelve-hour interval are wall-clock times** (PI, 2026-09-20, ruling 4).
+  ~~The session clock stops when the frames do, so a return marked long after the loop ended
+  carries the loop's last reading.~~ **Closed by that ruling**, and it was a real gap rather
+  than a footnote: the release, the unchairing and the walk back fell outside the limit every
+  time. `returned_to_cage(at, wall_now, confirmed=False)` maps against `left_cage`'s wall
+  anchor (`Welfare.left_cage_wall_at`), **not** against a fresh `now`/`wall_now` pair — those
+  two are the same instant only while the loop is running. Every refusal it had is preserved
+  and two are new: a return in the future, and an unconfirmed far one.
 - **`chair_time` and `max_trials` are gone as ceilings.** Chair time is still recorded
   (`head_fixed`/`head_released`, codes 4128/4129, required by a `RIG_FIXED` preflight and
   refused by the other two kinds since 2026-09-20) and bounds nothing; there is no
@@ -422,14 +457,14 @@ Three things S9a §6–§10 depends on that nobody has built:
 | `wl-sync` | Session id readable by a rig host; a subject change mints `_02` | naming our own output directory |
 | `wl-preproc` | `PARAM_CHANGE` escape; ownership split; codec as an artifact | P16's guarantee |
 | `wl-works` | `prepare-session`, **including the day's already-delivered fluid total** | the day's shortfall is computed from it; without it a session pays the animal but can report no supplement |
-| `wl-works` | **An NTP server, reachable from the lab network on UDP 123** (ADR-0009, 2026-09-20; ask drafted in `docs/pending-wl-works-amendments.md`) | lab hosts agreeing what "today" and a clock time are, for wall-clock welfare marks and the fluid figure that spans rig and kiosk; **not session-blocking** — an outage just stops correction |
+| `wl-works` | **An NTP server at `ntp.wl.works`, reachable from the lab network on UDP 123** (ADR-0009, 2026-09-20; the hostname is the PI's, named the same day, and **the route is the part still open** — ask drafted in `docs/pending-wl-works-amendments.md`) | lab hosts agreeing what "today" and a clock time are, for wall-clock welfare marks and the fluid figure that spans rig and kiosk; **not session-blocking** — an outage just stops correction |
 | PI | **A photometer measurement of the panel** | every chromatic task (P19); `tasks/visual_search.py` is what waits |
 | PI | **A pump calibration: millilitres per second of open time** — protocol **V10**, `docs/validation.md` | real reward delivery (new 2026-09-06) |
 | PI | **The real bounded-config numbers** — reward volume per delivery, the daily fluid **floor**, time out of the cage. Asked 2026-09-06; answer was *keep the placeholder until there are animals*. (Chair time and a trial cap were on this list until 2026-09-19; neither is a limit any more, so neither needs a number.) The twelve-hour figure is documented in S8 §5.2 item 4 and in `welfare.py`, deliberately not carried by any constant | every session that is not a simulation |
 | ~~PI~~ | ~~**Is a runaway-fluid *fault* limit wanted?**~~ **Answered 2026-09-19: yes.** `reward_correct`'s maximum is 10 mL — far above any dose, so refusing it catches software delivering litres rather than enforcing a ration. It is a **fault bound**, and `tasks/reference_bounds.py`, `bounds.Ceiling` and S8 open item 6 all say so at the entry. The *value* beside it stays a placeholder | ✔ (S8 open item 6) |
 | ~~PI~~ | ~~**Which clock is the twelve-hour out-of-cage limit measured on?**~~ **Answered 2026-09-19 and implemented the same day:** the clock runs out of cage to back in cage. `welfare.out_of_cage_seconds` measures it, `must_stop` reads it against `out_of_cage`, and `chair_seconds` is recorded beside it and bounds nothing. `max_trials` went with it | ✔ (S8 open item 7) |
 | ~~PI~~ | ~~**Do the out-of-cage marks get event codes?**~~ **Answered 2026-09-20: no.** They are **operator-entered rather than measured**, so a hardware timestamp would add precision to a number that never had it, and our own log and the session directory already carry them. A restart re-asks a person for the departure time — the same clock time they typed the first time. Withdrawn from S2's and `wl-preproc`'s plate | ✔ (S8 open item 8) |
-| PI | **Is 30 minutes the right warning before the twelve-hour limit?** `welfare.WARN_WITHIN_DEFAULT` = 1,800 s since 2026-09-20, chosen so a block can be finished deliberately — but **not derived from any measurement**, because no block duration has been measured here. Configurable by `--warn-within`; his number replaces the constant | welfare-facing default, in use now |
+| ~~PI~~ | ~~**Is 30 minutes the right warning before the twelve-hour limit?**~~ **Answered 2026-09-20: yes, as a starting value.** `welfare.WARN_WITHIN_DEFAULT` = 1,800 s is his figure now rather than this repository's proposal — and it is **still not derived from any measurement**, because no block duration has been measured here, which is exactly why it is a *starting* value. Configurable by `--warn-within` | ✔ |
 | PI | IPD per animal; the tandem panel's two questions | optics, panel |
 
 ---
@@ -540,3 +575,43 @@ P4d-2 or later:**
 **Do not skip ahead to hardware work to feel productive.** Everything on that side is
 blocked on a card, a panel, a photometer or a pump measurement, and none of the four is
 ours to hurry.
+
+---
+
+## 7. A finding for a task-layer session — recorded, not designed
+
+**`task.py`'s `Reward` means fluid, and nothing models a token.** Found on 2026-09-20 while
+recording the PI's reason for allowing a zero-volume reward, read from source rather than
+recalled. This is a **gap in S1/S8's vocabulary, not a welfare-path defect**, and it is
+written down here so a task-layer session finds it without re-deriving it. **It was
+deliberately not designed** — the session that found it was on the welfare path.
+
+What is true today:
+
+- The action vocabulary in `task.py` is `Show`, `Hide`, `Update`, `Score`, `Custom`, `Mark`,
+  `Reward`. `Reward` names an entry in the bounded config and reaches
+  `welfare.Rig.reward` → `Welfare.deliver` → the pump. It is fluid, and only fluid.
+- S1 §2.3 lists `Token(+1 / -1)` and `SetPersistent(...)`. **Neither exists**, and no
+  cross-trial persistent state exists anywhere in the package:
+  `grep -rn "Token\|SetPersistent\|persistent" wl_expcontroller/` returns nothing.
+- The PI described a trial that has a reward period and pays an on-screen token rather than
+  fluid, converting to fluid later (2026-09-20). **That trial cannot be expressed.** S8 §5.3
+  already specifies a conversion bound for a mechanism that has no representation to bound.
+
+What is missing, stated so it can be scoped rather than rediscovered:
+
+1. **A persistent count** surviving across trials within a session, declared the way a
+   parameter is, and present in every per-trial snapshot — otherwise a token balance is the
+   "pointer to the config" failure S8 §3.3 exists to prevent, one level up.
+2. **A conversion rule**: when a balance becomes fluid, who triggers it, and how it passes
+   through `welfare.deliver` so the day's accounting sees it. It has to be *one* route to the
+   pump, or `Rig` stops being the one-file answer to "can anything deliver reward without the
+   accounting seeing it".
+3. **What the recording sees when a token rather than fluid is paid.** A `Reward` today
+   produces a commanded volume and, on a rig, a delivered-line pulse the sync box captures. A
+   token produces neither — so a trial that paid one is indistinguishable in the record from a
+   trial that paid nothing. That is an event-code question (S2, `wl-preproc`, ADR-0007) before
+   it is a schema one, and it is the part most likely to be discovered late.
+
+Recorded in S8 §5.3 and S8 §8 item 9, and in S1 §10 item 3. **Nothing is blocked on it**:
+zero-volume reward is already correct, already allowed and already visible.

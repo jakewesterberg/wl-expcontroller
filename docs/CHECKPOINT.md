@@ -74,11 +74,11 @@ figure was one low. In order:
 
 | | |
 |---|---|
-| Tests | **610, green — with `.[dev,contract,console]` installed** (560 before the PI's round-2 rulings of 2026-09-20) (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below. **Swept a fourth time after the PI's round-2 rulings, 2026-09-20**, over `welfare`, `bounds`, `taskd`, `cli` and `link` at a 602 baseline — **72 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE** (`welfare.emit`, a `Protocol` stub whose body is `...`), every baseline and restore at 602, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **And a fifth time after the review of those rulings**, over the three modules that changed (`welfare`, `bounds`, `cli`) at a 609 baseline — **38 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE**, plus `taskd.head_released` at 610 once the console-path test landed (**3 failed**, up from 2). That run is also where `_hours_minutes` went from **1 failure to 4**: the review found its only test asserted `0 hours 0 minutes`, which is the one value a function that had stopped working would also produce |
+| Tests | **664, green — with `.[dev,contract,console]` installed** (610 before the PI's round-3 rulings of 2026-09-20; 560 before round 2) (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below. **Swept a fourth time after the PI's round-2 rulings, 2026-09-20**, over `welfare`, `bounds`, `taskd`, `cli` and `link` at a 602 baseline — **72 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE** (`welfare.emit`, a `Protocol` stub whose body is `...`), every baseline and restore at 602, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **And a fifth time after the review of those rulings**, over the three modules that changed (`welfare`, `bounds`, `cli`) at a 609 baseline — **38 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE**, plus `taskd.head_released` at 610 once the console-path test landed (**3 failed**, up from 2). That run is also where `_hours_minutes` went from **1 failure to 4**: the review found its only test asserted `0 hours 0 minutes`, which is the one value a function that had stopped working would also produce. **Swept a sixth time after the PI's round-3 rulings, 2026-09-20**, over `welfare`, `bounds`, `cli`, `record` and `taskd` at a 664 baseline — **77 target names, 0 survivors on the final pass, 0 timeouts, 1 SKIPPED** (`welfare.emit`, the documented `Protocol` stub), every line a real `N failed`. **That run found something**: `taskd.Session.return_needs_confirmation` **survived**, a passthrough nothing called, written for symmetry with the departure's. Deleted rather than tested — the rule is enforced by the mark itself — and `welfare._refuse_unconfirmed`'s 2 failures were checked by name to be two *behavioural* tests rather than the §5.2d bookkeeping one |
 | CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the two clocks (out-of-cage, which bounds the session; restraint, which is recorded), the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7), and **both have moved on this branch** |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. S8 §4–§5 were written the other way round and now carry the correction |
-| Session duration | **One limit: out of the cage to back in the cage, twelve hours** (PI, 2026-09-19). Chair time and a trial cap were the two ceilings until then; neither is a limit now — chair time is recorded by `HEAD_FIXED`/`HEAD_RELEASED` and there is no session-length maximum at all. A rig session is **refused** without its out-of-cage mark; a cage-side one declares `welfare.Deployment.CAGE_SIDE` and has no duration bound. Twelve hours is documented (S8 §5.2 item 4, `welfare.py`) and carried by no constant. **Since 2026-09-20 (PI)** the mark is a **clock time** (`--out-of-cage-at`, mapped onto the frame clock inside `welfare`), there are **three deployment kinds** — `RIG_FIXED`, `RIG_CHAIRED`, `CAGE_SIDE` — with restraint reported **absent rather than zero** where nothing marks it, and the session **warns** at `welfare.WARN_WITHIN_DEFAULT` (1,800 s, a proposal awaiting him) before the limit |
+| Session duration | **One limit: out of the cage to back in the cage, twelve hours** (PI, 2026-09-19). Chair time and a trial cap were the two ceilings until then; neither is a limit now — chair time is recorded by `HEAD_FIXED`/`HEAD_RELEASED` and there is no session-length maximum at all. A rig session is **refused** without its out-of-cage mark; a cage-side one declares `welfare.Deployment.CAGE_SIDE` and has no duration bound. Twelve hours is documented (S8 §5.2 item 4, `welfare.py`) and carried by no constant. **Since 2026-09-20 (PI)** **both marks** are **clock times** (`--out-of-cage-at`, and `returned_to_cage(at, wall_now)`, mapped onto the frame clock inside `welfare` against `left_cage`'s own wall anchor — so the unchairing and the walk back, which the frozen frame clock used to drop, are inside the limit), a mark **more than thirty minutes from now is confirmed by a person or amended with a reason and a name** (`welfare.CONFIRM_MARK_WITHIN`; `wlx run` refuses rather than proceeding when no terminal is attached), there are **three deployment kinds** — `RIG_FIXED`, `RIG_CHAIRED`, `CAGE_SIDE` — with restraint reported **absent rather than zero** where nothing marks it, and the session **warns** at `welfare.WARN_WITHIN_DEFAULT` (1,800 s, **accepted by the PI on 2026-09-20 as a starting value** and still derived from no measurement of this system) before the limit |
 | Reference tasks | `fixation_detection`, `adaptive_detection`, `visual_search` (colour pop-out, set size 2–12), `calibration` |
 | Load-time checks | **9 of S1 §9's 10, plus S1a's window check, plus nine added after review 2026-08-31** (`uncoupled-window`, `nothing-to-look-at`, `absent-stimulus`, `duplicate-stimulus`, `empty-update`, `uncalibrated-color`, `unrealizable-color`, `overspecified-color`, `unstated-observer`, `target-outside-array`, `impossible-correlation`, `monocular-stereogram`, `unknown-eye`, `wrong-eye-criterion`).** Check 7 is enforced for reward and *not* for stimulation, because no `Stim` action exists yet. Corrected 2026-08-31 after review caught the count |
 | Cross-repo asks outstanding | **4 documents, 3 repos**; one blocking ask closed 2026-09-05 — see below |
@@ -325,6 +325,122 @@ figure was one low. In order:
 ---
 
 ## What moved on 2026-09-20
+
+### The PI's round-3 rulings: a person on a far mark, a wall-clock return, and three records made
+
+Six rulings in one pass, on the branch the round-2 work is already on. **Two change
+behaviour on the welfare path and four are records** — and the two that change behaviour
+both came out of the same trade: the marks became clock times, so a plausible typo now
+survives every refusal there is.
+
+1. **A mark more than thirty minutes from now is a person's to confirm, or to amend with a
+   reason and a name.** *"if a number is input that is more than 30 min from the current
+   time, a warning should appear that the experimenter must click through to confirm. There
+   should also be an option to update the time if necessary, but a reason should be given and
+   the experimenter name logged."*
+
+   **Thirty minutes is his figure**, in `welfare.CONFIRM_MARK_WITHIN`, not derived from the
+   ceiling. It is 1,800 and so is `WARN_WITHIN_DEFAULT`: **two constants that happen to agree**,
+   kept apart so that tuning a console warning cannot quietly move a welfare guard.
+
+   **The band sits between the refusals and both edges still refuse.** A future mark and a
+   departure at or past the ceiling are refused outright and never offered for confirmation —
+   a prompt that sometimes means "check this" and sometimes stands between an operator and a
+   run is a prompt clicked past. **Worth knowing before reading the tests:**
+   `tasks/reference_bounds.py`'s ceiling is a deliberately implausible ten minutes, *shorter
+   than the threshold*, so that config has an empty band and never prompts.
+
+   **The non-interactive decision, which is the one to check.** `wlx run` asks when `stdin` is
+   a terminal and **refuses when it is not**, naming `--confirm-out-of-cage`. A headless run
+   that proceeded would write a confirmation nobody made, which is worse than none. The flag is
+   the honest way to say it out loud, and the recorded row says the confirmation came from a
+   flag rather than a person — **a wrapper with it baked in is how this ruling would otherwise
+   be defeated in silence**, and that is the one thing a record can still show months later.
+
+   **The guard is on the marks, not only in `wlx run`.** `welfare.left_cage` and
+   `returned_to_cage` take `confirmed` and refuse a far mark without it. CLAUDE.md's rule, not
+   belt and braces: both are console actions, and P4d-2's console calling `Session.left_cage`
+   directly would reach around the prompt entirely. A caller can lie to `confirmed`; it cannot
+   forget it.
+
+   **The amendment is recorded in `welfare_notes.jsonl`, and the choice of file is the
+   argument.** Not `parameter_changes.jsonl` — its `sequence` joins a row to a `PARAM_CHANGE`
+   strobe on the recording clock, and these marks deliberately have no code (open item 8), so
+   a row there would look alignable and be nothing of the kind. Not `refusals.jsonl` — that is
+   for writes that did **not** happen, and it is capped against a flooding console peer.
+   `record.welfare_note` writes it **at the moment it happens, before `Session.run` opens the
+   record**, because the mark must be settled before `preflight` and because a row written
+   then survives every refusal that can follow. Each instant is written twice, as a POSIX
+   float and as local clock time with its zone, because a person is who reads it.
+
+2. **The DST gap is closed, not fixed.** *"the dst switches happen in the night, when no
+   experiments occur."* The unsafe half is spring-forward: `02:30` resolves to `03:30` and
+   reports the animal as out up to an hour **less** than it has been. **The description of
+   what would happen is kept** in `cli._wall_clock_time` and S8 §5.2 item 4, because the
+   dismissal rests on a fact about when experiments run and not on the arithmetic. If night
+   sessions ever start — an overnight protocol, an unattended kiosk — it is live again, and
+   whoever reads it then needs to find what it does rather than a note saying it was closed.
+
+3. **Zero reward is confirmed, and the reason is new information.** *"zero reward is fine.
+   some trials will have a reward period, but they may not receive a juice reward. they may
+   get an on-screen token reward that eventually becomes a real reward."* So a zero-volume
+   reward is **a designed trial outcome**, not an edge case being tolerated. **`fluid session:
+   0.00 mL` no longer implies something is wrong** — a session at zero may be running exactly
+   as intended — and nothing may treat it as a fault signal. `supplement` is still the number
+   that matters, because a token is not fluid. Carried into S8 §5.2c, S9a §9, `bounds.py`,
+   `link.py`, `cli.render` and `next-session.md`.
+
+4. **The return mark is a wall-clock time too, and it closes a real gap.**
+   `Session.now()` is frame-derived and stops when the frames do, so an operator who ended a
+   session, unchaired the animal, walked it back and *then* marked the return was recording
+   the animal as home **at the instant the loop ended** — the release, the unchairing and the
+   walk back fell outside the twelve hours, every time. That caveat was written in
+   `returned_to_cage`'s own docstring and in `next-session.md` as a note about the caller; it
+   was the defect. Struck through in both.
+
+   **`returned_to_cage(at, wall_now, confirmed=False)` maps against `left_cage`'s wall
+   anchor**, `Welfare.left_cage_wall_at` — **not** against a fresh `now`/`wall_now` pair. Those
+   two are the same instant only while the loop is running, and a mapping built on them would
+   drop exactly the interval this ruling exists to count. Every refusal the return had is
+   preserved; two are new and both are the departure's — a return in the future, and an
+   unconfirmed far one. The confirmation applies identically because a return typed hours ago
+   moves the same interval, in the direction that makes a session look shorter than it was.
+
+5. **The thirty-minute warning threshold stands, as a starting value.**
+   `WARN_WITHIN_DEFAULT` = 1,800 s is his figure now rather than this repository's proposal.
+   **Every word of the "not derived from any measurement" note is kept**, because it is still
+   true and is exactly why it is a *starting* value: no block duration has been measured and
+   nothing under `docs/measurements/` states one. Closed in `next-session.md` §5.
+
+6. **The NTP server is `ntp.wl.works`** (ADR-0009). Two consequences recorded and they are not
+   the same shape: the **ICTS alternative closes** — `ntp.kuleuven.be` exists, was verified
+   against ICTS's own service page, and is now *checked and not chosen* rather than pending, so
+   its rig-segment reachability stops being a question because nothing will depend on it (the
+   verification is kept, struck through, because it is why the alternative was real) — and **the
+   route stays open**: lab hosts still need a path on UDP 123, flagged in the ADR, in
+   `architecture.md` and in the `wl-works` ask. **Naming a host did not open that route.** And
+   the line most likely to be misread once `ntp.wl.works` is in a config file is intact: this
+   serves bookkeeping time, never experimental time.
+
+**And a finding, recorded as a finding rather than as work.** `task.py`'s `Reward` means
+**fluid** — it names a bounded-config entry and reaches `welfare.Rig.reward` → `Welfare.deliver`
+→ the pump — and **nothing in the task vocabulary models a token** that accumulates across
+trials and later converts. S1 §2.3 lists `Token(+1 / -1)` and `SetPersistent(...)`; `task.py`
+implements neither, and `grep -rn "Token\|SetPersistent\|persistent" wl_expcontroller/` returns
+nothing. S8 §5.3 already specifies a conversion bound for a mechanism with no representation to
+bound. Three things are missing — **a persistent count, a conversion rule through
+`welfare.deliver`, and what the recording sees when a token rather than fluid is paid** (an
+event-code question before it is a schema one). It is a **gap in S1/S8's vocabulary, not a
+welfare-path defect**; written into S8 §5.3, S8 open item 9, S1 §10 item 3 and
+`docs/next-session.md` §7, and **deliberately not designed.**
+
+**What the sweep found that nobody asked about.** `taskd.Session.return_needs_confirmation`
+**survived**, because it was a passthrough nothing called — written for symmetry with the
+departure's, which `wlx run` actually prompts with. That is `bounds.check_delivery`'s failure
+exactly: a path that reads as present because it exists. **Deleted rather than given a test**,
+since the rule it would have exposed is already enforced *by the mark*; a console that wants the
+sentence calls `welfare.return_needs_confirmation` directly. The reason is in
+`Session.returned_to_cage`'s docstring so the next reader does not re-add it.
 
 ### The PI's round-2 rulings: a clock time, a third deployment kind, a warning, and a closed ask
 
