@@ -194,6 +194,47 @@ credential lifecycle.
 > arriving *from* wl.works does not make wl.works an actor; the box authorises, and the
 > box records who asked.
 
+## wl-works runs an NTP server, and lab hosts synchronize to it (new, 2026-09-20)
+
+**The ask: run an NTP server on wl-works, reachable from the lab network on UDP 123, and
+let a lab host initiate that one connection.** `ADR-0009` (this repository, 2026-09-20)
+is the PI's decision behind it — welfare marks are now clock times (the out-of-cage
+departure mark, among them) rather than intervals, and the daily fluid figure spans two
+deployments, the rig and the cage-side kiosk, that cannot otherwise agree what "today" or
+"09:15" means. Nothing currently guarantees they do; each host just keeps whatever clock
+it booted with.
+
+**Why this needs a routing change, and why it is narrower than it sounds.** §11.2's
+topology — wl-works binds only to WireGuard, lab machines have no route in — is stated in
+`docs/design/architecture.md` as an unqualified rule until this commit. NTP is
+client-initiated: the lab host asks, the server answers. So a lab host reaching wl-works
+for time needs a route to it that does not exist today, on UDP 123 only.
+
+**This is not the AST guardrail changing.** `wl-preproc`'s "never initiates a connection"
+check (`tests/test_cli_guardrails.py`, read from source 2026-09-20) is a static walk over
+*application source*, asserting nothing in that package opens an outbound socket. A
+system time daemon is a different layer — it is not application code the guardrail walks,
+and this ask does not touch it. What changes is a routing/firewall rule: one UDP port,
+one direction, one purpose.
+
+**What this repository accepts, so wl-works does not have to guess.** An NTP client that
+cannot reach its server keeps its own clock and drifts at ordinary rates; a multi-day
+wl-works outage does not stop a rig session and does not invalidate a day's fluid
+accounting. wl-works is not becoming load-bearing for a session by running this service,
+on the same principle already established above for the console and its OAuth2 client:
+the rig's own clock is the floor, and this only disciplines it. And this is bookkeeping
+time, never the timing record — it sets which day it is and what a wall-clock mark reads,
+never the alignment of neural data, which stays the sync box's hardware ticks and the
+strobed event words. The welfare-action exclusion is unaffected: NTP is a clock source,
+not an action, and is never published through the lab-host protocol.
+
+**What we would still like verified, but are not blocked on.** `ntp.kuleuven.be`, KU
+Leuven ICTS's own central NTP service, exists — verified 2026-09-20 against
+`https://admin.kuleuven.be/icts/services/ntp` — but its reachability from the rig's
+network segment is unverified. If wl-works' operator or ICTS can settle that, it may be
+worth revisiting later which host the lab hosts point at; the lab hosts only need one
+configured source, not this one specifically.
+
 ---
 
 ## What wl-works must decide
@@ -206,6 +247,8 @@ credential lifecycle.
 4. Whether `planned_task` and `session_intent` are worth adding to a bundle that is already
    load-bearing on their side — their Plan 18b tests run against a fake, so the payload
    shape matters there before either machine exists.
+5. Whether wl-works can run an NTP server reachable from the lab network on UDP 123, and
+   open the one-port routing exception that requires (new, 2026-09-20 — see above).
 
 Nothing here is blocked on an answer: the controller's v1 works with no ELN integration at
 all, writing everything to the session directory as it would anyway. This buys the ELN

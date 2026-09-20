@@ -229,8 +229,17 @@ code versions, plot declaration, parameter-change log), and a DONE marker confor
 `wl-preproc`'s published schema. Raw neural data never touches the task PC.
 
 **The rig cannot push to the ELN.** wl-works binds only to WireGuard and lab machines have
-no route in, and `wl-preproc` enforces "never initiates a connection" with an AST guardrail.
-Integration is pull-based and reuses `wl-preproc`'s existing lab-host protocol, in three
+no route in **for the application layer**, and `wl-preproc` enforces "never initiates a
+connection" with an AST guardrail. **One narrow exception exists since ADR-0009
+(2026-09-20): a lab host has a route to wl-works on UDP 123 only, to synchronize its
+wall clock over NTP** — welfare marks are now clock times and the daily fluid figure
+spans deployments that must agree what time it is, and nothing did. Be precise about
+what changed: a system time daemon is a different layer from the AST-guarded
+application source, so the guardrail above is untouched; what is no longer unqualified
+is the routing claim itself, narrowed rather than reversed. NTP serves bookkeeping time
+only — which day it is, when a mark was made — never the timing record, which remains
+the sync box's hardware ticks and the strobed event words (S3). Application integration
+is otherwise still pull-based and reuses `wl-preproc`'s existing lab-host protocol, in three
 directions: wl-works pushes a `prepare-session` action carrying the ELN metadata bundle;
 live session state is exposed as **readings on `GET /health`**; and the finished session
 summary is **a file in the session directory** that `wl-preproc` ingests, because the

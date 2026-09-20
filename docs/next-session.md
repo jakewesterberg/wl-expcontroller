@@ -422,6 +422,7 @@ Three things S9a §6–§10 depends on that nobody has built:
 | `wl-sync` | Session id readable by a rig host; a subject change mints `_02` | naming our own output directory |
 | `wl-preproc` | `PARAM_CHANGE` escape; ownership split; codec as an artifact | P16's guarantee |
 | `wl-works` | `prepare-session`, **including the day's already-delivered fluid total** | the day's shortfall is computed from it; without it a session pays the animal but can report no supplement |
+| `wl-works` | **An NTP server, reachable from the lab network on UDP 123** (ADR-0009, 2026-09-20; ask drafted in `docs/pending-wl-works-amendments.md`) | lab hosts agreeing what "today" and a clock time are, for wall-clock welfare marks and the fluid figure that spans rig and kiosk; **not session-blocking** — an outage just stops correction |
 | PI | **A photometer measurement of the panel** | every chromatic task (P19); `tasks/visual_search.py` is what waits |
 | PI | **A pump calibration: millilitres per second of open time** — protocol **V10**, `docs/validation.md` | real reward delivery (new 2026-09-06) |
 | PI | **The real bounded-config numbers** — reward volume per delivery, the daily fluid **floor**, time out of the cage. Asked 2026-09-06; answer was *keep the placeholder until there are animals*. (Chair time and a trial cap were on this list until 2026-09-19; neither is a limit any more, so neither needs a number.) The twelve-hour figure is documented in S8 §5.2 item 4 and in `welfare.py`, deliberately not carried by any constant | every session that is not a simulation |

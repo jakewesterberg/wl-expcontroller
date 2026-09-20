@@ -456,6 +456,24 @@ anything else noticed. It also caught a sentence nobody had checked: §5.2d clai
 reproduces neither the row count nor the `raise`-site count. Replaced with two figures the
 test checks.
 
+### wl-works will run NTP, and lab hosts will synchronize to it
+
+**ADR-0009** (PI, 2026-09-20): welfare marks are now clock times and the daily fluid
+figure spans two deployments that cannot otherwise agree what time it is, so wl-works
+runs an NTP server and lab hosts synchronize to it. Two costs, shown to him and
+accepted. **It needs a routing exception that does not exist today** —
+`docs/design/architecture.md`'s topology paragraph is amended, narrowly: the AST
+guardrail (over application source) is untouched, and only the routing claim is
+qualified, from unconditional to "for the application layer." **A wl-works outage
+stops clocks being corrected, and that is mild** — an NTP client keeps its own clock
+and drifts; a multi-day outage neither stops a session nor invalidates a day's fluid
+accounting. **This is bookkeeping time, never the timing record** — S3's "our log is
+not the timing record" is unaffected, and nobody should read an NTP-disciplined wall
+clock as good enough for aligning neural data. A preflight clock-skew check is recorded
+as work to build, not built here. Ask drafted at `docs/pending-wl-works-amendments.md`;
+alternatives considered (KU Leuven ICTS's `ntp.kuleuven.be`, and the sync box, each with
+the concrete reason it lost) are in the ADR.
+
 ---
 
 ## What moved on 2026-09-19
@@ -1423,7 +1441,7 @@ by another worker including its remote.
 | `wl-sync` | **yes** | The session id is unreadable by a rig host, so `taskd` cannot name its own output directory. And two animals a day means a subject change must mint `_02` |
 | ~~`wl-preproc`~~ | ~~**yes**~~ | ~~`read_online_map` reads a `.bhv2` that will not exist~~ **Closed 2026-09-05: they built the second reader** (`eye/expcontroller.py::read_expcontroller_map`, at `c3f6c5e`). Its source fixes the schema, and `tests/test_calibration.py` round-trips against it |
 | `wl-preproc` | no | `PARAM_CHANGE` escape; ownership split recorded; codec declared as an artifact; per-trial gaze staleness |
-| `wl-works` | no | `prepare-session`, a planned calibration block per session, alerting on bad readings |
+| `wl-works` | no | `prepare-session`, a planned calibration block per session, alerting on bad readings, and an NTP server for lab hosts to synchronize to (ADR-0009) |
 
 Neither blocking item stops P1–P4. Both are built around: codes are allocated in
 **4096–32767** (undisputed) and the session id sits behind a provider interface.
