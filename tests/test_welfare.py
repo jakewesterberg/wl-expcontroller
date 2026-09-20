@@ -351,11 +351,12 @@ def test_a_mark_that_is_not_a_number_is_refused():
 
     Reproduced end to end through `wlx run --out-of-cage-ago nan`, whose `type=float`
     accepts it: four hundred rewarded trials, 13.55 mL, a clean summary, and no
-    duration limit at all. `inf` was always refused correctly, because `inf` *is*
-    ordered -- which is what made NaN the one that slipped through."""
+    duration limit at all. `inf` breaks the same guards the other way -- ordered but
+    unreachable -- and was *not* already refused; see
+    `test_every_numeric_entry_point_refuses_an_infinity`."""
     welfare = _welfare()
 
-    with pytest.raises(Exceeded, match="not a number"):
+    with pytest.raises(Exceeded, match="not a real number"):
         welfare.left_cage(seconds_ago=float("nan"), now=0.0)
 
 
@@ -364,7 +365,7 @@ def test_a_session_clock_that_is_not_a_number_is_refused_at_the_mark():
     so a NaN on either side produces a NaN mark."""
     welfare = _welfare()
 
-    with pytest.raises(Exceeded, match="not a number"):
+    with pytest.raises(Exceeded, match="not a real number"):
         welfare.left_cage(seconds_ago=0.0, now=float("nan"))
 
 
@@ -376,14 +377,15 @@ def test_a_duration_that_is_not_a_number_is_refused_when_it_is_read():
     welfare = _welfare()
     welfare.left_cage(seconds_ago=0.0, now=0.0)
 
-    with pytest.raises(Exceeded, match="not a number"):
+    with pytest.raises(Exceeded, match="not a real number"):
         welfare.out_of_cage_seconds(now=float("nan"))
 
 
 def test_an_infinite_mark_is_refused_like_any_other_non_number():
-    """`inf` was already refused by the ceiling comparison, because it is ordered.
-    Pinned so that the finiteness guard cannot be narrowed to NaN alone and leave
-    `inf` depending on a comparison two branches away."""
+    """`inf` at the one door that always refused it -- `seconds_ago >= ceiling.value`
+    is `True` for `inf` against a finite ceiling. That single case was mistaken for
+    "`inf` is safe everywhere" through two review rounds; every other door is covered
+    by `test_every_numeric_entry_point_refuses_an_infinity`."""
     welfare = _welfare()
 
     with pytest.raises(Exceeded):
@@ -666,6 +668,42 @@ def test_a_cage_side_session_carrying_a_duration_ceiling_is_refused():
         )
 
 
+def test_a_reward_volume_of_exactly_zero_is_accepted_and_the_day_still_reports_it():
+    """**Pinned as current behaviour, not endorsed — a question for the PI.**
+
+    Zero is a quantity, so neither `_finite` nor `_magnitude` refuses it: they
+    refuse values that are not quantities. But a console setting a reward volume to
+    zero mid-session makes every subsequent correct trial unpaid, which is
+    `welfare.Absent`'s failure reached by another route.
+
+    What saves it from being silent is the day's accounting, asserted here: the
+    animal earns nothing, and `shortfall()` reports the whole floor as still owed,
+    so a person is told to supplement it. The console also shows `fluid session:
+    0.00 mL` throughout.
+
+    Whether a zero volume is ever legitimate is animal-facing, so it is asked
+    rather than assumed (CLAUDE.md, "ask, do not file"). If the answer is no, the
+    refusal belongs in `Bounds.validate` beside the negative one, and this test
+    inverts. S8 §5.2c carries the question.
+    """
+    bounds = _bounds()
+    bounds.ceilings["reward_correct"] = Ceiling(0.0, 0.40, "mL")
+    welfare = Welfare(
+        bounds=bounds,
+        pump=Simulated(),
+        already_today=0.0,
+        deployment=Deployment.OUT_OF_CAGE,
+    )
+
+    for _ in range(20):
+        welfare.deliver("reward_correct")
+
+    assert welfare.pump.delivered == [0.0] * 20, "twenty trials, no fluid"
+    assert welfare.shortfall() == pytest.approx(250.0), (
+        "the day's accounting must still report the whole floor as owed"
+    )
+
+
 def test_a_cage_side_session_pays_and_counts_the_day_like_any_other():
     """One mechanism across rig and kiosk (S13 §4). What a kiosk session lacks is
     the duration bound, not the fluid accounting -- the daily figure is shared."""
@@ -732,3 +770,299 @@ def test_a_pump_fault_reaches_the_session_rather_than_being_absorbed():
 
     with pytest.raises(RuntimeError, match="solenoid"):
         rig.reward("reward_correct")
+
+
+# ---------------------------------------------------------------------------
+# Every number that enters the welfare path, and the proof that this is all of
+# them
+# ---------------------------------------------------------------------------
+#
+# **Three Criticals in three review rounds were one class of defect, found one
+# surface at a time**: a guard on a *limit* while the *measurement* compared
+# against it went unchecked. `nan` defeats every ordered comparison by being
+# `False` against all of them, `inf` by being unreachable, and a negative
+# magnitude by passing a `>` that expects a quantity. Fixing each surface where it
+# was found is why there were three rounds.
+#
+# So the surface is enumerated rather than sampled, and the enumeration is
+# **checked by code rather than asserted**. `ENTRY_POINTS` names every way a
+# number reaches `welfare` or `bounds` from outside the process;
+# `test_the_enumeration_of_numeric_entry_points_is_complete` recomputes that set
+# from the live modules and fails if anything is in neither list. Adding a
+# float-taking method to either welfare-critical file therefore fails this suite
+# until it is guarded and listed, or listed as exempt with a reason -- the same
+# shape as `tools/mutation_gate.py`, which refuses to run when a module is in
+# neither of its lists.
+#
+# **What would have to be true for one to be missing**, stated so the claim is
+# falsifiable rather than confident: a number would have to reach a comparison in
+# `bounds` or `welfare` without passing through any float-annotated parameter or
+# field of those two modules. There are exactly two such routes. One is an
+# unannotated parameter -- the introspection below reads annotations, so an
+# unannotated float is invisible to it, which is why `test_every_numeric_parameter_
+# is_annotated` exists. The other is arithmetic: two checked values can produce an
+# unchecked third, which is why `out_of_cage_seconds` checks the *computed*
+# duration and `reconcile_report` checks both inputs rather than trusting that
+# guarded inputs give a guarded result.
+
+import dataclasses
+import inspect
+
+from wl_expcontroller import bounds as bounds_module
+
+#: A magnitude is finite and non-negative; an instant is merely finite. Every entry
+#: point below is one or the other, and that distinction is the rule the earlier
+#: rounds were missing: -0.5 mL passed every `>` in the file.
+MAGNITUDE = "magnitude"
+INSTANT = "instant"
+
+#: Where a magnitude's negative refusal is worded for its own parameter rather than
+#: by `_magnitude`. `seconds_ago` is the one: "left its cage in the future" tells an
+#: operator what is wrong, where "cannot be negative" would only say that it is.
+NEGATIVE_MESSAGE = {"Welfare.left_cage.seconds_ago": "in the future"}
+
+#: How to drive each numeric entry point with a bad value, and which rule it is
+#: under. Each callable arranges a subject so the value is the only thing wrong.
+ENTRY_POINTS = {
+    # --- bounds: the limits themselves --------------------------------------
+    "Ceiling.value": (MAGNITUDE, lambda v: Ceiling(value=v, maximum=10.0, unit="s")),
+    "Ceiling.maximum": (MAGNITUDE, lambda v: Ceiling(value=1.0, maximum=v, unit="s")),
+    "Floor.value": (MAGNITUDE, lambda v: Floor(value=v, unit="mL")),
+    # --- bounds: what a console offers, and what a day measured -------------
+    "Bounds.validate.value": (
+        MAGNITUDE,
+        lambda v: _bounds().validate("reward_correct", v),
+    ),
+    "Bounds.set.value": (
+        MAGNITUDE,
+        lambda v: _bounds().set("reward_correct", v, by="jake"),
+    ),
+    "Bounds.shortfall.delivered_today": (
+        MAGNITUDE,
+        lambda v: _bounds().shortfall("daily_fluid", v),
+    ),
+    "reconcile_report.commanded": (
+        MAGNITUDE,
+        lambda v: bounds_module.reconcile_report(v, 1.0),
+    ),
+    "reconcile_report.delivered": (
+        MAGNITUDE,
+        lambda v: bounds_module.reconcile_report(1.0, v),
+    ),
+    "reconcile.commanded": (MAGNITUDE, lambda v: bounds_module.reconcile(v, 1.0)),
+    "reconcile.delivered": (MAGNITUDE, lambda v: bounds_module.reconcile(1.0, v)),
+    # --- welfare: the day's fluid -------------------------------------------
+    "Welfare.already_today": (MAGNITUDE, lambda v: _welfare(already=v)),
+    "Welfare.commanded": (
+        MAGNITUDE,
+        lambda v: Welfare(
+            bounds=_bounds(),
+            pump=Simulated(),
+            already_today=0.0,
+            deployment=Deployment.OUT_OF_CAGE,
+            commanded=v,
+        ),
+    ),
+    "Welfare.delivered": (
+        MAGNITUDE,
+        lambda v: Welfare(
+            bounds=_bounds(),
+            pump=Simulated(),
+            already_today=0.0,
+            deployment=Deployment.OUT_OF_CAGE,
+            delivered=v,
+        ),
+    ),
+    "Welfare.confirm_already_today.total": (
+        MAGNITUDE,
+        lambda v: _welfare().confirm_already_today(v, by="jake"),
+    ),
+    "Welfare.reconcile.delivered": (MAGNITUDE, lambda v: _welfare().reconcile(v)),
+    # --- welfare: the clocks -------------------------------------------------
+    "Welfare.left_cage.seconds_ago": (
+        MAGNITUDE,
+        lambda v: _welfare().left_cage(seconds_ago=v, now=0.0),
+    ),
+    "Welfare.left_cage.now": (
+        INSTANT,
+        lambda v: _welfare().left_cage(seconds_ago=0.0, now=v),
+    ),
+    "Welfare.returned_to_cage.at": (
+        INSTANT,
+        lambda v: _welfare().returned_to_cage(v),
+    ),
+    "Welfare.head_fixed.at": (INSTANT, lambda v: _welfare().head_fixed(v)),
+    "Welfare.head_released.at": (INSTANT, lambda v: _welfare().head_released(v)),
+    "Welfare.chair_seconds.now": (INSTANT, lambda v: _welfare().chair_seconds(v)),
+    "Welfare.out_of_cage_seconds.now": (
+        INSTANT,
+        lambda v: _marked().out_of_cage_seconds(v),
+    ),
+    "Welfare.preflight.now": (INSTANT, lambda v: _marked().preflight(v)),
+    "Welfare.must_stop.now": (INSTANT, lambda v: _marked().must_stop(v)),
+}
+
+#: Numeric surface that is deliberately *not* an entry point, each with its reason.
+#: An entry here is a claim someone made, which is the point: the alternative is a
+#: parameter quietly absent from both lists.
+NOT_ENTRY_POINTS = {
+    "_finite.value": "the guard itself",
+    "_magnitude.value": "the guard itself",
+    "Welfare.deliveries": "a counter this module increments; never supplied",
+    "Reconciliation.total": "an output, computed from checked inputs",
+    "Reconciliation.commanded": "an output; see above",
+    "Reconciliation.delivered": "an output; see above",
+    "Reconciliation.unexplained": "an output; see above",
+    "Welfare.left_cage_at": (
+        "set only by left_cage, which checks it. A Welfare constructed around this "
+        "field bypasses that, which out_of_cage_seconds still catches for non-finite "
+        "and backwards values -- see the field's own comment"
+    ),
+    "Welfare.returned_at": "set only by returned_to_cage, which checks it",
+    "Welfare.fixed_at": "set only by head_fixed, which checks it",
+    "Welfare.released_at": "set only by head_released, which checks it",
+    "Pump.deliver.ml": "a volume leaving this module, already checked by its ceiling",
+    "Simulated.deliver.ml": "as Pump.deliver",
+    "Absent.deliver.ml": "as Pump.deliver; refuses unconditionally anyway",
+    "Rig.mark.code": "an event code, not a welfare quantity; dio owns its range",
+}
+
+
+def _marked() -> Welfare:
+    """A rig `Welfare` with its interval open, so a clock call is the only fault."""
+    welfare = _welfare()
+    welfare.left_cage(seconds_ago=0.0, now=0.0)
+    return welfare
+
+
+def _is_numeric(annotation) -> bool:
+    text = annotation if isinstance(annotation, str) else str(annotation)
+    return "float" in text or text.strip() in ("int", "<class 'int'>")
+
+
+def _numeric_params(label: str, fn) -> set:
+    hints = getattr(fn, "__annotations__", {})
+    return {
+        f"{label}.{p}"
+        for p in inspect.signature(fn).parameters
+        if p not in ("self", "cls") and _is_numeric(hints.get(p))
+    }
+
+
+def _numeric_surface() -> set:
+    """Every float-annotated parameter and field of the welfare-critical modules.
+
+    Read from the live modules rather than from a list, so that `ENTRY_POINTS` is
+    checked and not merely believed.
+    """
+    found = set()
+    for module in (bounds_module, welfare_module):
+        for name, obj in vars(module).items():
+            if getattr(obj, "__module__", None) != module.__name__:
+                continue
+            if inspect.isfunction(obj):
+                found |= _numeric_params(name, obj)
+            elif inspect.isclass(obj):
+                if dataclasses.is_dataclass(obj):
+                    found |= {
+                        f"{name}.{f.name}"
+                        for f in dataclasses.fields(obj)
+                        if _is_numeric(f.type)
+                    }
+                for attr, value in vars(obj).items():
+                    if inspect.isfunction(value) and not attr.startswith("__"):
+                        found |= _numeric_params(f"{name}.{attr}", value)
+    return found
+
+
+def test_the_enumeration_of_numeric_entry_points_is_complete():
+    """**The claim that `ENTRY_POINTS` is all of them, checked rather than asserted.**
+
+    Three review rounds found one class of defect on three surfaces, because each
+    was fixed where it was found. This recomputes the numeric surface of both
+    welfare-critical modules and fails if anything on it is in neither list -- so a
+    new float-taking method cannot be added without either guarding it or writing
+    down why it needs none.
+    """
+    declared = set(ENTRY_POINTS) | set(NOT_ENTRY_POINTS)
+    actual = _numeric_surface()
+
+    missing = actual - declared
+    assert not missing, (
+        f"numeric entry points in neither ENTRY_POINTS nor NOT_ENTRY_POINTS: "
+        f"{sorted(missing)}. Guard it and list it, or list it as exempt with the "
+        f"reason -- an unlisted one is how the last three Criticals each reached a "
+        f"comparison"
+    )
+
+    stale = declared - actual
+    assert not stale, f"listed but no longer present: {sorted(stale)}"
+
+
+def test_every_numeric_parameter_is_annotated():
+    """The one blind spot of the introspection above, closed.
+
+    `_numeric_surface` reads annotations, so an *unannotated* float parameter would
+    be invisible to it -- the enumeration would look complete while missing a door.
+    Every parameter of every public callable in both files must therefore carry an
+    annotation, whatever its type.
+    """
+    unannotated = []
+    for module in (bounds_module, welfare_module):
+        for name, obj in vars(module).items():
+            if getattr(obj, "__module__", None) != module.__name__:
+                continue
+            # Dunders are excluded for the same reason `_numeric_surface` excludes
+            # them: `dataclass`, `Enum` and `Protocol` generate `__eq__`,
+            # `__setattr__`, `__replace__` and friends without annotations, and
+            # none of them can carry a float an author wrote.
+            callables = [(name, obj)] if inspect.isfunction(obj) else [
+                (f"{name}.{a}", v)
+                for a, v in vars(obj).items()
+                if inspect.isfunction(v) and not a.startswith("__")
+            ]
+            for label, fn in callables:
+                hints = getattr(fn, "__annotations__", {})
+                for p in inspect.signature(fn).parameters:
+                    if p not in ("self", "cls") and p not in hints:
+                        unannotated.append(f"{label}.{p}")
+
+    assert not unannotated, (
+        f"unannotated parameters in a welfare-critical file: {sorted(unannotated)}. "
+        f"The entry-point enumeration reads annotations, so an unannotated float is "
+        f"a door it cannot see"
+    )
+
+
+@pytest.mark.parametrize("entry", sorted(ENTRY_POINTS))
+def test_every_numeric_entry_point_refuses_a_value_that_is_not_a_number(entry):
+    """`nan` at every door, one case per door."""
+    _, drive = ENTRY_POINTS[entry]
+
+    with pytest.raises(Exceeded, match="not a real number"):
+        drive(float("nan"))
+
+
+@pytest.mark.parametrize("entry", sorted(ENTRY_POINTS))
+def test_every_numeric_entry_point_refuses_an_infinity(entry):
+    """`inf` too, for its own reason: it is ordered but unreachable, so an `inf`
+    ceiling is never exceeded by any real duration. A docstring claimed `inf` was
+    already refused everywhere; it was refused at exactly one door."""
+    _, drive = ENTRY_POINTS[entry]
+
+    with pytest.raises(Exceeded):
+        drive(float("inf"))
+
+
+@pytest.mark.parametrize(
+    "entry",
+    sorted(name for name, (rule, _) in ENTRY_POINTS.items() if rule == MAGNITUDE),
+)
+def test_every_magnitude_refuses_a_negative_value(entry):
+    """A volume or a duration is a quantity of something, and `-0.5 mL` was accepted
+    through the real console path and commanded to the pump twenty times."""
+    _, drive = ENTRY_POINTS[entry]
+    expected = NEGATIVE_MESSAGE.get(entry, "cannot be negative")
+
+    with pytest.raises(Exceeded, match=expected):
+        drive(-1.0)

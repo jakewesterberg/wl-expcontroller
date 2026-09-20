@@ -131,8 +131,10 @@ all three accounts.
 through a bounded config's ceiling, and through `wlx run --out-of-cage-ago nan`. `bounds`
 refuses a non-finite value at `Ceiling`, at `Floor` and at `validate`, so a limit that is not
 a number cannot be constructed at all; `welfare` refuses one at the mark and on the computed
-duration. `inf` was always refused, because `inf` is ordered — which is exactly why NaN was
-the one that got through, and why the check is finiteness rather than a bigger comparison.
+duration. **`inf` breaks them the other way and was not already refused**: it is ordered
+but unreachable, so `seconds > inf` is `False` for every real duration and an `inf` ceiling is
+never exceeded. An earlier version of this paragraph said `inf` was safe; that was measured
+false, which is why the check is finiteness rather than a larger comparison.
 
 Added 2026-09-06, because ceilings alone were not enough: `bounds.check_delivery` was called
 by nothing outside its own tests for a week, so a task could command reward, a session could

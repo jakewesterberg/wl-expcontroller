@@ -15,7 +15,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 from wl_expcontroller import link as _link
-from wl_expcontroller.bounds import Bounds
+from wl_expcontroller.bounds import Bounds, Exceeded
 from wl_expcontroller.check import check
 from wl_expcontroller.review import render as render_review
 from wl_expcontroller.codes import PROVISIONAL, Allocation
@@ -470,7 +470,14 @@ def main(argv: list[str] | None = None) -> int:
             # omission and quietly reporting chair time as time out of the cage.
             # Head-fixation lands at the session's own zero, which is what a
             # simulated session's restraint record is.
-            session.left_cage(seconds_ago=args.out_of_cage_ago)
+            # **A refused value is a message, not a traceback.** Everything else
+            # this subcommand refuses -- a missing `BOUNDS`, an unloadable task, a
+            # `--set` with no name -- exits with a sentence a person can act on, and
+            # a welfare refusal is the last one that should read as a crash.
+            try:
+                session.left_cage(seconds_ago=args.out_of_cage_ago)
+            except Exceeded as refused:
+                raise SystemExit(f"refused: {refused}") from refused
             session.head_fixed(at=0.0)
             census = session.run()
             total = sum(census.outcomes.values()) or 1

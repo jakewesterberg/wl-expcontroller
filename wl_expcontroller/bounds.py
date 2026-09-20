@@ -46,31 +46,59 @@ class Exceeded(ValueError):
 
 
 def _finite(what: str, value: float) -> None:
-    """Refuse a value that is not a number, before anything compares it.
+    """An **instant** entering the welfare path: refused unless it is a real number.
 
-    **NaN is not past a ceiling, not below a floor, and not negative** -- every
-    ordered comparison against it is `False`, so a single NaN turns each guard in
-    this file and in `welfare` into a pass. Found by review, reproduced end to end:
-    a bounded config with a NaN `out_of_cage` ceiling, and `wlx run
-    --out-of-cage-ago nan` (argparse's `float` accepts it), each ran a full
-    reward-delivering session with its duration limit off and a summary that looked
-    entirely normal. `inf` was already refused correctly -- it *is* ordered -- and
-    only NaN slipped through, which is what makes it the dangerous one.
+    **`nan` and `inf` both defeat ordered comparisons, in opposite ways.** `nan` is
+    `False` against every one of them, so nothing refuses it. `inf` is ordered but
+    unreachable: `seconds > inf` is `False` for every real duration, so an `inf`
+    *ceiling* is never exceeded either. Both were measured, each running a full
+    reward-delivering session with a clean summary and no limit at all.
 
-    `math.isfinite` rather than `value != value`, because
-    `calibration._yaml_float` already spells this check that way and a second
-    spelling of "is this a number" is a second thing to keep in step.
+    An earlier version of this docstring said `inf` "was already refused correctly,
+    and only NaN slipped through". **That was false and is recorded here rather than
+    quietly deleted**: only the *mark* route refused `inf`, because `seconds_ago >=
+    ceiling.value` is `True` for `inf` against a finite ceiling. The *ceiling* route
+    refused neither. A wrong sentence in a welfare-critical file is worse than a long
+    one, and this one had already been repeated twice.
 
-    One helper called from both the type and the console path, for the reason `set`
-    goes through `validate`: the rule has one home. The two callers ask different
-    questions -- "can this type hold this" and "would this value be refused" -- and
-    a NaN is the answer to both.
+    `math.isfinite` covers both and is what `calibration._yaml_float` already uses;
+    a second spelling of "is this a number" is a second thing to keep in step.
+
+    See `_magnitude` for the stronger rule that volumes, durations and limits get.
     """
     if not math.isfinite(value):
         raise Exceeded(
-            f"{what} is {value!r}, which is not a number: it compares False against "
-            f"every limit, so nothing could refuse it and the bound it belongs to "
+            f"{what} is {value!r}, which is not a real number: it defeats the "
+            f"comparisons every limit is enforced with, so the bound it belongs to "
             f"would be switched off rather than exceeded"
+        )
+
+
+def _magnitude(what: str, value: float) -> None:
+    """A **magnitude** entering the welfare path: finite, and not negative.
+
+    Volumes, durations and the limits on them are quantities of something. A
+    negative one is not a smaller quantity, it is a different kind of thing, and
+    every guard in this file compares magnitudes with `>` -- so a negative value
+    passes them all in the same way `nan` does.
+
+    Measured, through the real console path: `--set reward_correct=-0.5` was
+    accepted and applied, commanding twenty rewards of **-0.5 mL** to the pump and
+    then telling the operator to supplement 30 mL against a 20 mL floor.
+    `--delivered-today=-1000` asked for 1019.75 mL.
+
+    **The assumption, stated so a future entry can push back on it: every bounded
+    quantity in this system is a magnitude.** Reward volume, daily fluid, time out
+    of the cage and the token figures all are. S8 §4 also lists stimulation bounds,
+    which do not exist yet; if one of those ever needs a sign -- a cathodic-first
+    amplitude, say -- it wants its own type rather than a hole in this one.
+    """
+    _finite(what, value)
+    if value < 0.0:
+        raise Exceeded(
+            f"{what} is {value!r}, and a quantity of fluid or of time cannot be "
+            f"negative; a negative dose is not a smaller dose, and it passes every "
+            f"limit here because they all compare with `>`"
         )
 
 
@@ -113,8 +141,8 @@ class Ceiling:
         the route a review reproduced: a NaN ceiling reached `welfare.must_stop`
         and answered `None` for a whole session.
         """
-        _finite("a ceiling's value", self.value)
-        _finite("a ceiling's maximum", self.maximum)
+        _magnitude("a ceiling's value", self.value)
+        _magnitude("a ceiling's maximum", self.maximum)
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +165,7 @@ class Floor:
         console and `wlx run` print as a supplement figure. A number nobody can act
         on, shown where a person acts on it.
         """
-        _finite("a floor's value", self.value)
+        _magnitude("a floor's value", self.value)
 
 
 @dataclass
@@ -175,7 +203,7 @@ class Bounds:
         No actor: a refusal does not depend on who asked, and every caller records
         the actor beside the refusal it raises.
         """
-        _finite(f"{name!r}", value)
+        _magnitude(f"{name!r}", value)
         ceiling = self.ceilings.get(name)
         if ceiling is None:
             raise Exceeded(
@@ -221,6 +249,12 @@ class Bounds:
             )
         if delivered_today is None:
             return None
+        # **The measurement, not just the floor.** `max(0.0, floor - nan)` is `0.0`,
+        # because `nan > 0.0` is False -- so an unmeasured day arrived here as
+        # "nothing is owed" on a fluid-restricted animal, in the one figure a person
+        # acts on. `None` is how this function says "unknown"; a number that is not
+        # a number must never be able to impersonate zero.
+        _magnitude("the day's delivered total", delivered_today)
         return max(0.0, floor.value - delivered_today)
 
 
@@ -257,6 +291,12 @@ def reconcile_report(commanded: float, delivered: float) -> Reconciliation:
     hide a failing rig behind a plausible total. The larger figure is used, and the
     fault is reported rather than the number quietly corrected.
     """
+    # Both figures are volumes, and both arrive from outside: `commanded` from this
+    # session's own accounting, `delivered` from the sync box's record (S8 §5.1).
+    # `max(commanded, delivered)` with a `nan` on either side returns whichever the
+    # comparison happens to pick, and every fluid figure downstream is then `nan`.
+    _magnitude("the commanded fluid total", commanded)
+    _magnitude("the delivered-line fluid total", delivered)
     fault = None
     if delivered < commanded:
         fault = (

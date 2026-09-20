@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **490 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **557 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
@@ -83,20 +83,22 @@ carried is closed, verified 2026-09-06 by reading the runs.
 
 **`bounds.py` and `welfare.py` want human review before they merge** (CLAUDE.md, S8
 §7), and that review is what `p4b-session-management` is waiting on. They are the only
-two welfare-critical files and they are deliberately small — **280 and 623 lines, of
-which 88 and 233 are executable**; the rest is argument. `git diff main..HEAD --
+two welfare-critical files and they are deliberately small — **318 and 515 lines, of
+which 116 and 247 are executable**; the rest is argument. `git diff main..HEAD --
 wl_expcontroller/bounds.py wl_expcontroller/welfare.py` is the whole of it.
 
-> **`welfare.py` roughly doubled on 2026-09-19** (311 → 623 lines, 124 → 233
-> executable), across the welfare-clock rulings and two review rounds. Almost all of
-> the growth is **refusals and their messages**: a guard is `if X: raise Exceeded(...)`
-> where the `raise` wraps over four or five lines because the message says what to do
-> about it. The *logic* a reviewer has to follow is still a short list of conditions —
-> counted at the start of this session as 124 executable lines and judged reviewable
-> then, and nothing has been added since but more of the same shape. If it reads as
-> too much, the thing to challenge is whether each refusal is earned, not whether the
-> messages are too long: every one of them was written because a review reproduced the
-> failure it names.
+> **`welfare.py` grew across the welfare-clock rulings and three review rounds**, from
+> 311 lines to a peak of 630, and was then cut back to **515 lines / 247 executable**.
+> The cut moved the dated PI-ruling narratives into S8 §5.2 and §5.2c — which already
+> carry the rulings — leaving one sentence per guard and a pointer. **Every refusal
+> message is verbatim**; those are what an operator reads, and they are most of why the
+> executable count is what it is (a `raise` wraps over four or five lines).
+>
+> It did not reach the ~350 lines the review asked for, and the gap is reported rather
+> than closed by gutting: at 175 docstring lines there is roughly one sentence per
+> guard left, and cutting further removes the "why" from a welfare-critical file. The
+> useful question for a reviewer is whether each *refusal* is earned — S8 §5.2c lists
+> the failure each one was written against — not whether the prose is too long.
 
 What a reviewer has to check, stated so the ask is concrete:
 
@@ -141,13 +143,25 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   unexplained gap. Do not "fix" this into a resume without asking him — it was asked once
   precisely because it looked like an inference, and the answer is on the record in S8
   §5.2 item 4.
+- **The rule, in two words: an instant is finite; a magnitude is finite and not
+  negative.** Three Criticals in three review rounds were one class — a guard on a
+  *limit* with the *measurement* compared against it unchecked — found one surface at a
+  time. `--delivered-today nan` reported an animal on 10.90 mL against a 20 mL floor as
+  `supplement: 0.00 mL`; `--set reward_correct=-0.5` commanded twenty negative doses to
+  the pump. **`tests/test_welfare.py` now enumerates every numeric door and fails if one
+  is in neither its guarded list nor an exempt list with a reason** — add a float-taking
+  method to either welfare-critical file and the suite refuses until you do one or the
+  other. Do not fix the next one of these where you find it; check the enumeration.
 - **NaN is `False` against every ordered comparison, so it switches a limit off rather
   than exceeding it.** This got further than anything else on the branch: `wlx run
   --out-of-cage-ago nan` ran 400 rewarded trials with a clean summary and no duration
   limit, and a NaN ceiling in a bounded config did the same. `bounds._finite` guards
-  `Ceiling`, `Floor`, `validate`, the mark and the computed duration. **`inf` was always
-  refused** — it is ordered — which is why the check is finiteness and not a bigger
-  comparison. **If you write a guard as `<` or `>`, ask what NaN does to it.**
+  `Ceiling`, `Floor`, `validate`, the mark, the measurements and the computed
+  duration. **`inf` is just as bad and was *not* already refused** — an earlier note
+  here said it was, and that was measured false: `seconds > inf` is `False` for every
+  real duration, so an `inf` ceiling is never exceeded either. Only the mark route
+  refused it. **If you write a guard as `<` or `>`, ask what `nan`, `inf` and a
+  negative value each do to it.**
 - **`left_cage` takes `seconds_ago`, not a timestamp**, against the frame-derived session
   clock that reads zero at the start. A timestamp invited `0.0`, which makes out-of-cage
   time equal chair time — the under-count the clock exists to remove. `wlx

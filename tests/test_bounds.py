@@ -45,10 +45,10 @@ def test_a_ceiling_that_is_not_a_number_cannot_be_built():
 
     Refused at the type, because a bounded config builds these directly -- it is
     Python (ADR-0006) -- so there is no call site to put the check at."""
-    with pytest.raises(Exceeded, match="not a number"):
+    with pytest.raises(Exceeded, match="not a real number"):
         Ceiling(value=float("nan"), maximum=10.0, unit="s")
 
-    with pytest.raises(Exceeded, match="not a number"):
+    with pytest.raises(Exceeded, match="not a real number"):
         Ceiling(value=1.0, maximum=float("nan"), unit="s")
 
 
@@ -56,7 +56,7 @@ def test_a_floor_that_is_not_a_number_cannot_be_built():
     """Less dangerous than a NaN ceiling -- no delivery is refused on volume, so
     nothing stops -- but `shortfall()` would answer `nan` and both the console and
     `wlx run` print it as the figure a person supplements against."""
-    with pytest.raises(Exceeded, match="not a number"):
+    with pytest.raises(Exceeded, match="not a real number"):
         Floor(value=float("nan"), unit="mL")
 
 
@@ -68,7 +68,7 @@ def test_a_console_offering_a_value_that_is_not_a_number_is_refused_when_it_asks
     value this method refuses."""
     bounds = _bounds()
 
-    with pytest.raises(Exceeded, match="not a number"):
+    with pytest.raises(Exceeded, match="not a real number"):
         bounds.validate("reward_correct", float("nan"))
 
     assert bounds.value("reward_correct") == 0.15, "the previous value must stand"

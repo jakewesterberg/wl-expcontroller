@@ -174,18 +174,6 @@ supplement afterwards — is then computed against a figure that describes half 
    declaration is required on `SessionSpec`, with no default, and a cage-side config that also
    states an `out_of_cage` ceiling is refused — the two must not disagree.
 
-   **And a value that is not a number must not disable it either.** The same failure reached
-   a third way, found by review after the two below were closed: every guard on this path is
-   an *ordered* comparison, and **NaN is `False` against all of them** — not in the future,
-   not past the ceiling, not backwards. One NaN made the mark NaN, the duration NaN, and
-   `must_stop` answer `None` for a whole session; `wlx run --out-of-cage-ago nan` (argparse's
-   `float` accepts it) ran four hundred rewarded trials with a clean summary and no limit.
-   A NaN `out_of_cage` **ceiling** in a bounded config did the same with an honest mark.
-   `inf` was always refused, because `inf` is ordered — which is what made NaN the one that
-   got through. `bounds._finite` now refuses a non-finite value at `Ceiling`, at `Floor`, at
-   `Bounds.validate` and at both ends of the out-of-cage mark, spelled with `math.isfinite`
-   because `calibration._yaml_float` already spells it that way.
-
    **And the *presence* of both marks must not disable it either.** The mirror case, found by
    review: two marks in the wrong order are a session that reports itself fully marked and is
    bounded by nothing. A return before the departure gave a **negative** duration, which is
@@ -232,6 +220,53 @@ supplement afterwards — is then computed against a figure that describes half 
    codes is S2's and `wl-preproc`'s to agree (ADR-0007), so it is asked rather than taken.
    Until it is answered a restart loses this clock's start and a person supplies it again;
    nothing reconstructs chair time from the sync box today either.
+
+### 5.2c Every number entering the welfare path
+
+**Three review rounds found one class of defect on three surfaces**, because each was fixed
+where it was found. The class: a guard on a *limit*, with the *measurement* compared against
+it left unchecked. Written out here rather than in `welfare.py`, so that the code carries one
+sentence per guard and this carries the argument.
+
+**Two kinds of bad number, and they break guards in opposite ways.**
+
+- **`nan` is `False` against every ordered comparison**, so nothing refuses it: not `< 0`, not
+  `> ceiling`, not `max(0.0, floor - nan)`. It reached the limit (`--out-of-cage-ago nan`:
+  400 rewarded trials, clean summary, no duration limit), the *ceiling* (a NaN `out_of_cage`
+  in a bounded config, honest mark), and the *measurement* (`--delivered-today nan`: an animal
+  on 10.90 mL against a 20 mL floor reported as `supplement: 0.00 mL` — "nobody measured"
+  turned into "nothing is owed", in the one figure the 2026-09-06 floor ruling exists to
+  produce).
+- **`inf` is ordered but unreachable**: `seconds > inf` is `False` for every real duration, so
+  an `inf` ceiling is never exceeded. An earlier version of this account said `inf` "was
+  already refused correctly"; **that was measured false** — only the *mark* route refused it.
+  Recorded rather than deleted, because it was repeated twice before anyone checked it.
+- **A negative magnitude passes every `>`.** Through the real console path,
+  `--set reward_correct=-0.5` commanded twenty rewards of −0.5 mL to the pump and then asked
+  for 30 mL of supplement against a 20 mL floor; `--delivered-today=-1000` asked for 1019.75.
+
+**The rule, in two words.** *An instant is finite. A magnitude is finite and not negative.*
+Instants are the clock readings and the marks; magnitudes are volumes, durations, and every
+limit on them. `bounds._finite` and `bounds._magnitude` are the two guards, spelled with
+`math.isfinite` because `calibration._yaml_float` already spells it that way.
+
+**The enumeration is checked, not asserted.** `tests/test_welfare.py` lists every numeric
+entry point on the two welfare-critical modules with a driver for each, recomputes that set
+from the live modules, and **fails if anything is in neither the guarded list nor an exempt
+list with a reason** — the shape `tools/mutation_gate.py` uses for modules. A new float-taking
+method on either file fails the suite until it is guarded and listed. Its one blind spot, an
+*unannotated* parameter, has its own test. What would still have to be true for a door to be
+missing: a number reaching a comparison without passing any annotated parameter or field of
+those two modules — which arithmetic can do, and is why `out_of_cage_seconds` checks the
+computed duration and `reconcile_report` checks both inputs rather than trusting their
+sources.
+
+**Open, for the PI:** a reward volume of **exactly zero** is accepted. It is a quantity, not a
+non-quantity, so neither guard refuses it — but a console setting it mid-session makes every
+subsequent correct trial unpaid, which is `welfare.Absent`'s failure reached another way. The
+day's accounting does catch it at close (the full floor is reported as owed) and the console
+shows `fluid session: 0.00 mL` throughout. Not decided here, because whether a zero volume is
+ever legitimate is an animal-facing question.
 
 ### 5.2b One fluid budget across rig and kiosk
 

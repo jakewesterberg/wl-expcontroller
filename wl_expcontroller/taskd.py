@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wl_expcontroller import link as _link
-from wl_expcontroller.bounds import Bounds, Exceeded
+from wl_expcontroller.bounds import Bounds, Exceeded, _finite
 from wl_expcontroller.check import check
 from wl_expcontroller.cli import _load_allocation, _load_trial
 from wl_expcontroller.codes import Allocation
@@ -297,6 +297,14 @@ class Session:
             raise Exceeded(f"{name!r} is declared not live-editable by this task")
         if declared.choices and value not in declared.choices:
             raise Exceeded(f"{name!r} may only be one of {declared.choices}")
+        # **The same hole as the welfare path, on the task's own declaration.** The
+        # range check below is two ordered comparisons, and `nan` is `False` against
+        # both -- so a declared range accepts a value no range contains. This is not
+        # a welfare-critical file and a `nan` fixation window is a broken trial
+        # rather than a hurt animal, but it is the identical defect and it enters
+        # from the identical place: a console over the wire, or `--set` on a
+        # command line. `bounds._finite` is the same guard the ceilings use.
+        _finite(f"{name!r}", value)
         low, high = declared.low, declared.high
         if (low is not None and value < low) or (high is not None and value > high):
             raise Exceeded(

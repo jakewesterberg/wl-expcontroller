@@ -180,7 +180,7 @@ def test_wlx_run_refuses_a_mark_that_is_not_a_number(tmp_path):
     entirely normally. Asserted here rather than only in `test_welfare.py` because
     the unit test would have passed while this command line still worked -- the
     parser is part of the path."""
-    with pytest.raises(Exceeded, match="not a number"):
+    with pytest.raises(SystemExit, match="not a real number"):
         main(
             [
                 "run",
