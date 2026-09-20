@@ -226,7 +226,7 @@ class Session:
 
     # --- out of cage, and restraint ---------------------------------------
 
-    def left_cage(self, at: float) -> None:
+    def left_cage(self, at: float, confirmed: bool = False) -> None:
         """The console action that starts the clock bounding this session.
 
         **`at` is a wall-clock instant, in POSIX seconds** (PI, 2026-09-20): a clock
@@ -243,17 +243,61 @@ class Session:
         session directory already carry them. The consequence he accepted is that a
         restart re-asks a person for the departure time.
         """
-        self.welfare.left_cage(at, wall_now=self.wall_now(), now=self.now())
+        self.welfare.left_cage(
+            at, wall_now=self.wall_now(), now=self.now(), confirmed=confirmed
+        )
 
-    def returned_to_cage(self, at: float) -> None:
-        """The animal is home. `at` is an instant on `now()`'s clock.
+    def departure_needs_confirmation(self, at: float) -> str | None:
+        """What a person must be shown before `left_cage(at)` is called, or `None`.
+
+        **Asked before the mark, never after** (PI, 2026-09-20): `welfare.left_cage`
+        refuses a second mark, so an amendment has nowhere to go once the first one
+        has landed. It moves nothing, which is what makes asking first safe.
+
+        Here for the reason `left_cage` is: `wall_now()` is this object's seam onto
+        the wall clock, and a caller reading `time.time()` for itself would be a
+        second place the two clock bases meet.
+        """
+        return self.welfare.departure_needs_confirmation(at, wall_now=self.wall_now())
+
+    def amend_mark(
+        self, what: str, original: float, amended: float, reason: str, by: str
+    ) -> None:
+        """The console action that goes with the confirmations above.
+
+        Records the amendment and refuses a blank reason or actor; the caller then
+        takes the amended value with `left_cage` or `returned_to_cage`, which apply
+        every refusal the original would have met. The durable row is the caller's to
+        write (`record.welfare_note`) -- see `welfare.amend_mark` for why it is not
+        written from inside the welfare-critical file.
+        """
+        self.welfare.amend_mark(
+            what, original=original, amended=amended, reason=reason, by=by
+        )
+
+    def returned_to_cage(self, at: float, confirmed: bool = False) -> None:
+        """The animal is home. **`at` is a wall-clock instant** (PI, 2026-09-20).
 
         **Not called by `run()`**, because it is not true when the loop ends: the
         session finishes, then the animal is released, unchaired and walked back,
-        and every one of those seconds is inside the limit. `welfare` refuses this
-        while the animal is still recorded as head-fixed, so it cannot be used to
-        freeze the clock mid-session -- release the head, or send a `Stop`."""
-        self.welfare.returned_to_cage(at)
+        and every one of those seconds is inside the limit -- **and since ruling 4
+        they are counted**, because the mark is read from the wall rather than from
+        the frame clock that stopped with the loop. `welfare` refuses this while the
+        animal is still recorded as head-fixed, so it cannot be used to freeze the
+        clock mid-session -- release the head, or send a `Stop`.
+
+        **There is deliberately no `return_needs_confirmation` passthrough beside
+        `departure_needs_confirmation`.** A far return is refused *by the mark*
+        (`welfare.returned_to_cage` with `confirmed=False`), so the rule is enforced
+        whether or not anything asks first; the departure has a passthrough because
+        `wlx run` actually prompts with it, and this one had none until P4d-2's
+        console prompts too. A mutation sweep found the unwired version surviving on
+        the day it was written, which is `bounds.check_delivery`'s failure exactly --
+        a path that reads as present because it exists. The sentence a console will
+        want is `welfare.return_needs_confirmation`, one call away."""
+        self.welfare.returned_to_cage(
+            at, wall_now=self.wall_now(), confirmed=confirmed
+        )
 
     def head_fixed(self, at: float) -> None:
         """The console action S8 §5.2 requires before a `RIG_FIXED` session starts.

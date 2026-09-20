@@ -17,6 +17,7 @@ it at session close, where a crash costs a conversion rather than a session.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -45,6 +46,89 @@ EXPCONTROLLER_DIRNAME = "expcontroller"
 #: while a genuine mistake appears early, when a person is typing -- so the last
 #: fifty of a thousand would be exactly the rows no human wrote.
 REFUSAL_LOG_LIMIT = 50
+
+#: Operator acts on a welfare input that is not a parameter and not a refusal (PI,
+#: 2026-09-20). One row per act, in the session directory.
+#:
+#: **Why its own file rather than one of the two beside it.** A row in
+#: `parameter_changes.jsonl` carries a `sequence` whose entire purpose is to join it
+#: to a `PARAM_CHANGE` escape on the recording clock -- and the out-of-cage marks are
+#: deliberately *not* event-coded (PI, 2026-09-20, closing S8 open item 8), so such a
+#: row would look alignable and be nothing of the kind. `refusals.jsonl` is for writes
+#: that did **not** happen, is capped at `REFUSAL_LOG_LIMIT` against a flooding
+#: console peer, and drops its newest rows; a confirmed or amended departure happened,
+#: is one per session, and must not be droppable.
+WELFARE_NOTES = "welfare_notes.jsonl"
+
+
+def welfare_note(
+    directory: Path,
+    *,
+    kind: str,
+    subject: str,
+    was: float,
+    now: float,
+    reason: str,
+    by: str,
+    how: str,
+    recorded_at: float,
+) -> None:
+    """One person's act on a welfare input, written where it can be found later.
+
+    **A module function rather than a `SessionRecord` method, because it is written
+    before the record exists.** The departure time is confirmed or amended in
+    `wlx run` *before* `Session.run` opens the record: the mark has to be settled
+    before `welfare.preflight`, which is what lets the session refuse rather than
+    start and stop. Writing it at the moment it happened also means it survives
+    everything that can refuse the session afterwards -- a blocking finding in the
+    task, a preflight refusal -- which is exactly when someone will want to know what
+    the operator was told and what they did about it.
+
+    **`was` and `now` are POSIX instants and each is written twice**, once as the
+    number and once as local clock time with its zone. The question this row answers
+    is asked by a person months later, and `1768394700.0` does not answer it; the
+    float is kept beside it so nothing has to re-parse the text.
+
+    Uncapped, unlike `refusal`: the party generating these is an operator typing at a
+    prompt, not a console peer looping on a rejected volume.
+
+    `reason` and `by` are written as given. **`welfare.amend_departure` is what
+    refuses a blank pair**, so the rule has one home and the console path that P4d-2
+    adds cannot reach the record around it.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / WELFARE_NOTES).open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "kind": kind,
+                    "subject": subject,
+                    "was": was,
+                    "was_local": _local(was),
+                    "now": now,
+                    "now_local": _local(now),
+                    "reason": reason,
+                    "by": by,
+                    "how": how,
+                    "recorded_at": recorded_at,
+                    "recorded_at_local": _local(recorded_at),
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+
+
+def _local(posix_seconds: float) -> str:
+    """A POSIX instant as this host's local clock time, with its zone named.
+
+    The zone **at that instant**, not at now, for the reason `wlx run`'s own
+    session-start line resolves it that way: a departure made before a daylight-saving
+    change and read after one would otherwise be labelled with the wrong offset, and
+    that is the one hour a year the label carries information.
+    """
+    when = time.localtime(posix_seconds)
+    return f"{time.strftime('%Y-%m-%d %H:%M:%S', when)} {time.strftime('%Z', when)} local"
 
 
 @dataclass

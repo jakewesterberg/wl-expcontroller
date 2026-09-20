@@ -189,10 +189,92 @@ supplement afterwards — is then computed against a figure that describes half 
      on which the guard was given up. The finiteness and magnitude contract of §5.2c is
      unchanged, and now covers three readings rather than two plus the interval they imply.
 
+   **And a fourth thing, asked for the same day once he had seen the trade: a person
+   confirms a departure more than thirty minutes from now.**
+
+   > *"if a number is input that is more than 30 min from the current time, a warning should
+   > appear that the experimenter must click through to confirm. There should also be an
+   > option to update the time if necessary, but a reason should be given and the
+   > experimenter name logged."*
+
+   **Thirty minutes is his number, not a derived one**, and it lives in
+   `welfare.CONFIRM_MARK_WITHIN` rather than in `cli.py` so nothing re-derives it from the
+   ceiling. It is 1,800 and so is `WARN_WITHIN_DEFAULT`; the two are separate constants that
+   happen to agree, because tuning a console warning must not quietly move a welfare guard.
+
+   **The band sits between "obviously wrong" and "obviously fine", and both edges still
+   refuse.** A departure in the future and one at or past the ceiling are refused outright and
+   are never offered for confirmation — a prompt that sometimes means "check this" and
+   sometimes stands between an operator and a run is a prompt clicked past. A consequence
+   worth knowing before reading the tests: `tasks/reference_bounds.py`'s `out_of_cage` ceiling
+   is a deliberately implausible ten minutes, **shorter than the threshold**, so that config
+   has an *empty* band and `wlx run` against it never prompts.
+
+   **What each case does, and the non-interactive one is the decision.**
+
+   - **Interactive** (`stdin` is a terminal): `wlx run` prints the warning and asks. Anything
+     that is not a confirmation stops the session, **end-of-input included** — a prompt whose
+     default is "proceed" is the silent path wearing a question mark.
+   - **Non-interactive: it refuses.** `wlx run` may have no terminal behind it — a wrapper, a
+     scheduler, the `labhost` process P4d-2 adds — and proceeding there would write a
+     confirmation nobody made, which is worse than no confirmation at all.
+     `--confirm-out-of-cage` is the honest way to say it out loud, and the recorded row says
+     the confirmation came from a flag rather than from a person, because **a wrapper with
+     that flag baked in is how this ruling would otherwise be defeated in silence.**
+   - **Amended**: `--amend-out-of-cage-to TIME` with `--amend-reason WHY` and `--as WHO`, or
+     the same three typed at the prompt. **Both are required with no default and no blank** —
+     `welfare.amend_mark` refuses either missing, for the reason `--as WHO` is required for a
+     console write. **An amendment is its own confirmation** (a named person giving a reason
+     has done strictly more than click through) but **not an override**: the amended value
+     goes through the mark and meets every refusal the original would have.
+
+   **The guard is on the marks, not only in `wlx run`.** `welfare.left_cage` and
+   `returned_to_cage` take a `confirmed` flag and refuse a far mark without it. That is
+   CLAUDE.md's "a safety component ships with its consumer, or its absence fails" rather than
+   belt and braces: both are console actions, and P4d-2's console calling `Session.left_cage`
+   directly would otherwise reach around the prompt entirely. A caller can lie to `confirmed`;
+   it cannot forget it.
+
+   **The amendment is recorded durably, in `welfare_notes.jsonl` in the session directory.**
+   Not `parameter_changes.jsonl`, whose rows carry a `sequence` joining them to a strobe on
+   the recording clock — and these marks are deliberately *not* event-coded (open item 8), so
+   such a row would look alignable and be nothing of the kind. Not `refusals.jsonl`, which is
+   for writes that did **not** happen and is capped against a flooding console peer. It is
+   written by `record.welfare_note` at the moment it happens, **before `Session.run` opens the
+   record**, because the mark has to be settled before `preflight` and because a row written
+   then survives every refusal that can follow. Confirmations are written too, with `how`
+   naming which path they came from. Each instant is written twice — the POSIX float and local
+   clock time with its zone — because the question this file answers is asked by a person.
+
    **Date and timezone are resolved, not implicit** (`cli._wall_clock_time`). A value with no
    offset is read in **this host's local timezone** — the clock on the wall the operator is
    reading — and one carrying an offset is honoured as given; an ambiguous local time, the
-   repeated hour when clocks go back, takes the first occurrence. A bare `HH:MM` is **today's
+   repeated hour when clocks go back, takes the first occurrence.
+
+   **The daylight-saving gap is closed, not fixed — PI, 2026-09-20.** *"the dst switches
+   happen in the night, when no experiments occur."* The unsafe half of the two DST hours is
+   the **spring-forward** one: a nonexistent local time is moved *forward*, so
+   `2026-03-29T02:30` resolves to `03:30+02:00` and the animal is reported as out up to an
+   hour **less** than it has been. That hour cannot be typed as a departure if no session runs
+   through it, so the arithmetic is left alone rather than special-cased for a value nothing
+   can produce. **The description of what would happen is kept, in `cli._wall_clock_time` and
+   here, because the dismissal rests on a fact about when experiments run and not on anything
+   about the arithmetic** — if night sessions ever start, an overnight protocol or an
+   unattended cage-side kiosk (S13), the hour comes back with them, and whoever reads this
+   then needs to find what it does rather than a note saying it was considered and closed.
+
+   **The daylight-saving gap is closed, not fixed — PI, 2026-09-20.** *"the dst switches
+   happen in the night, when no experiments occur."* The unsafe half of the two DST hours is
+   the **spring-forward** one: a nonexistent local time is moved *forward*, so
+   `2026-03-29T02:30` resolves to `03:30+02:00` and the animal is reported as out up to an
+   hour **less** than it has been. That hour cannot be typed as a departure if no session
+   runs through it, so the arithmetic is left alone rather than special-cased for a value
+   nothing can produce. **The description of what would happen is kept, in
+   `cli._wall_clock_time` and here, because the dismissal rests on a fact about when
+   experiments run and not on anything about the arithmetic** — if night sessions ever start,
+   an overnight protocol or an unattended cage-side kiosk (S13), the hour comes back with them
+   and whoever reads this then needs to find what it does rather than a note saying it was
+   considered and closed. A bare `HH:MM` is **today's
    date on this host and is never rolled back to yesterday**: rolling back would turn `23:59`
    mistyped in the morning into an animal recorded as out for most of a day, which is the
    exact class of error the refusals above exist for. An overnight departure is typed with
@@ -261,6 +343,31 @@ supplement afterwards — is then computed against a figure that describes half 
    to its cage briefly and brought out again resumes its session or starts a new one. It
    starts a new one, so `left_cage` refuses to re-arm a closed interval.
 
+   **The return is a clock time too — PI, 2026-09-20 (ruling 4), and the symmetry is the
+   point.** ~~The session clock stops when the frames do, so a return marked long after the
+   loop ended carries the loop's last reading unless the caller supplies a later one.~~
+   **Closed by this ruling.** That caveat was the gap, not a footnote about it: an operator who
+   ends a session, unchairs the animal, walks it back and *then* marks the return was recording
+   the animal as home at the instant the frames stopped, so the release, the unchairing and the
+   walk back — minutes of an animal out of its cage — fell outside the twelve hours, every
+   time. With both ends read from the wall, the frame clock stopping no longer matters.
+
+   **`welfare.returned_to_cage(at, wall_now, confirmed=False)` maps against `left_cage`'s
+   anchor, not against a fresh `now`/`wall_now` pair.** Those two are the same instant only
+   while the loop is running; afterwards the session clock is frozen and the wall clock is not,
+   and a mapping built on them would drop exactly the interval this ruling exists to count.
+   `Welfare.left_cage_wall_at` is that anchor, set by `left_cage` and by nothing else, and the
+   return refuses when it is absent rather than mapping against `None`.
+
+   **Every refusal the return already had is preserved**, now read against wall instants:
+   nothing to close, a second return, an animal still head-fixed, a return before the
+   departure. **Two are new and both are the departure's**: a return **in the future**, which
+   is a mark nothing could have taken and which would *stretch* the interval rather than
+   shorten it, and one more than `CONFIRM_MARK_WITHIN` ago that no person confirmed. The
+   confirmation applies identically because a return typed hours ago moves the same interval —
+   in the direction that makes a session look shorter than it was — and the amendment path is
+   the same `welfare.amend_mark`, with the same required reason and actor.
+
    **The consequence the PI weighed and accepted:** an animal returned mid-day produces **two
    session directories and two records**, not one record with a gap in it. He judged that the
    more honest account — a single record spanning a period the animal was not in the rig would
@@ -274,14 +381,19 @@ supplement afterwards — is then computed against a figure that describes half 
    or `None`, `Telemetry.duration_warning` carries it, and `cli.render` prints it beside the
    stop reason. It is `None` once the limit is past, where `must_stop` speaks instead.
 
-   **The threshold is `welfare.WARN_WITHIN_DEFAULT` = 1,800 s, configurable by
-   `SessionSpec.warn_within` / `wlx run --warn-within`, and it is a proposal awaiting the
-   PI.** It is **not derived from any measurement of this system** — no block duration has
+   ~~**The threshold is `welfare.WARN_WITHIN_DEFAULT` = 1,800 s … and it is a proposal
+   awaiting the PI.**~~ **Accepted by the PI on 2026-09-20 as a starting value**, so it is his
+   figure rather than an implementer's — which is the difference between a number an operator
+   sees and a number somebody guessed. It remains `welfare.WARN_WITHIN_DEFAULT` = 1,800 s,
+   configurable by `SessionSpec.warn_within` / `wlx run --warn-within`. It is **not derived
+   from any measurement of this system** — no block duration has
    been measured and nothing under `docs/measurements/` states one, so nothing here claims it
    clears a block. What it is: a twenty-fourth of the twelve-hour limit, **intended to be**
    long enough to finish what is running and walk an animal back and short enough not to sit
    on screen for most of a session — an intention, not a measured property, stated as one
-   because the sentence before it disclaims measuring anything. Zero switches the warning off. **A threshold wider than the ceiling is not
+   because the sentence before it disclaims measuring anything. **That is why it is a
+   *starting* value and not a settled one**, and every word of the disclaimer above is kept
+   for exactly that reason: accepting a number is not the same as measuring one. Zero switches the warning off. **A threshold wider than the ceiling is not
    refused**: such a session is genuinely inside the threshold throughout, and refusing it
    would make `tasks/reference_bounds.py`'s deliberately implausible ten-minute placeholder
    fail to construct a `Welfare` at all. This may carry a named default where twelve hours may
@@ -388,6 +500,27 @@ it is a legitimate operational move: pausing reward without ending a session.
 **The consequence he weighed and accepted:** while it holds, an animal working correctly is
 paid nothing.
 
+**Confirmed 2026-09-20, with a reason nobody here had — and the reason changes what the
+number means.** Asked again, he answered:
+
+> *"zero reward is fine. some trials will have a reward period, but they may not receive a
+> juice reward. they may get an on-screen token reward that eventually becomes a real
+> reward."*
+
+So a zero-volume reward is **not an edge case being tolerated; it is a designed trial
+outcome** — a reward period that pays a **token** rather than fluid. Two things follow.
+
+- **The case for the existing behaviour is stronger than the one above.** A policy refusal on
+  zero would not merely remove an operational convenience; it would make a class of trial the
+  protocol intends impossible to express at all.
+- **`fluid session: 0.00 mL` no longer implies something is wrong.** A session that has paid
+  no fluid may be running exactly as designed, so nothing may treat that figure as a fault
+  signal — and `supplement:` remains the number that matters, because a token is not fluid and
+  the day's floor is still owed in millilitres until the token converts.
+
+**Nothing in the task vocabulary models that token**, which is a gap in S1/S8 rather than a
+defect on the welfare path — see open item 9.
+
 **So the visibility is the condition of the ruling, not an incidental property.** Two numbers
 carry it, and both must keep reporting: `welfare.session_total()` — which
 `link.Telemetry.fluid_session_ml` reads and `cli.render` prints as `fluid session: 0.00 mL` —
@@ -406,7 +539,7 @@ made by the PI and conditional on the reporting above.
 
 **"Is this refusal earned?" should be a lookup, not a reading.** §5.2c earns the
 `_finite`/`_magnitude` refusals as a class — two messages every numeric entry point reaches
-— but `welfare.py` has **twenty-three** `raise` sites and `bounds.py` **five**, and a
+— but `welfare.py` has **twenty-seven** `raise` sites and `bounds.py` **five**, and a
 reviewer sitting at `returned_to_cage`'s five would not find them there. Every one is below,
 with the failure it was written against and where the argument lives.
 
@@ -439,10 +572,12 @@ wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
 | `is already recorded as out of its cage at` | Two clocks, shorter wins — **and the re-arm**: out at 0, home at 43,000, out again at 43,100 reported a fresh clock for an animal out twenty-two hours | §5.2 item 4 |
 | `cannot have left its cage … seconds in the future` | A mark nothing could have taken. It caught a negative "how long ago" until 2026-09-20 and catches a clock time later than the wall clock since — **and it is the guard that makes "a bare time is today, never yesterday" safe**: `23:59` mistyped in the morning is refused rather than rolled back into a departure twenty-three hours old | §5.2 item 4 |
 | `is recorded as out of its cage … ago, against a ceiling of` | A session starting at or past its own limit, and the gross data-entry error — a date typed a day early, a departure in the wrong half of the day. It *also* caught a wall clock handed to a session-relative parameter until the mark became a clock time (PI, 2026-09-20); that catch is gone and its loss is accounted for in §5.2 item 4 | §5.2 item 4 |
+| `It was not confirmed by anyone, so it is refused rather than taken` | **A clock time cannot be refused for being implausible, so a person has to look at it** (PI, 2026-09-20). `08:45` typed for `18:45` is nine hours and sits inside a twelve-hour ceiling; no other refusal here will ever catch it. It is on the *marks* rather than only in `wlx run`'s prompt because `Session.left_cage`/`returned_to_cage` are console actions, and a guardrail written now and wired later is how `bounds`' fluid check went a week called by nothing (CLAUDE.md). A caller can lie to `confirmed`; it cannot forget it | §5.2 item 4 |
 | `is at home, so there is no interval for a return to close` | Declaration and mark disagreeing, on the closing side | S13 §4.0 |
 | `is not recorded as having left its cage, so a return closes nothing` | A session marked only at the end has no interval at all | §5.2 item 4 |
 | `is already recorded as back in its cage at` *(in `returned_to_cage`)* | A second return moves a closed interval, and the shorter one silently wins | §5.2 item 4 |
 | `is recorded as head-fixed at … and not released, so it cannot also be in its cage` | **The freeze.** A return marked mid-session froze the clock at whatever it read, so `must_stop` answered `None` for the rest of a session that reported itself fully marked | §5.2 item 4 |
+| `cannot be back in its cage … seconds in the future` | **The departure's future refusal, on the closing mark** (PI, 2026-09-20, ruling 4). Once the return is a clock time it can be typed later than the clock the session is reading, which is a mark nothing could have taken — and it would stretch the interval rather than shorten it, so nothing downstream would complain | §5.2 item 4 |
 | `cannot be back in its cage at … having left it at` | A return before the departure gave a **negative** duration, which is under every ceiling there is | §5.2 item 4 |
 | `is not recorded as out of its cage, so the session's one duration limit has no start` | **The absence of a mark must never disable a limit.** An unmarked rig session is indistinguishable from a cage-side one to anything that answers zero | §5.2 item 4 |
 | `A duration that runs backwards` | Arithmetic producing an unchecked value from checked marks — a `now` in a base the mark was not taken in | §5.2c |
@@ -454,9 +589,11 @@ wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
 | `the restraint clock for subject … reads` | **The computed duration, not only the marks** — `out_of_cage_seconds`' rule, which `chair_seconds` did not have. It guarded `now`, which is not the quantity, so a backwards restraint interval reached the wire and rendered `chair: -1:53:20`. It is also the only thing that makes the entry-point enumeration's exemption for `fixed_at`/`released_at` true | §5.2c |
 | `which takes no head-fixation marks, so the animal cannot be recorded as fixed` | **A deployment recording restraint it declared it does not mark.** Accepted silently until 2026-09-20: a cage-side session could be recorded as head-fixed and nothing disagreed. Without it, `chair_seconds` answering `None` for the two kinds that take no marks would be *discarding* a measurement somebody took rather than reporting one nobody could | §5.2 item 4 |
 | `which takes no head-fixation marks, so the animal cannot be recorded as released` | **The closing half of the same record.** `taskd.Session.head_released` strobes `HEAD_RELEASED`, so guarding only the opening mark left a console action able to put a 4129 in a stream that never carried a 4128 — a restraint record for restraint nothing marked. Found by asking what the documented claim *"no stream carries a HEAD_RELEASED with no HEAD_FIXED before it"* actually depended on: `run()`, and nothing else | §5.2 item 4 |
+| `was amended with no reason given, so it is refused rather than recorded blank` | **A blank reason looks like an answer.** The PI asked for a reason on 2026-09-20 precisely so that a departure time somebody changed can be explained months later; a row recording the change and not the cause answers nothing it would be read for, and is worse than the absence of a row because it appears to | §5.2 item 4 |
+| `was amended by nobody, so it is refused` | **An anonymous change to the clock that bounds a session.** `--as WHO` is required for a console write because a forgeable or invented actor is worse than none, and this moves the one quantity `must_stop` reads. It is in `welfare` rather than in `cli` so that the console action P4d-2 adds cannot reach the record around it | §5.2 item 4 |
 
-**Twenty-eight refusals. Two rows are the §5.2c guards** — `is not a real number` and
-`cannot be negative`, which every numeric entry point reaches — **and twenty-six are
+**Thirty-two refusals. Two rows are the §5.2c guards** — `is not a real number` and
+`cannot be negative`, which every numeric entry point reaches — **and thirty are
 structural.** (This said "nine of them are the two guards"; that figure counted neither rows
 nor `raise` sites and could not be reproduced from either, so it is replaced with two that
 `tests/test_welfare.py` checks.) Every message is kept verbatim in the code — they are what an
@@ -493,6 +630,39 @@ Token state is session-scoped cross-trial state (S1 §5.6), recorded in every pe
 and in the event stream. Conversion to fluid is bounded config, so a token economy cannot exceed
 a *per-delivery* reward ceiling by accumulating past it. (There is no daily fluid ceiling to
 exceed — see the correction at the head of this file.)
+
+**Finding, 2026-09-20: none of that exists, and the PI's zero-reward reason is what surfaced
+it.** Recorded here as a finding rather than as work, and **not designed** — it is a task-layer
+gap, for a task-layer session. Read from source the same day:
+
+- `task.py`'s action vocabulary is `Show`, `Hide`, `Update`, `Score`, `Custom`, `Mark`,
+  `Reward`. **`Reward` means fluid**: it names an entry in the bounded config and reaches
+  `welfare.Rig.reward` → `Welfare.deliver` → the pump.
+- S1 §2.3 lists `Token(+1 / -1)` and `SetPersistent(...)` in the vocabulary. **Neither is
+  implemented**, and no cross-trial persistent state exists anywhere in `wl_expcontroller` —
+  `grep -rn "Token\|SetPersistent\|persistent" wl_expcontroller/` returns nothing.
+- So a trial that has a reward period and pays a **token** rather than fluid (§5.2c, the PI's
+  own description) cannot be expressed. The paragraph above describes a conversion bound for a
+  mechanism that has no representation to bound.
+
+**What is missing, stated so a task-layer session can scope it without re-deriving it:**
+
+1. **A persistent count** that survives across trials within a session, is declared the way a
+   parameter is, and appears in every per-trial snapshot — otherwise a token balance is exactly
+   the "pointer to the config" failure §3.3 exists to prevent, one level up.
+2. **A conversion rule**: when a balance becomes fluid, who triggers it, and how it passes
+   through `welfare.deliver` so the day's accounting sees it. It must be *one* route to the
+   pump; a second would make `Rig` stop being the one-file answer to "can anything deliver
+   reward without the accounting seeing it".
+3. **What the recording sees when a token is paid rather than fluid.** A `Reward` action today
+   produces a commanded volume and, on a rig, a delivered-line pulse the sync box captures. A
+   token produces neither, so a trial that paid one is indistinguishable in the record from a
+   trial that paid nothing — which is the question S2 and `wl-preproc` would have to answer,
+   and it is an event-code question before it is a schema one.
+
+**This is not a welfare-path defect and nothing here is blocked on it.** Zero-volume reward is
+already correct, already allowed and already visible (§5.2c); what is missing is a vocabulary
+for the thing the zero *means*.
 
 ---
 
@@ -539,3 +709,4 @@ Everything else may change without a welfare review. These four may not.
 | 3 | ~~Default re-queue policy~~ **Answered: fixation break re-queued at end of block, wrong choice not, overridable per block** | — |
 | 4 | ~~Session duration from first reward or first trial~~ ~~**Answered: chair time, from head-fixation.**~~ **Re-answered 2026-09-19: out of cage to back in cage, twelve hours** (§5.2 item 4). Remaining: whether a hardware head-fix signal is ever worth adding beside the console action — still open, and now about a *recorded* quantity rather than a bounding one | welfare review |
 | 5 | Who plans blocks when wl.works is unreachable | S3 §7's quarantine risk |
+| 9 | **A token that accumulates across trials and later converts to fluid has no representation** (new, 2026-09-20). The PI's reason for allowing zero reward — *"they may get an on-screen token reward that eventually becomes a real reward"* — describes a designed trial outcome the task vocabulary cannot express: `task.Reward` means fluid, and S1 §2.3's `Token`/`SetPersistent` are specified and unimplemented. Three things are missing — a persistent count, a conversion rule, and what the recording sees when a token rather than fluid is paid. §5.3 has the detail. **Deliberately not designed here**; it is S1's vocabulary and S2's codes before it is S8's accounting | S1 §10 item 3; a task-layer session |

@@ -393,14 +393,26 @@ def test_putting_the_animal_back_in_its_cage_closes_the_sessions_clock(tmp_path)
     `test_the_console_cannot_freeze_the_clock_by_marking_the_animal_home_mid_session`)."""
     session = _session(_spec(tmp_path, trials=3))
     session.run()
-    in_the_chair = session.welfare.out_of_cage_seconds(session.now())
-    assert in_the_chair > 0.0, "a session that took no time cannot test a clock"
+    on_the_frame_clock = session.welfare.out_of_cage_seconds(session.now())
+    assert on_the_frame_clock > 0.0, "a session that took no time cannot test a clock"
 
-    session.returned_to_cage(at=session.now() + 600.0)
+    # **The walk back, which ruling 4 is about** (PI, 2026-09-20). The frames have
+    # stopped, so `session.now()` is frozen; the animal is released, unchaired and
+    # walked back over the next ten minutes of *wall* time, and the return is marked
+    # when it is actually home. Both ends of the interval are read from the wall, so
+    # the frame clock stopping no longer truncates it.
+    wall = WALL_NOW + 600.0
+    session.wall_clock = lambda: wall
+    session.returned_to_cage(at=wall)
 
-    assert session.welfare.out_of_cage_seconds(now=99_999.0) == pytest.approx(
-        in_the_chair + 600.0
-    ), "the clock did not close, so it would have run to the end of time"
+    closed = session.welfare.out_of_cage_seconds(now=99_999.0)
+    assert closed == pytest.approx(600.0), (
+        "the clock did not close, so it would have run to the end of time"
+    )
+    assert closed > on_the_frame_clock, (
+        "the release, the unchairing and the walk back are inside the twelve hours, "
+        "and marking the return on the frozen frame clock left every one of them out"
+    )
 
 
 def test_the_console_cannot_freeze_the_clock_by_marking_the_animal_home_mid_session(
@@ -416,7 +428,7 @@ def test_the_console_cannot_freeze_the_clock_by_marking_the_animal_home_mid_sess
     session = _session(_spec(tmp_path, trials=3))
 
     with pytest.raises(Exceeded, match="head-fixed"):
-        session.returned_to_cage(at=10.0)
+        session.returned_to_cage(at=WALL_NOW)
 
     census = session.run()
     assert sum(census.outcomes.values()) == 3, "the refusal did not end the session"

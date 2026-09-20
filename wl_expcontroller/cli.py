@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from wl_expcontroller import link as _link
+from wl_expcontroller import record as _record
 from wl_expcontroller.bounds import Bounds, Exceeded
 from wl_expcontroller.check import check
 from wl_expcontroller.review import render as render_review
@@ -132,6 +133,19 @@ def _wall_clock_time(text: str) -> float:
       since an operator who typed a real time then reads a figure an hour short of
       the wall clock.
 
+      **Closed by the PI on 2026-09-20 -- closed, not fixed.** *"the dst switches
+      happen in the night, when no experiments occur."* So the skipped hour cannot be
+      typed as a departure, and the arithmetic above is left exactly as it is rather
+      than special-cased for a value nothing can produce.
+
+      **The description above stays because the dismissal is conditional on that
+      fact and not on the arithmetic.** If night sessions ever start -- an overnight
+      protocol, a cage-side kiosk running unattended (S13) -- the hour comes back
+      with them, and whoever reads this then needs to find what would happen rather
+      than a note saying it was considered and closed. `2026-03-29T02:30` still
+      resolves to `03:30+02:00`, and that still reports an animal as out up to an
+      hour less than it has been.
+
     Rolling back would have been the convenient choice and is the wrong one: it turns
     `23:59` mistyped in the morning into an animal recorded as out for most of a day,
     which is precisely the plausible-typo class this flag's refusals exist for.
@@ -180,6 +194,148 @@ def _hours_minutes(seconds: float) -> str:
     return (
         f"{hours} hour{'' if hours == 1 else 's'} "
         f"{minutes} minute{'' if minutes == 1 else 's'}"
+    )
+
+
+def _ask(prompt: str) -> str:
+    """One line from the person at the terminal, or `""` if there is none.
+
+    A function rather than a bare `input()` so that end-of-input is a *quiet*
+    non-answer rather than a traceback: a pipe that closes mid-prompt must land on
+    the same path as a person typing nothing, and that path refuses.
+    """
+    try:
+        return input(prompt)
+    except EOFError:
+        return ""
+
+
+def _settle_departure(session, args) -> tuple:
+    """Get a person's act on a far-off departure time, before it is marked.
+
+    **PI, 2026-09-20:** *"if a number is input that is more than 30 min from the
+    current time, a warning should appear that the experimenter must click through to
+    confirm. There should also be an option to update the time if necessary, but a
+    reason should be given and the experimenter name logged."*
+
+    Returns `(departure, note)` -- the instant to mark with, and the row to write
+    once the mark is accepted, or `None` when nothing was asked. **The row is the
+    caller's to write and only after `left_cage` has taken the value**, so an
+    amendment refused by the ceiling or for being in the future leaves no record of a
+    change that did not happen.
+
+    **What each case does, and the non-interactive one is the decision.**
+
+    - *Inside the band* (`welfare.departure_needs_confirmation` answers `None`): the
+      ordinary session, which asks nothing and writes nothing. A prompt on every
+      session is a prompt clicked past on every session.
+    - *Amended*: `--amend-out-of-cage-to TIME` with `--amend-reason` and `--as`, or
+      the same three typed at the prompt. **An amendment is its own confirmation** --
+      a named person giving a reason has done strictly more than click through -- but
+      it is not an override: the amended value goes to `left_cage` and meets every
+      refusal the original would have.
+    - *Interactive*: `stdin` is a terminal, so it asks, and **anything that is not a
+      confirmation stops the session**, end-of-input included. A prompt whose default
+      is "proceed" is the silent path wearing a question mark.
+    - *Non-interactive*: **it refuses.** `wlx run` may have no terminal behind it -- a
+      wrapper, a scheduler, the `labhost` process P4d-2 adds -- and proceeding there
+      would write a confirmation nobody made, which is worse than no confirmation at
+      all. `--confirm-out-of-cage` is the honest way to say it out loud, and the row
+      records that it came from a flag rather than from a person, because a wrapper
+      with it baked in is how this ruling would otherwise be defeated in silence.
+
+    **A confirmation's `by` is `--as` if it was given and empty otherwise, and that is
+    not an oversight.** The PI asked for a name on the *amendment*, where
+    `welfare.amend_mark` requires one; a confirmation is a person clicking through,
+    and an interactive `c` has no name to record honestly. `how` is what carries the
+    information a reader actually needs — whether a person or a flag answered.
+    """
+    at = args.out_of_cage_at
+    warning = session.departure_needs_confirmation(at)
+
+    def note(kind: str, now: float, reason: str, by: str, how: str) -> dict:
+        return {
+            "kind": kind,
+            "subject": args.subject,
+            "was": at,
+            "now": now,
+            "reason": reason,
+            "by": by,
+            "how": how,
+            "recorded_at": time.time(),
+        }
+
+    if args.amend_out_of_cage_to is not None:
+        amended = args.amend_out_of_cage_to
+        # Refuses a blank reason or a blank actor, in `welfare`, so the console
+        # action P4d-2 adds cannot reach the record around this rule.
+        session.amend_mark(
+            "departure",
+            original=at,
+            amended=amended,
+            reason=args.amend_reason,
+            by=args.actor,
+        )
+        return amended, note(
+            "departure amended",
+            amended,
+            args.amend_reason,
+            args.actor,
+            "--amend-out-of-cage-to",
+        )
+
+    if warning is None:
+        return at, None
+
+    if args.confirm_out_of_cage:
+        print(f"  WARNING: {warning}", file=sys.stderr)
+        return at, note(
+            "departure confirmed",
+            at,
+            "",
+            args.actor,
+            "--confirm-out-of-cage"
+            if sys.stdin.isatty()
+            else "--confirm-out-of-cage, with no terminal attached",
+        )
+
+    if not sys.stdin.isatty():
+        raise SystemExit(
+            f"refused: {warning}\n"
+            f"  There is no terminal attached, so there is nobody to confirm it and "
+            f"a confirmation nobody made is worse than none. Pass "
+            f"--confirm-out-of-cage to confirm it explicitly, or "
+            f"--amend-out-of-cage-to TIME --amend-reason WHY --as WHO to correct it."
+        )
+
+    print(f"  WARNING: {warning}", file=sys.stderr)
+    answer = _ask(
+        "  [c]onfirm this departure time, [a]mend it, or anything else to stop: "
+    ).strip().lower()
+
+    if answer.startswith("a"):
+        amended = _ask(f"  the corrected departure time ({_TIME_FORMATS}): ").strip()
+        try:
+            amended_at = _wall_clock_time(amended)
+        except argparse.ArgumentTypeError as bad:
+            raise SystemExit(f"refused: {bad}") from bad
+        reason = _ask("  why is it being changed? ")
+        by = _ask("  your name, for the record: ")
+        session.amend_mark(
+            "departure", original=at, amended=amended_at, reason=reason, by=by
+        )
+        return amended_at, note(
+            "departure amended", amended_at, reason, by, "amended at the terminal"
+        )
+
+    if answer.startswith("c"):
+        return at, note(
+            "departure confirmed", at, "", args.actor, "confirmed at the terminal"
+        )
+
+    raise SystemExit(
+        "refused: the departure time was not confirmed, so the session did not "
+        "start. Nothing has been recorded and nothing was delivered."
     )
 
 
@@ -235,6 +391,12 @@ def render(frame: _link.Telemetry) -> str:
     permitted operation into a silent one** -- a welfare regression reached by
     simplifying a console pane, which is exactly why this sentence is here and not
     only in S8 §5.2c.
+
+    **And a session at `0.00 mL` may be working as designed** (PI, 2026-09-20): a
+    trial may have a reward period paying an on-screen *token* rather than fluid,
+    converting to fluid later. So this line is not a fault indicator, and `supplement`
+    is what still says what the animal is owed. Nothing in the task vocabulary models
+    that token yet -- S8 §5.3.
 
     **Staged changes are shown with who staged them, and so are refusals.** S9a §8
     removed the write lock; staged visibility -- to every console, not only the one
@@ -419,6 +581,46 @@ def main(argv: list[str] | None = None) -> int:
         "ceiling and nothing else would catch it",
     )
     runner.add_argument(
+        "--confirm-out-of-cage",
+        action="store_true",
+        help="confirm, without being asked, a departure more than "
+        "welfare.CONFIRM_MARK_WITHIN (1800 s) before now. **The honest "
+        "non-interactive path** (PI, 2026-09-20): with no terminal attached there is "
+        "nobody to click through the warning, and a run that proceeded anyway would "
+        "record a confirmation nobody made, which is worse than none. It is written "
+        "into welfare_notes.jsonl as having come from this flag rather than from a "
+        "person, so a wrapper with it baked in is visible months later. Ignored when "
+        "the departure is recent enough to need no confirmation",
+    )
+    runner.add_argument(
+        "--amend-out-of-cage-to",
+        type=_wall_clock_time,
+        default=None,
+        metavar="TIME",
+        help="replace --out-of-cage-at with this time, recording the change. "
+        "Requires --amend-reason and --as, both with no default (PI, 2026-09-20: a "
+        "reason is given and the experimenter name logged). The amended value meets "
+        "every refusal the original would -- it is a correction, not an override",
+    )
+    runner.add_argument(
+        "--amend-reason",
+        default="",
+        metavar="WHY",
+        help="why the departure time is being amended. Required by "
+        "--amend-out-of-cage-to; a blank one is refused rather than recorded, "
+        "because a row saying a welfare clock moved and not why answers nothing",
+    )
+    runner.add_argument(
+        "--as",
+        dest="actor",
+        default="",
+        metavar="WHO",
+        help="the experimenter amending the departure time. Required by "
+        "--amend-out-of-cage-to, for the reason `wlx console --as` is required by a "
+        "write: an anonymous change to the clock a session is bounded by is worse "
+        "than none",
+    )
+    runner.add_argument(
         "--deployment",
         choices=("rig-fixed", "rig-chaired"),
         default="rig-fixed",
@@ -438,8 +640,9 @@ def main(argv: list[str] | None = None) -> int:
         metavar="SECONDS",
         help="how close to the out-of-cage ceiling the session starts warning (PI, "
         "2026-09-20), so a block can be finished deliberately rather than cut "
-        "mid-sequence. Omitted uses welfare.WARN_WITHIN_DEFAULT, which is 1800 and is "
-        "a proposal rather than a settled figure. Zero switches the warning off",
+        "mid-sequence. Omitted uses welfare.WARN_WITHIN_DEFAULT, which is 1800 -- the "
+        "PI's own starting value, accepted 2026-09-20, and still derived from no "
+        "measurement of this system. Zero switches the warning off",
     )
     runner.add_argument(
         "--delivered-today",
@@ -649,7 +852,21 @@ def main(argv: list[str] | None = None) -> int:
                 # omission and quietly reporting chair time as time out of the cage.
                 # Head-fixation lands at the session's own zero -- and only for the
                 # kind that has it, since `welfare.head_fixed` refuses the other.
-                session.left_cage(at=args.out_of_cage_at)
+                # **A departure far from now is a person's to confirm or amend**
+                # (PI, 2026-09-20), and that happens before the mark: `left_cage`
+                # refuses a second one, so an amendment made afterwards would have
+                # nowhere to go. The row is written after the mark is accepted, so a
+                # "correction" the ceiling refuses leaves no record of a change that
+                # did not happen.
+                departure, note = _settle_departure(session, args)
+                # `confirmed` is true exactly when a person acted -- an
+                # amendment is its own confirmation, since a named person giving
+                # a reason has done strictly more than click through.
+                # `welfare.left_cage` refuses a far mark without it, so the
+                # console P4d-2 adds cannot reach around this prompt.
+                session.left_cage(at=departure, confirmed=note is not None)
+                if note is not None:
+                    _record.welfare_note(session.directory, **note)
                 if deployment is Deployment.RIG_FIXED:
                     session.head_fixed(at=0.0)
             except Exceeded as refused:
@@ -660,16 +877,21 @@ def main(argv: list[str] | None = None) -> int:
             # `18:45` sits comfortably inside a twelve-hour ceiling, and nothing
             # else on this path would remark on it. Read from `welfare`, never
             # recomputed here -- `render`'s rule, on the headless path.
+            #
+            # **`departure`, not `args.out_of_cage_at`**: an amended time is what
+            # the session is bounded by, so it is what this line must show. Printing
+            # the value the operator first typed would have this sentence describe a
+            # clock nothing is running.
             print(
                 f"  out of cage: the animal has been out "
                 f"{_hours_minutes(session.welfare.out_of_cage_seconds(session.now()))}"
                 f", having left its cage at "
-                f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(args.out_of_cage_at))}"
+                f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(departure))}"
                 # The zone **at the departure**, not at now. A session started just
                 # after a daylight-saving change would otherwise label a departure
                 # made before it with the zone that is current now -- and that is
                 # precisely the one hour a year when the label carries information.
-                f" ({time.strftime('%Z', time.localtime(args.out_of_cage_at))}"
+                f" ({time.strftime('%Z', time.localtime(departure))}"
                 f", this host's local time)"
             )
             census = session.run()

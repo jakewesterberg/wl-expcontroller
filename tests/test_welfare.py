@@ -452,7 +452,7 @@ def test_putting_the_animal_back_closes_the_interval_and_ends_the_session():
     welfare.head_fixed(at=110.0)
     welfare.head_released(at=400.0)
 
-    welfare.returned_to_cage(at=460.0)
+    welfare.returned_to_cage(at=WALL_NOW + 360.0, wall_now=WALL_NOW + 400.0)
 
     assert welfare.out_of_cage_seconds(now=9_999.0) == pytest.approx(360.0)
     assert "back in its cage" in welfare.must_stop(now=9_999.0)
@@ -469,7 +469,7 @@ def test_marking_a_return_while_the_animal_is_head_fixed_is_refused():
     welfare.head_fixed(at=0.0)
 
     with pytest.raises(Exceeded, match="head-fixed"):
-        welfare.returned_to_cage(at=100.0)
+        welfare.returned_to_cage(at=WALL_NOW + 100.0, wall_now=WALL_NOW + 100.0)
 
 
 def test_a_return_before_the_animal_left_is_refused():
@@ -480,7 +480,7 @@ def test_a_return_before_the_animal_left_is_refused():
     welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=1_000.0)
 
     with pytest.raises(Exceeded, match="negative duration"):
-        welfare.returned_to_cage(at=10.0)
+        welfare.returned_to_cage(at=WALL_NOW - 10.0, wall_now=WALL_NOW)
 
 
 def test_a_return_with_no_matching_departure_is_refused():
@@ -489,16 +489,16 @@ def test_a_return_with_no_matching_departure_is_refused():
     welfare = _welfare()
 
     with pytest.raises(Exceeded, match="not recorded as having left"):
-        welfare.returned_to_cage(at=10.0)
+        welfare.returned_to_cage(at=WALL_NOW, wall_now=WALL_NOW)
 
 
 def test_a_second_return_is_refused():
     welfare = _welfare()
     welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
-    welfare.returned_to_cage(at=400.0)
+    welfare.returned_to_cage(at=WALL_NOW + 400.0, wall_now=WALL_NOW + 400.0)
 
     with pytest.raises(Exceeded, match="already recorded as back"):
-        welfare.returned_to_cage(at=100.0)
+        welfare.returned_to_cage(at=WALL_NOW + 100.0, wall_now=WALL_NOW + 400.0)
 
 
 def test_a_closed_interval_is_never_re_armed():
@@ -515,7 +515,9 @@ def test_a_closed_interval_is_never_re_armed():
     arithmetic convenience, and changing it is a question for him."""
     welfare = _welfare()
     welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
-    welfare.returned_to_cage(at=43_000.0)
+    welfare.returned_to_cage(
+        at=WALL_NOW + 43_000.0, wall_now=WALL_NOW + 43_000.0, confirmed=True
+    )
 
     with pytest.raises(Exceeded, match="not re-armed"):
         welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=43_100.0)
@@ -539,7 +541,7 @@ def test_a_session_may_not_start_with_the_animal_already_home():
     it."""
     welfare = _welfare()
     welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
-    welfare.returned_to_cage(at=100.0)
+    welfare.returned_to_cage(at=WALL_NOW + 100.0, wall_now=WALL_NOW + 100.0)
     welfare.head_fixed(at=200.0)
 
     with pytest.raises(Exceeded, match="already recorded as back"):
@@ -835,7 +837,9 @@ def test_a_chaired_session_reports_chair_time_absent_rather_than_zero():
     as *unmeasured*, not as a clock at zero.
     """
     welfare = _chaired_welfare()
-    welfare.left_cage(at=WALL_NOW - 3_600.0, wall_now=WALL_NOW, now=0.0)
+    welfare.left_cage(
+        at=WALL_NOW - 3_600.0, wall_now=WALL_NOW, now=0.0, confirmed=True
+    )
 
     assert welfare.chair_seconds(now=3_600.0) is None
 
@@ -1077,6 +1081,300 @@ def test_a_zero_threshold_switches_the_warning_off():
     assert welfare.approaching_limit(now=3_599.0) is None
 
 
+# --- a departure far from now, and the person who has to say so -------------
+#
+# **PI, 2026-09-20:** *"if a number is input that is more than 30 min from the
+# current time, a warning should appear that the experimenter must click through to
+# confirm. There should also be an option to update the time if necessary, but a
+# reason should be given and the experimenter name logged."*
+#
+# This is the mitigation for the guard he accepted losing when the mark became a
+# clock time: `08:45` typed for `18:45` is nine hours and sits comfortably inside a
+# twelve-hour ceiling, so no refusal will ever catch it. These tests are about the
+# *band* -- between "obviously wrong", which is still refused outright, and
+# "obviously fine", which still runs with nothing asked.
+
+
+def test_a_departure_far_from_now_needs_a_persons_confirmation():
+    """Two hours ago, inside a twelve-hour ceiling: nothing refuses it and nothing
+    should, but a person has to have seen it."""
+    welfare = _welfare()
+
+    sentence = welfare.departure_needs_confirmation(
+        at=WALL_NOW - 7_200.0, wall_now=WALL_NOW
+    )
+
+    assert sentence is not None
+    assert "Confirm it, or amend it" in sentence, "both options the PI asked for"
+
+
+def test_a_departure_close_to_now_needs_nothing_of_anybody():
+    """The ordinary case -- an operator typing the time they just walked the animal
+    out -- asks nothing, or the confirmation becomes something to click past."""
+    welfare = _welfare()
+
+    assert (
+        welfare.departure_needs_confirmation(at=WALL_NOW - 600.0, wall_now=WALL_NOW)
+        is None
+    )
+
+
+def test_the_confirmation_threshold_is_thirty_minutes_and_is_the_PIs_number():
+    """**Thirty minutes is his figure, not a derived one** (PI, 2026-09-20), which
+    is why it is a named constant rather than a literal in `cli.py`.
+
+    The boundary is checked on both sides because `WARN_WITHIN_DEFAULT` is also
+    1,800 and the two are unrelated. Both are his since 2026-09-20 and they are still
+    not the same number twice: that one is a *starting* value for a console line that
+    bounds nothing and any lab may tune, and this one is a threshold on a mark that
+    bounds a session. Deriving either from the other would make tuning a warning
+    quietly move a welfare guard.
+    """
+    assert welfare_module.CONFIRM_MARK_WITHIN == 1_800.0
+    welfare = _welfare()
+
+    assert (
+        welfare.departure_needs_confirmation(at=WALL_NOW - 1_800.0, wall_now=WALL_NOW)
+        is None
+    )
+    assert (
+        welfare.departure_needs_confirmation(at=WALL_NOW - 1_801.0, wall_now=WALL_NOW)
+        is not None
+    )
+
+
+def test_a_departure_past_the_ceiling_is_refused_rather_than_confirmed():
+    """**The existing refusals stand.** A confirmation offered for something
+    `left_cage` is about to refuse outright would train an operator to click through
+    a prompt that means two different things."""
+    welfare = _welfare(out_of_cage=3_600.0)
+
+    assert (
+        welfare.departure_needs_confirmation(at=WALL_NOW - 3_600.0, wall_now=WALL_NOW)
+        is None
+    )
+    with pytest.raises(Exceeded, match="against a ceiling of"):
+        welfare.left_cage(at=WALL_NOW - 3_600.0, wall_now=WALL_NOW, now=0.0)
+
+
+def test_a_departure_in_the_future_is_refused_rather_than_confirmed():
+    """The other end of the same rule. "More than 30 minutes from the current time"
+    reads as a distance, but the future half of it is already refused outright, so
+    nothing here offers to confirm one."""
+    welfare = _welfare()
+
+    assert (
+        welfare.departure_needs_confirmation(at=WALL_NOW + 7_200.0, wall_now=WALL_NOW)
+        is None
+    )
+    with pytest.raises(Exceeded, match="in the future"):
+        welfare.left_cage(at=WALL_NOW + 7_200.0, wall_now=WALL_NOW, now=0.0)
+
+
+def test_a_cage_side_session_has_no_departure_to_confirm():
+    """It never left, so `left_cage` refuses any mark at all and there is no band."""
+    assert (
+        _home_welfare().departure_needs_confirmation(
+            at=WALL_NOW - 7_200.0, wall_now=WALL_NOW
+        )
+        is None
+    )
+
+
+def test_an_amendment_carries_a_reason_and_an_actor_into_the_record():
+    """**Both, and the pair is what makes the row answer a question months later**
+    (PI, 2026-09-20: *"a reason should be given and the experimenter name
+    logged"*)."""
+    welfare = _welfare()
+
+    welfare.amend_mark(
+        "departure",
+        original=WALL_NOW - 33_300.0,
+        amended=WALL_NOW - 900.0,
+        reason="typed 08:45 for 18:45",
+        by="jake",
+    )
+
+    assert welfare.notes == [
+        (
+            "mark amended",
+            "departure",
+            WALL_NOW - 33_300.0,
+            WALL_NOW - 900.0,
+            "typed 08:45 for 18:45",
+            "jake",
+        )
+    ]
+
+
+def test_an_amendment_with_no_reason_is_refused_rather_than_recorded_blank():
+    """A blank reason is worse than no row: it looks like an answer. The PI asked
+    for a reason, and a row saying an experimenter changed a welfare clock for no
+    stated cause answers nothing anyone will ask."""
+    with pytest.raises(Exceeded, match="no reason"):
+        _welfare().amend_mark(
+            "departure",
+            original=WALL_NOW - 33_300.0,
+            amended=WALL_NOW - 900.0,
+            reason="   ",
+            by="jake",
+        )
+
+
+def test_an_amendment_with_no_actor_is_refused_like_a_console_write_with_no_as():
+    """`--as WHO` is required for a console write because a forgeable or invented
+    actor is worse than none. This moves the clock that bounds the session, so it
+    gets the same rule."""
+    with pytest.raises(Exceeded, match="nobody"):
+        _welfare().amend_mark(
+            "departure",
+            original=WALL_NOW - 33_300.0,
+            amended=WALL_NOW - 900.0,
+            reason="typed 08:45 for 18:45",
+            by="",
+        )
+
+
+def test_an_amendment_is_refused_before_it_touches_the_mark():
+    """The refusals above must land before `left_cage` does, or a session ends up
+    marked with an amendment nothing recorded -- the mark cannot be re-armed, so
+    there would be no way back."""
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded):
+        welfare.amend_mark(
+            "departure",
+            original=WALL_NOW - 33_300.0,
+            amended=WALL_NOW - 900.0,
+            reason="x",
+            by="",
+        )
+
+    assert welfare.left_cage_at is None
+    assert welfare.notes == []
+
+
+# --- the return, which is a clock time too ----------------------------------
+#
+# **PI, 2026-09-20 (ruling 4): the return mark is a wall-clock time, like the
+# departure.** The symmetry is the point, and it closes a real gap rather than
+# tidying one: `Session.now()` is frame-derived and stops when the frames do, so an
+# operator who ends a session, unchairs the animal, walks it back and *then* marks
+# the return recorded the animal as home at the instant the loop ended. The
+# unchairing and the walk back -- minutes of an animal out of its cage -- did not
+# count toward the twelve hours.
+
+
+def test_the_walk_back_counts_because_the_return_is_a_clock_time():
+    """**The gap ruling 4 closes, at the size it exists for.**
+
+    A session whose frames stop at 1,000 s, an animal unchaired and walked back over
+    the next ten wall minutes, and a return marked when it is actually home. The
+    interval is what the two wall clocks say -- departure to return -- and not what
+    the frozen frame clock said when the loop ended.
+    """
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW - 300.0, wall_now=WALL_NOW, now=0.0)
+
+    # Frames stopped at session-clock 1,000; the operator marks the return 1,600
+    # wall seconds after the session began, from a terminal reading 1,700.
+    welfare.returned_to_cage(at=WALL_NOW + 1_600.0, wall_now=WALL_NOW + 1_700.0)
+
+    # 300 s of transport before session zero, plus 1,600 s to the return.
+    assert welfare.out_of_cage_seconds(now=1_000.0) == pytest.approx(1_900.0)
+
+
+def test_a_return_later_than_the_wall_clock_is_refused():
+    """The departure's future refusal, on the closing mark. An animal cannot be
+    recorded home at a time that has not happened yet."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    with pytest.raises(Exceeded, match="in the future"):
+        welfare.returned_to_cage(at=WALL_NOW + 60.0, wall_now=WALL_NOW)
+
+
+def test_a_return_before_the_departure_is_refused_on_the_wall_clock_too():
+    """Every refusal the return already had is preserved, now read against wall
+    instants rather than session ones."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    with pytest.raises(Exceeded, match="cannot be back in its cage"):
+        welfare.returned_to_cage(at=WALL_NOW - 60.0, wall_now=WALL_NOW)
+
+
+def test_a_return_far_from_now_needs_a_persons_confirmation_too():
+    """**The same thirty minutes, and for the same reason.** A return typed hours
+    ago is as suspicious as a departure typed hours ago, and it moves the same
+    interval -- in the direction that makes a session look shorter than it was."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    sentence = welfare.return_needs_confirmation(
+        at=WALL_NOW + 100.0, wall_now=WALL_NOW + 7_300.0
+    )
+
+    assert sentence is not None
+    assert "Confirm it, or amend it" in sentence
+
+
+def test_a_far_return_nobody_confirmed_is_refused():
+    """**The absence of the confirmation fails, rather than being checked
+    elsewhere.** The departure's confirmation has a consumer in `wlx run`; the return
+    has none until the console gains the action, so the guard lives on the mark where
+    nothing can be built that forgets it (CLAUDE.md)."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    with pytest.raises(Exceeded, match="not confirmed by anyone"):
+        welfare.returned_to_cage(at=WALL_NOW + 100.0, wall_now=WALL_NOW + 7_300.0)
+
+
+def test_a_far_return_a_person_confirmed_is_taken():
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+
+    welfare.returned_to_cage(
+        at=WALL_NOW + 100.0, wall_now=WALL_NOW + 7_300.0, confirmed=True
+    )
+
+    assert welfare.out_of_cage_seconds(now=100.0) == pytest.approx(100.0)
+
+
+def test_a_far_departure_nobody_confirmed_is_refused_at_the_mark():
+    """The same guard on the opening mark, so a console calling `left_cage` directly
+    -- which is exactly what P4d-2 adds -- cannot reach around `wlx run`'s prompt."""
+    with pytest.raises(Exceeded, match="not confirmed by anyone"):
+        _welfare().left_cage(at=WALL_NOW - 7_200.0, wall_now=WALL_NOW, now=0.0)
+
+
+def test_a_far_departure_a_person_confirmed_is_taken():
+    welfare = _welfare()
+
+    welfare.left_cage(
+        at=WALL_NOW - 7_200.0, wall_now=WALL_NOW, now=0.0, confirmed=True
+    )
+
+    assert welfare.out_of_cage_seconds(now=0.0) == pytest.approx(7_200.0)
+
+
+def test_an_amendment_names_which_mark_it_changed():
+    """One amendment path for both marks (PI, 2026-09-20), so the reason and the
+    actor are required identically and the row says which clock moved."""
+    welfare = _welfare()
+
+    welfare.amend_mark(
+        "return",
+        original=WALL_NOW,
+        amended=WALL_NOW - 60.0,
+        reason="marked before the animal was actually in",
+        by="jake",
+    )
+
+    assert welfare.notes[0][:2] == ("mark amended", "return")
+
+
 # --- the port a trial's actions actually reach ------------------------------
 
 
@@ -1283,9 +1581,60 @@ ENTRY_POINTS = {
         INSTANT,
         lambda v: _welfare().left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=v),
     ),
+    # The confirmation band (PI, 2026-09-20) reads the same two wall-clock instants
+    # `left_cage` does, and computes the same interval from them, so it gets the
+    # same three checks rather than trusting that its caller already made them: on
+    # the console path it is asked *before* the mark and on no other authority. The
+    # two public forms and the shared private one are each driven, because the
+    # enumeration is about doors rather than about implementations.
+    "Welfare._far_from_now.at": (
+        INSTANT,
+        lambda v: _welfare()._far_from_now("departure", at=v, wall_now=WALL_NOW),
+    ),
+    "Welfare._far_from_now.wall_now": (
+        INSTANT,
+        lambda v: _welfare()._far_from_now("departure", at=WALL_NOW, wall_now=v),
+    ),
+    "Welfare.departure_needs_confirmation.at": (
+        INSTANT,
+        lambda v: _welfare().departure_needs_confirmation(at=v, wall_now=WALL_NOW),
+    ),
+    "Welfare.departure_needs_confirmation.wall_now": (
+        INSTANT,
+        lambda v: _welfare().departure_needs_confirmation(at=WALL_NOW, wall_now=v),
+    ),
+    "Welfare.return_needs_confirmation.at": (
+        INSTANT,
+        lambda v: _welfare().return_needs_confirmation(at=v, wall_now=WALL_NOW),
+    ),
+    "Welfare.return_needs_confirmation.wall_now": (
+        INSTANT,
+        lambda v: _welfare().return_needs_confirmation(at=WALL_NOW, wall_now=v),
+    ),
+    # Two instants a person typed, one of which becomes a mark. Guarded here as well
+    # as at the mark, because this runs first and drives the durable row.
+    "Welfare.amend_mark.original": (
+        INSTANT,
+        lambda v: _welfare().amend_mark(
+            "departure", original=v, amended=WALL_NOW, reason="typo", by="jake"
+        ),
+    ),
+    "Welfare.amend_mark.amended": (
+        INSTANT,
+        lambda v: _welfare().amend_mark(
+            "departure", original=WALL_NOW, amended=v, reason="typo", by="jake"
+        ),
+    ),
+    # A wall-clock instant since 2026-09-20 (PI, ruling 4), with the wall clock it is
+    # read against beside it -- the departure's three readings, one short, because
+    # the session clock no longer enters the closing mark at all.
     "Welfare.returned_to_cage.at": (
         INSTANT,
-        lambda v: _welfare().returned_to_cage(v),
+        lambda v: _marked().returned_to_cage(v, wall_now=WALL_NOW),
+    ),
+    "Welfare.returned_to_cage.wall_now": (
+        INSTANT,
+        lambda v: _marked().returned_to_cage(WALL_NOW, wall_now=v),
     ),
     "Welfare.head_fixed.at": (INSTANT, lambda v: _welfare().head_fixed(v)),
     # Fixed first: `head_released` refuses a release with nothing to release since
@@ -1342,6 +1691,15 @@ NOT_ENTRY_POINTS = {
         "an instant the marks set; a direct construction or a later assignment "
         "bypasses left_cage, and out_of_cage_seconds catches a non-finite or "
         "backwards result on every read"
+    ),
+    # The wall anchor `returned_to_cage` maps against (PI, 2026-09-20, ruling 4).
+    # Same reason as `left_cage_at`, and with one extra guard behind it: a `Welfare`
+    # constructed around `left_cage_at` alone has no anchor, and the return refuses
+    # rather than mapping against `None`.
+    "Welfare.left_cage_wall_at": (
+        "a wall instant left_cage sets; a direct construction or a later assignment "
+        "bypasses it, returned_to_cage refuses when it is absent, and "
+        "out_of_cage_seconds catches a non-finite or backwards result on every read"
     ),
     "Welfare.returned_at": "as left_cage_at; read through out_of_cage_seconds",
     # These two said "read through chair_seconds, which guards `now`", and that
@@ -1697,3 +2055,29 @@ def test_every_refusal_has_a_row_in_the_table_and_every_row_still_greps():
         f"column is not greppable: {missing}. A reworded refusal needs its row "
         f"reworded with it"
     )
+
+
+def test_the_zero_reward_ruling_records_why_zero_is_a_designed_outcome():
+    """**Ruling 3, 2026-09-20: the reason is new information and changes the number.**
+
+    The PI confirmed a zero-volume reward and gave a reason nobody here had: *"some
+    trials will have a reward period, but they may not receive a juice reward. they
+    may get an on-screen token reward that eventually becomes a real reward."*
+
+    So `fluid session: 0.00 mL` is not an edge case being tolerated -- it is a
+    **designed trial outcome**, a reward period that pays a token rather than fluid.
+    That strengthens the case for the existing behaviour and changes what the figure
+    means to a reader: a session at zero may be working exactly as intended.
+
+    Asserted against the record rather than against code because nothing in the code
+    changed -- the whole of this ruling is the reason, and a reason that is dropped
+    from the record is a ruling that reverts to the weaker argument it replaced.
+    """
+    section = _S8.read_text().split("### 5.2c")[1].split("### 5.2d")[0]
+
+    assert "token" in section.lower(), (
+        "S8 §5.2c is where the zero-reward ruling lives, and the PI's reason for it "
+        "is the token economy -- a reward period that pays a token rather than "
+        "fluid. Without it the section argues only that zero is visible"
+    )
+    assert "2026-09-20" in section

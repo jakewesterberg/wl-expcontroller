@@ -12,9 +12,17 @@ refusal messages an operator actually reads.
   volume, and the day's shortfall is reported at close so a person can supplement.
 - **One duration limit: out of the cage to back in it**, twelve hours (PI,
   2026-09-19). Chair time is recorded and bounds nothing; there is no trial cap.
-  **The session warns as that limit approaches** (PI, 2026-09-20) so a block can be
-  finished deliberately rather than cut mid-sequence -- `approaching_limit`, with
-  `WARN_WITHIN_DEFAULT` as a proposed figure the PI has yet to accept.
+  **Both ends of that interval are wall-clock times** (PI, 2026-09-20): the frame clock
+  stops when the frames do, so a return read from it left the unchairing and the walk
+  back outside the limit. **The session warns as the limit approaches** (PI,
+  2026-09-20) so a block can be finished deliberately rather than cut mid-sequence --
+  `approaching_limit`, at `WARN_WITHIN_DEFAULT`, which he accepted the same day as a
+  starting value.
+- **Either mark more than thirty minutes from now is confirmed by a person** (PI,
+  2026-09-20), or amended with a reason and a name. They are clock times, so a
+  nine-hour typo passes every refusal there is; `departure_needs_confirmation`,
+  `return_needs_confirmation` and `amend_mark` are the mitigation, the marks
+  themselves refuse an unconfirmed one, and `CONFIRM_MARK_WITHIN` is his figure.
 - **Three deployment kinds, not two** (PI, 2026-09-20): head-fixation is a property
   of the deployment rather than of being on a rig. **S8 §5.2 item 4 has the table**
   of which marks each kind requires, refuses and event-codes; the one thing to carry
@@ -67,11 +75,40 @@ DAILY_FLUID = "daily_fluid"
 OUT_OF_CAGE = "out_of_cage"
 
 #: How long before the `out_of_cage` ceiling a session starts saying so, in seconds.
-#: **Thirty minutes, a proposal rather than a settled figure, and derived from no
-#: measurement of this system.** S8 §5.2 item 4 carries the reasoning, what it is not
-#: claiming, and why this may have a named default where the twelve-hour ceiling may
-#: not. `Welfare.warn_within` is where a lab sets its own.
+#: **Thirty minutes. Accepted by the PI on 2026-09-20 as a starting value** -- his
+#: ruling, not an implementer's choice, which is the difference between a number an
+#: operator sees and a number somebody guessed.
+#:
+#: **It is still derived from no measurement of this system, and that is why it is a
+#: *starting* value rather than a settled one.** No block duration has been measured
+#: and nothing under `docs/measurements/` states one, so nothing here claims it clears
+#: a block. S8 §5.2 item 4 carries the reasoning, what it is not claiming, and why this
+#: may have a named default where the twelve-hour ceiling may not.
+#: `Welfare.warn_within` is where a lab sets its own.
 WARN_WITHIN_DEFAULT = 1_800.0
+
+#: How far from the current time either welfare mark may be before a **person** has to
+#: say so, in seconds.
+#:
+#: **Thirty minutes, and it is the PI's number rather than a derived one** (PI,
+#: 2026-09-20): *"if a number is input that is more than 30 min from the current time,
+#: a warning should appear that the experimenter must click through to confirm."* It
+#: is not a twenty-fourth of anything and nothing here computes it, so it may not be
+#: re-derived from the ceiling -- a session under a shorter ceiling keeps this
+#: threshold and simply has no band (see `departure_needs_confirmation`).
+#:
+#: **It is 1,800 and so is `WARN_WITHIN_DEFAULT`, and the two are unrelated.** Both
+#: are the PI's since 2026-09-20 and they still are not the same number twice: that one
+#: is a *starting* value for a line that bounds nothing and may be tuned by any lab;
+#: this one is a threshold on a mark that bounds a session. Deriving either from the
+#: other would make tuning a console warning quietly move a welfare guard, so they are
+#: separate constants that happen to agree. S8 §5.2 item 4 carries both rulings.
+#:
+#: **It applies to both marks** (PI, 2026-09-20, ruling 4): the return is a clock time
+#: too, and one typed hours ago moves the same interval, in the direction that makes a
+#: session look shorter than it was. It was `CONFIRM_DEPARTURE_WITHIN` for the few hours
+#: the departure was the only clock-time mark.
+CONFIRM_MARK_WITHIN = 1_800.0
 
 
 class Deployment(Enum):
@@ -202,6 +239,11 @@ class Welfare:
     #: non-finite or backwards result, so a direct construction can hide only a
     #: wrong-but-ordered instant.
     left_cage_at: float | None = None
+    #: The **wall-clock** instant of the same departure, kept as the anchor the
+    #: return is mapped against (PI, 2026-09-20, ruling 4). Set by `left_cage` and by
+    #: nothing else; `returned_to_cage` refuses when it is absent, because a
+    #: clock-time return has no interval to close without it.
+    left_cage_wall_at: float | None = None
     returned_at: float | None = None
     #: The restraint clock. Recorded, and it bounds nothing (PI, 2026-09-19). Only
     #: `Deployment.RIG_FIXED` can carry these at all.
@@ -326,7 +368,9 @@ class Welfare:
 
     # --- out of cage, and back in -----------------------------------------
 
-    def left_cage(self, at: float, wall_now: float, now: float) -> None:
+    def left_cage(
+        self, at: float, wall_now: float, now: float, confirmed: bool = False
+    ) -> None:
         """Start the clock the session is bounded by (PI, 2026-09-19).
 
         **At what time, and the mapping between the two clocks lives here** (PI,
@@ -346,9 +390,16 @@ class Welfare:
 
         Refused: a cage-side deployment (it never left); any of the three readings
         not being a real number, and the interval computed from two of them likewise
-        (S8 §5.2c); a departure in the future; and one **at or past** the ceiling,
-        which is *at* because an animal out for exactly the limit has no room for a
-        trial.
+        (S8 §5.2c); a departure in the future; one **at or past** the ceiling, which
+        is *at* because an animal out for exactly the limit has no room for a trial;
+        and one more than `CONFIRM_MARK_WITHIN` ago that `confirmed` does not
+        say a person acted on.
+
+        **`confirmed` is on the mark rather than only on the caller** (PI,
+        2026-09-20), and that is the CLAUDE.md rule rather than belt and braces:
+        `wlx run` asks a person, but `taskd.Session.left_cage` is a console action
+        and the console P4d-2 adds would otherwise reach around the prompt entirely.
+        A caller can lie to this flag; it cannot forget it.
         """
         if self.deployment is Deployment.CAGE_SIDE:
             raise Exceeded(
@@ -389,28 +440,197 @@ class Welfare:
                 f"it. Check the date and the hour -- a departure typed a day early, "
                 f"or in the wrong half of the day, lands here"
             )
+        # Last, so every refusal above still speaks first: a confirmation offered
+        # for something about to be refused teaches an operator that the prompt is
+        # what stands between them and a run.
+        self._refuse_unconfirmed(
+            self.departure_needs_confirmation(at, wall_now), confirmed
+        )
         self.left_cage_at = now - seconds_ago
+        # **The wall instant of the departure, kept so the return can be a clock
+        # time too** (PI, 2026-09-20, ruling 4). `returned_to_cage` maps its own
+        # wall reading against *this* anchor rather than against a fresh
+        # `now`/`wall_now` pair, because the session clock stops when the frames do
+        # and the two bases stop being the same instant the moment the loop ends --
+        # which is precisely the interval that ruling exists to start counting.
+        self.left_cage_wall_at = at
 
-    def returned_to_cage(self, at: float) -> None:
+    def _far_from_now(self, what: str, at: float, wall_now: float) -> str | None:
+        """The one copy of "is this mark far enough from now to need a person".
+
+        **PI, 2026-09-20**: more than thirty minutes from the current time and the
+        experimenter confirms it, or amends it. It is the mitigation for the guard he
+        accepted losing when the marks became clock times -- `08:45` typed for `18:45`
+        is nine hours, and no refusal will ever catch it (S8 §5.2 item 4).
+
+        A string and never an exception, like `must_stop` and `approaching_limit`: a
+        far mark is not wrong, it is unverified, and a caller's job is to get a
+        person's act on it rather than to fail. **It moves nothing**, so the two
+        public forms can be asked *before* the mark -- which is where they must be
+        asked, since neither mark can be re-armed and an amendment would then have
+        nowhere to go.
+
+        A mark in the future needs no confirmation because both marks refuse one
+        outright; the same is true of a departure past the ceiling, which
+        `departure_needs_confirmation` takes out of the band for that reason.
+        """
+        _finite(f"the {what} time given for this subject", at)
+        _finite("the wall clock this session is reading", wall_now)
+        seconds_ago = wall_now - at
+        _finite(f"the time since the {what} this subject is marked with", seconds_ago)
+        if seconds_ago <= CONFIRM_MARK_WITHIN:
+            return None
+        return (
+            f"the {what} given for subject {self.bounds.subject!r} is "
+            f"{seconds_ago:.0f} s before the clock this session is reading, which is "
+            f"further back than the {CONFIRM_MARK_WITHIN:.0f} s a session takes "
+            f"on trust (PI, 2026-09-20). Confirm it, or amend it with a reason -- an "
+            f"hour typed in the wrong half of the day sits inside every limit there "
+            f"is and nothing else will catch it"
+        )
+
+    def departure_needs_confirmation(self, at: float, wall_now: float) -> str | None:
+        """What a person must be shown before this departure is marked, or `None`.
+
+        **Outside the band on both sides it answers `None`**, so the two existing
+        refusals stand untouched: a departure in the future and one at or past the
+        ceiling are refused outright by `left_cage`, and offering to confirm either
+        would teach an operator that the prompt is the only thing between them and a
+        run. A cage-side session has no departure at all.
+
+        The threshold is `CONFIRM_MARK_WITHIN` and is not derived from the
+        ceiling, so a config whose ceiling is shorter than thirty minutes -- which
+        `tasks/reference_bounds.py`'s ten-minute placeholder is -- simply has an empty
+        band, and every departure it would ask about is refused instead.
+        """
+        if self.deployment is Deployment.CAGE_SIDE:
+            return None
+        sentence = self._far_from_now("departure", at, wall_now)
+        if sentence is None:
+            return None
+        if wall_now - at >= self.bounds.ceilings[OUT_OF_CAGE].value:
+            return None
+        return sentence
+
+    def return_needs_confirmation(self, at: float, wall_now: float) -> str | None:
+        """The same question on the closing mark (PI, 2026-09-20, ruling 4).
+
+        **The same thirty minutes and the same amendment path**, because a return
+        typed hours ago moves the same interval and in the direction that makes a
+        session look shorter than it was. There is no ceiling clause here: a return
+        is not refused for being long ago -- `must_stop` reports the interval it
+        produces -- so the band has one edge rather than two.
+        """
+        if self.deployment is Deployment.CAGE_SIDE:
+            return None
+        return self._far_from_now("return", at, wall_now)
+
+    def _refuse_unconfirmed(self, sentence: str | None, confirmed: bool) -> None:
+        """Turn "a person should see this" into "a person did", or refuse.
+
+        **The confirmation is enforced on the marks rather than only in `wlx run`**,
+        which is CLAUDE.md's rule and not caution: the departure prompt has a consumer
+        and the return has none until the console gains the action, and a guardrail
+        written now and wired later is how `bounds`' fluid check went a week called by
+        nothing. A caller can lie to `confirmed`; it cannot forget it.
+        """
+        if sentence is None or confirmed:
+            return
+        raise Exceeded(
+            f"{sentence}. It was not confirmed by anyone, so it is refused rather "
+            f"than taken: a mark this far from the clock is a person's to confirm or "
+            f"amend (PI, 2026-09-20), and a confirmation nobody made is worse than "
+            f"no confirmation at all"
+        )
+
+    def amend_mark(
+        self, what: str, original: float, amended: float, reason: str, by: str
+    ) -> None:
+        """A person changing one of the two marks before it is taken (PI, 2026-09-20).
+
+        *"There should also be an option to update the time if necessary, but a
+        reason should be given and the experimenter name logged."* Both are required
+        with no default and no blank: a row saying somebody moved a clock that bounds
+        a session, for no stated cause and under no name, answers none of the
+        questions it would be read for months later.
+
+        **One method for both marks** rather than one per mark, so the reason and the
+        actor are required identically and there is no second copy to drift. `what`
+        is the mark's name as an operator would say it -- `"departure"` or
+        `"return"` -- and reaches nothing but the message and the note.
+
+        **This records; the mark is taken afterwards.** Called first, so a refusal
+        here lands before the mark rather than after it: neither mark can be re-armed,
+        so an amendment refused afterwards would leave a session bounded by the value
+        it was meant to replace with no way back. `original` and `amended` are
+        wall-clock instants and both are checked, because this runs before `left_cage`
+        or `returned_to_cage` sees either and on no other authority.
+
+        **The durable half is the caller's**, and deliberately so: at this moment
+        `taskd` has not opened the session record, and writing it here would put a
+        file path in the welfare-critical file. `record.welfare_note` writes the row;
+        `notes` is this object's own account of it, for the session summary.
+        """
+        _finite(f"the {what} time being amended", original)
+        _finite(f"the amended {what} time", amended)
+        if not reason.strip():
+            raise Exceeded(
+                f"the {what} time for subject {self.bounds.subject!r} was amended "
+                f"with no reason given, so it is refused rather than recorded blank; "
+                f"a row that says a welfare clock was moved and not why answers "
+                f"nothing anyone will ask it"
+            )
+        if not by.strip():
+            raise Exceeded(
+                f"the {what} time for subject {self.bounds.subject!r} was amended "
+                f"by nobody, so it is refused; the clock this session is bounded by "
+                f"is not something a person changes anonymously, for the reason a "
+                f"console write is refused without --as WHO"
+            )
+        self.notes.append(("mark amended", what, original, amended, reason, by))
+
+    def returned_to_cage(
+        self, at: float, wall_now: float, confirmed: bool = False
+    ) -> None:
         """Close the interval: the animal is home, and this session is over.
 
-        `at` is an instant, not a "how long ago": unlike the opening mark this one
-        is at or after the present. **The session clock stops when the frames do**,
-        so a return marked long after the loop ended carries the loop's last
-        reading unless the caller supplies a later one.
+        **`at` is a wall-clock instant in POSIX seconds, like the departure** (PI,
+        2026-09-20, ruling 4), and **the symmetry is the point**. It was an instant on
+        the session clock until then, and that clock is frame-derived: it stops when
+        the frames do. So an operator who ended a session, unchaired the animal,
+        walked it back and *then* marked the return recorded the animal as home at
+        the instant the loop ended -- the unchairing and the walk back, minutes of an
+        animal out of its cage, fell outside the twelve hours. With both ends of the
+        interval read from the wall, the frame clock stopping no longer matters.
 
-        **This closes an open interval and does nothing else** -- every refusal
-        below was reachable when it did not. **It also closes the session** (PI,
-        2026-09-20): out and back is one session, so `left_cage` refuses to re-arm.
-        S8 §5.2 item 4 has the ruling and the consequence he accepted.
+        **The mapping is against `left_cage`'s anchor, not against a fresh
+        `now`/`wall_now` pair.** Those two are the same instant only while the loop is
+        running; once it ends the session clock is frozen and the wall clock is not,
+        and a mapping built on them would drop exactly the interval this ruling exists
+        to count. `left_cage_wall_at` is that anchor.
+
+        **Every refusal it already had is preserved**, now read against wall instants:
+        nothing to close, a second return, an animal still head-fixed, a return before
+        the departure. Two are new and both are the departure's: a return **in the
+        future**, which is a mark nothing could have taken, and one more than
+        `CONFIRM_MARK_WITHIN` ago that no person confirmed.
+
+        **It also closes the session** (PI, 2026-09-20): out and back is one session,
+        so `left_cage` refuses to re-arm. S8 §5.2 item 4 has the ruling and the
+        consequence he accepted.
         """
         _finite("the time the animal went back into its cage", at)
+        _finite("the wall clock this session is reading", wall_now)
         if self.deployment is Deployment.CAGE_SIDE:
             raise Exceeded(
                 f"this session declares subject {self.bounds.subject!r} is at home, "
                 f"so there is no interval for a return to close"
             )
-        if self.left_cage_at is None:
+        # **Both, not just the session-base one.** A `Welfare` constructed around
+        # `left_cage_at` directly has no wall anchor, and there is no interval a
+        # clock-time return could close without one -- so it is the same refusal
+        # rather than a `TypeError` five lines down.
+        if self.left_cage_at is None or self.left_cage_wall_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is not recorded as having left its "
                 f"cage, so a return closes nothing; a session marked only at the end "
@@ -429,13 +649,27 @@ class Welfare:
                 f"release the head first. A session is stopped with a stop, not by "
                 f"recording the animal somewhere it is not"
             )
-        if at < self.left_cage_at:
+        if at > wall_now:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} cannot be back in its cage "
+                f"{at - wall_now:.0f} seconds in the future; the return is a clock "
+                f"time, and this one is later than the clock this session is reading"
+            )
+        if at < self.left_cage_wall_at:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} cannot be back in its cage at {at} "
-                f"having left it at {self.left_cage_at}; a negative duration is not a "
-                f"duration, and an interval that runs backwards bounds nothing"
+                f"having left it at {self.left_cage_wall_at}; a negative duration is "
+                f"not a duration, and an interval that runs backwards bounds nothing"
             )
-        self.returned_at = at
+        self._refuse_unconfirmed(
+            self.return_needs_confirmation(at, wall_now), confirmed
+        )
+        # Mapped through the departure, which is the one place the two bases were
+        # read at the same instant -- see this method's docstring. The result is a
+        # third value computed from checked ones, so it is checked (S8 §5.2c).
+        returned_at = self.left_cage_at + (at - self.left_cage_wall_at)
+        _finite("the time the animal went back into its cage", returned_at)
+        self.returned_at = returned_at
 
     def out_of_cage_seconds(self, now: float) -> float | None:
         """How long the animal has been out of its home cage.

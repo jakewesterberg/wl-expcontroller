@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from wl_expcontroller.bounds import Exceeded
-from wl_expcontroller.cli import _hours_minutes, main, render
+from wl_expcontroller.cli import _hours_minutes, _wall_clock_time, main, render
 from wl_expcontroller.link import (
     Refused,
     SetParameter,
@@ -1311,3 +1311,264 @@ def test_the_console_is_quiet_when_there_is_nothing_to_warn_about():
     assert "WARNING" not in render(_telemetry(duration_warning=None))
 
 
+
+
+# ---------------------------------------------------------------------------
+# A departure far from now: the confirmation, and the amendment
+# ---------------------------------------------------------------------------
+#
+# **PI, 2026-09-20:** *"if a number is input that is more than 30 min from the
+# current time, a warning should appear that the experimenter must click through to
+# confirm. There should also be an option to update the time if necessary, but a
+# reason should be given and the experimenter name logged."*
+#
+# **`tasks/reference_bounds.py` cannot reach this band**, and that is worth knowing
+# before reading these tests rather than after: its `out_of_cage` ceiling is a
+# deliberately implausible ten minutes, so anything more than thirty minutes ago is
+# refused outright by the ceiling long before a confirmation is offered. Every test
+# here therefore writes its own bounded config with a twelve-hour ceiling -- the
+# institutional figure S8 5.2 item 4 states -- which is also the only shape in
+# which the confirmation band exists at all.
+
+_FAR_BOUNDS = '''\
+"""A bounded config for the confirmation band: a real twelve-hour ceiling.
+
+`tasks/reference_bounds.py`'s ten minutes is a placeholder by design, and it is
+shorter than the thirty-minute confirmation threshold, so the band between them is
+empty there. This is a test fixture and never leaves the suite.
+"""
+
+from wl_expcontroller.bounds import Bounds, Ceiling, Floor
+
+BOUNDS = Bounds(
+    subject="REFERENCE",
+    ceilings={
+        "reward_correct": Ceiling(value=0.05, maximum=10.0, unit="mL"),
+        "out_of_cage": Ceiling(value=43_200.0, maximum=43_200.0, unit="s"),
+    },
+    minima={"daily_fluid": Floor(value=20.0, unit="mL")},
+)
+'''
+
+
+def _far_bounds(tmp_path) -> str:
+    path = tmp_path / "far_bounds.py"
+    path.write_text(_FAR_BOUNDS, encoding="utf-8")
+    return str(path)
+
+
+def _hours_ago(hours: float) -> str:
+    """A clock time `hours` in the past, with its date, as an operator would type it
+    for an overnight or early-morning departure."""
+    when = datetime.now().astimezone() - timedelta(hours=hours)
+    return when.isoformat(timespec="minutes")
+
+
+def _run_args(tmp_path, *extra: str) -> list:
+    return [
+        "run",
+        "tasks/fixation_detection.py",
+        "--allocation", "tasks/allocation.py",
+        "--bounds", _far_bounds(tmp_path),
+        "--root", str(tmp_path),
+        "--session-id", "2027-01-14_01",
+        "--subject", "REFERENCE",
+        "--delivered-today", "0",
+        "--trials", "2",
+        *_TASK_SETS,
+        *extra,
+    ]
+
+
+def _notes(tmp_path) -> list:
+    path = tmp_path / "2027-01-14_01" / "expcontroller" / "welfare_notes.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line]
+
+
+def test_a_far_departure_is_refused_when_nobody_can_be_asked(tmp_path):
+    """**The non-interactive path must not proceed in silence.**
+
+    `wlx run` is a command line that may have no terminal behind it -- a wrapper, a
+    scheduler, a `labhost` process. A confirmation nobody made is worse than no
+    confirmation, because the record then says a person saw a nine-hour departure
+    and nobody did. So it refuses, and the message names the flag that is the honest
+    way to say it out loud."""
+    with pytest.raises(SystemExit) as refused:
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+
+    assert "--confirm-out-of-cage" in str(refused.value)
+    assert "no terminal" in str(refused.value)
+
+
+def test_the_flag_is_the_non_interactive_confirmation_and_says_so(tmp_path):
+    """An explicit flag is a deliberate statement, so it is accepted -- and it is
+    recorded as having come from a flag rather than from a person at a terminal,
+    because a wrapper with it baked in is exactly how the ruling would be defeated
+    quietly."""
+    exit_code = main(
+        _run_args(
+            tmp_path, "--out-of-cage-at", _hours_ago(9), "--confirm-out-of-cage"
+        )
+    )
+
+    assert exit_code == 0
+    rows = _notes(tmp_path)
+    assert [row["kind"] for row in rows] == ["departure confirmed"]
+    assert rows[0]["how"] == "--confirm-out-of-cage, with no terminal attached"
+
+
+def test_a_near_departure_asks_nothing_and_writes_nothing(tmp_path):
+    """The ordinary session is untouched: no prompt, no flag needed, no row. A
+    confirmation that appeared every session would be clicked past every session."""
+    assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm())) == 0
+    assert _notes(tmp_path) == []
+
+
+def test_an_interactive_run_asks_and_a_person_can_confirm(tmp_path, monkeypatch):
+    """With a terminal, it asks. The answer is a person's act, which is the whole
+    content of the ruling."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "confirm")
+
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+
+    assert exit_code == 0
+    rows = _notes(tmp_path)
+    assert [row["kind"] for row in rows] == ["departure confirmed"]
+    assert rows[0]["how"] == "confirmed at the terminal"
+
+
+def test_an_interactive_run_stops_when_the_person_does_not_confirm(
+    tmp_path, monkeypatch
+):
+    """Anything that is not a confirmation is a refusal, including end-of-input. A
+    prompt whose default is "proceed" is the silent path wearing a question mark."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "")
+
+    with pytest.raises(SystemExit) as refused:
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+
+    assert "not confirmed" in str(refused.value)
+    assert _notes(tmp_path) == []
+
+
+def test_an_interactive_run_can_amend_the_time_with_a_reason_and_a_name(
+    tmp_path, monkeypatch
+):
+    """**The option the PI asked for beside the confirmation.** The amended time is
+    what the session is bounded by, and the row says who changed it and why."""
+    answers = iter(["amend", _hours_ago(0.2), "typed 08:45 for 18:45", "jake"])
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+
+    assert exit_code == 0
+    rows = _notes(tmp_path)
+    assert [row["kind"] for row in rows] == ["departure amended"]
+    assert rows[0]["reason"] == "typed 08:45 for 18:45"
+    assert rows[0]["by"] == "jake"
+    assert rows[0]["was"] != rows[0]["now"]
+
+
+def test_an_amendment_can_be_made_without_a_terminal_too(tmp_path):
+    """Same three things, stated as flags. The interactive prompt is a way of
+    supplying them, not a second rule about what an amendment is."""
+    exit_code = main(
+        _run_args(
+            tmp_path,
+            "--out-of-cage-at", _hours_ago(9),
+            "--amend-out-of-cage-to", _hhmm(),
+            "--amend-reason", "wl-works pushed the wrong departure",
+            "--as", "jake",
+        )
+    )
+
+    assert exit_code == 0
+    rows = _notes(tmp_path)
+    assert rows[0]["kind"] == "departure amended"
+    assert rows[0]["how"] == "--amend-out-of-cage-to"
+    assert "local" in rows[0]["now_local"]
+
+
+def test_an_amendment_with_no_reason_is_refused(tmp_path):
+    """No default and no blank: the reason is the row's whole reason for existing."""
+    with pytest.raises(SystemExit, match="refused: .*no reason"):
+        main(
+            _run_args(
+                tmp_path,
+                "--out-of-cage-at", _hours_ago(9),
+                "--amend-out-of-cage-to", _hhmm(),
+                "--as", "jake",
+            )
+        )
+
+
+def test_an_amendment_with_no_actor_is_refused(tmp_path):
+    """`--as WHO` is required here for the reason it is required for a console
+    write: an anonymous change to a welfare clock is worse than none."""
+    with pytest.raises(SystemExit, match="refused: .*nobody"):
+        main(
+            _run_args(
+                tmp_path,
+                "--out-of-cage-at", _hours_ago(9),
+                "--amend-out-of-cage-to", _hhmm(),
+                "--amend-reason", "typed 08:45 for 18:45",
+            )
+        )
+
+
+def test_an_amended_time_still_meets_every_refusal_the_original_would(tmp_path):
+    """An amendment is not an override. The amended value goes through `left_cage`
+    exactly as the original does, so a "correction" into the future is refused."""
+    tomorrow = (datetime.now().astimezone() + timedelta(hours=2)).isoformat(
+        timespec="minutes"
+    )
+
+    with pytest.raises(SystemExit, match="refused: .*in the future"):
+        main(
+            _run_args(
+                tmp_path,
+                "--out-of-cage-at", _hours_ago(9),
+                "--amend-out-of-cage-to", tomorrow,
+                "--amend-reason", "typed 08:45 for 18:45",
+                "--as", "jake",
+            )
+        )
+
+
+def test_a_departure_past_the_ceiling_is_still_refused_without_a_prompt(
+    tmp_path, monkeypatch
+):
+    """**The band has two edges and only one of them asks.** Past the ceiling the
+    session is refused outright, with no confirmation offered -- offering one would
+    teach an operator that the prompt is what stands between them and a run."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda _prompt="": pytest.fail("a session past its ceiling asks nobody"),
+    )
+
+    with pytest.raises(SystemExit, match="refused: .*against a ceiling of"):
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(13)))
+
+
+def test_the_dst_gap_is_closed_as_a_ruling_and_the_description_is_kept():
+    """**Ruling 2, PI 2026-09-20: closed, not fixed.** *"the dst switches happen in
+    the night, when no experiments occur."* So the spring-forward hour that resolves
+    `02:30` to `03:30` cannot arise, and the arithmetic is left as it is.
+
+    **The description has to survive the dismissal.** It was dismissed because of a
+    fact about when experiments happen, not because of anything about the
+    arithmetic -- so if night sessions ever start, whoever reads this must find what
+    would happen rather than a note saying it was considered and closed.
+    """
+    doc = _wall_clock_time.__doc__
+
+    assert "no experiments occur" in doc, "the PI's reason, in his own words"
+    assert "night session" in doc, "the condition the dismissal rests on"
+    assert "03:30" in doc, "what the skipped hour still resolves to, kept"
+    assert "out up to an hour" in doc, "and which direction that is wrong in"
