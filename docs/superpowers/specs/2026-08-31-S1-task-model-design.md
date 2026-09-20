@@ -55,6 +55,10 @@ epochs do, deliberately and visibly.
 `Show` / `Hide` / `Update`, `Emit(code)`, `Reward(...)`, `TriggerStim(tier, ...)`,
 `Token(+1 / -1)`, `PlaySound(...)`, `SetPersistent(...)`.
 
+**`Token` and `SetPersistent` are specified here and implemented nowhere** (checked against
+`task.py`, 2026-09-20), which matters more since the PI described a token reward as a designed
+trial outcome — see open item 3 and S8 §5.3.
+
 Reward and stimulation actions **name an entry in the bounded config; they never carry a
 magnitude.** `Reward(P.reward_small)` resolves through the subject's ceiling; a task cannot
 express `Reward(ml=5.0)` at all, because the type does not admit a number.
@@ -315,6 +319,6 @@ does what was asked.
 |---|---|---|
 | 1 | Transition priority: declared order, or explicit priority field | the checker's rule 10 |
 | 2 | Whether `Outcome` is `wl-mllib`'s enum directly or a task-local alias | S2 allocation |
-| 3 | How persistent (cross-trial) state is declared and versioned | token tasks, S8 |
+| 3 | How persistent (cross-trial) state is declared and versioned. **Raised from open to blocking a described trial outcome, 2026-09-20**: the PI's reason for allowing a zero-volume reward is that *"some trials will have a reward period, but they may not receive a juice reward. they may get an on-screen token reward that eventually becomes a real reward"* — so a token economy is a designed outcome, not a future nicety. §2.3 lists `Token(+1 / -1)` and `SetPersistent(...)`; **`task.py` implements neither, and no cross-trial state exists anywhere in the package** (read from source, 2026-09-20). Missing: a persistent count, a conversion rule to fluid through `welfare.deliver`, and what the recording sees when a token rather than fluid is paid. **Not designed anywhere yet, deliberately** — S8 §5.3 and §8 item 9 carry the statement of it | token tasks, S8 §5.3 |
 | 4 | Whether the review artifact is rendered by the console or a CLI | S9 |
 | 5 | Frame-accurate `Update` semantics for gaze-anchored stimuli | S4 |

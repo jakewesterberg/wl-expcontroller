@@ -335,6 +335,16 @@ reconciliation that no longer published `fluid_session_ml` — would turn a perm
 into a silent one.** That is a welfare regression arrived at by editing a display, which is
 the reason this sits in the console spec rather than only in S8.
 
+**And since 2026-09-20 there is a second reason, which changes what `fluid session: 0.00 mL`
+means to whoever is reading it.** Asked again, the PI gave the reason behind the ruling:
+*"some trials will have a reward period, but they may not receive a juice reward. they may get
+an on-screen token reward that eventually becomes a real reward."* So zero is a **designed
+trial outcome**, not an edge case being tolerated — **a session sitting at `0.00 mL` may be
+running exactly as intended**, and nothing on this screen or downstream of it may treat that
+figure as a fault signal. `supplement` is the line that still matters, because a token is not
+fluid and the day's floor is owed in millilitres until it converts. Nothing in the task
+vocabulary models that token yet (S8 §5.3, §8 item 9).
+
 **Approximation is in the name.** `rt_approx_ms`, never `rt_ms` — online RT is
 approximate by decision (PI, 2026-09-19: *"an approximate rt online is fine enough"*),
 with the real value recovered offline from sync ticks. Unknown is `None`, never `0`,

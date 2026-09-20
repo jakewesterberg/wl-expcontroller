@@ -73,7 +73,10 @@ def _magnitude(what: str, value: float) -> None:
     **Zero is allowed, and that is not an exception.** Zero is a quantity; this
     refuses things that are not. A reward volume of zero is permitted by the PI
     (2026-09-20) because it is visible -- a policy choice on top of this rule, with
-    its own condition, not a gap in it. S8 §5.2c.
+    its own condition, not a gap in it. **And it is a designed trial outcome rather
+    than a tolerated edge case**: he confirmed the same day that a trial may have a
+    reward period paying an on-screen token rather than fluid, which converts to fluid
+    later. S8 §5.2c.
     """
     _finite(what, value)
     if value < 0.0:

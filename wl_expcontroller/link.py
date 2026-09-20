@@ -184,6 +184,11 @@ class Telemetry:
     #: nothing. Reporting it is the condition of that ruling, so a change that
     #: stopped publishing it, or a pane that stopped showing it, would turn a
     #: permitted operation into a silent one. S8 §5.2c.
+    #:
+    #: **And zero may be the design working** (PI, 2026-09-20): a trial may have a
+    #: reward period that pays an on-screen *token* rather than fluid, converting to
+    #: fluid later. So this reading `0.00` is not a fault signal and must not be
+    #: treated as one; `shortfall_ml` is the field that still says what is owed.
     fluid_session_ml: float
     #: `welfare.total_today()`. `None` when the day's prior total is unknown, never a
     #: confident `0.0`.
