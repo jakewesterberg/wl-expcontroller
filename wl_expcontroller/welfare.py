@@ -661,14 +661,28 @@ class Welfare:
                 f"having left it at {self.left_cage_wall_at}; a negative duration is "
                 f"not a duration, and an interval that runs backwards bounds nothing"
             )
-        self._refuse_unconfirmed(
-            self.return_needs_confirmation(at, wall_now), confirmed
-        )
         # Mapped through the departure, which is the one place the two bases were
         # read at the same instant -- see this method's docstring. The result is a
         # third value computed from checked ones, so it is checked (S8 §5.2c).
         returned_at = self.left_cage_at + (at - self.left_cage_wall_at)
         _finite("the time the animal went back into its cage", returned_at)
+        if self.released_at is not None and returned_at < self.released_at:
+            # **The restraint record is a cross-check, not only a record.** Both
+            # marks present, both individually legal, the whole thing inside the
+            # thirty-minute band so nothing prompts -- and the animal is recorded
+            # home before it was let out of the chair. Found by review: a return
+            # typed one second after a departure 25 minutes old, on a session fixed
+            # at 60 s and released at 1,400 s, gave 1.0 s out of the cage beside
+            # 1,340 s in the chair.
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} cannot be back in its cage before "
+                f"it was released from head-fixation at {self.released_at}; the "
+                f"animal was in the chair until then, so a return at {returned_at} "
+                f"records it in two places at once"
+            )
+        self._refuse_unconfirmed(
+            self.return_needs_confirmation(at, wall_now), confirmed
+        )
         self.returned_at = returned_at
 
     def out_of_cage_seconds(self, now: float) -> float | None:
@@ -681,6 +695,25 @@ class Welfare:
         call rather than only at `preflight`, because an unmarked rig session is
         indistinguishable from a cage-side one to anything that answers a number.
         `dio.Absent`'s rule, on the clock that bounds a session.
+
+        **And it can never be shorter than the restraint it contains**: an animal
+        must be out of its cage to be in the chair. `returned_to_cage` refuses the
+        route review found -- a return before the release -- at the mark, where the
+        operator is typing; this is the same impossibility checked where the number
+        is *read*, which catches the route no mark refuses. `head_fixed` has no
+        ordering check against the departure, deliberately: a console may take the
+        two marks in either order, and constraining that would refuse a legal
+        sequence, so a fixation marked before the departure is wrong only in the pair
+        it forms.
+
+        **Computed inline rather than through `chair_seconds`**, which is one more
+        copy of two lines of subtraction than this file likes and is still the right
+        call: `chair_seconds` has refusals of its own, and importing them here would
+        make `preflight` on a session whose restraint clock is momentarily backwards
+        raise about restraint instead of about the animal being home already
+        (`test_a_session_may_not_start_with_the_animal_already_home` is exactly that
+        shape). A negative restraint interval is `chair_seconds`' to refuse, and it
+        never trips the comparison below.
         """
         if self.deployment is Deployment.CAGE_SIDE:
             return None
@@ -709,6 +742,20 @@ class Welfare:
                 f"animal left its cage at {self.left_cage_at}. A duration that runs "
                 f"backwards is under every ceiling and bounds nothing"
             )
+        if self.fixed_at is not None:
+            end_of_restraint = (
+                self.released_at if self.released_at is not None else now
+            )
+            restraint = end_of_restraint - self.fixed_at
+            if restraint > seconds:
+                raise Exceeded(
+                    f"the clock for subject {self.bounds.subject!r} reads "
+                    f"{seconds:.0f} "
+                    f"{self.bounds.ceilings[OUT_OF_CAGE].unit} out of the cage while "
+                    f"the restraint record reads {restraint:.0f} s in the chair: an "
+                    f"animal must be out of its cage to be in the chair, so the "
+                    f"interval cannot be shorter than the restraint it contains"
+                )
         return seconds
 
     def preflight(self, now: float) -> None:

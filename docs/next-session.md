@@ -230,6 +230,25 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   land in `welfare_notes.jsonl` in the session directory — not `parameter_changes.jsonl`,
   whose `sequence` joins to a strobe these marks deliberately do not have, and not
   `refusals.jsonl`, which is for writes that did not happen and is capped.
+- **The restraint record is a cross-check on the duration, not only a record** (review,
+  2026-09-20). An animal must be out of its cage to be in the chair, so the out-of-cage
+  interval **contains** the restraint interval and can never be shorter than it, and a
+  return cannot precede a release. Both marks present and both orderings individually
+  legal still produced `out_of_cage_seconds` of 1.0 beside `chair_seconds` of 1,340.
+  Guarded at the mark (`returned_to_cage`) **and** at the read (`out_of_cage_seconds`),
+  because `head_fixed` deliberately has no ordering check against the departure — a
+  console may take the two marks in either order — so that route reaches the same
+  impossible pair with no mark being individually wrong. **If you add a second clock, ask
+  what pairs of readings it makes impossible**, not only what each one alone can be.
+- **`sys.stdin` can be `None`, which is not a non-tty.** With fd 0 closed,
+  `sys.stdin.isatty()` raises instead of answering `False` — a traceback where this branch
+  promises a sentence, and it defeated `--confirm-out-of-cage`. `cli._at_a_terminal()` is
+  the one place that asks. If you write `isatty()`, ask what a closed fd 0 does to it.
+- **`tasks/twelve_hour_bounds.py` exists so the confirmation prompt can be dry-run.**
+  `tasks/reference_bounds.py`'s ten-minute ceiling is *shorter than* the thirty-minute
+  threshold, so its confirmation band is empty and the ceiling refuses first. The second
+  config differs in that one entry, keeps both of that file's guards, and is what
+  `--confirm-out-of-cage`'s help points an operator at.
 - **Both ends of the twelve-hour interval are wall-clock times** (PI, 2026-09-20, ruling 4).
   ~~The session clock stops when the frames do, so a return marked long after the loop ended
   carries the loop's last reading.~~ **Closed by that ruling**, and it was a real gap rather

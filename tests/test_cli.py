@@ -1572,3 +1572,141 @@ def test_the_dst_gap_is_closed_as_a_ruling_and_the_description_is_kept():
     assert "night session" in doc, "the condition the dismissal rests on"
     assert "03:30" in doc, "what the skipped hour still resolves to, kept"
     assert "out up to an hour" in doc, "and which direction that is wrong in"
+
+
+def test_a_closed_stdin_is_not_a_terminal_and_the_flag_still_works(
+    tmp_path, monkeypatch
+):
+    """**fd 0 closed makes `sys.stdin` `None`, not a non-tty.**
+
+    Found by review probing the non-interactive path with a pipe, a here-doc,
+    `/dev/null`, `yes c |`, a closed fd 0 and a real pty. Only the closed one got
+    through, and it got through as an `AttributeError` rather than a sentence -- so
+    it failed safe (no session, no row) while defeating `--confirm-out-of-cage`,
+    which is the documented way to run this headless. A traceback here also breaks
+    the rule the same diff states forty lines down: every welfare refusal on this
+    path is a message, not a stack trace.
+    """
+    monkeypatch.setattr("sys.stdin", None)
+
+    exit_code = main(
+        _run_args(
+            tmp_path, "--out-of-cage-at", _hours_ago(9), "--confirm-out-of-cage"
+        )
+    )
+
+    assert exit_code == 0
+    rows = _notes(tmp_path)
+    assert rows[0]["how"] == "--confirm-out-of-cage, with no terminal attached"
+
+
+def test_a_closed_stdin_refuses_with_a_sentence_rather_than_a_traceback(
+    tmp_path, monkeypatch
+):
+    """The other half: with no flag and no stdin at all, the refusal is the ordinary
+    non-interactive one, naming what to pass."""
+    monkeypatch.setattr("sys.stdin", None)
+
+    with pytest.raises(SystemExit) as refused:
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+
+    assert "--confirm-out-of-cage" in str(refused.value)
+    assert "no terminal" in str(refused.value)
+
+
+def test_abort_at_the_prompt_stops_rather_than_starting_an_amendment(
+    tmp_path, monkeypatch
+):
+    """The prompt said "anything else to stop" and matched `a`-anything as *amend*,
+    so `abort` walked into the amendment flow. It still ended in a refusal -- the
+    reason and the name would have been blank -- but a prompt that lies about what a
+    word does is the kind of thing an operator learns once and remembers wrong."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "abort")
+
+    with pytest.raises(SystemExit) as refused:
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+
+    assert "not confirmed" in str(refused.value)
+    assert _notes(tmp_path) == []
+
+
+def test_the_shipped_reference_config_cannot_reach_the_confirmation_band(tmp_path):
+    """**Stated in `--confirm-out-of-cage`'s help, and checked here rather than
+    believed.**
+
+    `tasks/reference_bounds.py`'s `out_of_cage` ceiling is a deliberately implausible
+    ten minutes -- **shorter than `welfare.CONFIRM_MARK_WITHIN`, which is thirty** --
+    so a departure far enough to need confirming is refused by the ceiling before any
+    confirmation is offered. Correct on both sides: the threshold is the PI's number
+    and is deliberately not derived from the ceiling. The consequence, which review
+    found, is that nothing that ships could dry-run the one welfare interaction an
+    operator is asked to perform.
+    """
+    with pytest.raises(SystemExit, match="refused: .*against a ceiling of"):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--allocation", "tasks/allocation.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", _hours_ago(9),
+                "--delivered-today", "0",
+                "--trials", "2",
+            ]
+        )
+
+
+def test_the_twelve_hour_reference_config_can(tmp_path):
+    """The other half, and the reason `tasks/twelve_hour_bounds.py` exists: the same
+    command against a config carrying the real institutional ceiling reaches the
+    confirmation instead of the ceiling refusal. Both guards of
+    `tasks/reference_bounds.py` still apply to it -- subject `REFERENCE`, and every
+    fluid number still an implausible placeholder."""
+    with pytest.raises(SystemExit) as refused:
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--allocation", "tasks/allocation.py",
+                "--bounds", "tasks/twelve_hour_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", _hours_ago(9),
+                "--delivered-today", "0",
+                "--trials", "2",
+            ]
+        )
+
+    assert "Confirm it, or amend it" in str(refused.value)
+    assert "--confirm-out-of-cage" in str(refused.value)
+
+
+def test_the_twelve_hour_reference_config_runs_a_session_when_confirmed(
+    tmp_path, capsys
+):
+    """And it is a config a session actually runs under, not only one that refuses --
+    the dry run the help text points an operator at has to end somewhere."""
+    exit_code = main(
+        [
+            "run",
+            "tasks/fixation_detection.py",
+            "--allocation", "tasks/allocation.py",
+            "--bounds", "tasks/twelve_hour_bounds.py",
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_01",
+            "--subject", "REFERENCE",
+            "--out-of-cage-at", _hours_ago(9),
+            "--confirm-out-of-cage",
+            "--delivered-today", "0",
+            "--trials", "3",
+            *_TASK_SETS,
+        ]
+    )
+
+    assert exit_code == 0
+    assert "the animal has been out 9 hours" in capsys.readouterr().out

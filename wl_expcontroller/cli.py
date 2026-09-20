@@ -197,6 +197,24 @@ def _hours_minutes(seconds: float) -> str:
     )
 
 
+def _at_a_terminal() -> bool:
+    """Whether there is a person on the other end of `stdin`.
+
+    **`sys.stdin` can be `None`, and that is not the same as a non-tty.** With file
+    descriptor 0 closed -- a daemon, a service manager, a `subprocess` given
+    `stdin=None` on a detached parent -- Python leaves `sys.stdin` as `None`, and
+    `sys.stdin.isatty()` then raises `AttributeError` rather than answering `False`.
+    Found by review probing the non-interactive path with a pipe, a here-doc,
+    `/dev/null`, `yes c |`, a closed fd 0 and a real pty: only the closed one got
+    through, and it got through as a traceback that also defeated
+    `--confirm-out-of-cage`, the documented way to run this headless.
+
+    One function rather than the expression twice, because the two call sites have to
+    agree: one decides whether to prompt, and the other labels the recorded row.
+    """
+    return sys.stdin is not None and sys.stdin.isatty()
+
+
 def _ask(prompt: str) -> str:
     """One line from the person at the terminal, or `""` if there is none.
 
@@ -295,11 +313,11 @@ def _settle_departure(session, args) -> tuple:
             "",
             args.actor,
             "--confirm-out-of-cage"
-            if sys.stdin.isatty()
+            if _at_a_terminal()
             else "--confirm-out-of-cage, with no terminal attached",
         )
 
-    if not sys.stdin.isatty():
+    if not _at_a_terminal():
         raise SystemExit(
             f"refused: {warning}\n"
             f"  There is no terminal attached, so there is nobody to confirm it and "
@@ -309,11 +327,16 @@ def _settle_departure(session, args) -> tuple:
         )
 
     print(f"  WARNING: {warning}", file=sys.stderr)
+    # **Exact words, not a prefix.** This matched `a`-anything as *amend*, so
+    # `abort` typed at a prompt that ends "anything else to stop" walked into the
+    # amendment flow and was then parsed as a clock time. It still refused, but a
+    # prompt that lies about what a word does is learned once and remembered wrong.
     answer = _ask(
-        "  [c]onfirm this departure time, [a]mend it, or anything else to stop: "
+        "  type `confirm` to accept this departure time, `amend` to correct it, "
+        "or anything else to stop: "
     ).strip().lower()
 
-    if answer.startswith("a"):
+    if answer in ("a", "amend"):
         amended = _ask(f"  the corrected departure time ({_TIME_FORMATS}): ").strip()
         try:
             amended_at = _wall_clock_time(amended)
@@ -328,7 +351,7 @@ def _settle_departure(session, args) -> tuple:
             "departure amended", amended_at, reason, by, "amended at the terminal"
         )
 
-    if answer.startswith("c"):
+    if answer in ("c", "confirm"):
         return at, note(
             "departure confirmed", at, "", args.actor, "confirmed at the terminal"
         )
@@ -590,7 +613,13 @@ def main(argv: list[str] | None = None) -> int:
         "record a confirmation nobody made, which is worse than none. It is written "
         "into welfare_notes.jsonl as having come from this flag rather than from a "
         "person, so a wrapper with it baked in is visible months later. Ignored when "
-        "the departure is recent enough to need no confirmation",
+        "the departure is recent enough to need no confirmation. **No config that "
+        "ships with this repository can reach the band at all**: "
+        "tasks/reference_bounds.py's out_of_cage ceiling is a deliberately "
+        "implausible ten minutes, shorter than the threshold, so a far departure is "
+        "refused by the ceiling before a confirmation is ever offered -- "
+        "tasks/twelve_hour_bounds.py is a second reference config, with the real "
+        "institutional figure, that this path can be dry-run against",
     )
     runner.add_argument(
         "--amend-out-of-cage-to",

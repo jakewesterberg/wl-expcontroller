@@ -1375,6 +1375,82 @@ def test_an_amendment_names_which_mark_it_changed():
     assert welfare.notes[0][:2] == ("mark amended", "return")
 
 
+# --- an animal must be out of its cage to be in the chair -------------------
+#
+# **The restraint record is a cross-check on the duration, not only a record.**
+# Found by review probing ruling 4: a return marked one second after the departure,
+# on a session whose head was fixed at 60 s and released at 1,400 s, gave
+# `out_of_cage_seconds` of **1.0** beside `chair_seconds` of **1,340**. Both marks
+# present, both orderings individually legal, the whole thing inside the
+# thirty-minute band so nothing prompted -- and an impossible pair accepted in
+# silence, under-reporting the exact interval ruling 4 exists to count.
+#
+# The invariant is free and physical: the out-of-cage interval **contains** the
+# restraint interval, so it can never be shorter than it, and a return cannot
+# precede a release. Guarded at the mark *and* at the read, which is this file's
+# standing rule -- the mark refusal tells the operator while they are typing, and
+# the read refusal catches the routes that do not go through that mark.
+
+
+def test_a_return_before_the_head_was_released_is_refused():
+    """**The probe, at the size it was found.** Twenty-five minutes out, fixed at
+    60 s, released at 1,400 s, and a return typed one second after the departure."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW - 1_500.0, wall_now=WALL_NOW, now=0.0)
+    welfare.head_fixed(at=60.0)
+    welfare.head_released(at=1_400.0)
+
+    with pytest.raises(Exceeded, match="before it was released"):
+        welfare.returned_to_cage(at=WALL_NOW - 1_499.0, wall_now=WALL_NOW)
+
+    assert welfare.returned_at is None, "the impossible mark must not be taken"
+
+
+def test_a_return_after_the_release_is_taken_like_any_other():
+    """The boundary the refusal above is about: released, and then walked back.
+
+    The release at session-clock 1,400 is wall-clock `WALL_NOW + 1_400` here, since
+    session zero was read against `WALL_NOW` -- which is the arithmetic the refusal
+    above turns on, and getting it wrong is how this test was first written."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW - 1_500.0, wall_now=WALL_NOW, now=0.0)
+    welfare.head_fixed(at=60.0)
+    welfare.head_released(at=1_400.0)
+
+    welfare.returned_to_cage(at=WALL_NOW + 1_500.0, wall_now=WALL_NOW + 1_500.0)
+
+    # 1,500 s of transport and chairing before session zero, plus 1,500 s after it.
+    assert welfare.out_of_cage_seconds(now=9_999.0) == pytest.approx(3_000.0)
+
+
+def test_the_interval_can_never_be_shorter_than_the_restraint_it_contains():
+    """**The same impossibility by the other route, caught where it is read.**
+
+    `head_fixed` has no ordering check against the departure -- a console may mark
+    in either order, and constraining that would refuse a legal sequence -- so a
+    fixation *before* the animal left its cage produces chair time longer than
+    out-of-cage time without any mark being individually wrong. The duration reading
+    is where the two can be compared, and this file's own rule is that a computed
+    value is checked as well as its inputs."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+    welfare.fixed_at = -600.0
+
+    with pytest.raises(Exceeded, match="restraint record reads"):
+        welfare.out_of_cage_seconds(now=100.0)
+
+
+def test_an_ordinary_session_reads_a_longer_interval_than_its_restraint():
+    """The case the guard must not fire on, which is every real session: the animal
+    leaves its cage, is transported and chaired, and only then head-fixed."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW - 1_200.0, wall_now=WALL_NOW, now=0.0)
+    welfare.head_fixed(at=0.0)
+
+    assert welfare.out_of_cage_seconds(now=300.0) == pytest.approx(1_500.0)
+    assert welfare.chair_seconds(now=300.0) == pytest.approx(300.0)
+
+
 # --- the port a trial's actions actually reach ------------------------------
 
 

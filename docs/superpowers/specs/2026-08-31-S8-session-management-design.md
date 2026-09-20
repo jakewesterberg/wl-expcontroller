@@ -208,7 +208,12 @@ supplement afterwards — is then computed against a figure that describes half 
    sometimes stands between an operator and a run is a prompt clicked past. A consequence
    worth knowing before reading the tests: `tasks/reference_bounds.py`'s `out_of_cage` ceiling
    is a deliberately implausible ten minutes, **shorter than the threshold**, so that config
-   has an *empty* band and `wlx run` against it never prompts.
+   has an *empty* band and `wlx run` against it never prompts. Review made the point that this
+   left **nothing that ships able to dry-run the one welfare interaction an operator is asked
+   to perform**, so `tasks/twelve_hour_bounds.py` is a second reference config carrying the
+   real institutional ceiling — same subject `REFERENCE`, same implausible fluid placeholders,
+   one entry different. `--confirm-out-of-cage`'s help names it, and two tests check the pair
+   rather than asserting it.
 
    **What each case does, and the non-interactive one is the decision.**
 
@@ -539,7 +544,7 @@ made by the PI and conditional on the reporting above.
 
 **"Is this refusal earned?" should be a lookup, not a reading.** §5.2c earns the
 `_finite`/`_magnitude` refusals as a class — two messages every numeric entry point reaches
-— but `welfare.py` has **twenty-seven** `raise` sites and `bounds.py` **five**, and a
+— but `welfare.py` has **twenty-nine** `raise` sites and `bounds.py` **five**, and a
 reviewer sitting at `returned_to_cage`'s five would not find them there. Every one is below,
 with the failure it was written against and where the argument lives.
 
@@ -579,8 +584,10 @@ wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
 | `is recorded as head-fixed at … and not released, so it cannot also be in its cage` | **The freeze.** A return marked mid-session froze the clock at whatever it read, so `must_stop` answered `None` for the rest of a session that reported itself fully marked | §5.2 item 4 |
 | `cannot be back in its cage … seconds in the future` | **The departure's future refusal, on the closing mark** (PI, 2026-09-20, ruling 4). Once the return is a clock time it can be typed later than the clock the session is reading, which is a mark nothing could have taken — and it would stretch the interval rather than shorten it, so nothing downstream would complain | §5.2 item 4 |
 | `cannot be back in its cage at … having left it at` | A return before the departure gave a **negative** duration, which is under every ceiling there is | §5.2 item 4 |
+| `cannot be back in its cage before it was released from head-fixation at` | **The restraint record as a cross-check, not only a record** (review, 2026-09-20). Both marks present, both orderings individually legal, and the whole thing inside the thirty-minute band so nothing prompts: a return typed one second after a departure 25 minutes old, on a session head-fixed at 60 s and released at 1,400 s, gave `out_of_cage_seconds` of **1.0** beside `chair_seconds` of **1,340** — an impossible pair accepted in silence, under-reporting the exact interval ruling 4 exists to count | §5.2 item 4 |
 | `is not recorded as out of its cage, so the session's one duration limit has no start` | **The absence of a mark must never disable a limit.** An unmarked rig session is indistinguishable from a cage-side one to anything that answers zero | §5.2 item 4 |
 | `A duration that runs backwards` | Arithmetic producing an unchecked value from checked marks — a `now` in a base the mark was not taken in | §5.2c |
+| `out of the cage while the restraint record reads` | **The same impossibility by the route no mark refuses.** `head_fixed` has deliberately no ordering check against the departure — a console may take the two marks in either order — so a fixation marked *before* the animal left its cage is wrong only in the pair it forms. This is that pair, checked where the number is read rather than where a mark is taken, which is this file's standing rule for a computed value | §5.2c; §5.2 item 4 |
 | `is already recorded as back in its cage at …, so this session's interval is closed` | The closed-clock hole reached *before* the loop rather than during it | §5.2 item 4 |
 | `is not recorded as head-fixed, so the session would carry no record of restraint` | A rig session with no `HEAD_FIXED` in the stream has no durable record of restraint | §5.2 |
 | `is already recorded as head-fixed at` | Two restraint clocks, and the shorter one would silently win | §5.2 |
@@ -592,8 +599,8 @@ wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
 | `was amended with no reason given, so it is refused rather than recorded blank` | **A blank reason looks like an answer.** The PI asked for a reason on 2026-09-20 precisely so that a departure time somebody changed can be explained months later; a row recording the change and not the cause answers nothing it would be read for, and is worse than the absence of a row because it appears to | §5.2 item 4 |
 | `was amended by nobody, so it is refused` | **An anonymous change to the clock that bounds a session.** `--as WHO` is required for a console write because a forgeable or invented actor is worse than none, and this moves the one quantity `must_stop` reads. It is in `welfare` rather than in `cli` so that the console action P4d-2 adds cannot reach the record around it | §5.2 item 4 |
 
-**Thirty-two refusals. Two rows are the §5.2c guards** — `is not a real number` and
-`cannot be negative`, which every numeric entry point reaches — **and thirty are
+**Thirty-four refusals. Two rows are the §5.2c guards** — `is not a real number` and
+`cannot be negative`, which every numeric entry point reaches — **and thirty-two are
 structural.** (This said "nine of them are the two guards"; that figure counted neither rows
 nor `raise` sites and could not be reproduced from either, so it is replaced with two that
 `tests/test_welfare.py` checks.) Every message is kept verbatim in the code — they are what an

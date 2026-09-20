@@ -92,9 +92,9 @@ def welfare_note(
     Uncapped, unlike `refusal`: the party generating these is an operator typing at a
     prompt, not a console peer looping on a rejected volume.
 
-    `reason` and `by` are written as given. **`welfare.amend_departure` is what
-    refuses a blank pair**, so the rule has one home and the console path that P4d-2
-    adds cannot reach the record around it.
+    `reason` and `by` are written as given. **`welfare.amend_mark` is what refuses a
+    blank pair**, so the rule has one home and the console path that P4d-2 adds cannot
+    reach the record around it.
     """
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / WELFARE_NOTES).open("a", encoding="utf-8") as handle:
