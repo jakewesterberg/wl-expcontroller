@@ -4,31 +4,25 @@
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
-> **This file describes `p4b-session-management`, not `main` — and, for the P4d-1
-> material below, `p4d1-console-link`, built on top of it.** `p4b-session-management`
-> is **11 commits** ahead of `main`; ten are pushed (`origin/p4b-session-management`),
-> the eleventh (`8693299`) is local only. `p4d1-console-link` branches from that same
-> `8693299` — run `git log --oneline p4b-session-management..p4d1-console-link` for
-> the current list. **Deliberately not a count written here**: a commit count of a
-> branch, stated in a file tracked on that branch, is wrong the instant it is
-> committed — writing it is itself one more commit than it counted, and this file
-> got that wrong three separate times before the number was removed rather than
-> corrected again. `p4d1-console-link` **is committed locally only — not pushed, and
-> not merged** (`git ls-remote origin p4d1-console-link` finds nothing; the push and
-> the merge decision are the PI's, not a session's). `main` is still at `300d7d1`
-> and knows about neither branch. Both exist rather than merging straight in
-> because `bounds.py` and `welfare.py` are welfare-critical and want a
-> human before they merge (CLAUDE.md); `p4d1-console-link` adds a second, narrower ask
-> to the same review rather than opening a new one (see the P4d-1 entry under "What
-> moved on 2026-09-19", and `docs/next-session.md` §1). **`git branch --show-current`
-> before believing anything below** — on `main` this file does not describe the tree
-> you are looking at, and on `p4b-session-management` alone it describes everything
-> except P4d-1.
+> **This file now describes `main`.** `p4d1-console-link` was reviewed, approved by the
+> PI on 2026-09-20 and **fast-forwarded onto `main`**, which moved `300d7d1` → `08adfa2`
+> and now carries P4b and P4d-1 together. The long-standing warning that used to sit here
+> — that this file described a branch `main` did not have — is **retired**, because there
+> is no divergence left to trip over. The branch still exists at the same commit; nothing
+> needs it. **Deliberately still not a commit count**: a count of a branch, stated in a
+> file tracked on that branch, is wrong the instant it is committed — writing it is itself
+> one more commit than it counted, and this file got that wrong three separate times
+> before the number was removed rather than corrected again. Run `git log --oneline` and
+> look.
 >
-> **P4b has now run in CI, and the first run failed** (`34769913502`, 2026-09-13):
-> pytest green on all three Pythons, mutation gate red on `calibration` and `saccade`.
-> Not survivors — the harness could not find two functions. Fixed 2026-09-19; see
-> "What moved" and trap 7's seventh entry.
+> **The merge was a fast-forward**, so `main`'s history stays linear and every commit
+> described below is reachable from it. `git branch --show-current` still costs nothing
+> before believing the rest.
+>
+> **P4b's CI history is worth keeping.** Its first run failed (`34769913502`,
+> 2026-09-13): pytest green on all three Pythons, mutation gate red on `calibration` and
+> `saccade`. Not survivors — the harness could not find two functions. Fixed 2026-09-19;
+> see "What moved" and trap 7's seventh entry.
 
 **The lab opens January 2027.** Everything is being built before any rig exists.
 
@@ -75,7 +69,7 @@ figure was one low. In order:
 | | |
 |---|---|
 | Tests | **674, green — with `.[dev,contract,console]` installed** (610 before the PI's round-3 rulings of 2026-09-20 and the review of them; 560 before round 2) (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below. **Swept a fourth time after the PI's round-2 rulings, 2026-09-20**, over `welfare`, `bounds`, `taskd`, `cli` and `link` at a 602 baseline — **72 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE** (`welfare.emit`, a `Protocol` stub whose body is `...`), every baseline and restore at 602, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **And a fifth time after the review of those rulings**, over the three modules that changed (`welfare`, `bounds`, `cli`) at a 609 baseline — **38 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE**, plus `taskd.head_released` at 610 once the console-path test landed (**3 failed**, up from 2). That run is also where `_hours_minutes` went from **1 failure to 4**: the review found its only test asserted `0 hours 0 minutes`, which is the one value a function that had stopped working would also produce. **Swept a sixth time after the PI's round-3 rulings, 2026-09-20**, over `welfare`, `bounds`, `cli`, `record` and `taskd` at a 664 baseline — **77 target names, 0 survivors on the final pass, 0 timeouts, 1 SKIPPED** (`welfare.emit`, the documented `Protocol` stub), every line a real `N failed`. **That run found something**: `taskd.Session.return_needs_confirmation` **survived**, a passthrough nothing called, written for symmetry with the departure's. Deleted rather than tested — the rule is enforced by the mark itself — and `welfare._refuse_unconfirmed`'s 2 failures were checked by name to be two *behavioural* tests rather than the §5.2d bookkeeping one. **Re-swept after the review of those rulings at a 674 baseline**, all five modules — **78 target names, 0 survivors, 0 timeouts, 1 SKIPPED**. Three of the five were first read through a `tail` that truncated them, which hides a survivor by construction, and were re-run with complete output rather than trusted |
-| CI | **Green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which does not contain P4b, so those greens say nothing about it. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
+| CI | **`main` is at `08adfa2` since 2026-09-20**, the fast-forward of `p4d1-console-link`. Its three pytest legs are green. Its `mutation` job escalated to the **full** sweep, and the reason is worth knowing before reading a push's gate output: a push's gate base is the *previous* `main`, so the whole 55-commit range was in its changed set, `tasks/` included, and it re-ran the sweep that had already passed on `31a3283`. **That re-run had not finished when this was written** (run `35515487242`, ~2h) — check it before treating `main` as verified past the test legs. Before that: **green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which **now contains both P4b and P4d-1**, so from 2026-09-21 its greens describe them — until the merge they did not, and this sentence sat here saying so for six days. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the two clocks (out-of-cage, which bounds the session; restraint, which is recorded), the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7), and **both have moved on this branch** |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. S8 §4–§5 were written the other way round and now carry the correction |
 | Session duration | **One limit: out of the cage to back in the cage, twelve hours** (PI, 2026-09-19). Chair time and a trial cap were the two ceilings until then; neither is a limit now — chair time is recorded by `HEAD_FIXED`/`HEAD_RELEASED` and there is no session-length maximum at all. A rig session is **refused** without its out-of-cage mark; a cage-side one declares `welfare.Deployment.CAGE_SIDE` and has no duration bound. Twelve hours is documented (S8 §5.2 item 4, `welfare.py`) and carried by no constant. **Since 2026-09-20 (PI)** **both marks** are **clock times** (`--out-of-cage-at`, and `returned_to_cage(at, wall_now)`, mapped onto the frame clock inside `welfare` against `left_cage`'s own wall anchor — so the unchairing and the walk back, which the frozen frame clock used to drop, are inside the limit), a mark **more than thirty minutes from now is confirmed by a person or amended with a reason and a name** (`welfare.CONFIRM_MARK_WITHIN`; `wlx run` refuses rather than proceeding when no terminal is attached), there are **three deployment kinds** — `RIG_FIXED`, `RIG_CHAIRED`, `CAGE_SIDE` — with restraint reported **absent rather than zero** where nothing marks it, and the session **warns** at `welfare.WARN_WITHIN_DEFAULT` (1,800 s, **accepted by the PI on 2026-09-20 as a starting value** and still derived from no measurement of this system) before the limit |
@@ -325,6 +319,27 @@ figure was one low. In order:
 ---
 
 ## What moved on 2026-09-20
+
+### P4d-1 is on `main`
+
+**The PI reviewed the welfare surface on 2026-09-20 and approved it**, which was the one
+thing holding both branches back (CLAUDE.md: welfare-critical code requires human review
+before merge). `p4d1-console-link` was then **fast-forwarded onto `main`**: `300d7d1` →
+`08adfa2`, 55 commits, history still linear. P4b rode in with it — it had been sitting
+unmerged since 2026-09-13 behind the same review.
+
+What the PI approved, in the four questions that were actually put to them: a mark more
+than thirty minutes from now is a person's to confirm or amend with a reason and a name;
+the DST switches happen at night when no experiment runs, so they are not designed
+around; `returned_to_cage` is a wall-clock mark like the departure; and **zero reward is a
+designed outcome** — a trial may have a reward period and deliver no juice, because an
+on-screen token may stand in for one. That last one is a task-vocabulary gap, recorded in
+§7 and deliberately not designed here.
+
+**What this does not mean.** The merge is verified by the suite — 674 passing on three
+Pythons — and *not yet* by the sweep: the `mutation` job of run `35515487242` was still
+running when this was written. It is re-running a sweep that already passed on `31a3283`,
+so the expectation is green, but an expectation is not a reading. Check it.
 
 ### The sweep is green, and four of its entries are green for a reason that is not a test
 

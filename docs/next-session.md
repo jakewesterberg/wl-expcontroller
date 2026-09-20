@@ -1,28 +1,17 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **610 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **674 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
-tree clean, **and the work has
-moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
-console link this file used to list as missing (§6, old text) now exists, built on
-`p4b-session-management`'s tip (`8693299`) — run `git log --oneline
-p4b-session-management..p4d1-console-link` for the branch's own commits rather than
-trusting a count written here. **That is not a hedge, it is the whole rule**: a
-commit count of a branch, stated in a file tracked on that branch, is wrong the
-instant it is committed, every time, because writing it is itself one more commit
-than it counted — this exact number was wrong three different ways across three
-fix rounds before it was removed rather than corrected a fourth time.
-`p4d1-console-link` is **committed locally only — not pushed, and not merged**
-(`git ls-remote origin p4d1-console-link` finds nothing). `p4b-session-management`
-itself is 11 commits ahead of `main` (ten of them pushed; the eleventh, `8693299`,
-is local only) — that count is safe to state here, unlike `p4d1-console-link`'s
-own, because nothing committed to *this* branch can change *another* branch's
-history. `main` still points at `300d7d1` and knows about neither branch, so a
-check that looks only at `main` will report that nothing happened. Both branches
-exist rather than merging straight in because `bounds.py` and `welfare.py` are
-welfare-critical and want a human before they merge (§1) — `p4d1-console-link`
-adds a second, narrower ask to the same review rather than a new one (§1, bottom).
-The push and the merge decision are the PI's. No hardware exists.
+tree clean, and **the work is on `main`.** `p4d1-console-link` was approved by the PI on
+2026-09-20 and fast-forwarded onto `main` (`300d7d1` → `08adfa2`), so P4b and P4d-1 are
+both there and a check that looks only at `main` now reports the truth. The console link
+this file used to list as missing (§6, old text) exists and is merged. **Deliberately
+still not a commit count**: a count of a branch, stated in a file tracked on that branch,
+is wrong the instant it is committed, every time, because writing it is itself one more
+commit than it counted — this exact number was wrong three different ways across three
+fix rounds before it was removed rather than corrected a fourth time. Run `git log
+--oneline` instead. The welfare-critical review that held both branches back (§1) is
+**done**: the PI reviewed the surface on 2026-09-20 and approved it. No hardware exists.
 
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
 > is; this says what to do. There are 19 specs and 8 ADRs (ADR-0008 is the newest and
@@ -42,9 +31,10 @@ git log --oneline origin/main..HEAD        # what has never been pushed
 git log --oneline main..HEAD               # what is not on main yet
 ```
 
-**Check the branch first, and it is not `main`.** P4b sits on
-`p4b-session-management`; a session that checks out `main` and reads this file will find
-a handoff describing work its tree does not contain.
+**Check the branch first.** Since 2026-09-20 `main` *does* contain this work, so the
+old warning here — that a session on `main` would find a handoff describing a tree it
+did not have — no longer applies. It applied for six days, which is why the check is
+still the first thing on this page.
 
 **Trap 17, learned expensively on 2026-09-05 and paid off on 2026-09-13.** Nothing was
 pushed for four days while this file and the checkpoint both described CI behaviour that
@@ -58,15 +48,20 @@ seventh entry). Fixed 2026-09-19.
 
 ## 0b. The first thing to do
 
-**Read the branch's own CI run before anything else** — `gh run list --branch
-p4b-session-management`, then `gh run view <id> --log-failed` and *read it*, because the
-last two things this gate reported were a skip dressed as a failure and a syntax error
-dressed as coverage.
+**Read `main`'s own CI run before anything else** — `gh run list --branch main`, then
+`gh run view <id> --log-failed` and *read it*, because the last two things this gate
+reported were a skip dressed as a failure and a syntax error dressed as coverage, and a
+third thing on 2026-09-20 that no exit code could have shown — four `geometry`
+entries that say `caught` and are caught by an *import*, written up in full under
+`docs/CHECKPOINT.md`'s "What moved on 2026-09-20".
 
-The push this section used to ask for happened on 2026-09-13 and the run failed; the fix
-landed on 2026-09-19 and **the branch is green end to end** — run `35433303094`, read
-rather than trusted: 21 modules, 215 caught, 0 survivors, 0 skips, `383 passed` at every
-baseline.
+**The merge run is `35515487242`, on `08adfa2`.** Its three pytest legs went green; its
+`mutation` job was **still running when this was written**, so read it before treating
+`main` as verified past the suite. It escalated to a full sweep for a reason that is not
+obvious from the output: a push's gate base is the *previous* `main`, so a fast-forward of
+55 commits puts the whole range in its changed set, `tasks/` included. It is therefore
+re-running the sweep that already passed on the branch tip `31a3283` — 22 modules, 674
+passed at baseline, 0 survivors, 0 skips.
 
 `tools/mutate.py` changing escalates to a **full sweep** by rule, and a full sweep now
 costs **about 1h40m** (1h46m on 2026-09-13, 1h39m on 2026-09-19, read off GitHub's own
@@ -79,13 +74,19 @@ carried is closed, verified 2026-09-06 by reading the runs.
 
 ---
 
-## 1. The thing that needs a person, not a session
+## 1. ~~The thing that needs a person, not a session~~ — done 2026-09-20, and what it binds next time
 
-**`bounds.py` and `welfare.py` want human review before they merge** (CLAUDE.md, S8
-§7), and that review is what `p4b-session-management` is waiting on. They are the only
-two welfare-critical files and they are deliberately small — **285 and 528 lines, of
-which 99 and 249 are executable**; the rest is argument. `git diff main..HEAD --
-wl_expcontroller/bounds.py wl_expcontroller/welfare.py` is the whole of it.
+**`bounds.py` and `welfare.py` want human review before they merge** (CLAUDE.md, S8 §7).
+**That review happened on 2026-09-20 and the PI approved the surface**, which is what
+released the merge — so this section is now a record of what was approved and a statement
+of what the rule costs the *next* change, not an outstanding ask. They are the only two
+welfare-critical files and they are deliberately small — **285 and 528 lines, of which 99
+and 249 are executable**; the rest is argument. `git diff 300d7d1..08adfa2 --
+wl_expcontroller/bounds.py wl_expcontroller/welfare.py` is the whole of what was reviewed.
+
+**The rule has not moved.** The next change to either file needs a person again before it
+merges, and the reason this one was reviewable in an afternoon is that the files stayed
+small enough to read. Keeping them that way is the point of the paragraphs below.
 
 > **`welfare.py` grew across the welfare-clock rulings and three review rounds**, from
 > 311 lines to a peak of 630, and was then cut back to **528 lines / 249 executable**.
