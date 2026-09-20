@@ -196,8 +196,10 @@ credential lifecycle.
 
 ## wl-works runs an NTP server, and lab hosts synchronize to it (new, 2026-09-20)
 
-**The ask: run an NTP server on wl-works, reachable from the lab network on UDP 123, and
-let a lab host initiate that one connection.** `ADR-0009` (this repository, 2026-09-20)
+**The ask: run an NTP server on wl-works at `ntp.wl.works`, reachable from the lab
+network on UDP 123, and let a lab host initiate that one connection.** The hostname is
+the PI's, named 2026-09-20; **the route is the part still open**, and it is the whole of
+what this ask is now about. `ADR-0009` (this repository, 2026-09-20)
 is the PI's decision behind it — welfare marks are now clock times (the out-of-cage
 departure mark, among them) rather than intervals, and the daily fluid figure spans two
 deployments, the rig and the cage-side kiosk, that cannot otherwise agree what "today" or
@@ -228,12 +230,16 @@ never the alignment of neural data, which stays the sync box's hardware ticks an
 strobed event words. The welfare-action exclusion is unaffected: NTP is a clock source,
 not an action, and is never published through the lab-host protocol.
 
-**What we would still like verified, but are not blocked on.** `ntp.kuleuven.be`, KU
+~~**What we would still like verified, but are not blocked on.** `ntp.kuleuven.be`, KU
 Leuven ICTS's own central NTP service, exists — verified 2026-09-20 against
 `https://admin.kuleuven.be/icts/services/ntp` — but its reachability from the rig's
-network segment is unverified. If wl-works' operator or ICTS can settle that, it may be
-worth revisiting later which host the lab hosts point at; the lab hosts only need one
-configured source, not this one specifically.
+network segment is unverified.~~ **Closed 2026-09-20: the PI named `ntp.wl.works`, so
+the ICTS service is checked and not chosen.** Its segment reachability stops being a
+question because nothing is going to depend on it. The verification is kept, struck
+through rather than deleted, because it is why the alternative was worth considering —
+ADR-0009's *Alternatives considered* carries it. **Do not read this as the routing
+question closing with it**: the lab host still needs a path to `ntp.wl.works` on UDP 123,
+and that is item 5 below.
 
 ---
 
@@ -247,8 +253,9 @@ configured source, not this one specifically.
 4. Whether `planned_task` and `session_intent` are worth adding to a bundle that is already
    load-bearing on their side — their Plan 18b tests run against a fake, so the payload
    shape matters there before either machine exists.
-5. Whether wl-works can run an NTP server reachable from the lab network on UDP 123, and
-   open the one-port routing exception that requires (new, 2026-09-20 — see above).
+5. Whether wl-works can run an NTP server at `ntp.wl.works` reachable from the lab
+   network on UDP 123, and open the one-port routing exception that requires (new,
+   2026-09-20 — see above). **The hostname is settled by the PI; the route is not.**
 
 Nothing here is blocked on an answer: the controller's v1 works with no ELN integration at
 all, writing everything to the session directory as it would anyway. This buys the ELN
