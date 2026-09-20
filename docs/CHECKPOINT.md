@@ -370,6 +370,11 @@ than pass it, because a run in which no test executed is not evidence. Then `geo
 properties need tests that assert on them, and `tests/test_gaze.py:42` can move into a
 fixture where it belongs.
 
+**And the selective gate would not be the thing that told you.** `mutation_gate.select`
+maps `tests/test_gaze.py` to the `gaze` module by name, so the PR that moved that line into
+a fixture would sweep `gaze` and never look at `geometry`. The four would turn into
+survivors on the *nightly*, detached from the change that caused them.
+
 None of this touches P4d-1. `geometry.py` is not on this branch's diff, and the finding is
 pre-existing — the first full sweep in a while is simply the first thing to look at it.
 
