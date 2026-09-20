@@ -233,8 +233,12 @@ supplement afterwards — is then computed against a figure that describes half 
    the two kinds that declare no such marks, in both directions like every other declaration
    here — without that refusal, `chair_seconds` answering `None` would be discarding a
    measurement somebody took rather than reporting one nobody could take. `taskd.Session.run`
-   releases the head only for `RIG_FIXED`, so no stream carries a `HEAD_RELEASED` with no
-   `HEAD_FIXED` before it.
+   releases the head only for `RIG_FIXED`. **What actually makes "no stream carries a
+   `HEAD_RELEASED` with no `HEAD_FIXED` before it" true is `welfare.head_released`'s own
+   three refusals**, not `run()`: the sentence was credited to `run()` when it was written,
+   and a console action calling `Session.head_released` directly — which is precisely what
+   the console gains — bypassed `run()` entirely. It is refused now on the deployment, on
+   there being a fixation to release at all, and on the release preceding it.
 
    **And the *presence* of both marks must not disable it either.** The mirror case, found by
    review: two marks in the wrong order are a session that reports itself fully marked and is
@@ -274,9 +278,10 @@ supplement afterwards — is then computed against a figure that describes half 
    `SessionSpec.warn_within` / `wlx run --warn-within`, and it is a proposal awaiting the
    PI.** It is **not derived from any measurement of this system** — no block duration has
    been measured and nothing under `docs/measurements/` states one, so nothing here claims it
-   clears a block. What it is: a twenty-fourth of the twelve-hour limit, long enough to finish
-   what is running and walk an animal back, short enough not to sit on screen for most of a
-   session. Zero switches the warning off. **A threshold wider than the ceiling is not
+   clears a block. What it is: a twenty-fourth of the twelve-hour limit, **intended to be**
+   long enough to finish what is running and walk an animal back and short enough not to sit
+   on screen for most of a session — an intention, not a measured property, stated as one
+   because the sentence before it disclaims measuring anything. Zero switches the warning off. **A threshold wider than the ceiling is not
    refused**: such a session is genuinely inside the threshold throughout, and refusing it
    would make `tasks/reference_bounds.py`'s deliberately implausible ten-minute placeholder
    fail to construct a `Welfare` at all. This may carry a named default where twelve hours may
@@ -286,8 +291,11 @@ supplement afterwards — is then computed against a figure that describes half 
    (4128/4129, allocated in S2) remain, and the reasoning below stands unchanged: restraint is
    the one welfare quantity with no hardware line, so the codes *are* its durable record and an
    offline reader recovers chair time from the sync box's `W` capture of them. Head-fixation
-   also stays a **preflight requirement** for a rig session, because a session with neither
-   code in the stream has no record of restraint at all.
+   also stays a **preflight requirement** for a `RIG_FIXED` session — **not for every rig
+   session**, since `RIG_CHAIRED` is a rig session and takes no such marks (see the table
+   above, which this sentence contradicted until 2026-09-20). It stays for the kind that has
+   them, because such a session with neither code in the stream has no record of a restraint
+   that happened.
 
    **This needs an input the software did not have, and it needs one for a second reason.**
    Nothing tells `taskd` when the animal was fixed: `wl-shook`'s resting pedestal proves the
@@ -396,11 +404,20 @@ made by the PI and conditional on the reporting above.
 
 ### 5.2d Every refusal in the two welfare-critical files
 
-**"Is this refusal earned?" should be a lookup, not a reading.** §5.2c earns the nine
-`_finite`/`_magnitude` refusals as a class, but `welfare.py` has eighteen `raise` sites and
-`bounds.py` five, and a reviewer sitting at `returned_to_cage`'s five would not find them
-there. Every one is below, with the failure it was written against and where the argument
-lives.
+**"Is this refusal earned?" should be a lookup, not a reading.** §5.2c earns the
+`_finite`/`_magnitude` refusals as a class — two messages every numeric entry point reaches
+— but `welfare.py` has **twenty-three** `raise` sites and `bounds.py` **five**, and a
+reviewer sitting at `returned_to_cage`'s five would not find them there. Every one is below,
+with the failure it was written against and where the argument lives.
+
+> **The counts in this paragraph and in the closing one are measured, and they were not.**
+> This said "the **nine** `_finite`/`_magnitude` refusals ... eighteen `raise` sites and
+> `bounds.py` five" — nine reproduced neither the row count nor the `raise`-site count, and
+> the eighteen went stale as soon as a refusal was added. The closing sentence was corrected
+> on 2026-09-20 and this one was missed in the same pass, which is the whole argument for
+> `tests/test_welfare.py::test_every_refusal_has_a_row_in_the_table_and_every_row_still_greps`
+> — it counts the rows against the `raise` sites and **cannot see prose**. Prose figures here
+> are checked by hand, so they are kept to the two that the table's own length states.
 
 The first column is **the literal head of the message, greppable** — `grep -rn "<phrase>"
 wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
@@ -432,11 +449,14 @@ wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
 | `is already recorded as back in its cage at …, so this session's interval is closed` | The closed-clock hole reached *before* the loop rather than during it | §5.2 item 4 |
 | `is not recorded as head-fixed, so the session would carry no record of restraint` | A rig session with no `HEAD_FIXED` in the stream has no durable record of restraint | §5.2 |
 | `is already recorded as head-fixed at` | Two restraint clocks, and the shorter one would silently win | §5.2 |
+| `is not recorded as head-fixed, so there is nothing to release` | **The guard added on 2026-09-20 stopped one check short.** It asked which deployment this was and not whether there was anything to release, so a `RIG_FIXED` session never fixed accepted the release: `released_at` set, a 4129 strobed into a stream with no 4128, `chair_seconds` then answering `0.00` for it, and `returned_to_cage`'s "fixed and not released" check blind to it because `fixed_at` was still `None` | §5.2 item 4 |
+| `cannot have been released at … having been head-fixed at` | A release before the fixation. `returned_to_cage` refused a backwards interval from the day it was written and the restraint clock had no equivalent, so `head_fixed(500)` and `head_released(100)` were both accepted | §5.2 item 4 |
+| `the restraint clock for subject … reads` | **The computed duration, not only the marks** — `out_of_cage_seconds`' rule, which `chair_seconds` did not have. It guarded `now`, which is not the quantity, so a backwards restraint interval reached the wire and rendered `chair: -1:53:20`. It is also the only thing that makes the entry-point enumeration's exemption for `fixed_at`/`released_at` true | §5.2c |
 | `which takes no head-fixation marks, so the animal cannot be recorded as fixed` | **A deployment recording restraint it declared it does not mark.** Accepted silently until 2026-09-20: a cage-side session could be recorded as head-fixed and nothing disagreed. Without it, `chair_seconds` answering `None` for the two kinds that take no marks would be *discarding* a measurement somebody took rather than reporting one nobody could | §5.2 item 4 |
 | `which takes no head-fixation marks, so the animal cannot be recorded as released` | **The closing half of the same record.** `taskd.Session.head_released` strobes `HEAD_RELEASED`, so guarding only the opening mark left a console action able to put a 4129 in a stream that never carried a 4128 — a restraint record for restraint nothing marked. Found by asking what the documented claim *"no stream carries a HEAD_RELEASED with no HEAD_FIXED before it"* actually depended on: `run()`, and nothing else | §5.2 item 4 |
 
-**Twenty-five refusals. Two rows are the §5.2c guards** — `is not a real number` and
-`cannot be negative`, which every numeric entry point reaches — **and twenty-three are
+**Twenty-eight refusals. Two rows are the §5.2c guards** — `is not a real number` and
+`cannot be negative`, which every numeric entry point reaches — **and twenty-six are
 structural.** (This said "nine of them are the two guards"; that figure counted neither rows
 nor `raise` sites and could not be reproduced from either, so it is replaced with two that
 `tests/test_welfare.py` checks.) Every message is kept verbatim in the code — they are what an

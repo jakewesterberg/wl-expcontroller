@@ -114,11 +114,23 @@ def _wall_clock_time(text: str) -> float:
     - **Timezone: this host's local zone.** A value with no offset is read in the
       zone the lab machine is configured for, which is the clock on the wall the
       operator is reading. A value that carries its own offset is honoured as given.
-      An ambiguous local time -- the repeated hour when the clocks go back -- takes
-      the first occurrence, which `astimezone()` gives by leaving `fold` at 0.
     - **Date: today, on this host, and never rolled back.** A bare `HH:MM` later than
       now is refused as being in the future rather than quietly becoming a departure
       twenty-three hours ago. An overnight departure is typed with its date.
+    - **The two daylight-saving hours, both resolved and neither silent.** Measured
+      on a CET/CEST host, 2026-09-20: an **ambiguous** local time -- the repeated
+      hour when clocks go back -- takes the *first* occurrence, which `astimezone()`
+      gives by leaving `fold` at 0 (`2026-10-25T02:30` resolves to `+02:00`). A
+      **nonexistent** one -- the skipped hour when clocks go forward -- is moved
+      *forward*: `2026-03-29T02:30` resolves to `03:30+02:00`. The directions differ
+      and so does what they cost. The ambiguous case takes the earlier instant, so
+      the interval comes out up to an hour **longer** than meant, which is the safe
+      direction for a ceiling. **The nonexistent case is the unsafe one**: the
+      departure is read up to an hour later than meant, so the animal is reported as
+      having been out up to an hour *less* than it has. Once a year, on one hour, in
+      one direction -- and the interval printed at session start is what surfaces it,
+      since an operator who typed a real time then reads a figure an hour short of
+      the wall clock.
 
     Rolling back would have been the convenient choice and is the wrong one: it turns
     `23:59` mistyped in the morning into an animal recorded as out for most of a day,
@@ -653,7 +665,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"{_hours_minutes(session.welfare.out_of_cage_seconds(session.now()))}"
                 f", having left its cage at "
                 f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(args.out_of_cage_at))}"
-                f" ({time.strftime('%Z') or 'local time'}, this host's local time)"
+                # The zone **at the departure**, not at now. A session started just
+                # after a daylight-saving change would otherwise label a departure
+                # made before it with the zone that is current now -- and that is
+                # precisely the one hour a year when the label carries information.
+                f" ({time.strftime('%Z', time.localtime(args.out_of_cage_at))}"
+                f", this host's local time)"
             )
             census = session.run()
             total = sum(census.outcomes.values()) or 1

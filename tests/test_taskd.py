@@ -465,6 +465,30 @@ def test_a_session_ends_on_its_block_quota_and_not_on_a_trial_ceiling(tmp_path):
     assert session.stopped_because == "every block is finished"
 
 
+def test_a_release_with_no_fixation_never_reaches_the_card(tmp_path):
+    """**The console path, not the piece.** `welfare.head_released` refuses a release
+    with nothing to release; this asserts the consequence that matters -- no `4129`
+    in the stream -- through the object a console action would actually call.
+
+    `Session.head_released` strobes the code straight after telling `welfare`, so a
+    guard that let the call through would have put a `HEAD_RELEASED` into a stream
+    with no `HEAD_FIXED` in it. `run()` never does this; a console action added to
+    the panel would, which is the whole reason the guard exists.
+    """
+    session = Session(
+        _spec(tmp_path, trials=5),
+        card=Card(),
+        pump=Pump(),
+        wall_clock=lambda: WALL_NOW,
+    )
+    session.left_cage(at=WALL_NOW)
+
+    with pytest.raises(Exceeded, match="nothing to release"):
+        session.head_released(at=10.0)
+
+    assert 4129 not in session.card.codes, "the code must not reach the card"
+
+
 def test_head_fixation_is_event_coded_at_both_ends(tmp_path):
     """S8 §5.2: restraint is the one welfare quantity with no hardware line, so the
     codes *are* its durable record and an offline reader recovers chair time from the

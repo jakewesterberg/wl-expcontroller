@@ -439,9 +439,17 @@ def test_putting_the_animal_back_closes_the_interval_and_ends_the_session():
     `must_stop` answered `None` for the whole rest of a session that reported
     itself fully marked. That is the missing-mark failure reached with both marks
     present. The interval still reports what it was -- the record needs it -- and
-    the session is told to end."""
+    the session is told to end.
+
+    The head is fixed before it is released, which it was not until 2026-09-20 --
+    the release was incidental scaffolding here (`returned_to_cage` refuses only a
+    head that is fixed *and not* released, and this one was never fixed), and
+    `head_released` now refuses a release with nothing to release. Marked properly
+    rather than deleted, because the real order is what this test is standing in
+    for."""
     welfare = _welfare()
     welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=100.0)
+    welfare.head_fixed(at=110.0)
     welfare.head_released(at=400.0)
 
     welfare.returned_to_cage(at=460.0)
@@ -875,6 +883,68 @@ def test_a_chaired_session_refuses_a_release_mark_too():
         welfare.head_released(at=0.0)
 
 
+def test_releasing_a_head_that_was_never_fixed_is_refused():
+    """**The guard added on 2026-09-20 stopped one check short.**
+
+    It asked which deployment this was and not whether there was anything to
+    release, so a `RIG_FIXED` session that had never been fixed accepted the
+    release: `released_at` was set, `taskd.Session.head_released` strobed 4129 into
+    a stream with no 4128, `chair_seconds` then answered `0.00` for it, and
+    `returned_to_cage`'s "fixed and not released" check could not see it because
+    `fixed_at` was still `None`. The sentence *"no stream carries a HEAD_RELEASED
+    with no HEAD_FIXED before it"* was still false, for a second reason.
+
+    Reachable only by calling `Session.head_released` outside `run()` -- which is
+    exactly the console action the deployment guard was added for.
+    """
+    welfare = _welfare()
+
+    with pytest.raises(Exceeded, match="is not recorded as head-fixed, so there is "
+                                       "nothing to release"):
+        welfare.head_released(at=100.0)
+
+
+def test_releasing_a_head_before_it_was_fixed_is_refused():
+    """`returned_to_cage` refuses a return before the departure; this is the same
+    refusal on the restraint clock, which did not have one. Without it,
+    `head_fixed(500)` then `head_released(100)` are both finite, both accepted, and
+    `chair_seconds` answers **-400.0**."""
+    welfare = _welfare()
+    welfare.head_fixed(at=500.0)
+
+    with pytest.raises(Exceeded, match="cannot have been released at"):
+        welfare.head_released(at=100.0)
+
+
+def test_a_restraint_clock_that_runs_backwards_is_refused_when_it_is_read():
+    """**The computed duration, not only the marks** -- `out_of_cage_seconds`'
+    rule, which `chair_seconds` did not have. It guarded `now` and nothing else, so
+    a backwards restraint interval reached the wire and rendered as
+    `chair: -1:53:20` on a console.
+
+    The marks are guarded now, so the only way here is a field assigned directly or
+    a `now` in a base the mark was not taken in -- which is exactly why
+    `out_of_cage_seconds` checks its own result as well, and why the entry-point
+    enumeration's exemption for `fixed_at`/`released_at` can only rest on *this*.
+    """
+    welfare = _welfare()
+    welfare.fixed_at = 500.0
+
+    with pytest.raises(Exceeded, match="restraint clock for subject"):
+        welfare.chair_seconds(now=100.0)
+
+
+def test_a_restraint_clock_that_is_not_a_number_is_refused_when_it_is_read():
+    """The other half, and the reason the exemption's old wording was wrong: a
+    direct assignment bypasses `head_fixed`, so the *read* is where a non-finite
+    restraint interval has to be caught."""
+    welfare = _welfare()
+    welfare.fixed_at = float("nan")
+
+    with pytest.raises(Exceeded, match="not a real number"):
+        welfare.chair_seconds(now=100.0)
+
+
 def test_a_cage_side_session_refuses_a_head_fixation_mark():
     """Same refusal, same reason. This was accepted silently until 2026-09-20: a
     session that declared the animal was at home could still be recorded as
@@ -1218,7 +1288,10 @@ ENTRY_POINTS = {
         lambda v: _welfare().returned_to_cage(v),
     ),
     "Welfare.head_fixed.at": (INSTANT, lambda v: _welfare().head_fixed(v)),
-    "Welfare.head_released.at": (INSTANT, lambda v: _welfare().head_released(v)),
+    # Fixed first: `head_released` refuses a release with nothing to release since
+    # 2026-09-20, and `_finite` still runs before that guard, so this drives the
+    # parameter rather than the ordering.
+    "Welfare.head_released.at": (INSTANT, lambda v: _fixed().head_released(v)),
     "Welfare.chair_seconds.now": (INSTANT, lambda v: _welfare().chair_seconds(v)),
     "Welfare.out_of_cage_seconds.now": (
         INSTANT,
@@ -1271,8 +1344,17 @@ NOT_ENTRY_POINTS = {
         "backwards result on every read"
     ),
     "Welfare.returned_at": "as left_cage_at; read through out_of_cage_seconds",
-    "Welfare.fixed_at": "as left_cage_at; read through chair_seconds, which guards now",
-    "Welfare.released_at": "as left_cage_at; read through chair_seconds",
+    # These two said "read through chair_seconds, which guards `now`", and that
+    # was the wrong value: `now` is not the restraint interval, and
+    # `head_fixed(500)` / `head_released(100)` produced -400.0 through a guard
+    # that was looking elsewhere. `chair_seconds` checks its own computed result
+    # now, which is what makes the exemption true rather than merely stated.
+    "Welfare.fixed_at": (
+        "an instant the marks set; a direct construction or a later assignment "
+        "bypasses head_fixed, and chair_seconds catches a non-finite or backwards "
+        "restraint interval on every read"
+    ),
+    "Welfare.released_at": "as fixed_at; read through chair_seconds",
     "Pump.deliver.ml": "a volume leaving this module, already checked by its ceiling",
     "Simulated.deliver.ml": "as Pump.deliver",
     "Absent.deliver.ml": "as Pump.deliver; refuses unconditionally anyway",
@@ -1285,6 +1367,13 @@ def _marked() -> Welfare:
     """A rig `Welfare` with its interval open, so a clock call is the only fault."""
     welfare = _welfare()
     welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW, now=0.0)
+    return welfare
+
+
+def _fixed() -> Welfare:
+    """A `_marked()` one with the head fixed, so a release is the only fault."""
+    welfare = _marked()
+    welfare.head_fixed(at=0.0)
     return welfare
 
 

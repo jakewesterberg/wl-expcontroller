@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **602 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **610 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The

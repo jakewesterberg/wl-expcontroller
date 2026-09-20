@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from wl_expcontroller.bounds import Exceeded
-from wl_expcontroller.cli import main, render
+from wl_expcontroller.cli import _hours_minutes, main, render
 from wl_expcontroller.link import (
     Refused,
     SetParameter,
@@ -1101,6 +1101,32 @@ def test_wlx_run_prints_how_long_the_animal_has_been_out(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "the animal has been out 0 hours 0 minutes" in out
     assert "local time" in out, "the zone the clock time was read in is stated"
+
+
+def test_the_visible_interval_reads_a_nine_hour_typo_as_nine_hours():
+    """**The mitigation Ruling 1 traded a guard for, tested at the size it exists
+    for.** `08:45` typed for `18:45` is nine hours, it sits comfortably inside a
+    twelve-hour ceiling, and no refusal will ever catch it -- this line is the whole
+    of what does. Its only test asserted `0 hours 0 minutes`, which is the one value
+    that would also be produced by a function that had stopped working.
+
+    `_hours_minutes` is pure, so testing nine hours needs no session and no invented
+    bounded config -- the reason given for not doing this the first time was wrong.
+    """
+    assert _hours_minutes(9 * 3_600.0) == "9 hours 0 minutes"
+    assert _hours_minutes(9 * 3_600.0 + 15 * 60.0) == "9 hours 15 minutes"
+
+
+def test_the_visible_interval_says_one_hour_rather_than_one_hours():
+    """A person reads this sentence once, at the moment it matters most."""
+    assert _hours_minutes(3_660.0) == "1 hour 1 minute"
+
+
+def test_the_visible_interval_never_reads_a_negative_duration():
+    """`welfare` refuses a backwards interval before this is ever called, so the
+    clamp is a second line rather than the only one -- but a formatter that printed
+    `-1 hours -53 minutes` would make a refused state look like a report."""
+    assert _hours_minutes(-400.0) == "0 hours 0 minutes"
 
 
 def test_wlx_run_refuses_a_departure_in_the_future(tmp_path):
