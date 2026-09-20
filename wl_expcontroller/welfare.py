@@ -87,6 +87,19 @@ class Pump(Protocol):
     def deliver(self, ml: float) -> None: ...
 
 
+class Card(Protocol):
+    """Whatever puts an event code on a wire -- `dio.Simulated`, or a real card.
+
+    A structural type rather than an import, for the reason `Pump` is one: this
+    module has no hardware in it and `dio` is not a dependency of the welfare path.
+    `Rig.card` was annotated `object` until 2026-09-20, which the entry-point
+    enumeration could not classify -- an annotation naming no type is a door its
+    tripwire cannot see, whatever it happens to hold today.
+    """
+
+    def emit(self, code: int) -> None: ...
+
+
 @dataclass
 class Simulated:
     """Records volumes; touches nothing. What a simulated session delivers into.
@@ -505,7 +518,7 @@ class Rig:
     out of the frame loop.
     """
 
-    card: object
+    card: Card
     welfare: Welfare
 
     def mark(self, code: int) -> None:

@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **557 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff:** **560 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, **and the work has
 moved past `p4b-session-management` to `p4d1-console-link`, not on `main`.** The
@@ -83,22 +83,27 @@ carried is closed, verified 2026-09-06 by reading the runs.
 
 **`bounds.py` and `welfare.py` want human review before they merge** (CLAUDE.md, S8
 §7), and that review is what `p4b-session-management` is waiting on. They are the only
-two welfare-critical files and they are deliberately small — **318 and 515 lines, of
-which 116 and 247 are executable**; the rest is argument. `git diff main..HEAD --
+two welfare-critical files and they are deliberately small — **285 and 528 lines, of
+which 99 and 249 are executable**; the rest is argument. `git diff main..HEAD --
 wl_expcontroller/bounds.py wl_expcontroller/welfare.py` is the whole of it.
 
 > **`welfare.py` grew across the welfare-clock rulings and three review rounds**, from
-> 311 lines to a peak of 630, and was then cut back to **515 lines / 247 executable**.
+> 311 lines to a peak of 630, and was then cut back to **528 lines / 249 executable**.
 > The cut moved the dated PI-ruling narratives into S8 §5.2 and §5.2c — which already
 > carry the rulings — leaving one sentence per guard and a pointer. **Every refusal
 > message is verbatim**; those are what an operator reads, and they are most of why the
 > executable count is what it is (a `raise` wraps over four or five lines).
 >
 > It did not reach the ~350 lines the review asked for, and the gap is reported rather
-> than closed by gutting: at 175 docstring lines there is roughly one sentence per
-> guard left, and cutting further removes the "why" from a welfare-critical file. The
-> useful question for a reviewer is whether each *refusal* is earned — S8 §5.2c lists
-> the failure each one was written against — not whether the prose is too long.
+> than closed by gutting: at ~180 docstring lines there is roughly one sentence per
+> guard left, and cutting further removes the "why" from a welfare-critical file.
+> `bounds.py` got the same treatment in the last round — 327 → 285 lines, 99
+> executable — which nobody had been tracking.
+>
+> **The useful question is whether each *refusal* is earned, and S8 §5.2d makes that a
+> lookup**: all twenty-three across both files, the message's first clause verbatim
+> and greppable, each against the failure it was written for. A test keeps the table
+> and the code in step in both directions, so it cannot rot into decoration.
 
 What a reviewer has to check, stated so the ask is concrete:
 

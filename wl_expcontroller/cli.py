@@ -445,50 +445,56 @@ def main(argv: list[str] | None = None) -> int:
             session_kwargs: dict[str, object] = {}
             if opened_link is not None:
                 session_kwargs["link"] = opened_link
-            session = Session(
-                SessionSpec(
-                    task=str(args.task),
-                    allocation=str(args.allocation) if args.allocation else "",
-                    root=args.root,
-                    session_id=args.session_id,
-                    subject=args.subject,
-                    trials=args.trials,
-                    frame_period=1 / 240,
-                    seed=args.seed,
-                    values=values,
-                    bounds=_load_bounds(args.bounds),
-                    already_delivered_today=args.delivered_today,
-                    # A simulated rig run, so the rig's limits apply. There is no
-                    # flag for the cage-side deployment because there is no kiosk
-                    # to run one on: S13 is a proposed spec, and `wl-touchtrain`
-                    # owns the hardware (S13 §6 item 2). When one exists this is
-                    # where its declaration is chosen.
-                    deployment=Deployment.OUT_OF_CAGE,
-                ),
-                # Simulators, because that is what this subcommand is for. The
-                # refusing implementations are the defaults everywhere else, and a
-                # headless run that silently used a real card would be the worse
-                # surprise.
-                card=SimulatedCard(),
-                pump=SimulatedPump(),
-                **session_kwargs,
-            )
-            # On a rig both of these are the console's actions, and the difference
-            # is the whole reason S8 makes them explicit. Here the out-of-cage one
-            # comes from `--out-of-cage-ago`, which has no default: a headless run
-            # with no animal says `0` and means it, rather than arriving at zero by
-            # omission and quietly reporting chair time as time out of the cage.
-            # Head-fixation lands at the session's own zero, which is what a
-            # simulated session's restraint record is.
-            # **A refused value is a message, not a traceback.** Everything else
-            # this subcommand refuses -- a missing `BOUNDS`, an unloadable task, a
-            # `--set` with no name -- exits with a sentence a person can act on, and
-            # a welfare refusal is the last one that should read as a crash.
+            # **Every welfare refusal on this path is a message, not a traceback.**
+            # `--out-of-cage-ago` was wrapped and `--delivered-today` was not, so
+            # the same bad value on two flags of the same subcommand gave a
+            # sentence on one and a stack trace on the other. S9's "written for a
+            # stranger" rule is about exactly that. The whole construction is
+            # inside the guard because the refusal can come from any of three
+            # places -- `Welfare.__post_init__` on the day's total, `Bounds`
+            # rejecting a config's limit, or the subject mismatch -- and a person
+            # reading the message does not care which.
             try:
+                session = Session(
+                    SessionSpec(
+                        task=str(args.task),
+                        allocation=str(args.allocation) if args.allocation else "",
+                        root=args.root,
+                        session_id=args.session_id,
+                        subject=args.subject,
+                        trials=args.trials,
+                        frame_period=1 / 240,
+                        seed=args.seed,
+                        values=values,
+                        bounds=_load_bounds(args.bounds),
+                        already_delivered_today=args.delivered_today,
+                        # A simulated rig run, so the rig's limits apply. There is no
+                        # flag for the cage-side deployment because there is no kiosk
+                        # to run one on: S13 is a proposed spec, and `wl-touchtrain`
+                        # owns the hardware (S13 §6 item 2). When one exists this is
+                        # where its declaration is chosen.
+                        deployment=Deployment.OUT_OF_CAGE,
+                    ),
+                    # Simulators, because that is what this subcommand is for.
+                    # The refusing implementations are the defaults everywhere
+                    # else, and a headless run that silently used a real card
+                    # would be the worse surprise.
+                    card=SimulatedCard(),
+                    pump=SimulatedPump(),
+                    **session_kwargs,
+                )
+                # On a rig both of these are the console's actions, and the
+                # difference is the whole reason S8 makes them explicit. Here the
+                # out-of-cage one comes from `--out-of-cage-ago`, which has no
+                # default: a headless run with no animal says `0` and means it,
+                # rather than arriving at zero by omission and quietly reporting
+                # chair time as time out of the cage. Head-fixation lands at the
+                # session's own zero, which is a simulated session's restraint
+                # record.
                 session.left_cage(seconds_ago=args.out_of_cage_ago)
+                session.head_fixed(at=0.0)
             except Exceeded as refused:
                 raise SystemExit(f"refused: {refused}") from refused
-            session.head_fixed(at=0.0)
             census = session.run()
             total = sum(census.outcomes.values()) or 1
             for outcome, count in census.outcomes.most_common():

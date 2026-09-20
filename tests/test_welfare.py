@@ -809,19 +809,42 @@ def test_a_pump_fault_reaches_the_session_rather_than_being_absorbed():
 # shape as `tools/mutation_gate.py`, which refuses to run when a module is in
 # neither of its lists.
 #
-# **What would have to be true for one to be missing**, stated so the claim is
-# falsifiable rather than confident: a number would have to reach a comparison in
-# `bounds` or `welfare` without passing through any float-annotated parameter or
-# field of those two modules. There are exactly two such routes. One is an
-# unannotated parameter -- the introspection below reads annotations, so an
-# unannotated float is invisible to it, which is why `test_every_numeric_parameter_
-# is_annotated` exists. The other is arithmetic: two checked values can produce an
-# unchecked third, which is why `out_of_cage_seconds` checks the *computed*
-# duration and `reconcile_report` checks both inputs rather than trusting that
-# guarded inputs give a guarded result.
+# **What would have to be true for a door to be missing**, stated so the claim is
+# falsifiable rather than confident. A number would have to reach a comparison in
+# `bounds` or `welfare` without passing any parameter or field this enumeration can
+# see. **There are at least six such routes** -- an earlier version of this comment
+# said "exactly two", which a review disproved by planting six doors it could not
+# see, three of them in the first category alone:
+#
+# 1. **A parameter or field the introspection cannot classify** -- unannotated, or
+#    annotated `object`/`Any`, or behind a `@property`/`@staticmethod`/`@classmethod`
+#    descriptor rather than a plain function. Closed:
+#    `test_every_numeric_parameter_is_annotated` refuses the first two, and
+#    `_callables` walks the third.
+# 2. **A numeric annotation the classifier does not recognise.** `int | None`,
+#    `Optional[int]` and `Decimal` all slipped the first version. Narrowed, not
+#    closed: `_NUMERIC` is a word-boundary regex over a list of spellings, and a
+#    type it does not name is invisible. Adding one means adding it there.
+# 3. **A number inside a container.** `Bounds.ceilings`/`minima` are `dict`, and the
+#    numbers in them are guarded by `Ceiling`/`Floor` -- the types inside the
+#    container, not the container's annotation. A `dict[str, float]` field would be
+#    a real hole, and there is none in either file.
+# 4. **`*args`/`**kwargs`**, which name no parameter to enumerate. Only `Pump`'s
+#    Protocol has them, and it takes no welfare quantity.
+# 5. **Arithmetic**: two checked values producing an unchecked third. Not closable by
+#    enumerating doors, which is why `out_of_cage_seconds` checks the *computed*
+#    duration and `reconcile_report` checks both of its inputs.
+# 6. **Assignment after construction**, which bypasses `__post_init__`. What makes
+#    that safe is not the setter but the read: every field feeding a comparison is
+#    guarded where it is *used* as well as where it is set.
+#
+# So the enumeration is complete for *doors it can classify*, and 2–6 are covered by
+# checking results as well as inputs. That is the honest boundary.
 
 import dataclasses
 import inspect
+import re
+from pathlib import Path
 
 from wl_expcontroller import bounds as bounds_module
 
@@ -923,22 +946,32 @@ ENTRY_POINTS = {
 NOT_ENTRY_POINTS = {
     "_finite.value": "the guard itself",
     "_magnitude.value": "the guard itself",
-    "Welfare.deliveries": "a counter this module increments; never supplied",
+    # **A count, not a magnitude.** This said "never supplied", which was false --
+    # it is a constructor field and `Welfare(deliveries=-7)` is accepted. Harmless,
+    # because nothing compares it against a limit: it is reported, not enforced. The
+    # reason is what it *is*, not where it comes from.
+    "Welfare.deliveries": "a count of deliveries, compared against no limit",
     "Reconciliation.total": "an output, computed from checked inputs",
     "Reconciliation.commanded": "an output; see above",
     "Reconciliation.delivered": "an output; see above",
     "Reconciliation.unexplained": "an output; see above",
+    # The four clock fields, all with the same honest reason. Three of them said
+    # "set only by X, which checks it", which overstates in the way `left_cage_at`'s
+    # entry already avoided: a `Welfare` can be constructed around any of them, and
+    # a field can be assigned after construction. What makes that safe is not the
+    # setter -- it is that every *read* is guarded.
     "Welfare.left_cage_at": (
-        "set only by left_cage, which checks it. A Welfare constructed around this "
-        "field bypasses that, which out_of_cage_seconds still catches for non-finite "
-        "and backwards values -- see the field's own comment"
+        "an instant the marks set; a direct construction or a later assignment "
+        "bypasses left_cage, and out_of_cage_seconds catches a non-finite or "
+        "backwards result on every read"
     ),
-    "Welfare.returned_at": "set only by returned_to_cage, which checks it",
-    "Welfare.fixed_at": "set only by head_fixed, which checks it",
-    "Welfare.released_at": "set only by head_released, which checks it",
+    "Welfare.returned_at": "as left_cage_at; read through out_of_cage_seconds",
+    "Welfare.fixed_at": "as left_cage_at; read through chair_seconds, which guards now",
+    "Welfare.released_at": "as left_cage_at; read through chair_seconds",
     "Pump.deliver.ml": "a volume leaving this module, already checked by its ceiling",
     "Simulated.deliver.ml": "as Pump.deliver",
     "Absent.deliver.ml": "as Pump.deliver; refuses unconditionally anyway",
+    "Card.emit.code": "an event code leaving this module; dio owns its range",
     "Rig.mark.code": "an event code, not a welfare quantity; dio owns its range",
 }
 
@@ -950,9 +983,71 @@ def _marked() -> Welfare:
     return welfare
 
 
-def _is_numeric(annotation) -> bool:
+#: Every spelling of "this holds a number" the classifier recognises. Regex on word
+#: boundaries rather than `in`, so `Decimal` is caught and `information` is not.
+_NUMERIC = re.compile(r"\b(int|float|Decimal|complex|Real|Number)\b")
+
+#: Annotations that name no type at all. **Refused in these two files**, rather than
+#: accepted as non-numeric: `ml: object` carries a float perfectly well, and an
+#: annotation the classifier cannot classify is a door it cannot see.
+_OPAQUE = re.compile(r"\b(object|Any)\b")
+
+
+def _classify(annotation) -> str:
+    """`"numeric"`, `"other"`, or `"opaque"` -- and `"opaque"` is an error.
+
+    A review planted six doors the first version of this could not see. Three were
+    *descriptors* rather than functions; two were numeric annotations it did not
+    recognise (`int | None`, `Optional[int]`); one was `object`, which it accepted as
+    "not a number" when the honest answer is "unknown". None existed in either module
+    -- this is the tripwire, not a live hole -- but a tripwire with six blind spots
+    is the thing it exists to prevent, one level up.
+    """
+    if annotation is None:
+        return "other"
     text = annotation if isinstance(annotation, str) else str(annotation)
-    return "float" in text or text.strip() in ("int", "<class 'int'>")
+    if _NUMERIC.search(text):
+        return "numeric"
+    if _OPAQUE.search(text):
+        return "opaque"
+    return "other"
+
+
+def _is_numeric(annotation) -> bool:
+    return _classify(annotation) == "numeric"
+
+
+def _callables(cls) -> list:
+    """Every function reachable on `cls`, **including the ones behind descriptors**.
+
+    `vars(cls)[name]` is a `property`, `staticmethod` or `classmethod` object, none
+    of which is an `inspect.isfunction`. Filtering on that alone made a `@property`
+    setter, a `@staticmethod` and a `@classmethod` taking a float invisible to both
+    tests below.
+    """
+    found = []
+    for attr, value in vars(cls).items():
+        if attr.startswith("__"):
+            continue
+        # `Enum` contributes `_generate_next_value_` from `enum.py`, and a base class
+        # can contribute anything. Only functions written in the file under test are
+        # this test's business.
+        fn = value
+        if isinstance(fn, (staticmethod, classmethod)):
+            fn = fn.__func__
+        if not isinstance(fn, property) and getattr(
+            fn, "__module__", cls.__module__
+        ) != cls.__module__:
+            continue
+        if isinstance(value, property):
+            for part, fn in (("fget", value.fget), ("fset", value.fset)):
+                if fn is not None:
+                    found.append((f"{attr}" if part == "fget" else f"{attr}", fn))
+        elif isinstance(value, (staticmethod, classmethod)):
+            found.append((attr, value.__func__))
+        elif inspect.isfunction(value):
+            found.append((attr, value))
+    return found
 
 
 def _numeric_params(label: str, fn) -> set:
@@ -965,7 +1060,7 @@ def _numeric_params(label: str, fn) -> set:
 
 
 def _numeric_surface() -> set:
-    """Every float-annotated parameter and field of the welfare-critical modules.
+    """Every numeric parameter and field of the welfare-critical modules.
 
     Read from the live modules rather than from a list, so that `ENTRY_POINTS` is
     checked and not merely believed.
@@ -984,9 +1079,8 @@ def _numeric_surface() -> set:
                         for f in dataclasses.fields(obj)
                         if _is_numeric(f.type)
                     }
-                for attr, value in vars(obj).items():
-                    if inspect.isfunction(value) and not attr.startswith("__"):
-                        found |= _numeric_params(f"{name}.{attr}", value)
+                for attr, fn in _callables(obj):
+                    found |= _numeric_params(f"{name}.{attr}", fn)
     return found
 
 
@@ -1015,14 +1109,22 @@ def test_the_enumeration_of_numeric_entry_points_is_complete():
 
 
 def test_every_numeric_parameter_is_annotated():
-    """The one blind spot of the introspection above, closed.
+    """The introspection's own blind spots, closed.
 
-    `_numeric_surface` reads annotations, so an *unannotated* float parameter would
-    be invisible to it -- the enumeration would look complete while missing a door.
-    Every parameter of every public callable in both files must therefore carry an
-    annotation, whatever its type.
+    `_numeric_surface` reads annotations, so a parameter it cannot *classify* is a
+    door it cannot see -- and the enumeration would look complete while missing one.
+    Two ways that happens, and both are refused here rather than tolerated:
+
+    - **No annotation at all.**
+    - **An annotation naming no type**: `object` or `Any`. The first version
+      accepted these as "not a number", which is wrong -- `ml: object` carries a
+      float perfectly well, and the honest answer is "unknown".
+
+    Descriptors are walked through `_callables`, because `@property`, `@staticmethod`
+    and `@classmethod` are not `inspect.isfunction` and were invisible to both tests
+    until a review planted three of them.
     """
-    unannotated = []
+    unclassifiable = []
     for module in (bounds_module, welfare_module):
         for name, obj in vars(module).items():
             if getattr(obj, "__module__", None) != module.__name__:
@@ -1031,21 +1133,36 @@ def test_every_numeric_parameter_is_annotated():
             # them: `dataclass`, `Enum` and `Protocol` generate `__eq__`,
             # `__setattr__`, `__replace__` and friends without annotations, and
             # none of them can carry a float an author wrote.
-            callables = [(name, obj)] if inspect.isfunction(obj) else [
-                (f"{name}.{a}", v)
-                for a, v in vars(obj).items()
-                if inspect.isfunction(v) and not a.startswith("__")
-            ]
-            for label, fn in callables:
+            entries = (
+                [(name, obj)]
+                if inspect.isfunction(obj)
+                else [(f"{name}.{a}", fn) for a, fn in _callables(obj)]
+                if inspect.isclass(obj)
+                else []
+            )
+            for label, fn in entries:
                 hints = getattr(fn, "__annotations__", {})
                 for p in inspect.signature(fn).parameters:
-                    if p not in ("self", "cls") and p not in hints:
-                        unannotated.append(f"{label}.{p}")
+                    if p in ("self", "cls"):
+                        continue
+                    if p not in hints:
+                        unclassifiable.append(f"{label}.{p} (unannotated)")
+                    elif _classify(hints[p]) == "opaque":
+                        unclassifiable.append(f"{label}.{p} ({hints[p]})")
+        for name, obj in vars(module).items():
+            if getattr(obj, "__module__", None) != module.__name__:
+                continue
+            if inspect.isclass(obj) and dataclasses.is_dataclass(obj):
+                for f in dataclasses.fields(obj):
+                    if _classify(f.type) == "opaque":
+                        unclassifiable.append(f"{name}.{f.name} ({f.type})")
 
-    assert not unannotated, (
-        f"unannotated parameters in a welfare-critical file: {sorted(unannotated)}. "
-        f"The entry-point enumeration reads annotations, so an unannotated float is "
-        f"a door it cannot see"
+    assert not unclassifiable, (
+        f"parameters or fields in a welfare-critical file whose annotation the "
+        f"entry-point enumeration cannot classify: {sorted(unclassifiable)}. An "
+        f"unannotated one, or one annotated `object`/`Any`, is a door the tripwire "
+        f"cannot see -- `ml: object` carries a float perfectly well. Annotate it "
+        f"with the type it actually holds"
     )
 
 
@@ -1081,3 +1198,108 @@ def test_every_magnitude_refuses_a_negative_value(entry):
 
     with pytest.raises(Exceeded, match=expected):
         drive(-1.0)
+
+
+# ---------------------------------------------------------------------------
+# The refusal table, which must not rot
+# ---------------------------------------------------------------------------
+
+
+_S8 = (
+    Path(__file__).resolve().parent.parent
+    / "docs/superpowers/specs/2026-08-31-S8-session-management-design.md"
+)
+
+
+def _table_phrases() -> list:
+    """The greppable first column of S8 §5.2d, one phrase per refusal."""
+    rows = []
+    inside = False
+    for line in _S8.read_text().splitlines():
+        if line.startswith("### 5.2d"):
+            inside = True
+            continue
+        if inside and line.startswith("### "):
+            break
+        if inside and line.startswith("| `"):
+            cell = line.split("|")[1].strip()
+            # `phrase` *(note)* -> phrase
+            phrase = cell.split("`")[1]
+            rows.append(phrase)
+    return rows
+
+
+def _raise_messages() -> list:
+    """Every `raise` in the two welfare-critical files, message reconstructed.
+
+    The message is rebuilt from the f-string's literal parts with interpolations
+    elided, and whitespace collapsed -- because a refusal message wraps over four or
+    five source lines, so no phrase from it appears literally in the file.
+    """
+    import ast
+    import re as _re
+
+    found = []
+    for module in (bounds_module, welfare_module):
+        source = Path(module.__file__).read_text()
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Raise):
+                continue
+            exc = node.exc
+            if not isinstance(exc, ast.Call) or not exc.args:
+                found.append("")
+                continue
+            arg = exc.args[0]
+            pieces = arg.values if isinstance(arg, ast.JoinedStr) else [arg]
+            text = "".join(
+                p.value
+                if isinstance(p, ast.Constant) and isinstance(p.value, str)
+                else "\u2026"
+                for p in pieces
+            )
+            found.append(_re.sub(r"\s+", " ", text).strip())
+    return found
+
+
+def test_every_refusal_has_a_row_in_the_table_and_every_row_still_greps():
+    """**S8 §5.2d is an index into the code, so it must stay one.**
+
+    The claim it makes -- that "is this refusal earned?" is a lookup -- holds only
+    while the table covers every `raise` and every phrase in it still lands on one.
+    Both directions are checked, because each rots differently: a new refusal with
+    no row makes the table incomplete, and a reworded message makes a row
+    ungreppable while the table still looks full.
+    """
+    phrases = _table_phrases()
+    messages = _raise_messages()
+
+    assert len(phrases) == len(messages), (
+        f"S8 §5.2d has {len(phrases)} rows and the two welfare-critical files have "
+        f"{len(messages)} raise sites. Every refusal gets a row -- that table is the "
+        f"answer to 'is this one earned?'"
+    )
+
+    def lands(phrase: str) -> bool:
+        """True if some refusal message contains the phrase's parts, in order.
+
+        `\u2026` in a row marks where the message interpolates a value, so the
+        parts either side must appear in sequence within one message.
+        """
+        parts = [p for p in phrase.split("\u2026") if p]
+        for message in messages:
+            at = 0
+            for part in parts:
+                at = message.find(part, at)
+                if at < 0:
+                    break
+                at += len(part)
+            else:
+                return True
+        return False
+
+    missing = [p for p in phrases if not lands(p)]
+    assert not missing, (
+        f"these S8 §5.2d phrases match no refusal message, so the table's first "
+        f"column is not greppable: {missing}. A reworded refusal needs its row "
+        f"reworded with it"
+    )

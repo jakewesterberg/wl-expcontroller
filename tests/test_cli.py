@@ -204,6 +204,51 @@ def test_wlx_run_refuses_a_mark_that_is_not_a_number(tmp_path):
         )
 
 
+def test_wlx_run_refuses_a_days_prior_total_that_is_not_a_number(tmp_path):
+    """**The same command, the same kind of bad value, the same treatment.**
+
+    `--out-of-cage-ago nan` gave a clean `refused:` and `--delivered-today nan`
+    gave a raw traceback out of `SessionSpec` construction -- two flags of one
+    subcommand, one sentence and one stack trace. S9's written-for-a-stranger rule
+    is about exactly that. The whole construction is guarded now, so a refusal
+    from the day's total, from a config's limit, or from the subject mismatch all
+    read the same way."""
+    with pytest.raises(SystemExit, match="refused: .*not a real number"):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--allocation", "tasks/allocation.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-ago", "0",
+                "--delivered-today", "nan",
+                "--trials", "3",
+            ]
+        )
+
+
+def test_wlx_run_refuses_a_negative_days_prior_total(tmp_path):
+    """`--delivered-today=-1000` asked the operator for 1019.75 mL of supplement."""
+    with pytest.raises(SystemExit, match="refused: .*cannot be negative"):
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                "--allocation", "tasks/allocation.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-ago", "0",
+                "--delivered-today", "-1000",
+                "--trials", "3",
+            ]
+        )
+
+
 def test_wlx_run_without_a_bounded_config_refuses(tmp_path, capsys):
     """A session with no ceilings is a session with no limits, and the CLI is where
     a person would most plausibly leave one off."""

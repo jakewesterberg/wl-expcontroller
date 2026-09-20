@@ -254,12 +254,20 @@ limit on them. `bounds._finite` and `bounds._magnitude` are the two guards, spel
 entry point on the two welfare-critical modules with a driver for each, recomputes that set
 from the live modules, and **fails if anything is in neither the guarded list nor an exempt
 list with a reason** — the shape `tools/mutation_gate.py` uses for modules. A new float-taking
-method on either file fails the suite until it is guarded and listed. Its one blind spot, an
-*unannotated* parameter, has its own test. What would still have to be true for a door to be
-missing: a number reaching a comparison without passing any annotated parameter or field of
-those two modules — which arithmetic can do, and is why `out_of_cage_seconds` checks the
-computed duration and `reconcile_report` checks both inputs rather than trusting their
-sources.
+method on either file fails the suite until it is guarded and listed. Its own blind spots — an unannotated
+parameter, one annotated `object`, and a `@property`/`@staticmethod`/`@classmethod`
+descriptor — have their own test and their own walk.
+
+**What would still have to be true for a door to be missing.** An earlier version of this
+said "exactly two routes", and a review disproved it by planting six doors the tripwire
+could not see. There are **at least six**: a parameter the introspection cannot classify
+(closed); a numeric type the classifier does not name, such as `Decimal` (narrowed — it is a
+list of spellings); a number inside a container, which is safe here only because
+`Bounds.ceilings` holds `Ceiling`s rather than bare floats; `*args`/`**kwargs`; arithmetic
+producing an unchecked third value; and assignment after construction. The last two are not
+closable by enumerating doors, which is why `out_of_cage_seconds` checks the *computed*
+duration, `reconcile_report` checks both inputs, and every field feeding a comparison is
+guarded where it is read as well as where it is set.
 
 **A reward volume of exactly zero is allowed, because it is visible** — PI, asked and answered
 2026-09-20.
@@ -286,6 +294,49 @@ simplifying the renderer or the reconciliation is where it would otherwise be lo
 rule above — *an instant is finite; a magnitude is finite and not negative* — is unchanged and
 has no exception. What sits on top of it is a policy choice about zero, for this one quantity,
 made by the PI and conditional on the reporting above.
+
+### 5.2d Every refusal in the two welfare-critical files
+
+**"Is this refusal earned?" should be a lookup, not a reading.** §5.2c earns the nine
+`_finite`/`_magnitude` refusals as a class, but `welfare.py` has eighteen `raise` sites and
+`bounds.py` five, and a reviewer sitting at `returned_to_cage`'s five would not find them
+there. Every one is below, with the failure it was written against and where the argument
+lives.
+
+The first column is **the literal head of the message, greppable** — `grep -rn "<phrase>"
+wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
+
+| Refusal (greppable) | Written against | Argument |
+|---|---|---|
+| **`bounds.py`** | | |
+| `is not a real number` | `nan` and `inf` defeat every ordered comparison, in opposite ways: one is `False` against all of them, the other unreachable. `--out-of-cage-ago nan` ran 400 rewarded trials with no duration limit; a NaN ceiling in a config did the same | §5.2c |
+| `cannot be negative` | `--set reward_correct=-0.5` through the console path commanded twenty rewards of −0.5 mL to the pump, then asked for 30 mL of supplement | §5.2c |
+| `has no ceiling in the bounded config` | A typo becoming an unbounded parameter: `rewrd_correct` set to 5.0 would otherwise be accepted, bounded by nothing | §4 |
+| `may not exceed` | The console ceiling. Reward volume is the parameter most often adjusted mid-session and the one where a slip is a dose | §4 |
+| `declares no … minimum, so nothing can say what the day still owes` | A missing floor reads exactly like a floor of zero, so nobody would ever be told to supplement | §5.2b |
+| **`welfare.py`** | | |
+| `no pump is configured` | A no-op pump lets a session score every trial correct and dispense nothing; the first sign is a weight check days later | module docstring; `dio.Absent` |
+| `declares no … minimum, so a session could never say what the day still owes` | The same missing floor, refused at session start rather than at close | §5.2b |
+| `has no … ceiling, so a session out of the cage would be unbounded` | A missing limit is not an absent one | §5.2 item 4 |
+| `states an … ceiling while this session declares the animal is at home` | The declaration and the config disagreeing is a limit switched off by a flag | S13 §4.0 |
+| `is at home, so it cannot also be recorded as leaving its cage` | The same disagreement, reached from the mark instead of the config | S13 §4.0 |
+| `is already recorded as out of its cage at` | Two clocks, shorter wins — **and the re-arm**: out at 0, home at 43,000, out again at 43,100 reported a fresh clock for an animal out twenty-two hours | §5.2 item 4 |
+| `cannot have left its cage … seconds in the future` | A negative "how long ago" is a mark nothing could have taken | §5.2 item 4 |
+| `is recorded as out of its cage … ago, against a ceiling of` | A wall clock handed to a session-relative parameter (1.79e9 s is fifty-seven years), and a session starting at or past its own limit | §5.2 item 4 |
+| `is at home, so there is no interval for a return to close` | Declaration and mark disagreeing, on the closing side | S13 §4.0 |
+| `is not recorded as having left its cage, so a return closes nothing` | A session marked only at the end has no interval at all | §5.2 item 4 |
+| `is already recorded as back in its cage at` *(in `returned_to_cage`)* | A second return moves a closed interval, and the shorter one silently wins | §5.2 item 4 |
+| `is recorded as head-fixed at … and not released, so it cannot also be in its cage` | **The freeze.** A return marked mid-session froze the clock at whatever it read, so `must_stop` answered `None` for the rest of a session that reported itself fully marked | §5.2 item 4 |
+| `cannot be back in its cage at … having left it at` | A return before the departure gave a **negative** duration, which is under every ceiling there is | §5.2 item 4 |
+| `is not recorded as out of its cage, so the session's one duration limit has no start` | **The absence of a mark must never disable a limit.** An unmarked rig session is indistinguishable from a cage-side one to anything that answers zero | §5.2 item 4 |
+| `A duration that runs backwards` | Arithmetic producing an unchecked value from checked marks — a `now` in a base the mark was not taken in | §5.2c |
+| `is already recorded as back in its cage at …, so this session's interval is closed` | The closed-clock hole reached *before* the loop rather than during it | §5.2 item 4 |
+| `is not recorded as head-fixed, so the session would carry no record of restraint` | A rig session with no `HEAD_FIXED` in the stream has no durable record of restraint | §5.2 |
+| `is already recorded as head-fixed at` | Two restraint clocks, and the shorter one would silently win | §5.2 |
+
+**Twenty-three refusals; nine of them are the two guards of §5.2c and fourteen are
+structural.** Every message is kept verbatim in the code — they are what an operator reads —
+and this table is the index into why each exists.
 
 ### 5.2b One fluid budget across rig and kiosk
 

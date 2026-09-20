@@ -1,38 +1,29 @@
 """The bounded config: what a task cannot express and a console cannot exceed.
 
-**Welfare-critical. Human review required before merge** (CLAUDE.md, S8 §7). Kept
-small on purpose: everything here is a thing that can hurt an animal if it is wrong,
-and a small file is one a person can actually read before signing it off.
+**Welfare-critical. Human review required before merge** (CLAUDE.md, S8 §7). Pure:
+the limits, and the arithmetic of whether a number is past one or short of it. No
+clock, no hardware, no state outliving a question -- `welfare.py` has all three.
 
-**Fluid has a floor, not a ceiling** (PI, 2026-09-06), and this file was built the
-other way round until then. The daily fluid figure is a **minimum the animal must
-reach**, topped up by hand after the session if the work did not earn it -- so there
-is no upper limit on earned reward, and a delivery is never refused on volume. What
-was here before refused a delivery that would put the day past its "budget", which
-under this protocol withholds fluid an animal earned in order to satisfy a limit
-nobody set. S8 §4's phrase "daily fluid budget" is what made that reading available;
-the spec now carries the correction.
+**S8 §5.2b, §5.2c and §5.2d carry the arguments.** §5.2d indexes every refusal in
+this file and in `welfare.py` to the failure it was written against, so "is this one
+earned?" is a lookup.
 
-**Ceilings and floors are different types here, deliberately.** They were the same
-type when both were `Ceiling`, which is exactly how the daily figure came to be
-compared with `>` -- a floor stored as a ceiling reads as one at every call site. A
-`Floor` cannot be passed to `set`, and a `Ceiling` cannot be asked for a shortfall.
-
-Three properties, and each exists because of a specific way this goes wrong:
-
-- **A task cannot name a magnitude at all.** `Reward` takes the name of an entry here
-  and the type refuses a number, so the guardrail is what a task can *express* rather
-  than what review notices -- which matters because the task was probably written by a
-  model (P15).
-- **A console may move a value within its ceiling and not past it.** The console is a
-  human, and a human is exactly who this stops: reward volume per delivery is the
-  parameter most often adjusted mid-session and the one where a slip is a dose. This
-  is a genuine ceiling and it stays one. **Checking and moving are two calls**
-  (`validate`, then `set`) because they happen at two moments -- see `validate`.
-- **An unknown daily total leaves the shortfall unknown**, rather than answering zero.
-  Not a refusal to deliver -- a refusal to *claim*: nobody can say what to supplement
-  without knowing what the animal has already had, and zero would report a day as
-  fine when nothing knows whether it was.
+- **Fluid has a floor, not a ceiling** (PI, 2026-09-06). The daily figure is a
+  minimum topped up by hand after the session, so nothing here caps earned reward and
+  no delivery is refused on volume. This file was built the other way round until
+  then, and refused deliveries an animal had earned.
+- **`Ceiling` and `Floor` are different types**, because they were the same one when
+  the daily figure came to be compared with `>`. A `Floor` cannot be passed to `set`;
+  a `Ceiling` cannot be asked for a shortfall.
+- **A task cannot name a magnitude at all**: `Reward` takes the name of an entry here
+  and the type refuses a number (S1 §2.3), so the guardrail is what a task can
+  *express* rather than what review notices -- which matters because the task was
+  probably written by a model (P15).
+- **A console may move a value within its ceiling and not past it**, and **checking
+  and moving are two calls** (`validate`, then `set`) because they happen at two
+  moments -- see `validate`.
+- **An unknown daily total leaves the shortfall unknown** rather than answering zero.
+  Not a refusal to deliver, a refusal to *claim*.
 """
 
 from __future__ import annotations
@@ -48,23 +39,16 @@ class Exceeded(ValueError):
 def _finite(what: str, value: float) -> None:
     """An **instant** entering the welfare path: refused unless it is a real number.
 
-    **`nan` and `inf` both defeat ordered comparisons, in opposite ways.** `nan` is
-    `False` against every one of them, so nothing refuses it. `inf` is ordered but
-    unreachable: `seconds > inf` is `False` for every real duration, so an `inf`
-    *ceiling* is never exceeded either. Both were measured, each running a full
-    reward-delivering session with a clean summary and no limit at all.
+    **`nan` and `inf` defeat ordered comparisons in opposite ways** -- one is `False`
+    against every one of them, the other unreachable, so `seconds > inf` is `False`
+    for every real duration and an `inf` ceiling is never exceeded. Both were
+    measured running a full reward-delivering session with no limit at all (S8
+    §5.2c). An earlier version of this docstring called `inf` safe; that was false,
+    and only the *mark* route ever refused it.
 
-    An earlier version of this docstring said `inf` "was already refused correctly,
-    and only NaN slipped through". **That was false and is recorded here rather than
-    quietly deleted**: only the *mark* route refused `inf`, because `seconds_ago >=
-    ceiling.value` is `True` for `inf` against a finite ceiling. The *ceiling* route
-    refused neither. A wrong sentence in a welfare-critical file is worse than a long
-    one, and this one had already been repeated twice.
-
-    `math.isfinite` covers both and is what `calibration._yaml_float` already uses;
-    a second spelling of "is this a number" is a second thing to keep in step.
-
-    See `_magnitude` for the stronger rule that volumes, durations and limits get.
+    `math.isfinite`, which `calibration._yaml_float` already uses: a second spelling
+    of "is this a number" is a second thing to keep in step. See `_magnitude` for the
+    stronger rule volumes, durations and limits get.
     """
     if not math.isfinite(value):
         raise Exceeded(
@@ -77,28 +61,19 @@ def _finite(what: str, value: float) -> None:
 def _magnitude(what: str, value: float) -> None:
     """A **magnitude** entering the welfare path: finite, and not negative.
 
-    Volumes, durations and the limits on them are quantities of something. A
-    negative one is not a smaller quantity, it is a different kind of thing, and
-    every guard in this file compares magnitudes with `>` -- so a negative value
-    passes them all in the same way `nan` does.
+    Volumes, durations and the limits on them are quantities of something, and every
+    guard here compares them with `>` -- so a negative value passes them all in the
+    way `nan` does. Measured: `--set reward_correct=-0.5` commanded twenty rewards of
+    -0.5 mL to the pump (S8 §5.2c).
 
-    Measured, through the real console path: `--set reward_correct=-0.5` was
-    accepted and applied, commanding twenty rewards of **-0.5 mL** to the pump and
-    then telling the operator to supplement 30 mL against a 20 mL floor.
-    `--delivered-today=-1000` asked for 1019.75 mL.
+    **The assumption, stated so a future entry can push back rather than find a hole:
+    every bounded quantity in this system is a magnitude.** A stimulation amplitude
+    needing a sign would want its own type.
 
-    **The assumption, stated so a future entry can push back on it: every bounded
-    quantity in this system is a magnitude.** Reward volume, daily fluid, time out
-    of the cage and the token figures all are. S8 §4 also lists stimulation bounds,
-    which do not exist yet; if one of those ever needs a sign -- a cathodic-first
-    amplitude, say -- it wants its own type rather than a hole in this one.
-
-    **Zero is allowed here, and that is not an exception to this rule.** Zero is a
-    quantity; this refuses things that are not quantities. The one place it matters
-    is a reward volume of zero, which the PI allowed on 2026-09-20 -- pausing reward
-    without ending a session -- **because it is visible on the console and in the
-    day's accounting**. That is a policy choice sitting on top of this rule for one
-    quantity, with its own condition, not a gap in it. S8 §5.2c.
+    **Zero is allowed, and that is not an exception.** Zero is a quantity; this
+    refuses things that are not. A reward volume of zero is permitted by the PI
+    (2026-09-20) because it is visible -- a policy choice on top of this rule, with
+    its own condition, not a gap in it. S8 §5.2c.
     """
     _finite(what, value)
     if value < 0.0:
@@ -112,9 +87,8 @@ def _magnitude(what: str, value: float) -> None:
 class Unknown(RuntimeError):
     """A figure cannot be computed, so it cannot be claimed.
 
-    Retained rather than deleted: `welfare` reports an unknown day loudly at session
-    close, and a distinct type is what lets a caller tell "we do not know" from "the
-    answer is zero".
+    Retained rather than deleted: a distinct type is what lets a caller tell "we do
+    not know" from "the answer is zero".
     """
 
 
@@ -123,17 +97,15 @@ class Ceiling:
     """A current value and the most it may ever be set to.
 
     Two numbers rather than one because the *setting* is routine and the *limit* is
-    not: an experimenter moves reward volume between sessions without ceremony, and
-    the maximum is not theirs to move while a session runs.
+    not: reward volume moves between sessions without ceremony, and the maximum is
+    not an experimenter's to move while a session runs.
 
     **A maximum is one of two kinds of limit and this type does not distinguish
-    them** (PI, 2026-09-19). It may be a **protocol figure** -- a number a protocol
-    states, changing only when the protocol does, which is what the out-of-cage
-    ceiling is. Or it may be a **fault bound** -- set far above anything a protocol would
-    ask for, so that what it refuses is software commanding an impossible quantity
-    rather than an animal earning a ration. Both are enforced identically here; what
-    differs is what a refusal *means*, so a bounded config is expected to say at each
-    entry which kind its maximum is.
+    them** (PI, 2026-09-19): a **protocol figure**, which changes when the protocol
+    does, or a **fault bound** set far above anything a protocol would ask for, so
+    that what it refuses is software commanding an impossible quantity rather than an
+    animal earning a ration. Both are enforced identically, so a bounded config says
+    at each entry which kind its maximum is.
     """
 
     value: float
@@ -141,12 +113,11 @@ class Ceiling:
     unit: str
 
     def __post_init__(self) -> None:
-        """**A limit that is not a number is not a limit** -- see `_finite`.
+        """**A limit that is not a magnitude is not a limit** (`_magnitude`).
 
-        Here rather than only at the call sites because a bounded config builds
-        these directly (`tasks/reference_bounds.py` is Python, ADR-0006), which is
-        the route a review reproduced: a NaN ceiling reached `welfare.must_stop`
-        and answered `None` for a whole session.
+        Here rather than only at the call sites because a bounded config builds these
+        directly -- it is Python (ADR-0006) -- which is the route a review used to
+        reach `welfare.must_stop` with a NaN ceiling.
         """
         _magnitude("a ceiling's value", self.value)
         _magnitude("a ceiling's maximum", self.maximum)
@@ -165,12 +136,11 @@ class Floor:
     unit: str
 
     def __post_init__(self) -> None:
-        """A floor that is not a number is not a floor either (`_finite`).
+        """A floor that is not a magnitude is not a floor either (`_magnitude`).
 
-        Less dangerous than a NaN ceiling -- no delivery is ever refused on volume,
-        so nothing stops -- but it makes `shortfall()` answer `nan`, which the
-        console and `wlx run` print as a supplement figure. A number nobody can act
-        on, shown where a person acts on it.
+        Less dangerous than a bad ceiling -- nothing stops, since no delivery is
+        refused on volume -- but `shortfall()` would answer `nan` where a person
+        reads the figure they supplement against.
         """
         _magnitude("a floor's value", self.value)
 
@@ -191,24 +161,19 @@ class Bounds:
         nothing**.
 
         **Separate from `set` because a change is checked when a console offers it
-        and applied a trial boundary later** (PI, 2026-09-19). While they were one
-        call a welfare-bounded value could not be checked without being moved, so it
-        went live a trial before the record said it had; **S9a §8.1** has that
-        account, and it is about `taskd`, not about this file.
+        and applied a trial boundary later** (PI, 2026-09-19); S9a §8.1 has that
+        account, and it is about `taskd` rather than this file.
 
-        An unknown name is **refused rather than created**: a typo must not silently
-        become an unbounded parameter that is then used. `rewrd_correct` set to 5.0
-        would otherwise be accepted, bounded by nothing.
+        An unknown name is **refused rather than created**: `rewrd_correct` set to
+        5.0 would otherwise be accepted, bounded by nothing.
 
-        **A value that is not a number is refused here, not at assignment.**
-        `Ceiling` refuses to hold one, so `set` would raise either way -- but it
-        would raise inside `taskd._apply_staged`, which states that its
-        re-validation cannot fail and leaves earlier rows applied if one does. A
-        NaN offered by a console is refused while the person is still looking, like
-        every other value this method refuses.
+        **A bad value is refused here, not at assignment.** `Ceiling` would refuse
+        to hold one anyway, but it would raise inside `taskd._apply_staged`, which
+        states that its re-validation cannot fail and leaves earlier rows applied if
+        one does. Refusing at offer time means the person is still looking.
 
         No actor: a refusal does not depend on who asked, and every caller records
-        the actor beside the refusal it raises.
+        the actor beside it.
         """
         _magnitude(f"{name!r}", value)
         ceiling = self.ceilings.get(name)
@@ -237,14 +202,12 @@ class Bounds:
     def shortfall(self, name: str, delivered_today: float | None) -> float | None:
         """How much of a daily minimum is still owed, or `None` if nobody knows.
 
-        **The whole of what the daily fluid figure is for** (PI, 2026-09-06). An
-        animal that earned less than its floor in the chair is supplemented after the
-        session; one that earned more has earned more, and there is nothing to do.
-        Never a refusal: withholding reward an animal worked for, in order to satisfy
-        an upper limit this protocol does not have, is the failure this replaced.
+        **The whole of what the daily fluid figure is for** (PI, 2026-09-06), and
+        never a refusal: withholding reward an animal worked for, to satisfy an upper
+        limit this protocol does not have, is the failure this replaced.
 
-        `delivered_today` is `None` when the total could not be reconstructed -- after
-        a crash, or cage-side with no ELN figure. **The answer is then `None`, not
+        `delivered_today` is `None` when the total could not be reconstructed -- a
+        crash, or cage-side with no ELN figure. **The answer is then `None`, not
         zero**: a day nobody can measure is not a day that went well.
         """
         floor = self.minima.get(name)
@@ -281,22 +244,17 @@ def reconcile_report(commanded: float, delivered: float) -> Reconciliation:
     """Compare what we asked for with what the delivered line recorded.
 
     **Our commanded total is a lower bound, not a total** (P17). The panel's manual
-    reward button bypasses this software entirely -- debounced, monostabled, OR'd with
-    our commanded line on `wl-sync`'s board, and recorded as *delivered*. A session
-    computing the day's shortfall from what it commanded would ask for a top-up the
-    animal has already had by hand -- which under a floor is the direction that
-    over-delivers, exactly as under a ceiling it was the direction that under-counted.
+    reward button bypasses this software entirely and is recorded as *delivered*, so
+    a shortfall computed from what we commanded would ask for a top-up the animal has
+    already had by hand.
 
-    **The divergence is reported, never absorbed.** Silently taking the larger number
-    would throw away the one signal saying a hand reward happened at all -- and
-    training days, when hand rewards are commonest, are exactly when an unlogged one
-    becomes a silent confound.
+    **The divergence is reported, never absorbed**: silently taking the larger number
+    throws away the one signal that a hand reward happened, and training days are when
+    an unlogged one becomes a silent confound.
 
-    **Delivered below commanded is a fault, not a reconciliation.** The pump should
-    never deliver less than asked; if the record says it did, something is wrong with
-    the pump, the line, or the recording, and quietly using the smaller number would
-    hide a failing rig behind a plausible total. The larger figure is used, and the
-    fault is reported rather than the number quietly corrected.
+    **Delivered below commanded is a fault, not a reconciliation.** The larger figure
+    is used and the fault is reported, rather than a failing rig hiding behind a
+    plausible total.
     """
     # Both figures are volumes, and both arrive from outside: `commanded` from this
     # session's own accounting, `delivered` from the sync box's record (S8 §5.1).
