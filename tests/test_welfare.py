@@ -860,6 +860,21 @@ def test_a_chaired_session_refuses_a_head_fixation_mark():
         welfare.head_fixed(at=0.0)
 
 
+def test_a_chaired_session_refuses_a_release_mark_too():
+    """**The other end of the same record, and the claim it makes true.**
+
+    `taskd.Session.head_released` strobes `HEAD_RELEASED` (4129). `run()` calls it only
+    for `RIG_FIXED`, but a console action wired straight to it would put a 4129 in the
+    stream of a session that never had a 4128 -- a restraint record for restraint
+    nothing marked. Guarding only the opening mark left that reachable while the
+    documentation said it was not.
+    """
+    welfare = _chaired_welfare()
+
+    with pytest.raises(Exceeded, match="cannot be recorded as released"):
+        welfare.head_released(at=0.0)
+
+
 def test_a_cage_side_session_refuses_a_head_fixation_mark():
     """Same refusal, same reason. This was accepted silently until 2026-09-20: a
     session that declared the animal was at home could still be recorded as

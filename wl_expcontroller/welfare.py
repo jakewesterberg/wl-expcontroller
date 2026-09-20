@@ -568,7 +568,21 @@ class Welfare:
         self.released_at = None
 
     def head_released(self, at: float) -> None:
+        """Stop the restraint clock. **Refused where `head_fixed` is** (PI,
+        2026-09-20), because the two are one record and guarding only the opening
+        mark leaves the closing one reachable: `taskd.Session.head_released` strobes
+        `HEAD_RELEASED`, so a console action wired straight to it would put a 4129 in
+        a stream that never carried a 4128.
+        """
         _finite("the time the animal was released", at)
+        if self.deployment is not Deployment.RIG_FIXED:
+            raise Exceeded(
+                f"this session declares subject {self.bounds.subject!r} is "
+                f"{self.deployment.value}, which takes no head-fixation marks, so "
+                f"the animal cannot be recorded as released; a HEAD_RELEASED with no "
+                f"HEAD_FIXED before it is a restraint record for restraint nothing "
+                f"marked"
+            )
         self.released_at = at
 
     def chair_seconds(self, now: float) -> float | None:

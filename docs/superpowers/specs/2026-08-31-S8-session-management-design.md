@@ -432,10 +432,11 @@ wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
 | `is already recorded as back in its cage at …, so this session's interval is closed` | The closed-clock hole reached *before* the loop rather than during it | §5.2 item 4 |
 | `is not recorded as head-fixed, so the session would carry no record of restraint` | A rig session with no `HEAD_FIXED` in the stream has no durable record of restraint | §5.2 |
 | `is already recorded as head-fixed at` | Two restraint clocks, and the shorter one would silently win | §5.2 |
-| `which takes no head-fixation marks` | **A deployment recording restraint it declared it does not mark.** Accepted silently until 2026-09-20: a cage-side session could be recorded as head-fixed and nothing disagreed. Without it, `chair_seconds` answering `None` for the two kinds that take no marks would be *discarding* a measurement somebody took rather than reporting one nobody could | §5.2 item 4 |
+| `which takes no head-fixation marks, so the animal cannot be recorded as fixed` | **A deployment recording restraint it declared it does not mark.** Accepted silently until 2026-09-20: a cage-side session could be recorded as head-fixed and nothing disagreed. Without it, `chair_seconds` answering `None` for the two kinds that take no marks would be *discarding* a measurement somebody took rather than reporting one nobody could | §5.2 item 4 |
+| `which takes no head-fixation marks, so the animal cannot be recorded as released` | **The closing half of the same record.** `taskd.Session.head_released` strobes `HEAD_RELEASED`, so guarding only the opening mark left a console action able to put a 4129 in a stream that never carried a 4128 — a restraint record for restraint nothing marked. Found by asking what the documented claim *"no stream carries a HEAD_RELEASED with no HEAD_FIXED before it"* actually depended on: `run()`, and nothing else | §5.2 item 4 |
 
-**Twenty-four refusals. Two rows are the §5.2c guards** — `is not a real number` and
-`cannot be negative`, which every numeric entry point reaches — **and twenty-two are
+**Twenty-five refusals. Two rows are the §5.2c guards** — `is not a real number` and
+`cannot be negative`, which every numeric entry point reaches — **and twenty-three are
 structural.** (This said "nine of them are the two guards"; that figure counted neither rows
 nor `raise` sites and could not be reproduced from either, so it is replaced with two that
 `tests/test_welfare.py` checks.) Every message is kept verbatim in the code — they are what an
