@@ -121,7 +121,10 @@ What he is asked to approve, one line each, with the test that pins it:
    and the three platform tests in `test_welfare.py` beside
    `test_the_session_clock_is_anchored_once_and_never_steps_with_the_host`.
 2. **After the loop the duration warning continues**, and past the limit it reads as
-   `must_stop`'s sentence. `test_taskd.py::test_past_the_limit_after_the_loop_the_warning_says_so`.
+   `must_stop`'s sentence; **once the return is recorded it is off** (final review I2).
+   `test_taskd.py::test_past_the_limit_after_the_loop_the_warning_says_so`,
+   `test_taskd.py::test_the_closed_frame_tells_nobody_to_bring_back_an_animal_already_home`,
+   `test_taskd.py::test_a_return_past_the_ceiling_closes_with_no_warning_on_any_frame`.
 3. **The return is taken only at `wlx run`'s terminal**, as the stand-in until the ELN
    records it, with the same refusals and the same thirty-minute confirmation; no link
    command carries it. `test_cli.py::test_a_run_at_a_terminal_takes_the_return`,

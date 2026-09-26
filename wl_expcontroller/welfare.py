@@ -1072,10 +1072,19 @@ class Welfare:
         stop would read as though a choice were still open. `warn_within` of zero
         therefore never warns, which is how the warning is switched off.
 
+        **And `None` once the return is recorded** (P4d-2a final review I2,
+        2026-09-26). The interval is closed and the animal is home, so there is
+        nothing left to bring back. This read the closed interval against the
+        threshold until then, and a return made inside the band left "start bringing
+        the animal back" on the closed frame -- the last one a console keeps. Past
+        the ceiling, the stop reason and the closed interval itself carry the fact.
+
         **This bounds nothing**, which is why `warn_within` may have a default at all
         (`WARN_WITHIN_DEFAULT`): whatever it is set to, the session ends at the same
         instant. `wall_now` is a POSIX instant, as `must_stop`'s is.
         """
+        if self.returned_wall_at is not None:
+            return None
         seconds = self.out_of_cage_seconds(wall_now)
         if seconds is None:
             return None

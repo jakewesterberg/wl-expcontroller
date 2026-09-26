@@ -287,7 +287,16 @@ class Session:
         1): `link.Telemetry.of` reads the wall once per frame and hands the same
         instant to this and to both durations, so a frame's warning and the clocks
         printed beside it describe one moment rather than two.
+
+        **`None` once the return is recorded, whatever `phase` says** (P4d-2a final
+        review I2): the animal is home, and no sentence about bringing it back, or
+        about it still being out, is true of it. Asked of `welfare` rather than of
+        `phase`, because a return recorded on the terminal's thread lands before
+        `await_return` moves `phase` to `closed`, and the frame published in between
+        used to carry `must_stop`'s "recorded as back in its cage" as a warning.
         """
+        if self.welfare.returned_wall_at is not None:
+            return None
         warning = self.welfare.approaching_limit(wall_now)
         if warning is None and self.phase == "awaiting_return":
             warning = self.welfare.must_stop(wall_now)

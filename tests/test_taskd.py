@@ -1528,6 +1528,56 @@ def test_past_the_limit_after_the_loop_the_warning_says_so(tmp_path):
         thread.join(timeout=2)
 
 
+def test_the_closed_frame_tells_nobody_to_bring_back_an_animal_already_home(
+    tmp_path,
+):
+    """**P4d-2a final review I2**, reproduced by the reviewer: a ceiling of 800 s and a
+    return at 60 s left the closed frame reading "has 740 s left ... finish the block
+    and start bringing the animal back". That frame is the last one a console keeps,
+    and in production any return between 11h30 and 12h would have left it. A return
+    inside the warning band now closes the interval with no warning at all."""
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _fixed_and_run(tmp_path, link, wall)
+    wall.at = WALL_NOW + 120.0
+
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: link.published[-1].phase == "awaiting_return")
+        assert link.published[-1].duration_warning is not None, "open, it warns"
+        session.returned_to_cage(at=WALL_NOW + 60.0, by="jake")
+        assert _until(lambda: session.phase == "closed")
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+
+    closed = link.published[-1]
+    assert closed.phase == "closed"
+    assert closed.out_of_cage_seconds == pytest.approx(60.0)
+    assert closed.duration_warning is None
+
+
+def test_a_return_past_the_ceiling_closes_with_no_warning_on_any_frame(tmp_path):
+    """The other band of I2: the animal came home after the limit. `must_stop` is
+    what speaks past the ceiling while the interval is open, and once it is closed
+    nothing warns -- the out-of-cage clock on the frame, and the stop reason, carry
+    the fact. **Including the one stale frame** a return recorded between
+    `await_return`'s check and its publish can produce (Task 5's deferred minor):
+    `phase` still reads `awaiting_return` there, and `must_stop`'s "recorded as back
+    in its cage" sentence used to go out as the warning."""
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _fixed_and_run(tmp_path, link, wall)
+    wall.at = WALL_NOW + 900.0  # `_bounds()`' ceiling is 800 s
+    session.phase = "awaiting_return"  # where `await_return` has put it
+    assert "against a ceiling of" in session.duration_warning(wall()), "open, past it"
+
+    session.returned_to_cage(at=WALL_NOW + 850.0, by="jake")
+
+    assert session.phase == "awaiting_return", "the window before the closed frame"
+    assert session.duration_warning(wall()) is None
+    session.phase = "closed"
+    assert session.duration_warning(wall()) is None
+
+
 def test_while_the_loop_runs_each_frame_carries_the_sessions_own_warning(tmp_path):
     """The other half of `Session.duration_warning`: while the loop runs, it is
     `welfare.approaching_limit`'s sentence (PI, 2026-09-20: a warning, so a block can

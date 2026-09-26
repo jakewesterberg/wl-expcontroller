@@ -156,7 +156,8 @@ to review.
    the wall too, so every cross-check compares like with like. This replaces
    `welfare.now_from_wall`'s mapping.
 2. After the loop, the duration warning continues, and past the limit it reads as
-   `must_stop`'s sentence.
+   `must_stop`'s sentence. **Once the return is recorded it is off** (final review I2,
+   2026-09-26): the animal is home, so the closed frame tells nobody to bring it back.
 3. **The return is taken only at `wlx run`'s terminal**, as a stand-in until the wl-works
    ELN records it, with the same refusals and the same thirty-minute confirmation. There is
    no console or browser path.

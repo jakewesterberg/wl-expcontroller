@@ -1043,6 +1043,30 @@ def test_the_warning_stops_once_the_limit_is_past_because_must_stop_speaks():
     assert welfare.must_stop(WALL_NOW + 3_700.0) is not None
 
 
+def test_a_closed_interval_warns_about_nothing():
+    """**P4d-2a final review I2.** Once the return is recorded the interval is closed,
+    and there is no animal left to bring back. `approaching_limit` still read the
+    closed interval against the threshold, so a return made inside the band left a
+    sentence telling an operator to "start bringing the animal back" -- on the last
+    frame a console keeps. Both bands: a return with 500 s left, and one past the
+    ceiling, where `must_stop` and the stop reason carry the fact instead."""
+    within = _welfare(out_of_cage=3_600.0)
+    within.warn_within = 600.0
+    within.left_cage(at=WALL_NOW, wall_now=WALL_NOW)
+    assert within.approaching_limit(WALL_NOW + 3_100.0) is not None, "open, it warns"
+    within.returned_to_cage(at=WALL_NOW + 3_100.0, wall_now=WALL_NOW + 3_100.0)
+
+    assert within.approaching_limit(WALL_NOW + 3_100.0) is None
+    assert within.approaching_limit(WALL_NOW + 9_999.0) is None
+
+    past = _welfare(out_of_cage=3_600.0)
+    past.warn_within = 600.0
+    past.left_cage(at=WALL_NOW, wall_now=WALL_NOW)
+    past.returned_to_cage(at=WALL_NOW + 3_700.0, wall_now=WALL_NOW + 3_700.0)
+
+    assert past.approaching_limit(WALL_NOW + 3_700.0) is None
+
+
 def test_a_cage_side_session_never_warns():
     """It has no duration bound to approach (S13 §4.0), and `None` here is the same
     `None` `out_of_cage_seconds` answers -- not a warning suppressed."""
