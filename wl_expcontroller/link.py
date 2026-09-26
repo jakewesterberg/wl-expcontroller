@@ -473,12 +473,25 @@ class Stop:
     by: str
 
 
-Command = SetParameter | Stop
+@dataclass(frozen=True, slots=True)
+class ReturnedToCage:
+    """The animal is home (P4d-2a). `at` is a POSIX wall instant -- a clock time is
+    what an operator reads (PI, 2026-09-20, ruling 4). `confirmed` says a person
+    acted on a time more than thirty minutes off; `welfare.returned_to_cage` refuses
+    a far one without it, and that refusal comes back as a `Refused` with the
+    sentence a person needs. Carries the request, never a second validator."""
+
+    at: float
+    by: str
+    confirmed: bool
+
+
+Command = SetParameter | Stop | ReturnedToCage
 
 
 def _encode_command(command: Command) -> bytes:
-    """`SetParameter`/`Stop` to msgpack, tagged by kind so `_decode_command` knows
-    which dataclass to rebuild.
+    """`SetParameter`/`Stop`/`ReturnedToCage` to msgpack, tagged by kind so
+    `_decode_command` knows which dataclass to rebuild.
 
     Private, unlike `encode`/`decode`: `ZmqConsole.send` is the only caller, in this
     same file, so this is an implementation detail of the REQ/REP leg rather than a
@@ -490,6 +503,13 @@ def _encode_command(command: Command) -> bytes:
         payload = {"kind": "set", "name": command.name, "value": command.value, "by": command.by}
     elif isinstance(command, Stop):
         payload = {"kind": "stop", "by": command.by}
+    elif isinstance(command, ReturnedToCage):
+        payload = {
+            "kind": "returned",
+            "at": command.at,
+            "by": command.by,
+            "confirmed": command.confirmed,
+        }
     else:
         raise TypeError(f"no wire encoding for {command!r}")
     return msgpack.packb(payload, use_bin_type=True)
@@ -505,6 +525,10 @@ def _decode_command(payload: bytes) -> Command:
         return SetParameter(name=data["name"], value=data["value"], by=data["by"])
     if kind == "stop":
         return Stop(by=data["by"])
+    if kind == "returned":
+        return ReturnedToCage(
+            at=data["at"], by=data["by"], confirmed=data["confirmed"]
+        )
     raise ValueError(f"unknown command kind on the wire: {kind!r}")
 
 
