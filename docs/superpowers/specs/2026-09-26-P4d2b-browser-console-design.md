@@ -95,6 +95,73 @@ P4d-2a; how the page behaves when the stream drops; and the test plan (renderer,
 authorization as a pure function, an end-to-end run against `wlx run --link` on loopback,
 the `/health` contract, the mutation gate's module lists).
 
+**Held from the mockup rounds (PI, 2026-09-26)**, to be written into this section and into
+S9a when the page is presented:
+
+- **The always-visible strip carries four cells**: fluid today / floor, out-of-cage time /
+  12:00, correct / trials for the session, and time since the last reward. Fluid session
+  moves to the runtime tab and the end-of-session summary; the supplement moves to the
+  end-of-session summary. Asked against the 09-20 ruling that allowed zero-reward sessions
+  *because* fluid session and supplement were always visible (S9a §9): "fine as is". What
+  keeps an unpaid working animal visible is fluid today standing still while the time since
+  the last reward grows. S9a §9 is amended to say so when this section is written.
+- **The return to the cage is the ELN's, not this page's.** Asked whether the wl-works ELN
+  (not yet built) records the return as well as the departure: "Yes, the ELN handles return
+  to cage. you can take it out of this interface." The page reads out-of-cage, on the wall
+  clock alone, and offers no →cage control; a session ends with an explicit "end session".
+- **An in-session clock, kept separately**: from opening the session to ending it,
+  expcontroller's own, never mixed with out-of-cage. Asked whether it bounds anything:
+  "only shown and recorded."
+- **Ending a session packages the code it used**: "an end session function that packages
+  all of the interface (wl-expcontroller) and task code that was used in the session ...
+  saved and packaged for a seperate backup that can be uploaded to github (maybe?) for
+  tracking what was used session to session." Mocked as a package in the session directory
+  (so it travels to wl-nas) plus one commit per session to a separate code-record repo.
+  Open: which host pushes it to GitHub.
+- **Nothing runs until the task library is pulled**: "a button next to the task, that must be
+  pressed before anything can run in a new session that pulls the task library from github."
+  The pulled commit is recorded with every run. The library is wl-mllib, which is not
+  built out yet and will be renamed. When GitHub cannot be reached, the last version pulled
+  runs after a warning and a person's confirmation. The code package goes to wl-nas with
+  the session, and pushing it to GitHub is proposed as wl-preproc's job (all PI, 2026-09-26).
+- **Load parameters from an earlier session**: "a feature that can pull task parameters for
+  an animal from a log that is perhaps stored in the eln ... preload parameters from a
+  previous session." The box cannot ask wl-works for the log, so its source is open: pushed
+  when a session opens, or read from earlier session records on the box and wl-nas.
+- **The GUI review's top ten are accepted** ("I like all of the suggestions at the top"),
+  from `docs/superpowers/mockups/2026-09-26-console-review.md` §1 (mockup: `docs/superpowers/mockups/2026-09-26-console-mockup-v12.html`):
+  1. a mark control (M);
+  2. a trial-phase timeline;
+  3. the strip and actions kept in full screen;
+  4. a pre-flight checklist that gates start;
+  5. start values and the shaping step remembered from the last session;
+  6. outcome ticks on Runtime, and trials/min;
+  7. recording status;
+  8. a scheduled stop and a 60-minute notice;
+  9. stalled-animal and tracker alerts;
+  10. eye-map quality and recenter drift.
+  
+  The review's welfare questions were set aside: "the welfare ones are irrelevant, we can
+  ignore."
+- **Runs follow the plan, and an unplanned run is explicit.** Asked how S8 §1 (blocks are
+  planned in wl.works before the session, and wl-preproc quarantines unplanned blocks,
+  lowering the timing tier) meets the mockup's free task choice, the PI chose plan first,
+  unplanned allowed. The page runs the day's plan in order, pushed from wl.works. A run
+  outside the plan is an explicit "unplanned run", with a warning that it lowers the
+  session's timing tier.
+- **P4d-2b is built in six slices, in this order** (PI, 2026-09-26):
+  - **b1 — read-only:** the server, the stream, and the read-only page from today's
+    telemetry, plus `/health`.
+  - **b2 — writes from the box:** parameters, stop, pause, mark, scheduled stop.
+  - **b3 — sessions from the page:** new / load / end session, the task-library pull and
+    pre-flight. This needs a service on the box that holds a session across runs.
+  - **b4 — simulation** with mouse gaze.
+  - **b5 — training tools and manual reward** (welfare-critical).
+  - **b6 — end of session:** the code package and the wl-nas transfer.
+  
+  Overlays, behavior plots, online analysis, the parameter log and RHX status come later,
+  behind the parts they depend on.
+
 ## 5. Not in this slice
 
 - Plots (accuracy over time, RT distribution, accuracy by position) — their own slice, with

@@ -1,0 +1,2148 @@
+<title>Expcontroller Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,700;1,6..72,700&display=swap">
+<style>
+/* wl-style / wl-works tokens: paper ground (light) and navy ground (dark), teal accent,
+   magenta kept to the logo's singleton, hairlines never used for type. */
+:root {
+  --bg: #faf8f3; --surface: #fffefb; --surface-2: #f2f0e9; --ink: #050c19; --muted: #55606f;
+  --rule: rgb(136 148 166 / 0.45); --edge: rgb(5 12 25 / 0.08);
+  --accent: #0a6e6b; --accent-fg: #faf8f3; --accent-soft: #dfecea;
+  --ok: #2e7a4f; --ok-soft: #deefe4; --warn: #9a5b00; --warn-soft: #f6e7cf; --crit: #b3261e; --crit-soft: #f6dcda;
+  --screen: #081122; --screen-ink: #8ea0bc; --rf: #67b2ea; --gaze: #3fbab6;
+  --stim-bg: #7d7d7d; --stim-fg: #f2f2f2; --stim-edge: #5e5e5e;
+  --mock: #452d81; --mock-soft: #ece8f5; --led-off: #c9ced6; --scrim: rgb(5 12 25 / 0.45);
+  --wl-muted: #55606f; --monkey: #55606f; --distract: #c9187b;
+  --shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -1px 0 rgb(5 12 25 / 0.06), 0 1px 2px rgb(5 12 25 / 0.04), 0 8px 28px -12px rgb(5 12 25 / 0.18);
+  --wash: transparent;
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #050c19; --surface: #112037; --surface-2: #152743; --ink: #faf8f3; --muted: #8ea0bc;
+    --rule: rgb(136 148 166 / 0.3); --edge: rgb(250 248 243 / 0.1);
+    --accent: #12a5a1; --accent-fg: #050c19; --accent-soft: #0f3a44;
+    --ok: #5cba80; --ok-soft: #133427; --warn: #e6a646; --warn-soft: #382a12; --crit: #f07166; --crit-soft: #3c1b1a;
+    --screen: #02060d; --screen-ink: #8ea0bc; --rf: #67b2ea; --gaze: #3fbab6;
+    --mock: #b3a2ea; --mock-soft: #221c3a; --led-off: #2b3a52; --scrim: rgb(0 0 0 / 0.6);
+    --wl-muted: #8ea0bc; --monkey: #8ea0bc; --distract: #d6579c;
+    --shadow: inset 0 1px 0 rgb(250 248 243 / 0.06), inset 0 -1px 0 rgb(0 0 0 / 0.25), 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 28px -12px rgb(0 0 0 / 0.6);
+    --wash: rgb(30 49 72 / 0.55);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #050c19; --surface: #112037; --surface-2: #152743; --ink: #faf8f3; --muted: #8ea0bc;
+  --rule: rgb(136 148 166 / 0.3); --edge: rgb(250 248 243 / 0.1);
+  --accent: #12a5a1; --accent-fg: #050c19; --accent-soft: #0f3a44;
+  --ok: #5cba80; --ok-soft: #133427; --warn: #e6a646; --warn-soft: #382a12; --crit: #f07166; --crit-soft: #3c1b1a;
+  --screen: #02060d; --screen-ink: #8ea0bc; --rf: #67b2ea; --gaze: #3fbab6;
+  --mock: #b3a2ea; --mock-soft: #221c3a; --led-off: #2b3a52; --scrim: rgb(0 0 0 / 0.6);
+  --wl-muted: #8ea0bc; --monkey: #8ea0bc; --distract: #d6579c;
+  --shadow: inset 0 1px 0 rgb(250 248 243 / 0.06), inset 0 -1px 0 rgb(0 0 0 / 0.25), 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 28px -12px rgb(0 0 0 / 0.6);
+  --wash: rgb(30 49 72 / 0.55);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: radial-gradient(1400px 700px at 8% -12%, var(--wash), transparent 70%), var(--bg); background-color: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.4; padding-inline: 16px; padding-block: 12px 28px; }
+.wrap { max-width: 1520px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+h2 { font-family: var(--cond); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+h3 { margin: 0; font-family: var(--cond); font-weight: 600; font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+button, input, select { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sub { font-size: 12.5px; color: var(--muted); }
+.sub .num { color: var(--ink); }
+.nm { color: var(--muted); font-style: italic; }
+.later { font-size: 11px; color: var(--mock); font-family: var(--cond); letter-spacing: 0.05em; text-transform: uppercase; font-weight: 600; }
+.open-q { font-size: 12px; color: var(--mock); background: var(--mock-soft); border: 1px dashed var(--mock); border-radius: 4px; padding: 5px 8px; }
+body:not(.notes) .open-q { display: none; }
+
+.mockbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; background: var(--mock-soft); border: 1px dashed var(--mock); border-radius: 6px; padding: 6px 12px; }
+.mockbar strong { font-family: var(--cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--mock); font-size: 13px; }
+.mockbar .grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mockbar .lbl { font-size: 12px; color: var(--muted); }
+.seg { border: 1px solid var(--rule); background: var(--surface); border-radius: 4px; padding: 3px 8px; font-size: 12.5px; cursor: pointer; }
+.seg[aria-pressed="true"] { background: var(--mock); border-color: var(--mock); color: var(--bg); }
+
+.glass { background: var(--surface); border: 1px solid var(--edge); border-radius: 8px; box-shadow: var(--shadow); }
+.head { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; padding: 8px 14px; }
+.logo { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
+.logo svg { height: 34px; width: auto; display: block; }
+.logo .app { font-family: var(--cond); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; color: var(--muted); border-left: 1px solid var(--rule); padding-left: 10px; }
+.head .id { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; }
+.head .k { font-family: var(--cond); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.head .v { font-family: var(--mono); font-weight: 500; }
+.head .spacer { flex: 1; }
+.presence { font-size: 12.5px; color: var(--muted); }
+.presence b { color: var(--ink); font-weight: 600; }
+.pill { font-family: var(--cond); font-weight: 700; letter-spacing: 0.08em; font-size: 12px; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.crit { background: var(--crit-soft); color: var(--crit); } .pill.neutral { background: var(--surface-2); color: var(--muted); }
+.pill.accent { background: var(--accent-soft); color: var(--accent); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 7px 12px; }
+.toolbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
+.btn { border: 1px solid var(--rule); background: var(--surface); border-radius: 5px; padding: 5px 12px; cursor: pointer; font-family: var(--cond); font-weight: 600; letter-spacing: 0.03em; font-size: 14px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.go { background: var(--ok); border-color: var(--ok); color: var(--bg); }
+.btn.danger { border-color: var(--crit); color: var(--crit); }
+.btn.small { padding: 2px 9px; font-size: 13px; }
+.btn[disabled] { opacity: 0.42; cursor: not-allowed; }
+.btn .soon { font-size: 10.5px; color: var(--mock); margin-left: 4px; letter-spacing: 0.05em; text-transform: uppercase; }
+.inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-radius: 6px; padding: 6px 12px; font-size: 13.5px; }
+.inline.crit { background: var(--crit-soft); } .inline.info { background: var(--accent-soft); }
+.inline input { font-family: var(--mono); width: 7em; border: 1px solid var(--rule); border-radius: 3px; padding: 3px 6px; background: var(--surface); }
+
+/* the strip: one line per cell */
+.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); overflow: hidden; }
+.strip > div { padding: 5px 12px; display: grid; gap: 3px; border-left: 1px solid var(--rule); }
+.strip > div:first-child { border-left: 0; }
+.strip .row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 8px; }
+.strip .lab { font-family: var(--cond); font-weight: 700; font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.strip .val { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 14.5px; font-weight: 600; white-space: nowrap; }
+.strip .val .u { font-size: 12px; color: var(--muted); font-family: var(--sans); font-weight: 400; margin-left: 3px; }
+.strip .bar { height: 4px; }
+
+.banner { border-radius: 6px; padding: 6px 12px; font-size: 13.5px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.banner.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); }
+.banner.crit { background: var(--crit-soft); border-left: 4px solid var(--crit); }
+.banner.info { background: var(--accent-soft); border-left: 4px solid var(--accent); }
+.banner .tag { font-family: var(--cond); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; }
+
+/* layout: explicit stacks, stretched, each ending in a slot the monkey can sit in */
+.shell { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(260px, 330px); align-items: stretch; }
+.shell.wide { grid-template-columns: minmax(0, 1fr); }
+.shell.wide .aside { display: none; }
+@media (max-width: 900px) { .shell { grid-template-columns: minmax(0, 1fr); } }
+.main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--rule); }
+.tab { border: 1px solid transparent; border-bottom: 0; background: none; padding: 7px 12px 6px; cursor: pointer; font-family: var(--cond); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 12.5px; color: var(--muted); border-radius: 6px 6px 0 0; margin-bottom: -1px; display: inline-flex; gap: 6px; align-items: center; }
+.tab[aria-selected="true"] { background: var(--surface); border-color: var(--edge); color: var(--ink); }
+.tab .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.tab .dot.warn { background: var(--warn); } .tab .dot.crit { background: var(--crit); } .tab .dot.idle { background: var(--rule); }
+.tabpanel { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.cols { display: grid; gap: 10px; align-items: stretch; }
+.tabpanel > .cols:last-child { flex: 1; }
+#monkey-body, #end-sum, #sess-body { display: grid; gap: 6px; }
+#monkey-body h3 { margin-top: 4px; }
+.cols.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cols.c32 { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+@media (max-width: 1100px) { .cols.c3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .cols.c2, .cols.c3, .cols.c32 { grid-template-columns: minmax(0, 1fr); } }
+.stack { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.slot { flex: 1 1 auto; min-height: 0; display: flex; align-items: flex-end; justify-content: center; }
+.aside { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel { padding: 9px 12px; display: grid; gap: 7px; align-content: start; min-width: 0; }
+.panel .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; font-size: 13px; margin: 0; }
+.dl dt { color: var(--muted); }
+.dl dd { margin: 0; font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.dl dd.flag-warn { color: var(--warn); }
+.selrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+select, .field { border: 1px solid var(--rule); border-radius: 4px; padding: 3px 6px; background: var(--surface); font-size: 13.5px; }
+.locked { font-size: 11.5px; color: var(--muted); }
+.mini { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mini th { text-align: left; font-family: var(--cond); font-weight: 600; font-size: 11.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 3px 8px 3px 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.mini td { padding: 3px 8px 3px 0; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+.mini td.n, .mini th.n { text-align: right; }
+.mini td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.mini tr.sel td { background: var(--accent-soft); }
+.mini input.cell { width: 4.5em; font-family: var(--mono); border: 1px solid var(--rule); border-radius: 3px; padding: 2px 4px; background: var(--surface); }
+.mini input.cell.wide { width: 8em; }
+.scroll { overflow-x: auto; max-width: 100%; }
+.ok-mark { color: var(--ok); font-weight: 600; }
+
+.io { display: grid; gap: 3px; }
+.io .row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
+.led { width: 11px; height: 11px; border-radius: 50%; background: var(--led-off); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12); transition: background 0.12s; }
+.led.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.led.rew.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.led.dead { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
+
+.screen { border-radius: 5px; max-width: 100%; overflow: hidden; background: var(--screen); }
+.screen svg { width: 100%; height: auto; display: block; }
+.rp-win { fill: none; stroke: var(--screen-ink); stroke-width: 1; stroke-dasharray: 3 3; }
+.rp-dot { fill: var(--screen-ink); } .rp-tgt { fill: none; stroke: var(--screen-ink); stroke-width: 1.5; }
+.rp-gaze { fill: none; stroke: var(--gaze); stroke-width: 1.2; opacity: 0.9; } .rp-eye { fill: var(--gaze); }
+.rp-rf { fill: color-mix(in srgb, var(--rf) 14%, transparent); stroke: var(--rf); stroke-width: 1; }
+.rp-rf-lab { fill: var(--rf); font-family: var(--mono); font-size: 7px; }
+.rp-ax { stroke: var(--screen-ink); stroke-width: 0.4; opacity: 0.35; }
+.rp-cap { fill: var(--screen-ink); font-family: var(--mono); font-size: 7px; opacity: 0.8; }
+.sd-bg { fill: var(--stim-bg); } .sd-fg { fill: var(--stim-fg); } .sd-div { stroke: var(--stim-edge); stroke-width: 1; }
+.sd-cap { fill: var(--stim-edge); font-family: var(--mono); font-size: 7px; }
+
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.spk { display: flex; align-items: center; gap: 8px; min-height: 22px; min-width: 0; }
+.spk svg { width: 26px; height: 20px; flex: none; color: var(--muted); }
+.spk .waves path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; opacity: 0; }
+.spk.playing svg { color: var(--accent); }
+.spk.playing .waves path { animation: emit 0.9s ease-out infinite; }
+.spk.playing .waves path:nth-child(2) { animation-delay: 0.15s; }
+.spk.playing .waves path:nth-child(3) { animation-delay: 0.3s; }
+@keyframes emit { 0% { opacity: 0; transform: translateX(-2px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateX(3px); } }
+@media (prefers-reduced-motion: reduce) { .spk.playing .waves path { animation: none; opacity: 1; } }
+.spk .tone { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+.fps { font-family: var(--mono); font-size: 18px; font-weight: 600; line-height: 1.1; }
+.fps .sub { font-family: var(--sans); font-weight: 400; font-size: 12px; }
+.fps .u { font-size: 11.5px; color: var(--muted); font-family: var(--sans); font-weight: 400; margin-left: 3px; }
+
+.big { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; line-height: 1.1; }
+.unit { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 3px; font-family: var(--sans); }
+.bar { height: 8px; background: var(--surface-2); border-radius: 3px; position: relative; overflow: hidden; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.bar .fill.ok { background: var(--ok); } .bar .fill.warn { background: var(--warn); } .bar .fill.crit { background: var(--crit); }
+.counts { display: grid; gap: 6px 14px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.fam { display: grid; gap: 1px; align-content: start; }
+.kv { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.kv > span { min-width: 0; overflow-wrap: anywhere; }
+.need { display: grid; gap: 5px; }
+.need .row { display: grid; grid-template-columns: minmax(64px, 104px) 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
+.owe { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; background: var(--accent-soft); border-radius: 6px; padding: 8px 10px; }
+
+.params { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.param { border: 1px solid var(--rule); border-radius: 5px; padding: 6px 8px; display: grid; gap: 2px; background: var(--surface-2); }
+.param label { font-family: var(--mono); font-size: 12.5px; font-weight: 500; display: flex; justify-content: space-between; gap: 6px; }
+.param .ceil { font-family: var(--cond); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--warn); font-weight: 700; }
+.param .bound { font-family: var(--cond); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--rf); font-weight: 700; }
+.param .in { display: flex; gap: 4px; align-items: center; }
+.param input { width: 100%; min-width: 0; font-family: var(--mono); border: 1px solid var(--rule); border-radius: 3px; padding: 2px 5px; background: var(--surface); }
+.param .range { font-size: 11.5px; color: var(--muted); }
+.param.staged { border-color: var(--accent); }
+
+.feed { display: grid; align-content: start; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+.ev { display: grid; grid-template-columns: 3.4em minmax(0, 1fr); gap: 6px; padding: 4px 0; border-top: 1px solid var(--rule); font-size: 12.5px; }
+.ev:first-child { border-top: 0; }
+.ev > span { min-width: 0; overflow-wrap: anywhere; }
+.ev .t { font-family: var(--mono); color: var(--muted); font-size: 11.5px; }
+.ev .kind { font-family: var(--cond); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; font-size: 11px; margin-right: 5px; }
+.ev.staged .kind { color: var(--accent); } .ev.applied .kind { color: var(--ok); } .ev.refused .kind { color: var(--crit); } .ev.mark .kind { color: var(--warn); } .ev.run .kind { color: var(--muted); }
+.health .r { display: grid; grid-template-columns: 1em minmax(0, 7.5em) minmax(0, 1fr); gap: 6px; font-size: 12.5px; }
+.health .r .f { color: var(--accent); } .health .r .l { color: var(--muted); } .health .r .v { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+
+.chart { width: 100%; max-width: 100%; height: auto; display: block; }
+.chart .axis { stroke: var(--muted); stroke-width: 1; }
+.chart .grid { stroke: var(--rule); stroke-width: 0.6; stroke-dasharray: 2 3; }
+.chart .fit { fill: none; stroke: var(--accent); stroke-width: 2; }
+.chart .pt { fill: var(--surface); stroke: var(--accent); stroke-width: 1.6; }
+.chart .pt.last { fill: var(--accent); }
+.chart .hist { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; }
+.chart .area { fill: var(--accent-soft); stroke: none; }
+.chart text { fill: var(--muted); font-family: var(--mono); font-size: 9px; }
+
+.segs { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
+.segs button { border: 0; border-left: 1px solid var(--rule); background: var(--surface); padding: 3px 10px; font-family: var(--cond); font-weight: 600; font-size: 13px; cursor: pointer; color: var(--muted); }
+.segs button:first-child { border-left: 0; }
+.segs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.segs button:disabled { cursor: not-allowed; opacity: 0.55; }
+.tsel { display: inline-flex; align-items: center; gap: 6px; }
+.tsel .k { font-family: var(--cond); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.tsel select { font-family: var(--mono); font-size: 13.5px; padding: 4px 6px; }
+.chk { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.hint { font-size: 12.5px; color: var(--muted); }
+.head { position: relative; }
+.pill.simp { color: var(--ink); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink) 16%, transparent) 0 6px, transparent 6px 12px); box-shadow: inset 0 0 0 1px var(--rule); }
+body.sim .head::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 5px; border-radius: 8px 8px 0 0; background: repeating-linear-gradient(135deg, var(--ink) 0 8px, transparent 8px 16px); opacity: 0.35; }
+body.sim .screen.eye { cursor: crosshair; }
+.pathbox { display: flex; gap: 8px; align-items: center; justify-content: space-between; border: 1px solid var(--rule); border-radius: 5px; padding: 6px 8px; background: var(--surface-2); }
+.pathbox .mono { overflow-wrap: anywhere; min-width: 0; font-size: 13px; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0 2px; font-family: var(--mono); font-size: 13px; }
+.crumbs button { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 1px 3px; font: inherit; border-radius: 3px; }
+.crumbs button:hover { background: var(--accent-soft); }
+.dirs { border: 1px solid var(--rule); border-radius: 5px; max-height: 260px; overflow-y: auto; }
+.dirs button { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--rule); background: none; padding: 6px 8px; cursor: pointer; font-size: 13px; }
+.dirs button:first-child { border-top: 0; }
+.dirs button:hover:not(:disabled) { background: var(--surface-2); }
+.dirs button:disabled { cursor: default; opacity: 0.6; }
+.dirs svg { width: 16px; height: 13px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--mono); font-size: 12.5px; border: 1px solid var(--rule); border-radius: 999px; padding: 1px 9px; color: var(--muted); }
+.chip.done { color: var(--ink); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.ticks { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 2px; }
+.tk { height: 12px; border-radius: 2px; background: var(--surface-2); }
+.tk.ok { background: var(--accent); } .tk.err { background: color-mix(in srgb, var(--crit) 65%, transparent); }
+textarea.field { width: 100%; resize: vertical; font-family: var(--sans); font-size: 13px; }
+
+kbd { font-family: var(--mono); font-size: 11px; font-weight: 500; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; margin-left: 6px; color: var(--muted); }
+.xbtn { width: 30px; height: 30px; display: grid; place-items: center; border: 1.5px solid var(--distract); color: var(--distract); background: transparent; border-radius: 6px; cursor: pointer; padding: 0; flex: none; }
+.xbtn:hover { background: var(--distract); color: var(--bg); }
+.xbtn svg { width: 12px; height: 12px; }
+.full { position: fixed; inset: 0; z-index: 20; background: var(--bg); display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; }
+.full-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.full-top h2 { color: var(--ink); font-size: 13px; }
+.full-top .spacer { flex: 1; }
+#full-screen { width: 100%; max-width: calc((100vh - 120px) * 16 / 9); margin: 0 auto; }
+.screen.zoom { cursor: zoom-in; }
+.scrim.gone { background: var(--bg); z-index: 30; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; background: var(--ink); color: var(--bg); border-radius: 6px; padding: 7px 14px; font-size: 13.5px; box-shadow: var(--shadow); pointer-events: none; }
+#feed-rt { max-height: 560px; }
+
+.spin { display: inline-flex; align-items: stretch; min-width: 0; }
+.spin input { border-top-right-radius: 0; border-bottom-right-radius: 0; min-width: 0; }
+.arrows { display: flex; flex-direction: column; border: 1px solid var(--rule); border-left: 0; border-radius: 0 3px 3px 0; overflow: hidden; flex: none; }
+.arrows button { flex: 1; width: 18px; border: 0; padding: 0; background: var(--surface-2); color: var(--muted); cursor: pointer; display: grid; place-items: center; min-height: 9px; }
+.arrows button + button { border-top: 1px solid var(--rule); }
+.arrows button:hover { background: var(--accent-soft); color: var(--accent); }
+.spin input:disabled + .arrows button { opacity: 0.45; cursor: not-allowed; background: var(--surface-2); color: var(--muted); }
+.arrows svg { width: 8px; height: 5px; display: block; }
+input.pending { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.param .spin { flex: 1; } .param .spin input { width: 100%; }
+
+.btn.icon { padding: 4px 9px; display: inline-grid; place-items: center; }
+.btn.icon svg { width: 17px; height: 17px; display: block; }
+.btn.icon.busy .arr { animation: dl 0.8s ease-in-out infinite; }
+@keyframes dl { 0% { transform: translateY(-3px); opacity: 0.3; } 60% { transform: translateY(1px); opacity: 1; } 100% { transform: translateY(2px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .btn.icon.busy .arr { animation: none; } }
+
+.tk.f-ok { background: var(--accent); } .tk.f-resp { background: var(--rf); } .tk.f-distract { background: var(--crit); }
+.tk.f-noeng { background: color-mix(in srgb, var(--muted) 60%, transparent); } .tk.f-break { background: var(--warn); } .tk.f-rig { background: var(--mock); }
+.legend { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 11.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.tl { display: flex; gap: 2px; align-items: stretch; min-height: 22px; }
+.tl .ph { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 3px; font-family: var(--mono); font-size: 11px; display: flex; align-items: center; padding: 0 6px; white-space: nowrap; overflow: hidden; min-width: 0; }
+.tl .out { flex: none; padding: 0 8px; border-radius: 3px; font-family: var(--cond); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 11px; display: flex; align-items: center; color: var(--bg); }
+.tl .out.f-ok { background: var(--accent); } .tl .out.f-resp { background: var(--rf); } .tl .out.f-distract { background: var(--crit); } .tl .out.f-noeng { background: var(--muted); } .tl .out.f-break { background: var(--warn); } .tl .out.f-rig { background: var(--mock); }
+.tl-now { font-family: var(--mono); font-size: 13px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.tl-now b { font-family: var(--cond); letter-spacing: 0.05em; text-transform: uppercase; font-size: 12px; color: var(--accent); }
+.nowbar { height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden; flex: 1; min-width: 80px; align-self: center; }
+.nowbar i { display: block; height: 100%; background: var(--accent); }
+.eyeq { font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.eyeq.warn { color: var(--warn); }
+.fullbar { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 13px; padding: 6px 10px; background: var(--surface); border: 1px solid var(--edge); border-radius: 6px; }
+.fullbar .lab { font-family: var(--cond); font-weight: 700; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.fullbar .v { font-family: var(--mono); font-weight: 600; }
+.fullbar .alert { color: var(--warn); font-weight: 600; } .fullbar .alert.crit { color: var(--crit); }
+.pf { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 20px; }
+.pf .row { display: grid; grid-template-columns: 12px minmax(0, 10em) minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; padding: 3px 0; border-bottom: 1px solid var(--rule); min-height: 30px; }
+.pf .val { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.pf .must { font-family: var(--cond); font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-left: 4px; }
+.st { width: 10px; height: 10px; border-radius: 50%; }
+.st.pass { background: var(--ok); } .st.warn { background: var(--warn); } .st.fail { background: var(--crit); } .st.untested { box-shadow: inset 0 0 0 1.5px var(--muted); }
+button.pill { border: 0; cursor: pointer; }
+.strip > div.alert { background: var(--warn-soft); }
+
+/* the monkey: the wl-works macaque, traced from Jake's drawing, sitting */
+.critter { color: var(--monkey); opacity: 0.55; width: 120px; max-width: 70%; pointer-events: none; }
+.critter svg { width: 100%; height: auto; display: block; overflow: visible; }
+
+.scrim { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; padding: 16px; z-index: 10; }
+.dialog { padding: 16px; width: min(520px, 100%); display: grid; gap: 12px; max-height: 90vh; overflow-y: auto; }
+.dialog h2 { font-size: 14px; color: var(--ink); }
+.dialog .grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; }
+.dialog .end { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.pick { display: grid; gap: 6px; }
+.pick label { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; border: 1px solid var(--rule); border-radius: 5px; padding: 7px 8px; cursor: pointer; }
+.pick label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <div class="mockbar" role="region" aria-label="mockup controls">
+    <strong>Mockup v12</strong>
+    <span class="lbl">made-up numbers, not connected to anything.</span>
+    <div class="grp" id="scenarios"><span class="lbl">scenario:</span></div>
+    <div class="grp" id="viewers"><span class="lbl">view as:</span></div>
+    <div class="grp" id="gh"><span class="lbl">github:</span></div>
+    <div class="grp" id="rhxg"><span class="lbl">rhx:</span></div>
+    <div class="grp"><button class="seg" id="notes-toggle" type="button" aria-pressed="false">design notes</button></div>
+  </div>
+
+  <header class="head glass">
+    <a class="logo" href="#runtime" aria-label="wl.works, expcontroller console">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 395.67 147.54" role="img" aria-label="wl.works">
+        <circle cx="130.40" cy="34.98" r="11" fill="currentColor"/>
+        <circle cx="97.40" cy="11.00" r="11" fill="currentColor"/>
+        <circle cx="56.60" cy="11.00" r="11" fill="currentColor"/>
+        <circle cx="23.60" cy="34.98" r="11" fill="#C9187B"/>
+        <circle cx="11.00" cy="73.77" r="11" fill="currentColor"/>
+        <circle cx="23.60" cy="112.56" r="11" fill="currentColor"/>
+        <rect x="45.6" y="125.54" width="22" height="22" fill="currentColor"/>
+        <circle cx="97.40" cy="136.54" r="11" fill="currentColor"/>
+        <text x="71" y="112.77" font-family="Newsreader, Georgia, serif" font-size="72" font-weight="700" letter-spacing="-1.44" fill="currentColor">w<tspan font-style="italic">l</tspan><tspan style="fill: var(--wl-muted)">.works</tspan></text>
+      </svg>
+      <span class="app">expcontroller</span>
+    </a>
+    <span class="pill neutral" id="state-pill">no session</span>
+    <span class="pill simp" id="sim-pill" hidden>simulation</span>
+    <div class="id" id="head-id"></div>
+    <span class="spacer"></span>
+    <span class="presence" id="presence"></span>
+    <button class="xbtn" id="a-close" type="button" aria-label="close the connection" title="close the connection · the session keeps running on the box"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+  </header>
+
+  <div class="toolbar glass" role="toolbar" aria-label="actions">
+    <label class="tsel" for="task-sel"><span class="k">Task</span><select id="task-sel"></select></label>
+    <button class="btn icon" id="a-pull" type="button" aria-label="pull the task library"><svg viewBox="0 0 16 16" aria-hidden="true"><g class="arr"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g><path d="M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <span class="pill neutral" id="task-check"></span>
+    <button class="pill neutral" id="pf-pill" type="button" title="pre-flight checks"></button>
+    <span class="sep" aria-hidden="true"></span>
+    <button class="btn go" id="a-start" type="button">start run</button>
+    <button class="btn danger" id="a-stop" type="button">stop run</button>
+    <button class="btn icon" id="a-sched" type="button" aria-label="stop this run on a schedule" title="stop this run on a schedule"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8.5" r="5.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 5.2v3.5l2.3 1.4M6.3 1.5h3.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    <button class="pill accent" id="sched-chip" type="button" hidden title="clear the scheduled stop"></button>
+    <span class="sep" aria-hidden="true"></span>
+    <button class="btn" id="a-pause" type="button">pause<kbd>P</kbd></button>
+    <button class="btn" id="a-reward" type="button">reward<kbd>R</kbd></button>
+    <button class="btn" id="a-recenter" type="button">recenter<kbd>C</kbd></button>
+    <button class="btn" id="a-mark" type="button">mark<kbd>M</kbd></button>
+  </div>
+  <div id="pull-warn" hidden class="inline crit">
+    <span id="pull-warn-q"></span>
+    <button class="btn small danger" id="pull-use" type="button">use it</button>
+    <button class="btn small" id="pull-retry" type="button">retry</button>
+    <button class="btn small" id="pull-cancel" type="button">cancel</button>
+  </div>
+  <div id="mark-form" hidden class="inline info">
+    <span>mark at <b class="mono" id="mark-at"></b></span>
+    <input id="mark-text" placeholder="note (optional) · enter to mark" autocomplete="off" style="width:min(34em,60vw);font-family:var(--sans)" aria-label="mark note">
+    <button class="btn small primary" id="mark-ok" type="button">mark</button>
+    <button class="btn small" id="mark-cancel" type="button">cancel</button>
+  </div>
+  <div id="sched-form" hidden class="inline info">
+    <span>stop this run</span>
+    <select id="sched-kind" aria-label="stop when"><option value="trials">after trials</option><option value="ml">after mL</option><option value="at">at HH:MM</option></select>
+    <input id="sched-val" autocomplete="off" aria-label="value" style="width:6em">
+    <button class="btn small primary" id="sched-set" type="button">set</button>
+    <button class="btn small" id="sched-cancel" type="button">cancel</button>
+    <span class="sub" id="sched-msg"></span>
+  </div>
+  <div id="stop-confirm" hidden class="inline crit">
+    <span id="stop-q">stop the run?</span>
+    <button class="btn small danger" id="stop-yes" type="button">stop</button>
+    <button class="btn small" id="stop-no" type="button">cancel</button>
+  </div>
+
+  <div class="strip glass" role="region" aria-label="animal" id="strip">
+    <div><div class="row"><span class="lab">Fluid today / floor</span><span class="val" id="s-today"></span></div><div class="bar" aria-hidden="true"><div class="fill" id="s-today-bar"></div></div></div>
+    <div><div class="row"><span class="lab">←cage / 12:00</span><span class="val" id="s-ooc"></span></div><div class="bar" aria-hidden="true"><div class="fill" id="s-ooc-bar"></div></div></div>
+    <div><div class="row"><span class="lab">Correct / trials</span><span class="val" id="s-correct"></span></div><span class="sub" id="s-correct-sub"></span></div>
+    <div><div class="row"><span class="lab">Last reward</span><span class="val" id="s-reward"></span></div><span class="sub" id="s-reward-sub"></span></div>
+  </div>
+
+  <div class="open-q">PI, 2026-09-26: out-of-cage is the wl-works ELN's. it records the departure and the return; this page reads them, on the wall clock alone, and takes no return itself. the in-session clock (header) is expcontroller's own, from opening the session to ending it: shown and recorded, it bounds nothing.</div>
+
+  <div id="banners" class="wrap" style="gap:6px"></div>
+
+  <div class="shell" id="shell">
+    <div class="main">
+      <div class="tabs" role="tablist" aria-label="console sections" id="tabs"></div>
+
+      <!-- SETUP -->
+      <div class="tabpanel" role="tabpanel" id="tp-setup" aria-labelledby="tab-setup" hidden>
+        <section class="panel glass" aria-labelledby="pf-h" id="pf-panel">
+          <div class="top"><h2 id="pf-h">Pre-flight</h2><span class="pill neutral" id="pf-sum"></span></div>
+          <div class="pf" id="pf"></div>
+        </section>
+        <div class="cols c3">
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="sess-h">
+              <div class="top"><h2 id="sess-h">Session</h2><span class="pill neutral" id="sess-pill"></span></div>
+              <div class="selrow">
+                <div class="segs" id="mode-segs" role="group" aria-label="mode"><button type="button" data-mode="live">live</button><button type="button" data-mode="sim">simulation</button></div>
+                <div class="segs" id="gaze-segs" role="group" aria-label="gaze in simulation"><button type="button" data-g="mouse">mouse gaze</button><button type="button" data-g="scripted">scripted</button></div>
+              </div>
+              <div class="selrow"><button class="btn small primary" id="a-new" type="button">new session</button><button class="btn small" id="a-load" type="button">load session</button></div>
+              <div id="sess-body"></div>
+              <div class="open-q">a simulation session can only take the test subject and the sim rig, so nothing simulated can land in a real animal's fluid record. every welfare check still runs, against the test subject's own bounds file.</div>
+            </section>
+            <section class="panel glass" aria-labelledby="save-h">
+              <div class="top"><h2 id="save-h">Save directory</h2><span class="locked" id="save-lock"></span></div>
+              <div class="pathbox"><span class="mono" id="save-root"></span><button class="btn small" id="save-browse" type="button">browse…</button></div>
+              <div class="sub" id="save-free"></div>
+              <div class="mono sub" id="save-path" style="overflow-wrap:anywhere"></div>
+              <div class="open-q">the folders come from the box, not from the viewer's computer: a browser's own file picker cannot name a path on another machine, and does not hand the page a path even on the box itself.</div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="monkey-h">
+              <div class="top"><h2 id="monkey-h">Monkey</h2><span class="locked" id="monkey-lock"></span></div>
+              <div class="selrow"><select id="monkey-sel" aria-label="subject"></select></div>
+              <div id="monkey-body"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="rig-h">
+              <div class="top"><h2 id="rig-h">Rig</h2><span class="locked" id="rig-lock"></span></div>
+              <div class="selrow"><select id="rig-sel" aria-label="rig"></select></div>
+              <div id="rig-body"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TASK PARAMETERS -->
+      <div class="tabpanel" role="tabpanel" id="tp-task" aria-labelledby="tab-task" hidden>
+        <section class="panel glass" aria-labelledby="task-h">
+          <div class="top"><h2 id="task-h">Task</h2><div class="selrow"><span class="sub" id="task-note"></span><button class="btn small" id="a-loadp" type="button">load from a previous session…</button></div></div>
+          <div class="selrow"><span class="mono" id="task-name"></span><span class="sub mono" id="task-ver"></span></div>
+          <div class="selrow sub" id="start-from"></div>
+          <div class="params" id="params"></div>
+          <div class="open-q">a new session cannot start a run until the task library (wl-mllib, to be renamed) is pulled from GitHub; the commit is recorded with every run and goes into the code package. if GitHub cannot be reached, the last version pulled on this box runs after a warning and a person's confirmation (PI, 2026-09-26); a box that has never pulled has nothing to fall back on.</div>
+        </section>
+        <div class="cols c2">
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="plan-h">
+              <div class="top"><h2 id="plan-h">Blocks</h2></div>
+              <div class="scroll"><table class="mini" id="plan"></table></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="staged-h">
+              <div class="top"><h2 id="staged-h">Staged</h2></div>
+              <div id="staged" class="sub"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OVERLAYS -->
+      <div class="tabpanel" role="tabpanel" id="tp-overlays" aria-labelledby="tab-overlays" hidden>
+        <section class="panel glass" aria-labelledby="rf-h">
+          <div class="top"><h2 id="rf-h">Receptive fields</h2><div class="selrow"><button class="btn small" id="rf-add" type="button">add rf</button><button class="btn small" id="rf-import" type="button">import from mapping</button></div></div>
+          <div class="scroll"><table class="mini" id="rfs"></table></div>
+          <div class="open-q">an RF can be display-only or bound to a task parameter. "target at rf" moves the task's target to the RF center, which is how an entry here influences the run. which parameters may be bound this way is a task declaration, like its plots.</div>
+        </section>
+        <div class="cols c2">
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="rfprev-h">
+              <div class="top"><h2 id="rfprev-h">Preview</h2></div>
+              <div class="screen" id="rf-preview"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="notes-h">
+              <div class="top"><h2 id="notes-h">Recording notes</h2></div>
+              <dl class="dl"><dt>probe</dt><dd>np2.0 · 4 shank · V1/V4</dd><dt>hemisphere</dt><dd>left</dd><dt>depth</dt><dd>3.2 mm</dd><dt>mapping run</dt><dd>2027-01-13_01 · run 3</dd></dl>
+            </section>
+            <div class="slot"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RUNTIME -->
+      <div class="tabpanel" role="tabpanel" id="tp-runtime" aria-labelledby="tab-runtime" hidden>
+        <section class="panel glass" aria-labelledby="tr-h">
+          <div class="top"><h2 id="tr-h">Trials</h2><span class="sub" id="tr-meta"></span></div>
+          <div class="ticks" id="rt-ticks"></div>
+          <div class="legend" id="rt-legend"></div>
+          <div class="tl-now" id="tl-now"></div>
+          <div class="tl" id="tl-last"></div>
+        </section>
+        <section class="panel glass" aria-labelledby="work-h">
+          <div class="top"><h2 id="work-h">This run</h2><span class="sub" id="work-meta"></span></div>
+          <div id="work-body"></div>
+        </section>
+        <section class="panel glass" aria-labelledby="runs-h">
+          <div class="top"><h2 id="runs-h">Runs</h2><span class="sub" id="runs-sum"></span></div>
+          <div class="scroll"><table class="mini" id="runs"></table></div>
+        </section>
+        <div class="cols c3">
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="need-h">
+              <div class="top"><h2 id="need-h">Still needed</h2></div>
+              <div class="need" id="need"></div>
+            </section>
+            <section class="panel glass" aria-labelledby="wrong-h">
+              <div class="top"><h2 id="wrong-h">Wrong?</h2></div>
+              <div class="kv"><span>dropped frames</span><span class="nm">not measured</span></div>
+              <div class="kv"><span>tracker staleness</span><span class="nm">not measured</span></div>
+              <div class="kv"><span>RHX margin</span><span class="nm">not measured</span></div>
+              <div class="kv"><span>hangs</span><span class="nm">not measured</span></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="rhx-h">
+              <div class="top"><h2 id="rhx-h">Recording</h2><span class="pill neutral" id="rhx-pill"></span></div>
+              <div class="sub mono" id="rhx-body"></div>
+            </section>
+            <section class="panel glass" aria-labelledby="io-h">
+              <div class="top"><h2 id="io-h">NI card</h2><span class="sub mono" id="io-dev"></span></div>
+              <div><h3>Out</h3><div class="io" id="io-out"></div></div>
+              <div><h3>In</h3><div class="io" id="io-in"></div></div>
+              <div class="selrow"><button class="btn small" id="io-test" type="button">send test word</button></div>
+            </section>
+            <section class="panel glass health" aria-labelledby="h-h">
+              <div class="top"><h2 id="h-h">wl-works sees</h2><span class="pill" id="verdict">ok</span></div>
+              <div id="readings"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="feed-h">
+        <div class="top"><h2 id="feed-h">Changes and marks</h2></div>
+        <div class="feed" id="feed" aria-live="polite"></div>
+      </section>
+            <div class="slot"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BEHAVIOR -->
+      <div class="tabpanel" role="tabpanel" id="tp-behavior" aria-labelledby="tab-behavior" hidden>
+        <div class="selrow"><select id="bh-run" aria-label="run to plot"></select><span class="sub mono" id="bh-src"></span></div>
+        <div class="cols c3" id="plots"></div>
+        <div class="open-q">plots are declared per task, beside its parameters, and drawn from the same trials the record holds. they need per-trial RT and condition in the telemetry, which do not exist yet.</div>
+      </div>
+
+      <!-- TRAINING TOOLS -->
+      <div class="tabpanel" role="tabpanel" id="tp-training" aria-labelledby="tab-training" hidden>
+        <div class="open-q">manual reward and reward on fixation deliver fluid: both count into fluid session, both are held to the reward ceiling, and both are welfare-critical code. which parameters can be shaped, and which trial helpers a task honors, are the task's declaration, like its plots.</div>
+        <div class="cols c3">
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="mr-h">
+              <div class="top"><h2 id="mr-h">Reward</h2><span class="sub">key R</span></div>
+              <div class="selrow"><span class="spin"><input class="field mono" id="mr-amt" inputmode="decimal" data-step="0.01" data-min="0.01" style="width:5em" aria-label="amount"><span class="arrows"><button type="button" class="up" tabindex="-1" aria-label="increase"><svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 4l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="dn" tabindex="-1" aria-label="decrease"><svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 1l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span></span><span class="sub">mL</span><button class="btn primary" id="mr-give" type="button">give reward</button></div>
+              <div class="sub" id="mr-ceil"></div>
+              <label class="chk"><input type="checkbox" id="mr-tone" checked> with reward_tone</label>
+              <div class="sub" id="mr-msg" aria-live="polite"></div>
+              <div class="kv"><span>manual this session</span><span class="num" id="mr-sum"></span></div>
+            </section>
+            <section class="panel glass" aria-labelledby="att-h">
+              <div class="top"><h2 id="att-h">Attention</h2></div>
+              <div class="selrow"><button class="btn small" data-att="flash" type="button">flash fixation</button><button class="btn small" data-att="target" type="button">show target</button><button class="btn small" data-att="go" type="button">go_cue</button><button class="btn small" data-att="correct" type="button">reward_tone</button></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="lad-h">
+              <div class="top"><h2 id="lad-h">Shaping</h2><label class="chk"><input type="checkbox" id="lad-on"> on</label></div>
+              <div class="selrow"><select id="lad-param" aria-label="parameter to shape"></select><input class="field mono" id="lad-steps" aria-label="steps" style="width:9em"></div>
+              <div class="chips" id="lad-chips"></div>
+              <div class="kv"><span>advance</span><span class="mono">≥ 80% correct over 50</span></div>
+              <div class="kv"><span>step back</span><span class="mono">&lt; 50% correct over 30</span></div>
+              <div class="need"><div class="row"><span>last 50</span><div class="bar"><div class="fill" id="lad-bar"></div></div><span class="num" id="lad-pct"></span></div></div>
+              <div class="sub" id="lad-msg"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="th-h">
+              <div class="top"><h2 id="th-h">Trials</h2></div>
+              <label class="chk"><input type="checkbox" id="th-corr"> repeat the condition after an error</label>
+              <div class="selrow chk"><span>error timeout</span><span class="spin"><input class="field mono" id="th-timeout" value="2.0" inputmode="decimal" data-step="0.5" data-min="0" data-max="10" style="width:4em" aria-label="error timeout"><span class="arrows"><button type="button" class="up" tabindex="-1" aria-label="increase"><svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 4l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="dn" tabindex="-1" aria-label="decrease"><svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 1l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span></span><span class="sub">s</span></div>
+              <div class="selrow chk"><label class="chk"><input type="checkbox" id="th-fixrew"> reward fixation</label><span class="spin"><input class="field mono" id="th-fixamt" value="0.05" inputmode="decimal" data-step="0.01" data-min="0.01" style="width:4em" aria-label="fixation reward"><span class="arrows"><button type="button" class="up" tabindex="-1" aria-label="increase"><svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 4l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="dn" tabindex="-1" aria-label="decrease"><svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 1l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span></span><span class="sub">mL</span></div>
+              <div class="sub" id="th-msg"></div>
+            </section>
+            <section class="panel glass" aria-labelledby="st-h">
+              <div class="top"><h2 id="st-h">Last 60</h2><span class="sub" id="st-streak"></span></div>
+              <div class="ticks" id="st-ticks"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ONLINE ANALYSIS -->
+      <div class="tabpanel" role="tabpanel" id="tp-analysis" aria-labelledby="tab-analysis" hidden>
+        <section class="panel glass" aria-labelledby="req-h">
+          <div class="top"><h2 id="req-h">Request</h2></div>
+          <div class="selrow">
+            <select id="an-run" aria-label="run"></select>
+            <select id="an-script" aria-label="analysis"></select>
+            <button class="btn small primary" id="an-go" type="button">send</button>
+            <span class="sub mono" id="an-desc"></span>
+          </div>
+          <div class="open-q">how a request leaves the rig and how results come back is open: wl-works cannot be reached from a lab host, and wl-preproc's host never opens a connection. candidates: the box offers pending requests on its lab-host endpoint and wl-preproc collects them, or results are written to wl-nas and the box polls for them.</div>
+        </section>
+        <div class="cols c2">
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="queue-h">
+              <div class="top"><h2 id="queue-h">Requests</h2></div>
+              <div class="scroll"><table class="mini" id="queue"></table></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="res-h">
+              <div class="top"><h2 id="res-h">Result</h2><span class="sub" id="res-meta"></span></div>
+              <div id="res-body"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- END OF SESSION -->
+      <div class="tabpanel" role="tabpanel" id="tp-end" aria-labelledby="tab-end" hidden>
+        <div class="cols c32">
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="sum-h">
+              <div class="top"><h2 id="sum-h">Summary</h2><div class="selrow"><span class="pill neutral" id="end-pill"></span><button class="btn small danger" id="a-end" type="button">end session</button></div></div>
+              <div id="end-confirm" hidden class="inline crit"><span>end the session? it takes no more runs, the in-session clock stops, and the code it used is packaged.</span><button class="btn small danger" id="end-yes" type="button">end session</button><button class="btn small" id="end-no" type="button">cancel</button></div>
+              <div id="end-sum"></div>
+            </section>
+            <div class="slot"></div>
+          </div>
+          <div class="stack">
+            <section class="panel glass" aria-labelledby="rec-h">
+              <div class="top"><h2 id="rec-h">Record</h2></div>
+              <div id="end-rec"></div>
+            </section>
+            <section class="panel glass" aria-labelledby="code-h">
+              <div class="top"><h2 id="code-h">Code used</h2><span class="pill neutral" id="code-pill"></span></div>
+              <div class="scroll"><table class="mini" id="code"></table></div>
+              <div id="code-pkg"></div>
+              <div class="open-q">the package holds the exact files every run used: wl-expcontroller, each task, the subject's bounds file, the rig's config and monitor calibration, and the environment lock, with the diff of anything not committed. it is written into the session directory and travels to wl-nas with the data (PI, 2026-09-26). pushing it to GitHub, one commit per session so git shows what changed between sessions, is proposed as wl-preproc's job, not the rig's.</div>
+            </section>
+            <section class="panel glass" aria-labelledby="xfer-h">
+              <div class="top"><h2 id="xfer-h">Transfer to wl-nas</h2><button class="btn small primary" id="xfer-go" type="button">transfer</button></div>
+              <div class="scroll"><table class="mini" id="xfer"></table></div>
+              <div class="open-q">wl-nas does not exist yet (wl-stack, data-access.md). wl-preproc finds sessions by polling the NAS, so the rig only copies; nothing is pushed to wl-works.</div>
+            </section>
+            <div class="slot"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="aside" aria-label="always shown">
+      <section class="panel glass" aria-labelledby="replica-h">
+        <div class="top"><h2 id="replica-h">Replica</h2><span class="later">V11</span></div>
+        <div class="screen zoom" id="replica" title="full screen"></div>
+        <div class="eyeq" id="tl-mini"></div>
+        <div class="eyeq" id="eye-q"></div>
+      </section>
+      <section class="panel glass" aria-labelledby="sd-h">
+        <div class="top"><h2 id="sd-h">Subject display</h2><span class="sub mono" id="sd-mode"></span></div>
+        <div class="screen zoom" id="subject-display" title="full screen"></div>
+      </section>
+      <div class="duo">
+        <section class="panel glass" aria-labelledby="snd-h">
+          <h2 id="snd-h">Sound</h2>
+          <div class="spk" id="spk">
+            <svg viewBox="0 0 30 24" aria-hidden="true">
+              <path d="M3 9h4l5-4v14l-5-4H3z" fill="currentColor"/>
+              <g class="waves"><path d="M15.5 9.5c1.2 1.4 1.2 3.6 0 5"/><path d="M18.5 7c2.4 2.8 2.4 7.2 0 10"/><path d="M21.5 4.5c3.6 4.2 3.6 10.8 0 15"/></g>
+            </svg>
+            <span class="tone" id="tone" aria-live="off"></span>
+          </div>
+        </section>
+        <section class="panel glass" aria-labelledby="fps-h">
+          <h2 id="fps-h">Display</h2>
+          <div class="fps" id="fps"></div>
+        </section>
+      </div>
+      <div class="slot"></div>
+    </aside>
+  </div>
+</div>
+
+<div class="critter" id="critter" hidden>
+  <!-- wl-works' macaque, sitting: the rig's own sit pose (sitHip 30, sitPitch 58°, head 14°, tail −62°), rendered by
+       wl-works docs/superpowers/30-bar-monkey-preview and taken as it drew it. It sits on a ledge, tail over the edge, as it sits on the wl.works bar. -->
+  <svg viewBox="0 272 210 252" role="img" aria-label="a sitting macaque">
+    <defs><clipPath id="ledge-clip"><rect x="0" y="260" width="220" height="196.5"/><rect x="0" y="455" width="55.5" height="80"/></clipPath><clipPath id="tail-clip"><rect x="0" y="260" width="56.5" height="300"/></clipPath></defs>
+    <g fill="currentColor" clip-path="url(#ledge-clip)">
+      <g>
+        <animateTransform class="anim" attributeName="transform" type="rotate" values="-5 58 452; 6 58 452; -1 58 452; 4 58 452; -5 58 452" keyTimes="0; 0.3; 0.55; 0.8; 1" dur="4.6s" repeatCount="indefinite" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1; 0.45 0 0.55 1; 0.45 0 0.55 1"/>
+        <path clip-path="url(#tail-clip)" d="M12.42 517.52L11.10 517.43L9.80 516.83L8.95 515.85L8.56 514.32L8.06 514.29L8.47 510.81L9.30 508.36L9.87 507.40L15.08 503.50L19.81 499.24L23.08 495.46L25.34 491.78L26.93 488.04L30.86 474.95L37.92 457.57L42.34 449.36L46.02 444.43L50.54 439.57L55.08 435.62L58.25 433.34L59.29 432.75L69.10 433.44L67.50 457.46L56.56 466.97L57.06 456.23L57.78 450.77L57.20 450.65L56.33 451.09L53.59 453.31L51.21 456.32L49.50 459.21L47.13 464.39L45.06 470.10L42.30 480.93L39.99 487.62L39.05 489.23L38.27 489.58L37.27 490.77L34.11 497.73L32.22 500.94L26.88 507.92L21.77 512.83L16.70 516.14L15.14 516.88L12.42 517.52Z"></path>
+      </g>
+      <g>
+        <animateTransform class="anim" attributeName="transform" type="rotate" values="-0.8 120 458; 1 120 458; -0.8 120 458" keyTimes="0; 0.5; 1" dur="6s" repeatCount="indefinite" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1"/>
+        <path d="M122.2 446.3L118.7 449.7L114.6 452.5L110.1 454.5L105.3 455.7L100.4 456.0L95.5 455.5L90.8 454.1L86.4 451.9L82.4 448.9L79.0 445.4L76.3 441.3L74.4 436.7L73.3 431.9L73.0 427.0L73.6 422.1L75.1 417.4L77.3 413.0L80.3 409.1L84.0 405.8L88.1 403.1L138.7 376.9L143.1 375.4L147.7 375.1L152.3 376.1L156.4 378.2L159.8 381.5L162.2 385.5L163.4 390.0L163.3 394.7L161.9 399.2L159.4 403.1ZM129.8 395.3L129.5 392.4L129.7 389.4L130.4 386.6L131.6 383.9L133.2 381.4L135.2 379.3L137.6 377.5L140.3 376.2L143.1 375.4L146.0 375.0L148.9 375.2L151.8 375.9L154.5 377.0L157.0 378.6L159.1 380.7L160.9 383.0L162.2 385.6L163.1 388.4L163.5 391.4L163.3 394.3L156.4 445.1L155.8 447.4L154.5 449.5L152.7 451.1L150.6 452.1L148.2 452.5L145.9 452.2L143.7 451.3L141.8 449.8L140.4 447.9L139.7 445.6ZM147.9 452.5L146.4 452.4L145.1 452.0L143.8 451.4L142.6 450.5L141.6 449.5L140.7 448.4L140.1 447.1L139.7 445.7L139.5 444.3L139.6 442.9L139.9 441.5L140.4 440.1L141.2 438.9L142.1 437.8L143.3 436.9L144.5 436.3L145.9 435.8L147.3 435.5L148.7 435.5L150.1 435.8L182.8 444.2L184.0 444.7L185.0 445.5L185.8 446.6L186.1 447.8L186.2 449.1L185.8 450.4L185.1 451.5L184.1 452.3L182.9 452.9L181.6 453.0Z"></path><path d="M128.1 355.7L128.7 352.9L129.7 350.2L131.2 347.7L133.0 345.5L135.2 343.7L137.7 342.3L140.4 341.2L143.2 340.7L146.1 340.6L148.9 341.1L151.6 342.0L154.2 343.3L156.5 345.1L158.4 347.2L160.0 349.6L161.1 352.2L161.8 355.0L162.0 357.9L161.7 360.7L160.9 363.5L142.3 413.8L140.9 416.5L138.7 418.6L136.0 420.0L133.1 420.6L130.0 420.4L127.2 419.2L124.8 417.4L123.1 414.9L122.1 412.0L122.0 409.0ZM124.8 417.3L123.7 415.9L122.9 414.4L122.3 412.7L122.0 411.0L122.0 409.3L122.3 407.6L122.9 405.9L123.7 404.4L124.7 403.0L126.0 401.9L127.5 400.9L129.1 400.2L130.7 399.8L132.5 399.6L134.2 399.8L135.9 400.2L137.5 400.9L138.9 401.9L140.2 403.0L141.3 404.4L167.4 444.4L168.2 446.2L168.5 448.1L168.2 450.0L167.3 451.7L166.0 453.1L164.3 454.1L162.4 454.5L160.5 454.3L158.7 453.6L157.2 452.4ZM159.8 454.1L158.8 453.7L157.9 453.0L157.1 452.3L156.4 451.4L156.0 450.4L155.6 449.4L155.5 448.3L155.5 447.2L155.7 446.2L156.1 445.2L156.7 444.2L157.4 443.4L158.2 442.7L159.2 442.1L160.2 441.8L161.3 441.5L162.3 441.5L163.4 441.7L164.5 442.0L165.4 442.5L185.7 455.1L186.6 455.9L187.2 456.9L187.5 458.0L187.5 459.2L187.1 460.3L186.5 461.2L185.6 462.0L184.5 462.4L183.3 462.5L182.2 462.3Z"></path><path d="M138.84 440.34L124.21 452.42L102.85 454.70L99.42 454.52L75.62 450.45L58.18 448.80L47.46 450.55L46.05 449.66L44.48 441.31L44.44 436.97L44.87 432.52L45.53 429.58L47.10 426.44L46.92 422.01L48.00 414.62L51.24 404.08L54.80 395.88L60.10 385.83L66.67 374.99L79.42 355.84L78.66 355.66L78.58 355.31L84.28 351.21L90.46 346.04L98.76 337.47L103.59 331.24L106.08 325.68L103.88 325.00L107.48 321.31L108.72 319.49L109.56 317.40L108.82 316.60L106.24 316.75L110.31 312.58L110.31 312.27L106.17 314.07L108.93 311.53L112.56 307.96L116.20 304.24L124.96 295.78L130.09 292.31L135.00 290.09L138.36 289.08L141.12 299.82L148.88 334.08L160.96 344.40L162.42 357.00L160.88 356.63L160.62 357.05L161.17 357.89L161.05 358.41L158.22 356.64L156.88 356.59L155.52 357.02L153.32 358.98L152.00 361.10L155.41 366.48L155.69 368.71L154.86 368.78L156.06 373.47L152.82 378.32L156.64 394.86L155.48 411.82L138.84 440.34Z"></path>
+        <g>
+          <animateTransform class="anim" attributeName="transform" type="rotate" values="0 133.5 335.6; -4 133.5 335.6; 0 133.5 335.6; 3 133.5 335.6; 0 133.5 335.6" dur="9s" repeatCount="indefinite"/>
+          <path d="M225.67 352.75 L212 350.08 L200 342.08 L191.75 325.67 L186.08 306.17 L188.42 305.33 L188 303.08 L190.5 303.58 L191.5 303.25 L192.42 302.33 L192.42 301.17 L191.58 299.33 L194 299.08 L194.08 298.83 L192.33 297.25 L193.83 297.25 L195.83 296.75 L204.33 291.58 L207.33 290.75 L212.17 290.08 L216.67 289.92 L219.67 290.25 L224.83 291.92 L233.67 295.75 L234.17 294.75 L236 296.92 L237 297.25 L237.17 296.75 L238.75 299 L238.75 302.33 L236.42 307.67 L236.92 310.17 L237.58 311.83 L239.17 313.58 L242.83 315.92 L244.25 317.17 L246.08 322.67 L245.92 327.33 L245.5 328.08 L243.83 328.75 L243.25 329.33 L244.25 331 L244.25 333.33 L243.08 336.17 L240.83 339.42 L240.33 339.75 L233.67 339.42 L232.83 339.75 L230.75 342.5 L228.33 344.58 L226 345.58 L225.42 345.33 L226.67 344.92 L226.92 344.67 L226.67 344.25 L225.33 344.25 L224.08 344.67 L224.25 346.83 L225.67 352.75Z" transform="translate(133.46 335.57) rotate(-14.00) scale(1.000 1) translate(-198 -334)"></path>
+        </g>
+        <path d="M128.2 446.3L124.6 449.7L120.6 452.5L116.1 454.5L111.3 455.7L106.4 456.0L101.5 455.4L96.7 454.1L92.3 451.9L88.4 448.9L85.0 445.3L82.3 441.2L80.4 436.7L79.3 431.9L79.0 426.9L79.6 422.1L81.1 417.4L83.4 413.0L86.4 409.1L90.0 405.8L94.2 403.1L144.8 377.0L149.2 375.5L153.9 375.2L158.4 376.2L162.5 378.4L165.9 381.6L168.3 385.6L169.5 390.2L169.3 394.8L168.0 399.3L165.4 403.2ZM136.0 396.0L135.6 393.1L135.7 390.1L136.3 387.2L137.4 384.5L138.9 382.0L140.9 379.8L143.2 378.0L145.7 376.5L148.5 375.6L151.4 375.2L154.4 375.2L157.3 375.8L160.0 376.8L162.6 378.4L164.8 380.3L166.6 382.6L168.1 385.1L169.0 387.9L169.5 390.8L169.5 393.8L164.5 444.8L163.9 447.1L162.7 449.2L161.0 450.9L158.9 452.0L156.6 452.5L154.2 452.3L152.0 451.5L150.0 450.1L148.6 448.2L147.7 445.9ZM155.9 452.5L154.4 452.4L153.1 452.0L151.8 451.4L150.6 450.5L149.6 449.5L148.7 448.4L148.1 447.1L147.7 445.7L147.5 444.3L147.6 442.9L147.9 441.5L148.4 440.1L149.2 438.9L150.1 437.8L151.3 436.9L152.5 436.3L153.9 435.8L155.3 435.5L156.7 435.5L158.1 435.8L190.8 444.2L192.0 444.7L193.0 445.5L193.8 446.6L194.1 447.8L194.2 449.1L193.8 450.4L193.1 451.5L192.1 452.3L190.9 452.9L189.6 453.0Z"></path><path d="M134.0 356.7L134.4 353.9L135.3 351.1L136.6 348.6L138.3 346.3L140.4 344.3L142.8 342.7L145.4 341.5L148.2 340.8L151.1 340.6L153.9 340.9L156.7 341.6L159.3 342.8L161.7 344.4L163.8 346.4L165.5 348.7L166.8 351.3L167.6 354.0L168.0 356.9L167.9 359.7L167.3 362.5L151.7 413.8L150.4 416.6L148.4 418.9L145.8 420.4L142.9 421.2L139.8 421.1L137.0 420.2L134.5 418.5L132.6 416.1L131.4 413.3L131.2 410.2ZM134.1 418.1L133.0 416.7L132.1 415.2L131.5 413.6L131.2 411.9L131.2 410.2L131.4 408.5L131.9 406.8L132.7 405.3L133.8 403.9L135.0 402.7L136.4 401.7L138.0 400.9L139.7 400.5L141.4 400.3L143.1 400.4L144.8 400.8L146.4 401.5L147.9 402.4L149.2 403.5L150.3 404.9L177.3 444.3L178.2 446.1L178.5 448.0L178.2 449.9L177.4 451.6L176.1 453.0L174.4 454.0L172.6 454.5L170.6 454.4L168.8 453.7L167.3 452.5ZM169.8 454.1L168.8 453.7L167.9 453.0L167.1 452.3L166.4 451.4L166.0 450.4L165.6 449.4L165.5 448.3L165.5 447.2L165.7 446.2L166.1 445.2L166.7 444.2L167.4 443.4L168.2 442.7L169.2 442.1L170.2 441.8L171.3 441.5L172.3 441.5L173.4 441.7L174.5 442.0L175.4 442.5L195.7 455.1L196.6 455.9L197.2 456.9L197.5 458.0L197.5 459.2L197.1 460.3L196.5 461.2L195.6 462.0L194.5 462.4L193.3 462.5L192.2 462.3Z"></path>
+      </g>
+    </g>
+  </svg>
+</div>
+
+<div class="scrim" id="dlg-new" hidden>
+  <div class="dialog glass" role="dialog" aria-modal="true" aria-labelledby="dn-h">
+    <h2 id="dn-h">New session</h2>
+    <div class="grid">
+      <label class="sub" for="dn-subject">subject</label><select id="dn-subject"></select>
+      <label class="sub" for="dn-rig">rig</label><select id="dn-rig"></select>
+      <label class="sub" for="dn-left">←cage at</label><input class="field mono" id="dn-left" value="now" autocomplete="off">
+      <span class="sub">id</span><span class="mono" id="dn-id"></span>
+      <span class="sub">saved to</span><span class="mono" id="dn-path"></span>
+    </div>
+    <div id="dn-msg" class="sub"></div>
+    <div class="end"><button class="btn" id="dn-cancel" type="button">cancel</button><button class="btn primary" id="dn-ok" type="button">open session</button></div>
+  </div>
+</div>
+
+<div class="full" id="full" hidden role="dialog" aria-modal="true" aria-labelledby="full-h">
+  <div class="full-top"><h2 id="full-h"></h2><span class="hint" id="full-hint"></span><span class="spacer"></span><button class="btn small" id="full-x" type="button">close<kbd>Esc</kbd></button></div>
+  <div class="fullbar" id="fullbar"></div>
+  <div class="screen eye" id="full-screen"></div>
+</div>
+
+<div class="scrim gone" id="gone" hidden>
+  <div class="dialog glass" role="dialog" aria-modal="true" aria-labelledby="gone-h">
+    <h2 id="gone-h">Disconnected</h2>
+    <div id="gone-body"></div>
+    <div class="end"><button class="btn primary" id="gone-re" type="button">reconnect</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden role="status"></div>
+
+<div class="scrim" id="dlg-params" hidden>
+  <div class="dialog glass" role="dialog" aria-modal="true" aria-labelledby="lp-h" style="width:min(640px,100%)">
+    <h2 id="lp-h">Load parameters</h2>
+    <div class="sub" id="lp-sub"></div>
+    <div class="pick" id="lp-list"></div>
+    <div class="scroll"><table class="mini" id="lp-diff"></table></div>
+    <div class="open-q">the parameter log is the ELN's. the box cannot ask wl-works for it (lab hosts never open a connection to wl-works), so it has to arrive pushed when a session opens, or be read from earlier session records on the box and wl-nas, which hold the same values. open.</div>
+    <div class="end"><button class="btn" id="lp-cancel" type="button">cancel</button><button class="btn primary" id="lp-ok" type="button">load</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="dlg-dir" hidden>
+  <div class="dialog glass" role="dialog" aria-modal="true" aria-labelledby="dd-h">
+    <h2 id="dd-h">Save directory</h2>
+    <div class="crumbs" id="dd-crumbs"></div>
+    <div class="dirs" id="dd-list"></div>
+    <div class="selrow"><input class="field mono" id="dd-new" placeholder="new folder" autocomplete="off" aria-label="new folder name"><button class="btn small" id="dd-mk" type="button">create</button><span class="sub" id="dd-msg"></span></div>
+    <div class="sub"><span class="mono" id="dd-here"></span> · <span id="dd-free"></span></div>
+    <div class="end"><button class="btn" id="dd-cancel" type="button">cancel</button><button class="btn primary" id="dd-ok" type="button">use this folder</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="dlg-load" hidden>
+  <div class="dialog glass" role="dialog" aria-modal="true" aria-labelledby="dl-h">
+    <h2 id="dl-h">Load session</h2>
+    <div class="pick" id="dl-list"></div>
+    <div id="dl-recover" hidden class="banner warn"></div>
+    <div class="end"><button class="btn" id="dl-cancel" type="button">cancel</button><button class="btn primary" id="dl-ok" type="button">load</button></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var HOUR = 3600, LIMIT = 12 * HOUR, WARN_WITHIN = 1800, TRIAL_SECONDS = 5, PPD = 8;
+  var FAMILIES = [
+    ["Target", ["correct", "early_response", "late_response"]],
+    ["Distractor", ["wrong_target", "early_error", "late_error"]],
+    ["Withhold", ["correct_reject", "false_alarm"]],
+    ["No engagement", ["no_fixation", "no_response", "abort"]],
+    ["Breaks", ["fixation_break", "target_break", "catch_break", "motion_break", "blink_break"]],
+    ["Rig", ["tracker_lost", "fault"]]
+  ];
+  var ERRORS = [["no_fixation", 12], ["no_response", 6], ["fixation_break", 5], ["wrong_target", 4], ["early_response", 2], ["target_break", 1]];
+  var SUBJECTS = {
+    A: { species: "macaca mulatta", sex: "male", headpost: "yes", deployment: "rig_fixed", config: "subjects/A/bounds.py", reward: 0.25, rewardMax: 0.40, floor: 250, earlier: 60,
+         earlierFrom: "kiosk 05:40–06:20", eye: "map v3 · 2nd order · 06:58", recent: [["01-13", "fixation_detection", 612, "298.4"], ["01-12", "visual_search", 540, "271.0"], ["01-11", "fixation_detection", 488, "262.5"]] },
+    B: { species: "macaca mulatta", sex: "female", headpost: "no (chaired)", deployment: "rig_chaired", config: "subjects/B/bounds.py", reward: 0.20, rewardMax: 0.35, floor: 220, earlier: 0,
+         earlierFrom: "none today", eye: "map v7 · affine · yesterday", recent: [["01-13", "adaptive_detection", 410, "231.2"], ["01-12", "adaptive_detection", 395, "224.0"]] },
+    test: { sim: true, species: "simulated", sex: "test subject", headpost: "n/a", deployment: "rig_fixed", config: "subjects/test/bounds.py", reward: 0.25, rewardMax: 0.40, floor: 250, earlier: 0,
+         earlierFrom: "none (simulation)", eye: "mouse → gaze · identity", recent: [["01-14", "fixation_detection", 96, "18.0"]] }
+  };
+  var RIGS = {
+    "rig 1": { stereo: true, hz: 120, rows: [["display", "stereo split screen · 2 × 1280×1440"], ["viewing distance", "57 cm"], ["monitor calibration", "rigs/rig1/monitor_calibration.yaml"], ["", "measured 2027-01-10 · γ 2.21 · white 96.4 cd/m²"], ["NI card", "PCIe-6343 · Dev1"], ["eye tracker", "OpenIrisDPI · 10.0.1.21:9003"], ["sync box", "wl-sync"], ["reward", "solenoid · sync box OR"], ["pump calibration", "not measured (V10)", "warn"]] },
+    "rig 2": { stereo: false, hz: 144, rows: [["display", "single screen · 2560×1440"], ["viewing distance", "60 cm"], ["monitor calibration", "not measured", "warn"], ["NI card", "PCIe-6343 · Dev1"], ["eye tracker", "OpenIrisDPI · 10.0.1.22:9003"], ["sync box", "wl-sync"], ["reward", "solenoid · sync box OR"], ["pump calibration", "not measured (V10)", "warn"]] },
+    "sim": { sim: true, stereo: false, hz: 60, rows: [["display", "window on this screen · 1280×720"], ["viewing distance", "57 cm, declared"], ["monitor calibration", "none: simulation"], ["NI card", "simulated"], ["eye tracker", "mouse over the replica"], ["sync box", "simulated"], ["reward", "counted, not delivered"]] },
+    "kiosk": { stereo: false, hz: 60, rows: [["display", "touch panel"], ["viewing distance", "variable"], ["monitor calibration", "not measured", "warn"], ["NI card", "reduced sync module"], ["eye tracker", "none"], ["sync box", "reduced module"], ["reward", "wl-juicer dose line"], ["pump calibration", "not measured (V10)", "warn"]] }
+  };
+  var FS = { "/": ["data", "scratch", "media", "home"], "/data": ["sessions", "calibration"], "/data/sessions": ["2027-01-13_01", "2027-01-12_01", "2027-01-11_01"], "/data/calibration": [],
+    "/scratch": ["sessions", "tmp"], "/scratch/sessions": [], "/scratch/tmp": [], "/media": ["usb0"], "/media/usb0": ["sessions"], "/media/usb0/sessions": [], "/home": ["jake"], "/home/jake": ["sessions"], "/home/jake/sessions": [] };
+  var FREE = { "/data": "local NVMe · 1.21 TB free", "/scratch": "scratch · 380 GB free", "/media/usb0": "usb · 912 GB free" };
+  var FOLDER = '<svg viewBox="0 0 16 13" aria-hidden="true"><path d="M1 2.5h5l1.5 1.5H15v8H1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+  var TASKS = {
+    fixation_detection: { ver: "@ 2ac9bea", target: [10, 0], conds: [["ecc 0°", 100, 0.92, 195], ["ecc 10°", 100, 0.78, 212], ["ecc 20°", 100, 0.63, 231], ["catch", 25, 0.86, 0]],
+      blocks: [["session", "ecc 0°, 10°, 20° · catch", "100 each · 25 catch", "every quota met"]], bindable: ["target_position"],
+      params: [["fix_timeout", "s", 0.5, 10, 4.0], ["fix_hold", "s", 0.1, 1.0, 0.30], ["response_window", "s", 0.2, 2.0, 0.60], ["target_hold", "s", 0.05, 1.0, 0.20], ["fix_window", "°", 0.5, 5, 2.0], ["target_window", "°", 0.5, 6, 3.0]],
+      plots: [["cond", "correct by eccentricity"], ["rt", "saccade RT"], ["rolling", "correct, rolling 50"]] },
+    adaptive_detection: { ver: "@ 2ac9bea", target: [6, -4], conds: [["staircase", 200, 0.74, 260], ["catch", 40, 0.88, 0]],
+      blocks: [["staircase", "contrast · 2-down 1-up", "200", "8 reversals"], ["catch", "no target", "40", "interleaved"]], bindable: ["target_position"],
+      params: [["contrast_start", "", 0.01, 1.0, 0.45], ["step", "", 0.01, 0.2, 0.05], ["fix_hold", "s", 0.1, 1.0, 0.30], ["response_window", "s", 0.2, 2.0, 0.60], ["fix_window", "°", 0.5, 5, 2.0]],
+      plots: [["stair", "staircase"], ["rt", "RT"], ["rolling", "correct, rolling 50"]] },
+    visual_search: { ver: "@ 2ac9bea", target: [8, 5], conds: [["set 2", 60, 0.9, 240], ["set 6", 60, 0.8, 300], ["set 12", 60, 0.68, 390]],
+      blocks: [["search", "pop-out · set 2, 6, 12", "60 each", "every quota met"]], bindable: [],
+      params: [["set_size_max", "", 2, 12, 12], ["fix_hold", "s", 0.1, 1.0, 0.40], ["search_time", "s", 0.5, 4.0, 2.0], ["target_hold", "s", 0.05, 1.0, 0.25], ["target_window", "°", 0.5, 6, 2.5]],
+      plots: [["setsize", "RT by set size"], ["cond", "correct by set size"], ["rt", "RT"]] },
+    calibration: { ver: "@ 2ac9bea", target: [-12, 6], conds: [["targets", 52, 0.94, 0]],
+      blocks: [["calibration", "13 targets × 4", "52 fixations", "fit · installs a map"]], bindable: [],
+      params: [["fix_timeout", "s", 0.5, 10, 3.0], ["cal_hold", "s", 0.1, 1.0, 0.20], ["window_deg", "°", 1, 6, 3.0], ["repeats", "", 1, 8, 4]],
+      plots: [["calres", "residual by target"], ["rolling", "accepted, rolling 50"]] }
+  };
+  var SCRIPTS = { psychometric: ["psychometric fit", "scripts/psychometric.py"], latency: ["saccade latency", "scripts/latency.py"], calres: ["calibration residuals", "scripts/calibration_residuals.py"], outcomes: ["outcome summary", "scripts/outcomes.py"] };
+  var TONES = { correct: ["reward_tone", 650], error: ["error_tone", 500], go: ["go_cue", 220] };
+  var TABS = [["setup", "Setup"], ["task", "Task parameters"], ["overlays", "Overlays"], ["runtime", "Runtime"], ["behavior", "Behavior"], ["training", "Training tools"], ["analysis", "Online analysis"], ["end", "End of session"]];
+
+  var S, keys = {}, toneTimer = null, tickN = 0, mtTimer = null, gazeRaf = 0;
+  function el(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function clockOf(ms) { var d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function hms(sec) { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 3600) + ":" + pad(Math.floor((sec % 3600) / 60)) + ":" + pad(sec % 60); }
+  function hm(sec) { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 3600) + ":" + pad(Math.floor((sec % 3600) / 60)); }
+  function ago(sec) { sec = Math.max(0, Math.floor(sec)); return sec < 90 ? sec + " s" : sec < 5400 ? Math.floor(sec / 60) + " min" : hm(sec); }
+  function actor() { return "jake (box, unverified)"; }
+  function canWrite() { return S.viewer === "box"; }
+  function once(name, key) { if (keys[name] === key) return false; keys[name] = key; return true; }
+  function gauss() { var u = 1 - Math.random(), v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+  function taskParams(name) { return TASKS[name].params.map(function (p) { return { name: p[0], unit: p[1], low: p[2], high: p[3], value: p[4] }; }); }
+  function withReward(list, subject) { var sub = SUBJECTS[subject]; return list.concat([{ name: "reward_correct", unit: "mL", low: 0, high: sub.rewardMax, value: sub.reward, ceiling: true }]); }
+  function currentTab() { var h = (location.hash || "").replace("#", ""); return TABS.some(function (t) { return t[0] === h; }) ? h : "runtime"; }
+  function defaultRfs() { return [{ label: "ch 12 · V1", x: 5.5, y: -3.0, r: 2.2, show: true, use: "display" }, { label: "ch 31 · V1", x: 8.0, y: -5.0, r: 3.0, show: true, use: "display" }, { label: "ch 58 · V4", x: 6.5, y: -6.5, r: 5.0, show: false, use: "display" }]; }
+  function fresh() {
+    return { viewer: "box", clock: Date.now(), phase: "none", session: null, run: null, subject: "A", rig: "rig 1",
+      task: "fixation_detection", params: withReward(taskParams("fixation_detection"), "A"), staged: [], feed: [],
+      io: { strobes: 0, rewards: 0, last: "—", flash: {} }, limitStop: false, gaze: { x: 0.2, y: -0.1, trail: [] }, stim: "fix", lastReward: null, fps: null,
+      rfs: defaultRfs(), xfer: { "2027-01-13_01": { state: "ingested", pct: 100 } }, analyses: [], resultSel: null, bhRun: null, tab: currentTab(),
+      mode: "live", gazeSrc: "mouse", rhx: "recording", rhxSince: null, sched: null, lastTrial: null, cur: null, gazeLostAt: null, startFrom: null, markAt: null, stall: false, paused: false, full: null, gazeOff: [0, 0], disconnected: false, discAt: null, saveDir: "/data/sessions", trialTarget: null, mt: null, busyUntil: 0, attn: null,
+      train: { ladder: false, param: "fix_window", steps: [5, 4, 3, 2], step: 0, since: 0, corr: false, timeout: 2.0, fixRew: false, fixAmt: 0.05 } };
+  }
+  function log(kind, cls, text) { S.feed.unshift({ t: clockOf(S.clock), kind: kind, cls: cls, text: text }); if (S.feed.length > 100) S.feed.pop(); }
+
+  function allRuns() { if (!S.session) return []; return S.session.runs.concat(S.run ? [S.run] : []); }
+  function sessionFluid() { return allRuns().reduce(function (a, r) { return a + r.fluid; }, 0) + ((S.session && S.session.manual) || 0); }
+  function mouseMode() { return S.mode === "sim" && S.gazeSrc === "mouse"; }
+  function subjectsFor() { return Object.keys(SUBJECTS).filter(function (k) { return !!SUBJECTS[k].sim === (S.mode === "sim"); }); }
+  function rigsFor() { return Object.keys(RIGS).filter(function (k) { return !!RIGS[k].sim === (S.mode === "sim"); }); }
+  function param(name) { return S.params.find(function (p) { return p.name === name; }); }
+  function win(name, dflt) { var p = param(name); return p ? p.value : dflt; }
+  function dist(g, t) { return Math.hypot(g.x - t[0], g.y - t[1]); }
+  function freeOf(path) { var best = ""; Object.keys(FREE).forEach(function (k) { if ((path === k || path.indexOf(k + "/") === 0) && k.length > best.length) best = k; }); return best ? FREE[best] : "system disk · 64 GB free"; }
+  function sessionCorrect() { return allRuns().reduce(function (a, r) { return a + (r.outcomes.correct || 0) + (r.outcomes.correct_reject || 0); }, 0); }
+  function sessionTrials() { return allRuns().reduce(function (a, r) { return a + r.trial; }, 0); }
+  function ooc() { if (!S.session) return 0; var end = S.session.returnedAt || S.clock; return Math.max(0, (end - S.session.departure) / 1000); }
+  function warning() {
+    if (!S.session || S.phase === "closed") return null;
+    var left = LIMIT - ooc();
+    if (left <= 0) return "subject " + S.session.subject + " ←cage " + hm(ooc()) + ", past the 12:00 limit";
+    if (left <= WARN_WITHIN) return Math.ceil(left / 60) + " min of the 12-hour limit left";
+    return null;
+  }
+  function verdict() { if (!S.session || S.phase === "closed") return "ok"; if (S.limitStop || warning()) return "degraded"; return "ok"; }
+  function boundRf() { return S.rfs.find(function (rf) { return rf.use === "target"; }) || null; }
+  function targetPos() { var rf = boundRf(); if (rf && TASKS[S.task].bindable.length) return [rf.x, rf.y]; if (mouseMode() && S.trialTarget) return S.trialTarget; return TASKS[S.task].target; }
+  function rigOf() { return RIGS[S.session ? S.session.rig : S.rig]; }
+
+  /* ---- one simulated trial ---- */
+  function newRun(task) {
+    var t = TASKS[task];
+    return { n: S.session.runs.length + 1, task: task, started: S.clock, trial: 0, outcomes: {}, fluid: 0,
+      need: t.conds.map(function (c) { return [c[0], 0, c[1]]; }), byCond: {}, rts: [], rtByCond: {}, seq: [], stair: [], contrast: 0.45 };
+  }
+  function pickCond(r) {
+    var t = TASKS[r.task];
+    if (S.train.corr && r.retry) return r.retry;
+    var open = t.conds.filter(function (c, i) { return r.need[i][1] < r.need[i][2]; });
+    var pool = open.length ? open : t.conds;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  function simTrial(r, reward, forced) {
+    var t = TASKS[r.task], c = forced ? forced.cond : pickCond(r), p = c[2], ok, outcome;
+    if (forced) { outcome = forced.outcome; ok = outcome === "correct" || outcome === "correct_reject"; }
+    else {
+      if (r.task === "adaptive_detection" && c[0] === "staircase") p = 0.5 + 0.48 / (1 + Math.exp(-(r.contrast - 0.12) / 0.03));
+      ok = Math.random() < p;
+      if (ok) outcome = c[0] === "catch" ? "correct_reject" : "correct";
+      else if (c[0] === "catch") outcome = "false_alarm";
+      else { var tot = ERRORS.reduce(function (a, w) { return a + w[1]; }, 0), x = Math.random() * tot; outcome = "no_fixation"; for (var i = 0; i < ERRORS.length; i++) { x -= ERRORS[i][1]; if (x < 0) { outcome = ERRORS[i][0]; break; } } }
+      if (S.train.fixRew && outcome !== "no_fixation") r.fluid += S.train.fixAmt;
+    }
+    r.retry = ok ? null : c;
+    r.trial += 1; r.outcomes[outcome] = (r.outcomes[outcome] || 0) + 1;
+    var bc = r.byCond[c[0]] || (r.byCond[c[0]] = [0, 0]); bc[1] += 1; if (ok) bc[0] += 1;
+    r.seq.push(ok ? 1 : 0); (r.oseq || (r.oseq = [])).push(outcome); (r.times || (r.times = [])).push(S.clock);
+    var rtv = null;
+    if (c[3] && (outcome === "correct" || outcome === "wrong_target")) { var rt = forced && forced.rt != null ? forced.rt : Math.max(110, c[3] + 32 * gauss()); r.rts.push(rt); rtv = rt; (r.rtByCond[c[0]] || (r.rtByCond[c[0]] = [])).push(rt); }
+    if (r.task === "adaptive_detection" && c[0] === "staircase") { r.stair.push(r.contrast); r.contrast = Math.max(0.01, Math.min(1, r.contrast + (ok ? -0.03 * Math.random() : 0.05))); }
+    if (outcome === "correct" || outcome === "correct_reject") { r.fluid += outcome === "correct" ? reward : 0; var idx = t.conds.indexOf(c); if (idx >= 0) r.need[idx][1] = Math.min(r.need[idx][2], r.need[idx][1] + 1); }
+    return { outcome: outcome, cond: c[0], paid: outcome === "correct" && reward > 0, ok: ok, rt: rtv };
+  }
+  function seedRun(task, n, reward) { var r = newRun(task); for (var i = 0; i < n; i++) simTrial(r, reward); return r; }
+  function inSession() { var s = S.session; if (!s) return 0; return Math.max(0, ((s.closedAt || S.clock) - s.opened) / 1000); }
+  function toast(text) { var t = el("toast"); t.textContent = text; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(function () { t.hidden = true; }, 1800); }
+  function endRun(why) { S.paused = false; S.sched = null; S.cur = null; S.stall = false; var r = S.run; r.ended = S.clock; r.why = why; S.session.runs.push(r); S.run = null; S.phase = "idle"; S.staged = []; S.stim = "blank"; log("run ended", "run", "run " + r.n + " · " + why); }
+  function sessionPath(id) { return (S.session ? S.session.dir : S.saveDir) + "/" + id + "/expcontroller/"; }
+
+  /* ---------- displays ---------- */
+  function X(deg) { return 160 + deg * PPD; }
+  function Y(deg) { return 90 - deg * PPD; }
+  function replicaSvg(big) {
+    var t = targetPos(), running = S.phase === "running", g = '<svg viewBox="0 0 320 180" role="img" aria-label="replica: stimuli with windows, gaze and receptive fields">';
+    g += '<line class="rp-ax" x1="160" y1="0" x2="160" y2="180"/><line class="rp-ax" x1="0" y1="90" x2="320" y2="90"/>';
+    S.rfs.forEach(function (rf) { if (!rf.show) return; g += '<circle class="rp-rf" cx="' + X(rf.x) + '" cy="' + Y(rf.y) + '" r="' + rf.r * PPD + '"/><text class="rp-rf-lab" x="' + (X(rf.x) + rf.r * PPD * 0.72) + '" y="' + (Y(rf.y) - rf.r * PPD * 0.72) + '">' + esc(rf.label) + "</text>"; });
+    if (running || big) {
+      var fw = S.params.find(function (p) { return p.name === "fix_window"; }), tw = S.params.find(function (p) { return p.name === "target_window"; });
+      g += '<circle class="rp-win" cx="160" cy="90" r="' + (fw ? fw.value : 2) * PPD + '"/><circle class="rp-dot" cx="160" cy="90" r="2.4"/>';
+      if (S.stim === "target" || big) g += '<circle class="rp-win" cx="' + X(t[0]) + '" cy="' + Y(t[1]) + '" r="' + (tw ? tw.value : 3) * PPD + '"/><circle class="rp-tgt" cx="' + X(t[0]) + '" cy="' + Y(t[1]) + '" r="6"/>';
+    }
+    if ((running || (mouseMode() && S.session)) && S.gaze.trail.length) {
+      var d = S.gaze.trail.map(function (p, i) { return (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1); }).join("");
+      g += '<path class="rp-gaze" d="' + d + '"/><circle class="rp-eye" cx="' + X(S.gaze.x) + '" cy="' + Y(S.gaze.y) + '" r="3"/>';
+    }
+    g += '<text class="rp-cap" x="4" y="176">' + (running ? "run " + S.run.n + " · trial " + S.run.trial : S.phase === "idle" ? "between runs" : "idle") + " · 8 px/°</text>";
+    return g + "</svg>";
+  }
+  function subjectSvg() {
+    var stereo = rigOf().stereo, t = targetPos(), attn = S.attn && performance.now() < S.attn.until ? S.attn.kind : null, show = S.phase === "running" || !!attn;
+    var g = '<svg viewBox="0 0 320 180" role="img" aria-label="subject display: what the physical screen shows">';
+    function half(x0, w, disp) {
+      var cx = x0 + w / 2, s = w / 320, out = '<rect class="sd-bg" x="' + x0 + '" y="0" width="' + w + '" height="180"/>';
+      if (!show) return out;
+      out += '<circle class="sd-fg" cx="' + (cx + disp) + '" cy="90" r="' + Math.max(1.6, 2.6 * s * 1.6) * (attn === "flash" ? 3 : 1) + '"/>';
+      if (S.stim === "target" || attn === "target") out += '<circle class="sd-fg" cx="' + (cx + disp + t[0] * PPD * s) + '" cy="' + (90 - t[1] * PPD * s) + '" r="' + Math.max(2.5, 6 * s * 1.4) + '"/>';
+      return out;
+    }
+    if (stereo) g += half(0, 160, -1.2) + half(160, 160, 1.2) + '<line class="sd-div" x1="160" y1="0" x2="160" y2="180"/><text class="sd-cap" x="4" y="176">left eye</text><text class="sd-cap" x="164" y="176">right eye</text>';
+    else g += half(0, 320, 0);
+    return g + "</svg>";
+  }
+  function drawDisplays() {
+    el("replica").innerHTML = replicaSvg(false);
+    el("subject-display").innerHTML = subjectSvg();
+    el("sd-mode").textContent = rigOf().stereo ? "stereo · 2 halves" : "single screen";
+    if (S.full) {
+      el("full-screen").innerHTML = S.full === "replica" ? replicaSvg(false) : subjectSvg();
+      el("full-h").textContent = S.full === "replica" ? "Replica" : "Subject display";
+      el("full-hint").textContent = S.full === "replica" && mouseMode() && S.session ? "the mouse is the eye: hold it on the fixation point until the target appears, then move to the target." : "";
+    }
+    if (S.tab === "overlays") el("rf-preview").innerHTML = replicaSvg(true);
+    el("fps").innerHTML = S.session ? (S.fps || rigOf().hz).toFixed(1) + '<span class="u">fps</span><div class="sub">dropped: not measured</div>' : '<span class="nm" style="font-size:13px">—</span>';
+  }
+  function playTone(kind) {
+    var t = TONES[kind]; if (!t) return;
+    el("tone").textContent = t[0]; el("spk").classList.add("playing");
+    clearTimeout(toneTimer);
+    toneTimer = setTimeout(function () { el("tone").textContent = ""; el("spk").classList.remove("playing"); }, t[1]);
+  }
+
+  /* ---------- the monkey: sits in the largest empty space, if one is big enough ---------- */
+  function placeMonkey() {
+    var critter = el("critter"), best = null, bestH = 0;
+    Array.prototype.forEach.call(document.querySelectorAll(".slot"), function (s) {
+      if (s.offsetParent === null) return;
+      if (s.contains(critter)) { critter.hidden = true; }
+      var h = s.getBoundingClientRect().height;
+      if (h > bestH) { bestH = h; best = s; }
+    });
+    if (best && bestH >= 120) { best.appendChild(critter); critter.hidden = false; }
+    else critter.hidden = true;
+  }
+
+  /* ---------- draw ---------- */
+  function draw() {
+    var ph = S.phase, pill = el("state-pill");
+    var st = ph === "none" ? ["no session", "neutral"] : ph === "idle" ? ["between runs", S.limitStop ? "crit" : "accent"] : ph === "running" ? (S.paused ? ["paused", "warn"] : ["running", "ok"]) : ["ended", "neutral"];
+    pill.textContent = st[0]; pill.className = "pill " + st[1];
+    el("head-id").innerHTML = S.session
+      ? '<span><span class="k">Session</span><span class="v">' + S.session.id + '</span></span><span><span class="k">Subject</span><span class="v">' + S.session.subject + '</span></span><span><span class="k">Rig</span><span class="v">' + S.session.rig + '</span></span><span><span class="k">In session</span><span class="v num">' + hms(inSession()) + "</span></span>" +
+        (S.run ? '<span><span class="k">Run</span><span class="v">' + S.run.n + " · " + S.run.task + '</span></span><span><span class="k">Trial</span><span class="v num">' + S.run.trial + "</span></span>" : "")
+      : "";
+    el("presence").innerHTML = S.viewer === "box" ? "<b>jake @ box</b> · 2 LAN viewers" : "<b>LAN viewer</b> · read-only";
+    drawToolbar(); drawStrip(); drawBanners(); drawTabs();
+    drawSession(); drawMonkey(); drawRig(); drawSave();
+    drawTask(); drawPlan(); drawStaged(); drawRfs();
+    drawWork(); drawIO(); drawHealth(); drawRuns();
+    drawBehavior(); drawTraining(); drawAnalysis(); drawEnd(); drawDisplays(); drawFeed();
+    drawTimeline(); drawPreflight(); drawStartFrom(); drawFullbar(); drawEyeQ(); drawRhx(); drawSched();
+    document.body.classList.toggle("sim", S.mode === "sim"); el("sim-pill").hidden = S.mode !== "sim";
+  }
+  function setBtn(id, on, why) { var b = el(id); b.disabled = !on; b.title = on ? "" : why; }
+  function drawToolbar() {
+    var w = canWrite(), ph = S.phase, ro = "read-only: writes only from the box until P4d-3";
+    setBtn("a-new", w && (ph === "none" || ph === "closed"), !w ? ro : "a session is open");
+    setBtn("a-load", w && (ph === "none" || ph === "closed"), !w ? ro : "a session is open");
+    var pulled = !!S.session && !!S.session.pulled;
+    var pff = S.session ? pfFail() : null;
+    setBtn("a-start", w && ph === "idle" && pulled && !pff && !S.session.needsConfirm && !S.limitStop, !w ? ro : ph === "none" ? "no session" : ph === "idle" && !pulled ? "pull the task library first" : ph === "idle" && pff ? "pre-flight: " + pff + " failing" : ph === "running" ? "a run is going" : ph === "closed" ? "session closed" : S.session.needsConfirm ? "confirm the recovered ←cage time" : "limit reached");
+    setBtn("a-stop", w && ph === "running", !w ? ro : "no run is going");
+    var open = !!S.session && ph !== "closed" && ph !== "none";
+    setBtn("a-pull", w && open && ph !== "running" && !S.pulling, !w ? ro : !S.session ? "open a session first" : ph === "closed" ? "session ended" : ph === "running" ? "not during a run" : "pulling");
+    var pb = el("a-pull"), pullWhy = S.pulling ? "pulling the task library…" : pulled ? "pull the task library again" : "pull the task library (wl-mllib) from GitHub · required before the first run";
+    pb.classList.toggle("busy", !!S.pulling); pb.classList.toggle("primary", !!S.session && open && !pulled && !S.pulling);
+    pb.setAttribute("aria-label", pullWhy); if (!pb.disabled) pb.title = pullWhy;
+    var tc = el("task-check");
+    tc.textContent = !S.session ? "no session" : pulled ? "tasks " + S.session.pulled.commit + (S.session.pulled.stale ? " · last pulled" : "") : "tasks not pulled"; tc.title = pulled ? "pulled " + clockOf(S.session.pulled.at) + " · check: 0 blocking" : "";
+    tc.className = "pill " + (!S.session ? "neutral" : pulled ? (S.session.pulled.stale ? "warn" : "ok") : "warn");
+    setBtn("a-pause", w && ph === "running", !w ? ro : "no run to pause");
+    el("a-pause").innerHTML = (S.paused ? "resume" : "pause") + "<kbd>P</kbd>";
+    setBtn("a-reward", w && open, !w ? ro : "no open session");
+    setBtn("a-recenter", w && open, !w ? ro : "no open session");
+    if (!(w && ph === "running")) el("stop-confirm").hidden = true;
+  }
+  function drawStrip() {
+    var sub = SUBJECTS[S.session ? S.session.subject : S.subject], today = sub.earlier + sessionFluid();
+    el("s-today").innerHTML = today.toFixed(2) + '<span class="u">/ ' + sub.floor + " mL</span>";
+    el("s-today-bar").style.width = Math.min(100, (100 * today) / sub.floor) + "%";
+    var trials = sessionTrials(), corr = sessionCorrect();
+    el("s-correct").innerHTML = S.session ? corr + '<span class="u">/ ' + trials + "</span>" : '<span class="nm">—</span>';
+    var tpm = perMin();
+    el("s-correct-sub").textContent = S.session && trials ? Math.round((100 * corr) / trials) + "% · " + allRuns().length + " run" + (allRuns().length === 1 ? "" : "s") + (tpm !== null ? " · " + tpm.toFixed(1) + "/min" : "") : "";
+    el("s-reward").parentNode.parentNode.classList.toggle("alert", !!stalled());
+    if (S.lastReward === null || !S.session) { el("s-reward").innerHTML = '<span class="nm">—</span>'; el("s-reward-sub").textContent = ""; }
+    else { el("s-reward").textContent = ago((S.clock - S.lastReward) / 1000) + " ago"; el("s-reward-sub").textContent = S.phase === "running" ? reward().toFixed(2) + " mL per correct" : "no run going"; }
+    if (!S.session) { el("s-ooc").innerHTML = '<span class="nm">—</span>'; el("s-ooc-bar").style.width = "0%"; return; }
+    var t = ooc(), left = LIMIT - t;
+    el("s-ooc").innerHTML = hms(t) + '<span class="u">' + (S.session.returnedAt ? "→" + clockOf(S.session.returnedAt) : left > 0 ? hm(left) + " left" : "past") + "</span>";
+    var ob = el("s-ooc-bar"); ob.style.width = Math.min(100, (100 * t) / LIMIT) + "%"; ob.className = "fill " + (left <= 0 ? "crit" : left <= WARN_WITHIN ? "warn" : "");
+  }
+  function drawBanners() {
+    var b = [], w = warning();
+    if (S.session && S.session.needsConfirm) b.push('<div class="banner warn"><span class="tag">Recovered</span><span>ended without closing at ' + clockOf(S.session.crashedAt) + ", run 2 trial 187. read back: ←cage " + clockOf(S.session.departure) + ", " + sessionFluid().toFixed(2) + ' mL.</span><button class="btn small primary" id="confirm-dep" type="button"' + (canWrite() ? "" : " disabled") + ">confirm ←cage " + clockOf(S.session.departure) + "</button></div>");
+    if (S.limitStop && S.phase === "idle") b.push('<div class="banner crit"><span class="tag">Limit reached</span><span>no further run.</span></div>');
+    if (w) b.push('<div class="banner ' + (ooc() >= LIMIT ? "crit" : "warn") + '"><span class="tag">Warning</span><span>' + esc(w) + "</span></div>");
+    else if (notice()) b.push('<div class="banner info"><span class="tag">Notice</span><span>' + esc(notice()) + "</span></div>");
+    alerts().forEach(function (a) { b.push('<div class="banner ' + a[0] + '"><span class="tag">' + a[1] + "</span><span>" + esc(a[2]) + "</span></div>"); });
+    if (S.viewer === "lan") b.push('<div class="banner info"><span class="tag">Read-only</span><span>writes only from the box until P4d-3.</span></div>');
+    el("banners").innerHTML = b.join("");
+    var c = el("confirm-dep");
+    if (c) c.addEventListener("click", function () { S.session.needsConfirm = false; log("←cage", "mark", "recovered " + clockOf(S.session.departure) + " confirmed · " + actor()); draw(); });
+  }
+  function drawTabs() {
+    var dots = { setup: S.session ? "" : "idle", task: S.staged.length ? "warn" : "idle", overlays: boundRf() ? "" : "idle",
+      runtime: S.phase === "running" ? "" : S.limitStop || ooc() >= LIMIT ? "crit" : warning() ? "warn" : "idle", exp: S.phase === "running" ? "" : "idle",
+      behavior: S.run ? "" : "idle", analysis: S.analyses.some(function (a) { return a.state !== "done"; }) ? "warn" : S.analyses.length ? "" : "idle",
+      end: S.phase === "closed" ? (S.session && S.xfer[S.session.id] ? "" : "warn") : "idle", training: S.train.ladder ? "" : "idle" };
+    if (!once("tabs", S.tab + JSON.stringify(dots))) return;
+    el("tabs").innerHTML = TABS.map(function (t) { return '<button class="tab" role="tab" id="tab-' + t[0] + '" aria-controls="tp-' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '" tabindex="' + (S.tab === t[0] ? 0 : -1) + '" data-t="' + t[0] + '"><span class="dot ' + dots[t[0]] + '"></span>' + t[1] + "</button>"; }).join("");
+    Array.prototype.forEach.call(el("tabs").querySelectorAll(".tab"), function (b) { b.addEventListener("click", function () { selectTab(b.dataset.t); }); });
+    TABS.forEach(function (t) { el("tp-" + t[0]).hidden = S.tab !== t[0]; });
+  }
+  function selectTab(t) { S.tab = t; try { history.replaceState(null, "", "#" + t); } catch (e) {} keys.tabs = ""; keys.plots = ""; keys.rfs = ""; drawTabs(); drawBehavior(); drawRfs(); drawDisplays(); requestAnimationFrame(placeMonkey); }
+
+  function drawSession() {
+    var s = S.session;
+    el("sess-pill").textContent = s ? (S.phase === "closed" ? "ended" : "open") : "none";
+    el("sess-pill").className = "pill " + (s && S.phase !== "closed" ? "accent" : "neutral");
+    var modeLocked = (!!s && S.phase !== "closed") || !canWrite();
+    Array.prototype.forEach.call(el("mode-segs").querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.mode === S.mode)); b.disabled = modeLocked; b.title = modeLocked ? (canWrite() ? "fixed while a session is open" : "read-only") : ""; });
+    el("gaze-segs").hidden = S.mode !== "sim";
+    Array.prototype.forEach.call(el("gaze-segs").querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.g === S.gazeSrc)); b.disabled = !canWrite(); });
+    el("sess-body").innerHTML = s
+      ? '<dl class="dl"><dt>id</dt><dd>' + s.id + "</dd><dt>subject</dt><dd>" + s.subject + "</dd><dt>rig</dt><dd>" + s.rig + "</dd><dt>←cage</dt><dd>" + clockOf(s.departure) + (s.needsConfirm ? " (unconfirmed)" : "") + "</dd><dt>→cage</dt><dd>" + (s.returnedAt ? clockOf(s.returnedAt) + " · eln" : "from the eln") + "</dd><dt>in session</dt><dd>" + hms(inSession()) + (s.closedAt ? " · ended" : "") + "</dd><dt>runs</dt><dd>" + allRuns().length + "</dd><dt>directory</dt><dd>" + sessionPath(s.id) + "</dd></dl>"
+      : '<div class="nm">none loaded</div>';
+  }
+  function drawMonkey() {
+    var locked = !!S.session && S.phase !== "closed", subj = locked ? S.session.subject : S.subject;
+    if (once("monkey-sel", subj + locked + S.mode)) { el("monkey-sel").innerHTML = subjectsFor().map(function (k) { return "<option" + (k === subj ? " selected" : "") + ">" + k + "</option>"; }).join(""); el("monkey-sel").disabled = locked; }
+    el("monkey-lock").textContent = locked ? "locked" : "";
+    if (!once("monkey-body", subj)) return;
+    var m = SUBJECTS[subj];
+    el("monkey-body").innerHTML =
+      '<dl class="dl"><dt>species</dt><dd>' + m.species + " · " + m.sex + "</dd><dt>head-post</dt><dd>" + m.headpost + "</dd><dt>deployment</dt><dd>" + m.deployment + "</dd><dt>eye map</dt><dd>" + m.eye + "</dd><dt>earlier today</dt><dd>" + m.earlier.toFixed(2) + " mL · " + m.earlierFrom + "</dd></dl>" +
+      '<h3>Limits</h3><dl class="dl"><dt>reward</dt><dd>' + m.reward.toFixed(2) + " mL · ceiling " + m.rewardMax.toFixed(2) + "</dd><dt>fluid floor</dt><dd>" + m.floor + " mL</dd><dt>←cage</dt><dd>12:00</dd><dt>config</dt><dd>" + m.config + "</dd></dl>" +
+      '<h3>Recent</h3><div class="scroll"><table class="mini"><tr><th>Day</th><th>Task</th><th class="n">Trials</th><th class="n">mL</th></tr>' + m.recent.map(function (r) { return '<tr><td class="mono">' + r[0] + "</td><td>" + r[1] + '</td><td class="n">' + r[2] + '</td><td class="n">' + r[3] + "</td></tr>"; }).join("") + "</table></div>";
+  }
+  function drawRig() {
+    var locked = !!S.session && S.phase !== "closed", rig = locked ? S.session.rig : S.rig;
+    if (once("rig-sel", rig + locked + S.mode)) { el("rig-sel").innerHTML = rigsFor().map(function (k) { return "<option" + (k === rig ? " selected" : "") + ">" + k + "</option>"; }).join(""); el("rig-sel").disabled = locked; }
+    el("rig-lock").textContent = locked ? "locked" : "";
+    if (!once("rig-body", rig)) return;
+    el("rig-body").innerHTML = '<dl class="dl">' + RIGS[rig].rows.map(function (r) { return "<dt>" + r[0] + "</dt><dd" + (r[2] ? ' class="flag-' + r[2] + '"' : "") + ">" + r[1] + "</dd>"; }).join("") + "</dl>";
+  }
+  function drawRhx() {
+    var sim = S.mode === "sim", p = el("rhx-pill");
+    p.textContent = sim ? "simulated" : S.rhx === "recording" ? "recording" : "not recording";
+    p.className = "pill " + (sim ? "neutral" : S.rhx === "recording" ? "ok" : "warn");
+    el("rhx-body").textContent = sim ? "nothing is recorded in simulation" : S.rhx === "recording" ? "RHX · " + (S.session ? S.session.id : "—") + "_rhx/ · " + (S.rhxSince ? hms((S.clock - S.rhxSince) / 1000) : "—") + " elapsed" : "RHX is not recording";
+  }
+  function drawSched() {
+    var chip = el("sched-chip"); chip.hidden = !S.sched; if (S.sched) chip.textContent = "stops " + schedText() + " ×";
+    setBtn("a-sched", canWrite() && S.phase === "running", !canWrite() ? "read-only" : "only while a run is going");
+    setBtn("a-mark", canWrite() && !!S.session && S.phase !== "closed", !canWrite() ? "read-only" : "no open session");
+    if (S.phase !== "running") el("sched-form").hidden = true;
+  }
+  function drawSave() {
+    var locked = !!S.session && S.phase !== "closed", dir = S.session ? S.session.dir : S.saveDir;
+    el("save-lock").textContent = locked ? "locked" : "";
+    el("save-root").textContent = dir;
+    el("save-free").textContent = freeOf(dir);
+    setBtn("save-browse", canWrite() && !locked, !canWrite() ? "read-only" : "fixed while a session is open");
+    el("save-path").textContent = sessionPath(S.session ? S.session.id : "<session>");
+  }
+  function drawIO() {
+    var io = S.io, f = io.flash;
+    el("io-out").innerHTML = [["", "event word", io.last], ["", "strobe", String(io.strobes)], ["rew ", "reward", String(io.rewards)], ["dead", "stim trigger", "not wired"]].map(function (r, i) {
+      var on = (i === 0 && f.word) || (i === 1 && f.strobe) || (i === 2 && f.reward);
+      return '<div class="row"><span class="led ' + (r[0] === "dead" ? "dead" : r[0] + (on ? "on" : "")) + '"></span><span>' + r[1] + '</span><span class="num sub">' + r[2] + "</span></div>";
+    }).join("");
+    el("io-in").innerHTML = [["lever", f.lever], ["photodiode", f.photo], ["sync ack", f.ack], ["spare 4", false]].map(function (r) { return '<div class="row"><span class="led ' + (r[1] ? "on" : "") + '"></span><span>' + r[0] + '</span><span class="sub">' + (r[1] ? "high" : "low") + "</span></div>"; }).join("");
+    el("io-dev").textContent = S.mode === "sim" ? "simulated" : "Dev1 · PCIe-6343";
+    setBtn("io-test", canWrite() && S.phase !== "running", !canWrite() ? "read-only" : "not during a run: it would land in the recording");
+  }
+  function drawHealth() {
+    var v = verdict(), vp = el("verdict"); vp.textContent = v; vp.className = "pill " + (v === "ok" ? "ok" : v === "degraded" ? "warn" : "crit");
+    var rows;
+    if (!S.session) rows = [[1, "session", "none"], [1, "state", "idle"]];
+    else {
+      var sub = SUBJECTS[S.session.subject];
+      var state = S.phase === "running" ? "run " + S.run.n + " · " + S.run.task : S.phase === "idle" ? (S.limitStop ? "limit reached; no further run" : "between runs") : "ended" + (S.session.returnedAt ? " · →cage " + clockOf(S.session.returnedAt) + " (eln)" : "");
+      rows = [[1, "session", S.session.id + " · " + S.session.subject + " · " + S.session.rig], [1, "state", state]].concat(S.mode === "sim" ? [[1, "mode", "simulation"]] : []).concat([ [1, "←cage", hm(ooc()) + " / 12:00"], [warning() ? 1 : 0, "warning", warning() || "none"],
+        [0, "fluid session", sessionFluid().toFixed(2) + " mL"], [1, "supplement", Math.max(0, sub.floor - sub.earlier - sessionFluid()).toFixed(2) + " mL"], [0, "correct / trials", sessionCorrect() + " / " + sessionTrials()], [0, "last frame", S.phase === "closed" ? "final" : "1 s"]]);
+    }
+    el("readings").innerHTML = rows.map(function (r) { return '<div class="r"><span class="f">' + (r[0] ? "◆" : "") + '</span><span class="l">' + r[1] + '</span><span class="v">' + esc(r[2]) + "</span></div>"; }).join("");
+  }
+  function countsHtml(outcomes) {
+    return '<div class="counts">' + FAMILIES.map(function (f) {
+      var rows = f[1].filter(function (k) { return outcomes[k]; });
+      if (!rows.length) return "";
+      return '<div class="fam"><h3>' + f[0] + "</h3>" + rows.map(function (k) { return '<div class="kv"><span>' + k + '</span><span class="num">' + outcomes[k] + "</span></div>"; }).join("") + "</div>";
+    }).join("") + "</div>";
+  }
+  function drawWork() {
+    if (!S.run) { el("work-meta").textContent = ""; el("work-body").innerHTML = '<div class="nm">no run</div>'; el("need").innerHTML = '<div class="nm">no run</div>'; return; }
+    el("work-meta").textContent = "run " + S.run.n + " · " + S.run.task + " · " + clockOf(S.run.started) + " · fluid " + S.run.fluid.toFixed(2) + " mL";
+    el("work-body").innerHTML = '<div class="selrow"><span class="big">' + S.run.trial + '</span><span class="unit">trials</span></div>' + countsHtml(S.run.outcomes);
+    el("need").innerHTML = S.run.need.map(function (n) { var pct = Math.min(100, (100 * n[1]) / n[2]); return '<div class="row"><span class="mono">' + n[0] + '</span><div class="bar"><div class="fill ' + (n[1] >= n[2] ? "ok" : "") + '" style="width:' + pct + '%"></div></div><span class="num">' + n[1] + "/" + n[2] + "</span></div>"; }).join("");
+  }
+  function runsTable(rows) {
+    var head = '<tr><th class="n">#</th><th>Task</th><th>Time</th><th class="n">Trials</th><th class="n">correct</th><th class="n">no_fix</th><th class="n">breaks</th><th class="n">mL</th><th>Ended</th></tr>';
+    return head + (rows.map(function (r) {
+      var o = r.outcomes, br = (o.fixation_break || 0) + (o.target_break || 0) + (o.blink_break || 0) + (o.catch_break || 0);
+      return '<tr><td class="n">' + r.n + "</td><td>" + r.task + '</td><td class="mono">' + clockOf(r.started) + "–" + (r.live ? "now" : clockOf(r.ended)) + '</td><td class="n">' + r.trial + '</td><td class="n">' + (o.correct || 0) + '</td><td class="n">' + (o.no_fixation || 0) + '</td><td class="n">' + br + '</td><td class="n">' + r.fluid.toFixed(2) + "</td><td>" + (r.live ? '<span class="pill ok">running</span>' : esc(r.why)) + "</td></tr>";
+    }).join("") || '<tr><td colspan="9" class="nm">no runs</td></tr>');
+  }
+  function drawRuns() {
+    if (!S.session) { el("runs").innerHTML = '<tr><td class="nm">none</td></tr>'; el("runs-sum").textContent = ""; return; }
+    var rows = S.session.runs.slice(); if (S.run) rows.push(Object.assign({ live: true }, S.run));
+    el("runs").innerHTML = runsTable(rows);
+    el("runs-sum").textContent = rows.length + " · " + sessionTrials() + " trials · fluid session " + sessionFluid().toFixed(2) + " mL";
+  }
+  function drawFeed() { el("feed").innerHTML = S.feed.length ? S.feed.map(function (e) { return '<div class="ev ' + e.cls + '"><span class="t">' + e.t + '</span><span><span class="kind">' + e.kind + "</span>" + esc(e.text) + "</span></div>"; }).join("") : '<div class="nm">nothing yet</div>'; }
+
+  var ARROWS = '<span class="arrows"><button type="button" class="up" tabindex="-1" aria-label="increase"><svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 4l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="dn" tabindex="-1" aria-label="decrease"><svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 1l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>';
+  function stepOf(p) { if (p.unit === "mL") return 0.01; if (p.name === "repeats" || p.name === "set_size_max") return 1; if (p.unit === "°") return 0.1; if (p.unit === "s") return 0.05; return 0.01; }
+  function decimals(step) { return (String(step).split(".")[1] || "").length; }
+  function stepInput(inp, dir) {
+    if (inp.disabled) return;
+    var step = Number(inp.dataset.step) || 0.1, lo = inp.dataset.min !== undefined ? Number(inp.dataset.min) : -Infinity, hi = inp.dataset.max !== undefined ? Number(inp.dataset.max) : Infinity;
+    var v = Number(inp.value); if (!isFinite(v)) v = isFinite(lo) ? lo : 0;
+    v = Math.min(hi, Math.max(lo, Math.round((v + dir * step) / step) * step));
+    inp.value = v.toFixed(decimals(step)); inp.classList.add("pending");
+    clearTimeout(inp._t); inp._t = setTimeout(function () { inp.classList.remove("pending"); inp.dispatchEvent(new Event("change", { bubbles: true })); }, 600);
+  }
+  function drawTask() {
+    var running = S.phase === "running", locked = running || S.phase === "closed";
+    if (once("task-sel", S.task + locked + S.viewer)) { el("task-sel").innerHTML = Object.keys(TASKS).map(function (k) { return "<option" + (k === S.task ? " selected" : "") + ">" + k + "</option>"; }).join(""); el("task-sel").disabled = locked || !canWrite(); }
+    el("task-ver").textContent = libVer();
+    el("task-name").textContent = S.task;
+    el("task-note").textContent = running ? "staged → next trial" : "start values";
+    setBtn("a-loadp", canWrite() && S.phase !== "closed", !canWrite() ? "read-only" : "session ended");
+    var editable = canWrite() && S.phase !== "closed", rf = boundRf(), bindable = TASKS[S.task].bindable.length > 0;
+    var key = JSON.stringify([S.task, editable, running, S.params.map(function (p) { return p.value; }), S.staged.map(function (x) { return x.name; }), rf ? rf.label + rf.x + rf.y : ""]);
+    if (!once("params", key)) return;
+    var html = S.params.map(function (p, i) {
+      var staged = S.staged.some(function (s) { return s.name === p.name; });
+      var val = (p.name === "repeats" || p.name === "set_size_max") ? String(p.value) : p.value.toFixed(Math.abs(p.value) < 1 || p.ceiling ? 2 : 1);
+      return '<div class="param' + (staged ? " staged" : "") + '"><label for="p-' + p.name + '"><span>' + p.name + "</span>" + (p.ceiling ? '<span class="ceil">ceiling</span>' : "") + '</label><div class="in"><span class="spin"><input id="p-' + p.name + '" data-i="' + i + '" inputmode="decimal" data-step="' + stepOf(p) + '" data-min="' + p.low + '" data-max="' + p.high + '" value="' + val + '"' + (editable ? "" : " disabled") + ">" + ARROWS + '</span><span class="sub">' + p.unit + '</span></div><span class="range num">' + p.low + "–" + p.high + " " + p.unit + (staged ? " · staged" : "") + "</span></div>";
+    }).join("");
+    if (bindable) { var t = targetPos(); html += '<div class="param"><label><span>target_position</span>' + (rf ? '<span class="bound">← rf</span>' : "") + '</label><div class="in"><span class="mono">' + t[0].toFixed(1) + "°, " + t[1].toFixed(1) + '°</span></div><span class="range">' + (rf ? "bound to " + esc(rf.label) : "task default") + "</span></div>"; }
+    el("params").innerHTML = html;
+    Array.prototype.forEach.call(el("params").querySelectorAll("input[data-i]"), function (inp) { inp.addEventListener("change", function () { offer(Number(inp.dataset.i), inp.value); }); });
+  }
+  function offer(i, raw) {
+    var p = S.params[i], v = Number(raw); keys.params = "";
+    if (raw.trim() === "" || !isFinite(v)) { log("refused", "refused", p.name + " " + JSON.stringify(raw) + " is not a number · " + actor()); return draw(); }
+    if (v < p.low || v > p.high) { log("refused", "refused", p.name + " " + v + " " + p.unit + ": may not " + (v > p.high ? "exceed " + p.high : "be below " + p.low) + " · " + actor()); return draw(); }
+    if (v === p.value) return draw();
+    if (S.phase === "running") { S.staged = S.staged.filter(function (s) { return s.name !== p.name; }); S.staged.push({ name: p.name, was: p.value, now: v, unit: p.unit }); log("staged", "staged", p.name + " " + p.value + " → " + v + " " + p.unit + " · " + actor()); }
+    else { log("set", "applied", p.name + " " + p.value + " → " + v + " " + p.unit + " · next run · " + actor()); p.value = v; }
+    draw();
+  }
+  function drawPlan() { if (!once("plan", S.task)) return; el("plan").innerHTML = "<tr><th>Block</th><th>Conditions</th><th>Target</th><th>Ends</th></tr>" + TASKS[S.task].blocks.map(function (b) { return '<tr><td class="mono">' + b[0] + "</td><td>" + b[1] + "</td><td>" + b[2] + "</td><td>" + b[3] + "</td></tr>"; }).join(""); }
+  function drawStaged() { el("staged").innerHTML = S.staged.length ? S.staged.map(function (s) { return '<div class="kv"><span class="mono">' + s.name + '</span><span class="num">' + s.was + " → " + s.now + " " + s.unit + "</span></div>"; }).join("") : '<span class="nm">nothing</span>'; }
+
+  function drawRfs() {
+    var w = canWrite(), bindable = TASKS[S.task].bindable.length > 0;
+    if (!once("rfs", JSON.stringify([S.rfs, w, bindable, S.tab]))) return;
+    el("rfs").innerHTML = "<tr><th>Show</th><th>Label</th><th class=\"n\">x °</th><th class=\"n\">y °</th><th class=\"n\">r °</th><th>Use</th><th></th></tr>" + S.rfs.map(function (rf, i) {
+      var dis = w ? "" : " disabled";
+      return '<tr><td><input type="checkbox" data-i="' + i + '" data-f="show"' + (rf.show ? " checked" : "") + dis + ' aria-label="show ' + esc(rf.label) + '"></td>' +
+        '<td><input class="cell wide" data-i="' + i + '" data-f="label" value="' + esc(rf.label) + '"' + dis + ' aria-label="label"></td>' +
+        ["x", "y", "r"].map(function (f) { var lim = f === "x" ? [-20, 20] : f === "y" ? [-11, 11] : [0.1, 15]; return '<td class="n"><span class="spin"><input class="cell" data-i="' + i + '" data-f="' + f + '" inputmode="decimal" data-step="0.1" data-min="' + lim[0] + '" data-max="' + lim[1] + '" value="' + rf[f].toFixed(1) + '"' + dis + ' aria-label="' + f + '">' + ARROWS + "</span></td>"; }).join("") +
+        '<td><select data-i="' + i + '" data-f="use"' + dis + ' aria-label="use"><option value="display"' + (rf.use === "display" ? " selected" : "") + '>display only</option><option value="target"' + (rf.use === "target" ? " selected" : "") + (bindable ? "" : " disabled") + ">target at rf</option></select></td>" +
+        '<td><button class="btn small" data-rm="' + i + '" type="button"' + dis + ">remove</button></td></tr>";
+    }).join("");
+    Array.prototype.forEach.call(el("rfs").querySelectorAll("[data-f]"), function (inp) {
+      inp.addEventListener("change", function () {
+        var rf = S.rfs[Number(inp.dataset.i)], f = inp.dataset.f;
+        if (f === "show") rf.show = inp.checked;
+        else if (f === "label") rf.label = inp.value.trim() || rf.label;
+        else if (f === "use") { S.rfs.forEach(function (o) { if (inp.value === "target") o.use = "display"; }); rf.use = inp.value; log("overlay", "run", rf.label + (rf.use === "target" ? " → target position" : " display only") + " · " + actor()); }
+        else { var v = Number(inp.value); if (isFinite(v) && (f !== "r" || v > 0)) rf[f] = v; }
+        keys.rfs = ""; keys.params = ""; draw();
+      });
+    });
+    Array.prototype.forEach.call(el("rfs").querySelectorAll("[data-rm]"), function (b) { b.addEventListener("click", function () { S.rfs.splice(Number(b.dataset.rm), 1); keys.rfs = ""; keys.params = ""; draw(); }); });
+  }
+
+  function drawBehavior() {
+    var runs = allRuns();
+    if (once("bh-run", runs.map(function (r) { return r.n + r.task; }).join(","))) {
+      el("bh-run").innerHTML = runs.length ? runs.map(function (r) { return '<option value="' + r.n + '">run ' + r.n + " · " + r.task + (S.run && r === S.run ? " (live)" : "") + "</option>"; }).join("") : "<option>no runs</option>";
+      if (S.run) S.bhRun = S.run.n; else if (runs.length && (S.bhRun === null || !runs.some(function (r) { return r.n === S.bhRun; }))) S.bhRun = runs[runs.length - 1].n;
+      el("bh-run").value = S.bhRun;
+    }
+    if (S.tab !== "behavior") return;
+    var run = runs.find(function (r) { return r.n === S.bhRun; });
+    if (!run) { el("plots").innerHTML = '<section class="panel glass"><div class="nm">no runs</div></section>'; el("bh-src").textContent = ""; return; }
+    el("bh-src").textContent = "plots: tasks/" + run.task + ".py";
+    if (!once("plots", run.n + ":" + run.trial + ":" + run.task)) return;
+    el("plots").innerHTML = TASKS[run.task].plots.map(function (p) { return '<section class="panel glass"><div class="top"><h2>' + p[1] + '</h2><span class="sub num">' + plotN(run, p[0]) + "</span></div>" + plot(run, p[0]) + "</section>"; }).join("");
+  }
+  function plotN(run, kind) { return kind === "rt" || kind === "setsize" ? "n=" + run.rts.length : kind === "stair" ? "n=" + run.stair.length : "n=" + run.trial; }
+  function frame(W, H, L, B) { return { W: W, H: H, L: L, T: 10, pw: W - L - 10, ph: H - 10 - B }; }
+  function sx(f, v, lo, hi) { return f.L + (f.pw * (v - lo)) / (hi - lo); }
+  function sy(f, v, lo, hi) { return f.T + f.ph - (f.ph * (v - lo)) / (hi - lo); }
+  function axes(f, yt, ylo, yhi, fmt) { var g = '<line class="axis" x1="' + f.L + '" y1="' + (f.T + f.ph) + '" x2="' + (f.L + f.pw) + '" y2="' + (f.T + f.ph) + '"/>'; yt.forEach(function (v) { var y = sy(f, v, ylo, yhi); g += '<line class="grid" x1="' + f.L + '" x2="' + (f.L + f.pw) + '" y1="' + y + '" y2="' + y + '"/><text x="' + (f.L - 5) + '" y="' + (y + 3) + '" text-anchor="end">' + fmt(v) + "</text>"; }); return g; }
+  function plot(run, kind) {
+    var f = frame(300, 170, 34, 26), g = '<svg class="chart" viewBox="0 0 ' + f.W + " " + f.H + '" role="img" aria-label="' + kind + ' plot">';
+    if (run.trial === 0) return g + '<text x="150" y="85" text-anchor="middle">waiting for trials</text></svg>';
+    if (kind === "cond") {
+      var conds = TASKS[run.task].conds.filter(function (c) { return c[0] !== "catch"; }), d = "", pts = "";
+      g += axes(f, [0.5, 0.75, 1], 0.4, 1, function (v) { return v.toFixed(2); });
+      conds.forEach(function (c, i) {
+        var bc = run.byCond[c[0]] || [0, 0], p = bc[1] ? bc[0] / bc[1] : null, x = sx(f, i, -0.5, conds.length - 0.5);
+        g += '<text x="' + x + '" y="' + (f.T + f.ph + 13) + '" text-anchor="middle">' + c[0].replace("ecc ", "").replace("set ", "") + "</text>";
+        if (p === null) return;
+        var y = sy(f, Math.max(0.4, p), 0.4, 1); d += (d ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
+        pts += '<circle class="pt" r="' + (2.5 + Math.min(4, bc[1] / 25)) + '" cx="' + x + '" cy="' + y + '"/><text x="' + (x + 7) + '" y="' + (y - 5) + '">' + bc[1] + "</text>";
+      });
+      g += '<path class="fit" d="' + d + '"/>' + pts;
+    } else if (kind === "rt") {
+      var lo = 100, hi = 460, bw = 20, bins = [];
+      for (var b = lo; b < hi; b += bw) bins.push(0);
+      run.rts.forEach(function (r) { var i = Math.min(bins.length - 1, Math.max(0, Math.floor((r - lo) / bw))); bins[i] += 1; });
+      var mx = Math.max(5, Math.max.apply(null, bins));
+      g += axes(f, [0, Math.round(mx / 2), mx], 0, mx, function (v) { return v; });
+      bins.forEach(function (n, i) { var x0 = sx(f, lo + i * bw, lo, hi), x1 = sx(f, lo + (i + 1) * bw, lo, hi); if (n) g += '<rect class="hist" x="' + x0 + '" y="' + sy(f, n, 0, mx) + '" width="' + (x1 - x0 - 1) + '" height="' + (f.T + f.ph - sy(f, n, 0, mx)) + '"/>'; });
+      [100, 200, 300, 400].forEach(function (v) { g += '<text x="' + sx(f, v, lo, hi) + '" y="' + (f.T + f.ph + 13) + '" text-anchor="middle">' + v + "</text>"; });
+      var sorted = run.rts.slice().sort(function (a, b) { return a - b; }), med = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+      if (med) g += '<line class="fit" x1="' + sx(f, med, lo, hi) + '" x2="' + sx(f, med, lo, hi) + '" y1="' + f.T + '" y2="' + (f.T + f.ph) + '"/><text x="' + (sx(f, med, lo, hi) + 4) + '" y="' + (f.T + 9) + '">median ' + Math.round(med) + " ms</text>";
+    } else if (kind === "rolling") {
+      var w = 50, seq = run.seq, pts2 = [];
+      for (var k = 0; k < seq.length; k++) { var sl = seq.slice(Math.max(0, k - w + 1), k + 1); pts2.push(sl.reduce(function (a, v) { return a + v; }, 0) / sl.length); }
+      var n = Math.max(50, seq.length), d2 = "", area = "M" + sx(f, 0, 0, n) + " " + sy(f, 0, 0, 1);
+      g += axes(f, [0, 0.5, 1], 0, 1, function (v) { return v.toFixed(1); });
+      pts2.forEach(function (p, i) { var x = sx(f, i + 1, 0, n), y = sy(f, p, 0, 1); d2 += (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); area += "L" + x.toFixed(1) + " " + y.toFixed(1); });
+      area += "L" + sx(f, pts2.length, 0, n) + " " + sy(f, 0, 0, 1) + "Z";
+      g += '<path class="area" d="' + area + '"/><path class="fit" d="' + d2 + '"/>';
+      if (pts2.length) g += '<circle class="pt last" r="3" cx="' + sx(f, pts2.length, 0, n) + '" cy="' + sy(f, pts2[pts2.length - 1], 0, 1) + '"/>';
+      [0, Math.round(n / 2), n].forEach(function (v) { g += '<text x="' + sx(f, v, 0, n) + '" y="' + (f.T + f.ph + 13) + '" text-anchor="middle">' + v + "</text>"; });
+    } else if (kind === "setsize") {
+      var cs = TASKS[run.task].conds, d3 = "", p3 = "";
+      g += axes(f, [200, 300, 400, 500], 150, 520, function (v) { return v; });
+      cs.forEach(function (c, i) {
+        var arr = run.rtByCond[c[0]] || [], x = sx(f, i, -0.5, cs.length - 0.5);
+        g += '<text x="' + x + '" y="' + (f.T + f.ph + 13) + '" text-anchor="middle">' + c[0].replace("set ", "") + "</text>";
+        if (!arr.length) return;
+        var m = arr.reduce(function (a, v) { return a + v; }, 0) / arr.length, y = sy(f, m, 150, 520);
+        d3 += (d3 ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); p3 += '<circle class="pt" r="3.5" cx="' + x + '" cy="' + y + '"/><text x="' + (x + 7) + '" y="' + (y - 5) + '">' + Math.round(m) + "</text>";
+      });
+      g += '<path class="fit" d="' + d3 + '"/>' + p3;
+    } else if (kind === "stair") {
+      var st = run.stair, n4 = Math.max(40, st.length), d4 = "";
+      g += axes(f, [0, 0.25, 0.5], 0, 0.55, function (v) { return v.toFixed(2); });
+      st.forEach(function (v, i) { d4 += (i ? "L" : "M") + sx(f, i, 0, n4).toFixed(1) + " " + sy(f, Math.min(0.55, v), 0, 0.55).toFixed(1); });
+      g += '<path class="fit" d="' + d4 + '"/>';
+      if (st.length) g += '<circle class="pt last" r="3" cx="' + sx(f, st.length - 1, 0, n4) + '" cy="' + sy(f, Math.min(0.55, st[st.length - 1]), 0, 0.55) + '"/>';
+      g += '<text x="' + (f.L + f.pw / 2) + '" y="' + (f.T + f.ph + 13) + '" text-anchor="middle">staircase trial</text>';
+    } else if (kind === "calres") {
+      var res = [0.21, 0.18, 0.25, 0.31, 0.22, 0.19, 0.27, 0.35, 0.24, 0.29, 0.33, 0.41, 0.26], shown = Math.min(13, Math.ceil(run.trial / 4));
+      g += axes(f, [0, 0.25, 0.5], 0, 0.5, function (v) { return v.toFixed(2); });
+      res.slice(0, shown).forEach(function (r, i) { var x0 = sx(f, i, 0, 13), x1 = sx(f, i + 1, 0, 13); g += '<rect class="hist" x="' + (x0 + 2) + '" y="' + sy(f, r, 0, 0.5) + '" width="' + (x1 - x0 - 4) + '" height="' + (f.T + f.ph - sy(f, r, 0, 0.5)) + '"/>'; });
+      g += '<text x="' + (f.L + f.pw / 2) + '" y="' + (f.T + f.ph + 13) + '" text-anchor="middle">target 1–13 · residual °</text>';
+    }
+    return g + "</svg>";
+  }
+
+  function drawAnalysis() {
+    var runs = allRuns();
+    if (once("an-run", runs.map(function (r) { return r.n + r.task + (r.ended ? "e" : "l"); }).join(",") + "|" + S.viewer)) {
+      el("an-run").innerHTML = runs.length ? runs.map(function (r) { return '<option value="' + r.n + '">run ' + r.n + " · " + r.task + (r.ended ? "" : " (so far)") + "</option>"; }).join("") : "<option>no runs</option>";
+      el("an-run").disabled = !runs.length;
+      if (!el("an-script").options.length) el("an-script").innerHTML = Object.keys(SCRIPTS).map(function (k) { return '<option value="' + k + '">' + SCRIPTS[k][0] + "</option>"; }).join("");
+    }
+    el("an-desc").textContent = SCRIPTS[el("an-script").value || "psychometric"][1];
+    setBtn("an-go", canWrite() && runs.length, !canWrite() ? "read-only" : "no runs");
+    el("queue").innerHTML = "<tr><th>Sent</th><th>Run</th><th>Analysis</th><th>Status</th><th></th></tr>" + (S.analyses.length ? S.analyses.map(function (a, i) {
+      var st = a.state === "done" ? '<span class="pill ok">done</span>' : a.state === "running" ? '<span class="pill accent">running</span>' : '<span class="pill neutral">queued</span>';
+      return "<tr" + (S.resultSel === i ? ' class="sel"' : "") + '><td class="mono">' + a.sent + "</td><td>" + a.run + " · " + a.task + "</td><td>" + SCRIPTS[a.script][0] + "</td><td>" + st + '</td><td><button class="btn small" data-i="' + i + '" type="button"' + (a.state === "done" ? "" : " disabled") + ">view</button></td></tr>";
+    }).join("") : '<tr><td colspan="5" class="nm">none</td></tr>');
+    Array.prototype.forEach.call(el("queue").querySelectorAll("button[data-i]"), function (b) { b.addEventListener("click", function () { S.resultSel = Number(b.dataset.i); keys.res = ""; draw(); }); });
+    var a = S.analyses[S.resultSel];
+    if (!once("res", S.resultSel + (a ? a.state : ""))) return;
+    if (!a || a.state !== "done") { el("res-meta").textContent = ""; el("res-body").innerHTML = '<div class="nm">pick a finished request</div>'; return; }
+    el("res-meta").textContent = "run " + a.run + " · wl-preproc@87e7318 · example";
+    var run = allRuns().find(function (r) { return r.n === a.run; }) || seedRun(a.task, 200, 0.25);
+    var kind = a.script === "psychometric" ? (run.task === "visual_search" ? "setsize" : run.task === "adaptive_detection" ? "stair" : "cond") : a.script === "latency" ? "rt" : a.script === "calres" ? "calres" : "rolling";
+    el("res-body").innerHTML = plot(run, kind) + '<dl class="dl"><dt>script</dt><dd>' + SCRIPTS[a.script][1] + "</dd><dt>input</dt><dd>run " + a.run + " trials.jsonl</dd></dl>";
+  }
+
+  function hx(str) { var h = 2166136261; for (var i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return (h >>> 0).toString(16).padStart(8, "0"); }
+  function codeUsed() {
+    var s = S.session, rows = [["wl-expcontroller", "2ac9bea", s.dirty === "wl-expcontroller" ? "dirty" : "clean"]];
+    var tasks = []; allRuns().forEach(function (r) { if (tasks.indexOf(r.task) < 0) tasks.push(r.task); });
+    tasks.forEach(function (t) { var f = "tasks/" + t + ".py"; rows.push([f, s.pulled ? s.pulled.commit + (s.pulled.stale ? " · last pulled" : "") : "not pulled", s.dirty === f ? "dirty" : "clean"]); });
+    rows.push(["subjects/" + s.subject + "/bounds.py", hx(s.subject + "bounds"), "clean"]);
+    rows.push(["rigs/" + s.rig.replace(" ", "") + "/", hx(s.rig), "clean"]);
+    rows.push(["uv.lock", hx("lock"), "clean"]);
+    return rows;
+  }
+  function drawEnd() {
+    var s = S.session;
+    el("end-pill").textContent = !s ? "none" : S.phase === "closed" ? "ended" : "open";
+    el("end-pill").className = "pill " + (s && S.phase === "closed" ? "ok" : "neutral");
+    if (!s) { el("end-sum").innerHTML = '<div class="nm">no session</div>'; el("end-rec").innerHTML = '<div class="nm">no session</div>'; }
+    else {
+      var sub = SUBJECTS[s.subject], owed = Math.max(0, sub.floor - sub.earlier - sessionFluid()), runs = s.runs.concat(S.run ? [Object.assign({ live: true }, S.run)] : []);
+      el("end-sum").innerHTML = '<div class="owe"><h2>Supplement to give</h2><span class="big">' + owed.toFixed(2) + '</span><span class="unit">mL</span><span class="sub">floor ' + sub.floor + " · today " + (sub.earlier + sessionFluid()).toFixed(2) + " mL</span></div>" +
+        '<dl class="dl"><dt>←cage</dt><dd>' + clockOf(s.departure) + "</dd><dt>→cage</dt><dd>" + (s.returnedAt ? clockOf(s.returnedAt) + " · from the eln" : "from the eln · not yet") + "</dd><dt>in session</dt><dd>" + hms(inSession()) + (s.closedAt ? "" : " · running") + "</dd><dt>out of cage</dt><dd>" + hm(ooc()) + "</dd><dt>fluid session</dt><dd>" + sessionFluid().toFixed(2) + " mL" + (s.manual ? " · " + s.manual.toFixed(2) + " manual" : "") + "</dd><dt>correct / trials</dt><dd>" + sessionCorrect() + " / " + sessionTrials() + "</dd></dl>" +
+        '<div class="scroll"><table class="mini">' + runsTable(runs) + "</table></div>";
+      var closed = S.phase === "closed";
+      var files = [["trials.jsonl", true], ["config.json", true], ["parameter_changes.jsonl", true], ["welfare_notes.jsonl · ←cage", true], ["session clock · opened, ended", closed], ["marks.jsonl", true], ["eye_calibration.yaml", true], ["provenance/code.tar.gz", closed], ["provenance/manifest.json", closed]];
+      el("end-rec").innerHTML = files.map(function (f) { return '<div class="kv"><span class="mono">' + f[0] + "</span><span>" + (f[1] ? '<span class="ok-mark">✓</span>' : '<span class="nm">pending</span>') + "</span></div>"; }).join("");
+    }
+    if (!s) { el("code").innerHTML = '<tr><td class="nm">no session</td></tr>'; el("code-pkg").innerHTML = ""; el("code-pill").textContent = "none"; el("code-pill").className = "pill neutral"; }
+    else {
+      var code = codeUsed(), dirty = code.some(function (c) { return c[2] === "dirty"; });
+      el("code").innerHTML = "<tr><th>What</th><th>Version</th><th></th></tr>" + code.map(function (c) {
+        return '<tr><td class="mono">' + esc(c[0]) + '</td><td class="mono sub">' + esc(c[1]) + "</td><td>" + (c[2] === "dirty" ? '<span class="pill warn" title="an uncommitted edit: its diff is in the package">edited</span>' : '<span class="ok-mark">✓</span>') + "</td></tr>";
+      }).join("");
+      var k = s.pkg;
+      el("code-pill").textContent = k ? "packaged" : "at end session"; el("code-pill").className = "pill " + (k ? "ok" : "neutral");
+      el("code-pkg").innerHTML = k
+        ? '<dl class="dl"><dt>package</dt><dd>provenance/code.tar.gz · ' + k.size + "</dd><dt>manifest</dt><dd>provenance/manifest.json · " + code.length + " items" + (dirty ? " · diff included" : "") + "</dd><dt>goes to</dt><dd>wl-nas, with the session</dd></dl>"
+        : '<div class="sub">' + (dirty ? "a run used an uncommitted edit: its diff goes into the package." : "every file is at a committed version.") + "</div>";
+    }
+    var rows = [["2027-01-13_01", "B · 2 runs · 1.8 GB"]];
+    if (s) rows.unshift([s.id, s.subject + " · " + allRuns().length + " runs · " + (0.6 + 0.4 * s.runs.length).toFixed(1) + " GB"]);
+    el("xfer").innerHTML = "<tr><th>Session</th><th></th><th>wl-nas</th><th>wl-preproc</th></tr>" + rows.map(function (r) {
+      var x = S.xfer[r[0]] || { state: "not copied", pct: 0 };
+      var nas = x.state === "copying" ? x.pct + "%" : x.state === "verifying" ? "verifying" : x.state === "not copied" ? "—" : "✓";
+      var pre = x.state === "ingested" ? "✓" : x.state === "on-nas" ? "waiting" : "—";
+      return '<tr><td class="mono">' + r[0] + '</td><td class="sub">' + r[1] + "</td><td>" + nas + "</td><td>" + pre + "</td></tr>";
+    }).join("");
+    setBtn("a-end", canWrite() && S.phase === "idle", !canWrite() ? "read-only" : S.phase === "running" ? "stop the run first" : !s ? "no session" : "already ended");
+    if (S.phase !== "idle") el("end-confirm").hidden = true;
+    var mine = s && S.xfer[s.id];
+    setBtn("xfer-go", canWrite() && s && S.phase === "closed" && !mine && S.mode !== "sim", !canWrite() ? "read-only" : !s ? "no session" : S.mode === "sim" ? "simulation sessions stay on this box" : S.phase !== "closed" ? "after the session ends" : "already transferred");
+  }
+
+  /* ---------- training tools ---------- */
+  function drawTraining() {
+    var tr = S.train, sub = SUBJECTS[S.session ? S.session.subject : S.subject], w = canWrite(), open = !!S.session && S.phase !== "closed";
+    if (once("mr", sub.reward + "|" + S.subject)) el("mr-amt").value = sub.reward.toFixed(2);
+    el("mr-amt").dataset.max = sub.rewardMax; el("th-fixamt").dataset.max = sub.rewardMax;
+    el("mr-ceil").textContent = "ceiling " + sub.rewardMax.toFixed(2) + " mL, the same as reward_correct's";
+    setBtn("mr-give", w && open, !w ? "read-only" : "no open session");
+    el("mr-sum").textContent = ((S.session && S.session.manual) || 0).toFixed(2) + " mL";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-att]"), function (b) { b.disabled = !w || !S.session || S.phase === "closed"; });
+    var shapeable = S.params.filter(function (p) { return !p.ceiling; });
+    if (!shapeable.some(function (p) { return p.name === tr.param; })) { tr.param = shapeable[0].name; tr.ladder = false; }
+    if (once("lad-param", S.task + "|" + tr.param + "|" + w)) {
+      el("lad-param").innerHTML = shapeable.map(function (p) { return "<option" + (p.name === tr.param ? " selected" : "") + ">" + p.name + "</option>"; }).join("");
+      el("lad-param").disabled = !w; el("lad-steps").disabled = !w; el("lad-on").disabled = !w;
+      el("lad-steps").value = tr.steps.join(", ");
+    }
+    el("lad-on").checked = tr.ladder;
+    var unit = param(tr.param).unit;
+    el("lad-chips").innerHTML = tr.steps.map(function (v, i) { return '<span class="chip' + (tr.ladder && i === tr.step ? " on" : tr.ladder && i < tr.step ? " done" : "") + '">' + v + " " + unit + "</span>"; }).join("");
+    var run = S.run || (S.session && S.session.runs[S.session.runs.length - 1]), seq = run ? run.seq : [], last = seq.slice(-50);
+    var pc = last.length ? last.reduce(function (a, v) { return a + v; }, 0) / last.length : null;
+    el("lad-bar").style.width = pc === null ? "0%" : Math.round(100 * pc) + "%";
+    el("lad-bar").className = "fill " + (pc === null ? "" : pc >= 0.8 ? "ok" : pc < 0.5 ? "crit" : "");
+    el("lad-pct").textContent = pc === null ? "—" : Math.round(100 * pc) + "%";
+    el("st-ticks").innerHTML = ticksHtml(run);
+    var streak = 0; for (var k = seq.length - 1; k >= 0 && seq[k] === 1; k--) streak += 1;
+    el("st-streak").textContent = run ? streak + " correct in a row" : "";
+    el("th-corr").checked = tr.corr; el("th-fixrew").checked = tr.fixRew;
+    ["th-corr", "th-timeout", "th-fixrew", "th-fixamt"].forEach(function (id) { el(id).disabled = !w; });
+  }
+  function giveReward() {
+    var msg = el("mr-msg"), raw = el("mr-amt").value, amt = Number(raw);
+    if (!canWrite()) return toast("read-only: writes only from the box");
+    if (!S.session || S.phase === "closed") { msg.textContent = "no open session."; return toast("no open session"); }
+    var sub = SUBJECTS[S.session.subject];
+    if (raw.trim() === "" || !isFinite(amt) || amt <= 0) { msg.textContent = "an amount above 0 mL."; return toast("reward: set an amount above 0 mL on training tools"); }
+    if (amt > sub.rewardMax) { msg.textContent = "may not exceed the ceiling, " + sub.rewardMax.toFixed(2) + " mL."; toast("reward refused: over the " + sub.rewardMax.toFixed(2) + " mL ceiling"); log("refused", "refused", "reward " + amt + " mL: may not exceed " + sub.rewardMax.toFixed(2) + " · " + actor()); drawFeed(); return; }
+    S.session.manual = (S.session.manual || 0) + amt; S.lastReward = S.clock; S.io.rewards += 1; flash(["reward"]);
+    if (el("mr-tone").checked) playTone("correct");
+    msg.textContent = ""; toast("reward " + amt.toFixed(2) + " mL"); log("reward", "applied", amt.toFixed(2) + " mL · manual" + (S.mode === "sim" ? " · counted, not delivered" : "") + " · " + actor()); draw();
+  }
+  function togglePause() {
+    if (!canWrite()) return toast("read-only: writes only from the box");
+    if (S.phase !== "running") return toast("no run to pause");
+    S.paused = !S.paused;
+    log(S.paused ? "paused" : "resumed", "run", "run " + S.run.n + " · after trial " + S.run.trial + " · " + actor());
+    toast(S.paused ? "paused at the trial boundary · the out-of-cage clock keeps running" : "resumed"); draw();
+  }
+  function recenter() {
+    if (!canWrite()) return toast("read-only: writes only from the box");
+    if (!S.session || S.phase === "closed") return toast("no open session");
+    if (!isFinite(S.gaze.x) || Math.abs(S.gaze.x) > 40) return toast("no gaze to recenter on");
+    // scripted gaze is wherever the simulated eye last landed; a recenter is taken on fixation, so it reads a small offset there
+    var dx = mouseMode() ? S.gaze.x : 0.35 * gauss(), dy = mouseMode() ? S.gaze.y : 0.35 * gauss();
+    S.gazeOff = [S.gazeOff[0] + dx, S.gazeOff[1] + dy]; S.gaze.x = 0; S.gaze.y = 0; S.gaze.trail = [];
+    log("recenter", "applied", "gaze offset " + (dx >= 0 ? "+" : "") + dx.toFixed(2) + "°, " + (dy >= 0 ? "+" : "") + dy.toFixed(2) + "° · " + actor());
+    toast("recentered"); draw();
+  }
+  function libVer() { return S.session && S.session.pulled ? "@ " + S.session.pulled.commit : "· not pulled"; }
+  var LAST_PULL = { commit: "7e1c0d2", at: "2027-01-13 08:12" };
+  function pullTasks() {
+    if (!canWrite()) return toast("read-only: writes only from the box");
+    if (!S.session || S.phase === "running" || S.phase === "closed" || S.pulling) return;
+    S.pulling = true; el("pull-warn").hidden = true; draw();
+    setTimeout(function () {
+      S.pulling = false; if (!S.session) return;
+      if (S.ghDown) {
+        el("pull-warn-q").textContent = "GitHub cannot be reached. the last task library pulled on this box is " + LAST_PULL.commit + ", from " + LAST_PULL.at + ". run with it?";
+        el("pull-use").textContent = "use " + LAST_PULL.commit; el("pull-warn").hidden = false;
+        log("tasks", "refused", "GitHub unreachable · pull failed · " + actor()); draw(); return;
+      }
+      var prev = S.session.pulled;
+      S.session.pulled = { commit: "7e1c0d2", at: S.clock };
+      log("tasks", "run", prev && prev.commit === "7e1c0d2" && !prev.stale ? "already up to date · 7e1c0d2 · " + actor() : "pulled wl-mllib from GitHub · 7e1c0d2 · " + Object.keys(TASKS).length + " tasks · check 0 blocking · " + actor());
+      toast("task library 7e1c0d2"); keys = {}; draw();
+    }, 1200);
+  }
+  /* earlier sessions' final values, per subject and task (made up) */
+  var PLOG = {
+    "A|fixation_detection": [
+      { id: "2027-01-13_01", run: 2, rig: "rig 1", trials: 342, pct: 69, v: { fix_timeout: 4.0, fix_hold: 0.35, response_window: 0.5, target_hold: 0.2, fix_window: 1.8, target_window: 2.5, reward_correct: 0.25 } },
+      { id: "2027-01-11_01", run: 1, rig: "rig 2", trials: 488, pct: 74, v: { fix_timeout: 3.5, fix_hold: 0.3, response_window: 0.6, target_hold: 0.2, fix_window: 2.0, target_window: 3.0, reward_correct: 0.45 } },
+      { id: "2027-01-09_01", run: 3, rig: "rig 1", trials: 410, pct: 61, v: { fix_timeout: 5.0, fix_hold: 0.25, response_window: 0.7, target_hold: 0.15, fix_window: 2.5, target_window: 3.5, reward_correct: 0.25 } }
+    ]
+  };
+  function plogFor() {
+    var sub = S.session ? S.session.subject : S.subject, key = sub + "|" + S.task;
+    if (PLOG[key]) return PLOG[key];
+    return [0, 1].map(function (k) { var v = {}; S.params.forEach(function (p) { v[p.name] = p.ceiling ? p.value : Math.min(p.high, Math.max(p.low, +(p.value * (k ? 0.9 : 1.1)).toFixed(2))); }); return { id: "2027-01-1" + (2 - k) + "_01", run: 1, rig: S.rig, trials: 300 + 40 * k, pct: 70 - 5 * k, v: v }; });
+  }
+  var lp = { sel: 0 };
+  function openLoadParams() {
+    var log0 = plogFor(), sub = S.session ? S.session.subject : S.subject;
+    lp.sel = 0;
+    el("lp-sub").textContent = "subject " + sub + " · " + S.task + " · " + (S.phase === "running" ? "loaded values are staged for the next trial" : "loaded values become the next run's start values");
+    el("lp-list").innerHTML = log0.map(function (e, i) { return '<label><input type="radio" name="lp" value="' + i + '"' + (i === 0 ? " checked" : "") + '><span><span class="mono">' + e.id + " · run " + e.run + '</span><br><span class="sub">' + e.rig + " · " + e.trials + " trials · " + e.pct + "% correct</span></span></label>"; }).join("");
+    Array.prototype.forEach.call(el("lp-list").querySelectorAll("input"), function (r) { r.addEventListener("change", function () { lp.sel = Number(r.value); drawLoadParams(); }); });
+    drawLoadParams(); el("dlg-params").hidden = false;
+  }
+  function loadable(e) {
+    return S.params.map(function (p) {
+      var v = e.v[p.name];
+      if (v === undefined) return { p: p, v: null, why: "not in that session" };
+      if (v < p.low || v > p.high) return { p: p, v: v, why: p.ceiling ? "over the " + p.high.toFixed(2) + " " + p.unit + " ceiling" : "outside " + p.low + "–" + p.high };
+      return { p: p, v: v, why: v === p.value ? "same" : "" };
+    });
+  }
+  function drawLoadParams() {
+    var rows = loadable(plogFor()[lp.sel]), n = rows.filter(function (r) { return r.why === ""; }).length;
+    el("lp-diff").innerHTML = "<tr><th>Parameter</th><th class=\"n\">Now</th><th class=\"n\">Then</th><th></th></tr>" + rows.map(function (r) {
+      return "<tr" + (r.why === "" ? ' class="sel"' : "") + '><td class="mono">' + r.p.name + '</td><td class="n">' + r.p.value + '</td><td class="n">' + (r.v === null ? "—" : r.v) + '</td><td class="sub">' + (r.why === "" ? "loads" : r.why === "same" ? "" : '<span class="flag-warn" style="color:var(--warn)">' + r.why + ", not loaded</span>") + "</td></tr>";
+    }).join("");
+    el("lp-ok").textContent = n ? "load " + n + " value" + (n === 1 ? "" : "s") : "nothing to load"; el("lp-ok").disabled = !n;
+  }
+  function applyLoadParams() {
+    var e = plogFor()[lp.sel], rows = loadable(e), n = 0;
+    rows.forEach(function (r) {
+      if (r.why === "") {
+        n += 1;
+        if (S.phase === "running") { S.staged = S.staged.filter(function (x) { return x.name !== r.p.name; }); S.staged.push({ name: r.p.name, was: r.p.value, now: r.v, unit: r.p.unit }); }
+        else r.p.value = r.v;
+      } else if (r.why !== "same" && r.v !== null) log("refused", "refused", r.p.name + " " + r.v + " " + r.p.unit + " from " + e.id + ": " + r.why);
+    });
+    log(S.phase === "running" ? "staged" : "set", S.phase === "running" ? "staged" : "applied", n + " values from " + e.id + " run " + e.run + " · " + actor());
+    el("dlg-params").hidden = true; keys.params = ""; draw();
+  }
+  /* ---------- trials: outcome families, phases, rate ---------- */
+  var FAM = { correct: "f-ok", correct_reject: "f-ok", early_response: "f-resp", late_response: "f-resp", false_alarm: "f-resp", wrong_target: "f-distract", early_error: "f-distract", late_error: "f-distract",
+    no_fixation: "f-noeng", no_response: "f-noeng", abort: "f-noeng", tracker_lost: "f-rig", fault: "f-rig" };
+  function famOf(o) { return FAM[o] || (/_break$/.test(o) ? "f-break" : "f-noeng"); }
+  var LEGEND = [["f-ok", "correct"], ["f-resp", "early / late / false alarm"], ["f-distract", "wrong target"], ["f-noeng", "no engagement"], ["f-break", "break"], ["f-rig", "rig"]];
+  function ticksHtml(run) {
+    var o = run && run.oseq ? run.oseq.slice(-60) : [], html = "";
+    for (var i = 0; i < 60; i++) { var v = o[i - (60 - o.length)]; html += '<span class="tk' + (v ? " " + famOf(v) : "") + '"' + (v ? ' title="' + v + '"' : "") + "></span>"; }
+    return html;
+  }
+  function phasesFor(res) {
+    var o = res.outcome, fh = win("fix_hold", 0.3), th = win("target_hold", 0.2), rt = (res.rt || 180 + 120 * Math.random()) / 1000, acq = 0.15 + 0.5 * Math.random();
+    if (o === "no_fixation") return [["acquire", win("fix_timeout", 4)]];
+    if (o === "fixation_break") return [["acquire", acq], ["hold", fh * (0.25 + 0.6 * Math.random())]];
+    if (o === "early_response" || o === "false_alarm") return [["acquire", acq], ["hold", fh * 0.8]];
+    if (o === "no_response" || o === "correct_reject") return [["acquire", acq], ["hold", fh], [o === "correct_reject" ? "catch" : "target", win("response_window", 0.6) + 0.1]];
+    if (o === "target_break") return [["acquire", acq], ["hold", fh], ["target", rt], ["target hold", th * 0.4]];
+    return [["acquire", acq], ["hold", fh], ["target", rt], ["target hold", o === "correct" ? th : 0.05]];
+  }
+  function currentPhase() {
+    if (S.phase !== "running") return null;
+    if (S.paused) return { name: "paused" };
+    var now = performance.now();
+    if (mouseMode()) {
+      var m = S.mt; if (!m) return { name: "between trials" };
+      if (m.phase === "acquire") return m.inAt ? { name: "hold", t: (now - m.inAt) / 1000, of: win("fix_hold", 0.3) } : { name: "acquire", t: (now - m.t0) / 1000, of: 3 };
+      if (m.catchT) return { name: "catch", t: (now - m.onset) / 1000, of: 0.9 };
+      return m.hit === null ? { name: "target", t: (now - m.onset) / 1000, of: win("response_window", 0.6) + 0.6 } : { name: "target hold", t: (now - m.onset - m.hit) / 1000, of: win("target_hold", 0.2) };
+    }
+    var c = S.cur; if (!c) return { name: "between trials" };
+    var t = (now - c.start) / 1000 * c.speed, acc = 0;
+    for (var i = 0; i < c.phases.length; i++) { var d = c.phases[i][1]; if (t < acc + d) return { name: c.phases[i][0], t: t - acc, of: d }; acc += d; }
+    return { name: "between trials" };
+  }
+  function drawTimeline() {
+    var run = S.run || (S.session && S.session.runs[S.session.runs.length - 1]);
+    el("rt-ticks").innerHTML = ticksHtml(run);
+    if (once("legend", "1")) el("rt-legend").innerHTML = LEGEND.map(function (l) { return '<span><i class="tk ' + l[0] + '"></i>' + l[1] + "</span>"; }).join("");
+    el("tr-meta").textContent = run ? "run " + run.n + " · last " + Math.min(60, (run.oseq || []).length) + " of " + run.trial : "";
+    var cp = currentPhase(), lt = S.lastTrial;
+    el("tl-now").innerHTML = cp ? "<b>now</b><span>" + cp.name + (cp.of ? " " + cp.t.toFixed(2) + " / " + cp.of.toFixed(2) + " s" : "") + '</span>' + (cp.of ? '<span class="nowbar"><i style="width:' + Math.min(100, 100 * cp.t / cp.of) + '%"></i></span>' : "") : '<span class="nm">no run</span>';
+    el("tl-last").innerHTML = lt ? '<span class="sub" style="align-self:center;margin-right:6px">trial ' + lt.n + "</span>" + lt.phases.map(function (x) { return '<span class="ph" style="flex:' + Math.max(0.08, x[1]).toFixed(3) + ' 1 0" title="' + x[0] + " " + x[1].toFixed(3) + ' s">' + x[0] + " " + x[1].toFixed(2) + "</span>"; }).join("") + '<span class="out ' + famOf(lt.outcome) + '">' + lt.outcome + "</span>" : "";
+    el("tl-mini").textContent = cp ? "trial: " + cp.name + (cp.of ? " " + cp.t.toFixed(2) + " / " + cp.of.toFixed(2) + " s" : "") + (lt ? " · last " + lt.outcome + " at " + lt.phases[lt.phases.length - 1][0] : "") : "";
+  }
+  function perMin() {
+    var r = S.run; if (!r || S.phase !== "running" || !r.times) return null;
+    var span = Math.min(5, (S.clock - r.started) / 60000); if (span < 0.5) return null;
+    var cut = S.clock - span * 60000; return r.times.filter(function (t) { return t > cut; }).length / span;
+  }
+  /* ---------- alerts ---------- */
+  var NOTICE_WITHIN = 3600, STALL_AFTER = 5 * 60;
+  function notice() { if (!S.session || S.phase === "closed") return null; var left = LIMIT - ooc(); return left > WARN_WITHIN && left <= NOTICE_WITHIN ? Math.ceil(left / 60) + " min of the 12-hour limit left" : null; }
+  function stalled() { return S.phase === "running" && !S.paused && S.lastReward !== null && (S.clock - S.lastReward) / 1000 > STALL_AFTER ? (S.clock - S.lastReward) / 1000 : null; }
+  function alerts() {
+    var a = [], st = stalled(), tpm = perMin();
+    if (st) a.push(["warn", "Stalled", "no reward for " + Math.floor(st / 60) + " min" + (tpm !== null ? " · " + tpm.toFixed(1) + " trials/min" : "")]);
+    if (S.phase === "running" && mouseMode() && S.gazeLostAt && performance.now() - S.gazeLostAt > 2000) a.push(["crit", "Tracker", "no gaze for " + Math.floor((performance.now() - S.gazeLostAt) / 1000) + " s"]);
+    if (S.phase === "running" && S.rhx === "idle" && S.mode !== "sim") a.push(["warn", "Recording", "a run is going and RHX is not recording"]);
+    return a;
+  }
+  /* ---------- scheduled stop ---------- */
+  function schedDue() {
+    var sc = S.sched, r = S.run; if (!sc || !r) return false;
+    return sc.kind === "trials" ? r.trial >= sc.v : sc.kind === "ml" ? r.fluid >= sc.v : S.clock >= sc.v;
+  }
+  function schedText(done) {
+    var sc = S.sched, r = S.run; if (!sc) return "";
+    if (sc.kind === "trials") return "after " + sc.v + " trials" + (done || !r ? "" : " · " + Math.max(0, sc.v - r.trial) + " left");
+    if (sc.kind === "ml") return "after " + sc.v + " mL" + (done || !r ? "" : " · " + Math.max(0, sc.v - r.fluid).toFixed(2) + " left");
+    return "at " + clockOf(sc.v);
+  }
+  /* ---------- pre-flight ---------- */
+  function preflightItems() {
+    var s = S.session, sim = S.mode === "sim", rig = rigOf(), sub = SUBJECTS[s ? s.subject : S.subject], pf = (s && s.pf) || {};
+    function row(k) { return rig.rows.filter(function (r) { return r[0] === k; })[0]; }
+    var mon = row("monitor calibration"), pump = row("pump calibration");
+    return [
+      ["tasks", "task library", s && s.pulled ? (s.pulled.stale ? "warn" : "pass") : "fail", s && s.pulled ? s.pulled.commit + (s.pulled.stale ? " · last pulled" : "") : "not pulled", "pull", true],
+      ["eye", "eye tracker", "pass", sim ? "mouse" : "streaming", "", true],
+      ["ni", "NI card", "pass", sim ? "simulated" : "PCIe-6343 · Dev1", "", true],
+      ["dir", "save directory", "pass", "writable · " + freeOf(s ? s.dir : S.saveDir), "", true],
+      ["sync", "sync ack", pf.sync || "untested", pf.sync === "pass" ? "ack on a test word" : "not yet tested", "test", false],
+      ["reward", "reward pulse", pf.reward || "untested", pf.reward === "pass" ? "0.05 mL pulsed, counted" : "counts as fluid", "pulse", false],
+      ["tones", "tones", pf.tones || "untested", pf.tones === "pass" ? "played" : "not yet played", "play", false],
+      ["rhx", "recording", sim ? "pass" : S.rhx === "recording" ? "pass" : "warn", sim ? "simulated" : S.rhx === "recording" ? "RHX recording" : "RHX not recording", "", false],
+      ["mon", "monitor calibration", mon && !mon[2] ? "pass" : "warn", mon ? mon[1] : "—", "", false],
+      ["pump", "pump calibration", pump && pump[2] ? "warn" : "pass", pump ? pump[1] : "—", "", false],
+      ["map", "eye map", /yesterday/.test(sub.eye) ? "warn" : "pass", sub.eye, "", false]
+    ];
+  }
+  function pfFail() { var f = preflightItems().filter(function (i) { return i[5] && i[2] === "fail"; })[0]; return f ? f[1] : null; }
+  function drawPreflight() {
+    var items = preflightItems(), fails = items.filter(function (i) { return i[2] === "fail"; }).length, checks = items.filter(function (i) { return i[2] === "warn" || i[2] === "untested"; }).length;
+    var txt = !S.session ? "no session" : fails ? "pre-flight · " + fails + " fail" : checks ? "pre-flight · " + checks + " to check" : "pre-flight ✓", cls = "pill " + (!S.session ? "neutral" : fails ? "crit" : checks ? "warn" : "ok");
+    el("pf-pill").textContent = txt; el("pf-pill").className = cls; el("pf-sum").textContent = txt; el("pf-sum").className = cls;
+    var open = !!S.session && S.phase !== "closed" && S.phase !== "running" && canWrite();
+    el("pf").innerHTML = items.map(function (i) {
+      return '<div class="row"><span class="st ' + i[2] + '"></span><span>' + i[1] + (i[5] ? '<span class="must">must</span>' : "") + '</span><span class="val">' + esc(i[3]) + "</span>" + (i[4] ? '<button class="btn small" type="button" data-pf="' + i[0] + '"' + (open ? "" : " disabled") + ">" + i[4] + "</button>" : "<span></span>") + "</div>";
+    }).join("");
+  }
+  /* ---------- start values: from the last session ---------- */
+  var LADDERS = { "A|fixation_detection": { param: "fix_window", steps: [5, 4, 3, 2], step: 2, from: "2027-01-13_01" } };
+  function startFromLast() {
+    if (!S.session || S.phase === "running") return;
+    S.params = withReward(taskParams(S.task), S.session.subject);
+    var e = plogFor()[0], n = 0;
+    if (e) { loadable(e).forEach(function (r) { if (r.why === "") { r.p.value = r.v; n += 1; } }); S.startFrom = { id: e.id, run: e.run, n: n }; }
+    var L = LADDERS[S.session.subject + "|" + S.task];
+    S.train.ladder = false; S.train.step = 0;
+    if (L) {
+      S.train.ladder = true; S.train.param = L.param; S.train.steps = L.steps.slice(); S.train.step = L.step; S.train.since = 0;
+      var p = param(L.param); if (p) p.value = L.steps[L.step];
+      log("shaping", "run", "resumes at step " + (L.step + 1) + " · " + L.param + " " + L.steps[L.step] + " " + (p ? p.unit : "") + " · from " + L.from);
+    }
+    if (e) log("set", "applied", "start values from " + e.id + " run " + e.run + " · " + n + " differ from task defaults");
+    keys.params = ""; keys["lad-param"] = "";
+  }
+  function drawStartFrom() {
+    var sf = S.startFrom, el0 = el("start-from");
+    if (!S.session) { el0.innerHTML = ""; return; }
+    el0.innerHTML = sf === "defaults" ? '<span>start values: task defaults</span><button class="btn small" type="button" data-sf="last">last session</button>'
+      : sf ? "<span>start values: from " + sf.id + " run " + sf.run + " · " + sf.n + " differ from task defaults</span>" + '<button class="btn small" type="button" data-sf="defaults">task defaults</button>'
+      : "<span>start values: task defaults</span>";
+    Array.prototype.forEach.call(el0.querySelectorAll("[data-sf]"), function (b) { b.disabled = !canWrite() || S.phase === "running" || S.phase === "closed"; });
+  }
+  /* ---------- full screen keeps the strip and the actions ---------- */
+  function drawFullbar() {
+    if (!S.full) return;
+    var sub = SUBJECTS[S.session ? S.session.subject : S.subject], st = el("state-pill"), w = warning(), al = alerts();
+    var h = '<span class="' + st.className + '">' + esc(st.textContent) + "</span>";
+    if (S.session) {
+      h += '<span><span class="lab">fluid</span><span class="v">' + (sub.earlier + sessionFluid()).toFixed(2) + " / " + sub.floor + "</span></span>";
+      h += '<span><span class="lab">←cage</span><span class="v">' + hms(ooc()) + "</span></span>";
+      h += '<span><span class="lab">correct</span><span class="v">' + sessionCorrect() + " / " + sessionTrials() + "</span></span>";
+      h += '<span><span class="lab">last reward</span><span class="v">' + (S.lastReward === null ? "—" : ago((S.clock - S.lastReward) / 1000)) + "</span></span>";
+      if (S.sched) h += '<span class="pill accent">stops ' + esc(schedText()) + "</span>";
+      if (w) h += '<span class="alert' + (ooc() >= LIMIT ? " crit" : "") + '">' + esc(w) + "</span>";
+      al.forEach(function (a) { h += '<span class="alert' + (a[0] === "crit" ? " crit" : "") + '">' + esc(a[1] + ": " + a[2]) + "</span>"; });
+    }
+    h += '<span style="flex:1"></span><button class="btn small" type="button" data-act="pause">' + (S.paused ? "resume" : "pause") + '<kbd>P</kbd></button><button class="btn small" type="button" data-act="reward">reward<kbd>R</kbd></button><button class="btn small" type="button" data-act="recenter">recenter<kbd>C</kbd></button><button class="btn small" type="button" data-act="mark">mark<kbd>M</kbd></button>';
+    el("fullbar").innerHTML = h;
+  }
+  /* ---------- eye-map quality ---------- */
+  var RESIDUAL = { A: "0.31°", B: "0.42°", test: "—" };
+  function drawEyeQ() {
+    var subj = S.session ? S.session.subject : S.subject, m = SUBJECTS[subj], d = Math.hypot(S.gazeOff[0], S.gazeOff[1]);
+    var e = el("eye-q"); e.className = "eyeq" + (d > 1 ? " warn" : "");
+    e.textContent = m.eye + " · residual " + (RESIDUAL[subj] || "—") + " · drift " + d.toFixed(2) + "°" + (d > 1 ? " · re-calibrate?" : "");
+  }
+  /* ---------- marks ---------- */
+  function clockSec(ms) { var d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); }
+  function openMark() {
+    if (!canWrite()) return toast("read-only: writes only from the box");
+    if (!S.session || S.phase === "closed") return toast("no open session");
+    S.markAt = S.clock; el("mark-at").textContent = clockSec(S.markAt); el("mark-text").value = ""; el("mark-form").hidden = false; el("mark-text").focus();
+  }
+  function commitMark() {
+    if (el("mark-form").hidden) return;
+    var t = el("mark-text").value.trim(); el("mark-form").hidden = true;
+    log("mark", "mark", (t || "mark") + " · at " + clockSec(S.markAt) + " · " + actor()); toast("marked " + clockSec(S.markAt)); draw();
+  }
+  function packageCode() {
+    var s = S.session, n = codeUsed().length;
+    s.pkg = { size: (1.1 + 0.15 * allRuns().length).toFixed(1) + " MB", commit: hx(s.id + s.rig).slice(0, 7) };
+    log("code", "run", "packaged · " + n + " items" + (codeUsed().some(function (c) { return c[2] === "dirty"; }) ? " · with an uncommitted diff" : "") + " · provenance/");
+  }
+  function openFull(which) { S.full = which; el("full").hidden = false; drawDisplays(); drawFullbar(); }
+  function closeFull() { S.full = null; el("full").hidden = true; }
+  function setSteps() {
+    var p = param(S.train.param), msg = el("lad-msg"), vals = el("lad-steps").value.split(",").map(function (x) { return Number(x.trim()); });
+    if (vals.length < 2 || vals.some(function (v) { return !isFinite(v); })) { msg.textContent = "two or more numbers, separated by commas."; return false; }
+    if (vals.some(function (v) { return v < p.low || v > p.high; })) { msg.textContent = "every step must lie within " + p.low + "–" + p.high + " " + p.unit + "."; return false; }
+    S.train.steps = vals; S.train.step = Math.min(S.train.step, vals.length - 1); msg.textContent = ""; return true;
+  }
+
+  /* ---------- the save directory, browsed on the box ---------- */
+  var dd = { path: "/data/sessions" };
+  function openDir() { dd.path = S.saveDir; el("dd-msg").textContent = ""; el("dd-new").value = ""; drawDir(); el("dlg-dir").hidden = false; }
+  function drawDir() {
+    var parts = dd.path.split("/").filter(Boolean), acc = "", crumbs = ['<button type="button" data-p="/">/</button>'];
+    parts.forEach(function (x, i) { acc += "/" + x; crumbs.push((i ? '<span class="sub">/</span>' : "") + '<button type="button" data-p="' + acc + '">' + esc(x) + "</button>"); });
+    el("dd-crumbs").innerHTML = crumbs.join("");
+    var kids = FS[dd.path] || [];
+    el("dd-list").innerHTML = kids.length ? kids.map(function (k) {
+      var pth = (dd.path === "/" ? "" : dd.path) + "/" + k, isSess = /^\d{4}-\d{2}-\d{2}_\d{2}$/.test(k);
+      return '<button type="button" data-p="' + pth + '"' + (isSess ? ' disabled title="a session, not a place for sessions"' : "") + ">" + FOLDER + '<span class="mono">' + esc(k) + '</span><span class="sub">' + (isSess ? "session" : FREE[pth] ? FREE[pth] : "") + "</span></button>";
+    }).join("") : '<div class="nm" style="padding:6px 8px">empty</div>';
+    el("dd-here").textContent = dd.path; el("dd-free").textContent = freeOf(dd.path);
+    el("dd-ok").disabled = dd.path === "/"; el("dd-ok").title = dd.path === "/" ? "not the root of the disk" : "";
+    Array.prototype.forEach.call(document.querySelectorAll("#dd-crumbs button, #dd-list button"), function (b) { b.addEventListener("click", function () { dd.path = b.dataset.p; drawDir(); }); });
+  }
+
+  /* ---------- simulation ---------- */
+  function flash(names, ms) { names.forEach(function (n) { S.io.flash[n] = true; }); drawIO(); setTimeout(function () { names.forEach(function (n) { S.io.flash[n] = false; }); drawIO(); }, ms || 350); }
+  function reward() { return S.params.find(function (p) { return p.name === "reward_correct"; }).value; }
+  function applyStaged() {
+    if (!S.staged.length) return;
+    S.staged.forEach(function (st) { var p = param(st.name); p.value = st.now; log("applied", "applied", st.name + " = " + st.now + " " + p.unit + " · trial " + (S.run.trial + 1)); });
+    S.staged = []; keys.params = "";
+  }
+  function outcomeTone(o) { if (o === "correct") playTone("correct"); else if (o !== "correct_reject") playTone("error"); }
+  function afterTrial(res) {
+    var o = res.outcome;
+    if (res.paid) S.lastReward = S.clock;
+    S.io.strobes += 3; S.io.last = "0x" + (4096 + S.run.trial % 64).toString(16).toUpperCase();
+    var names = ["word", "strobe", "photo", "ack"];
+    if (o === "correct") { S.io.rewards += 1; names.push("reward"); }
+    if (Math.random() < 0.3) names.push("lever");
+    flash(names);
+    if (!res.ok && S.train.timeout > 0) { S.clock += S.train.timeout * 1000; S.busyUntil = performance.now() + S.train.timeout * 1000; }
+    shapingCheck();
+    if (schedDue()) { endRun("scheduled stop: " + schedText(true) + " · set by " + S.sched.by); return; }
+    if (S.run.need.every(function (n) { return n[1] >= n[2]; })) endRun("every block is finished");
+    else if (ooc() >= LIMIT) { S.limitStop = true; endRun("out_of_cage: 12:00 limit"); }
+  }
+  function scriptedTrial() {
+    S.clock += TRIAL_SECONDS * 1000;
+    var res = S.stall ? simTrial(S.run, reward(), { cond: pickCond(S.run), outcome: "no_fixation" }) : simTrial(S.run, reward()), o = res.outcome, t = targetPos();
+    var ph = phasesFor(res), tot = ph.reduce(function (a, x) { return a + x[1]; }, 0), n = S.run.trial;
+    S.cur = { phases: ph, start: performance.now(), speed: Math.max(1, tot / 1.2) };
+    setTimeout(function () { if (S.run) { S.lastTrial = { n: n, outcome: o, phases: ph }; S.cur = null; drawTimeline(); } }, 1200);
+    S.stim = "target"; playTone("go");
+    var land = (o === "correct") ? [t[0] + 0.4 * gauss(), t[1] + 0.4 * gauss()] : (o === "wrong_target") ? [-t[0] * 0.8, t[1] + 3] : [0.4 * gauss(), 0.4 * gauss()];
+    S.gaze.trail = [[0.3 * gauss(), 0.3 * gauss()], [land[0] * 0.3, land[1] * 0.3], [land[0] * 0.85, land[1] * 0.85], land];
+    S.gaze.x = land[0]; S.gaze.y = land[1];
+    setTimeout(function () { if (S.phase === "running") outcomeTone(o); }, 450);
+    setTimeout(function () { if (S.phase === "running") { S.stim = "fix"; drawDisplays(); } }, 900);
+    afterTrial(res);
+  }
+  /* a trial the person plays with the mouse: acquire and hold fixation, then look at the target */
+  function trialTarget(c) {
+    var m = /ecc (\d+)/.exec(c[0]), e = m ? Number(m[1]) : 8, cands = [];
+    if (e === 0) return [0, 0];
+    for (var k = 0; k < 8; k++) { var a = k * Math.PI / 4, x = e * Math.cos(a), y = e * Math.sin(a); if (Math.abs(x) <= 18 && Math.abs(y) <= 10) cands.push([x, y]); }
+    if (!cands.length) cands = [[18, 0], [-18, 0]];
+    return cands[Math.floor(Math.random() * cands.length)];
+  }
+  function mouseTrial() {
+    var c = pickCond(S.run), catchT = c[0] === "catch";
+    S.trialTarget = catchT ? TASKS[S.task].target : trialTarget(c);
+    S.mt = { phase: "acquire", cond: c, catchT: catchT, t0: performance.now(), inAt: null, onset: 0, hit: null };
+    S.stim = "fix"; drawDisplays();
+    clearInterval(mtTimer); mtTimer = setInterval(mouseStep, 40);
+  }
+  function mouseStep() {
+    var m = S.mt;
+    if (!m || S.phase !== "running") { clearInterval(mtTimer); S.mt = null; return; }
+    var now = performance.now(), inFix = dist(S.gaze, [0, 0]) <= win("fix_window", 2);
+    if (m.phase === "acquire") {
+      if (inFix) {
+        m.inAt = m.inAt || now;
+        if (now - m.inAt >= 1000 * win("fix_hold", 0.3)) {
+          m.phase = "target"; m.onset = now;
+          if (S.train.fixRew) { S.run.fluid += S.train.fixAmt; S.lastReward = S.clock; flash(["reward"]); }
+          if (!m.catchT) { S.stim = "target"; playTone("go"); drawDisplays(); }
+        }
+      } else if (m.inAt) return finishMouse("fixation_break");
+      else if (now - m.t0 > 3000) return finishMouse("no_fixation");
+      return;
+    }
+    if (m.catchT) { if (!inFix) return finishMouse("false_alarm"); if (now - m.onset > 900) return finishMouse("correct_reject"); return; }
+    if (dist(S.gaze, S.trialTarget) <= win("target_window", 3)) { if (m.hit === null) m.hit = now - m.onset; if (now - m.onset - m.hit >= 1000 * win("target_hold", 0.2)) return finishMouse("correct"); }
+    else if (m.hit !== null) return finishMouse("target_break");
+    else if (now - m.onset > 1000 * win("response_window", 0.6) + 600) return finishMouse(inFix ? "no_response" : "wrong_target");
+  }
+  function finishMouse(outcome) {
+    var m = S.mt; clearInterval(mtTimer); S.mt = null;
+    if (!m || !S.run) return;
+    S.clock += TRIAL_SECONDS * 1000;
+    var res = simTrial(S.run, reward(), { cond: m.cond, outcome: outcome, rt: m.hit });
+    var end = performance.now(), ph = [["acquire", ((m.inAt || end) - m.t0) / 1000]];
+    if (m.inAt) ph.push(["hold", ((m.onset || end) - m.inAt) / 1000]);
+    if (m.onset) { var tEnd = m.hit !== null ? m.onset + m.hit : end; ph.push([m.catchT ? "catch" : "target", (tEnd - m.onset) / 1000]); if (m.hit !== null) ph.push(["target hold", (end - m.onset - m.hit) / 1000]); }
+    S.lastTrial = { n: S.run.trial, outcome: outcome, phases: ph };
+    outcomeTone(outcome);
+    S.stim = "blank"; S.busyUntil = Math.max(S.busyUntil, performance.now() + 500);
+    afterTrial(res); draw();
+  }
+  function shapingCheck() {
+    var tr = S.train, r = S.run;
+    if (!tr.ladder || !r) return;
+    var n = r.trial - tr.since;
+    function pct(k) { var sl = r.seq.slice(-k); return sl.reduce(function (a, v) { return a + v; }, 0) / sl.length; }
+    if (n >= 50 && pct(50) >= 0.8 && tr.step < tr.steps.length - 1) shapeTo(tr.step + 1, Math.round(100 * pct(50)) + "% over 50");
+    else if (n >= 30 && pct(30) < 0.5 && tr.step > 0) shapeTo(tr.step - 1, Math.round(100 * pct(30)) + "% over 30");
+  }
+  function shapeTo(i, why) {
+    var tr = S.train, p = param(tr.param);
+    if (!p) return;
+    var v = tr.steps[i]; tr.step = i; tr.since = S.run ? S.run.trial : 0;
+    if (v === p.value) return;
+    if (S.phase === "running") { S.staged = S.staged.filter(function (x) { return x.name !== p.name; }); S.staged.push({ name: p.name, was: p.value, now: v, unit: p.unit }); log("shaping", "staged", p.name + " " + p.value + " → " + v + " " + p.unit + " · " + why); }
+    else { log("shaping", "applied", p.name + " " + p.value + " → " + v + " " + p.unit + " · " + why); p.value = v; }
+    keys.params = "";
+  }
+  function tick() {
+    tickN += 1;
+    if (S.session) S.fps = rigOf().hz - 0.04 + 0.08 * Math.random();
+    if (S.phase === "running" && schedDue()) endRun("scheduled stop: " + schedText(true) + " · set by " + S.sched.by);
+    if (S.phase === "running" && !S.paused) {
+      if (mouseMode()) { if (!S.mt && performance.now() >= S.busyUntil) { applyStaged(); mouseTrial(); } }
+      else { applyStaged(); scriptedTrial(); }
+    } else if (S.phase === "idle" || S.phase === "running") { S.clock += 1000; if (Math.random() < 0.2) flash(["ack"], 200); }
+    Object.keys(S.xfer).forEach(function (k) {
+      var x = S.xfer[k];
+      if (x.state === "copying") { x.pct = Math.min(100, x.pct + 17); if (x.pct >= 100) x.state = "verifying"; }
+      else if (x.state === "verifying") { x.state = "on-nas"; log("transfer", "run", k + " on wl-nas, verified"); }
+      else if (x.state === "on-nas" && Math.random() < 0.3) { x.state = "ingested"; log("transfer", "run", k + " picked up by wl-preproc"); }
+    });
+    S.analyses.forEach(function (a) { if (a.state === "queued") a.state = "running"; else if (a.state === "running" && Math.random() < 0.45) { a.state = "done"; log("analysis", "run", SCRIPTS[a.script][0] + " · run " + a.run + " back"); } });
+    draw();
+    if (tickN % 8 === 0) placeMonkey();
+  }
+
+  /* ---------- actions ---------- */
+  function parseClock(raw) { raw = raw.trim().toLowerCase(); if (raw === "now") return S.clock; var m = /^(\d{1,2}):(\d{2})$/.exec(raw); if (!m) return null; var d = new Date(S.clock); d.setHours(Number(m[1]), Number(m[2]), 0, 0); return d.getTime(); }
+  function nextId() { var d = new Date(S.clock); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "_02"; }
+  function openNew() {
+    el("dn-subject").innerHTML = subjectsFor().map(function (k) { return "<option" + (k === S.subject ? " selected" : "") + ">" + k + "</option>"; }).join("");
+    el("dn-rig").innerHTML = rigsFor().map(function (k) { return "<option" + (k === S.rig ? " selected" : "") + ">" + k + "</option>"; }).join("");
+    el("dn-id").textContent = nextId(); el("dn-path").textContent = S.saveDir + "/" + nextId() + "/";
+    el("dn-left").value = "now"; el("dn-msg").textContent = ""; el("dlg-new").hidden = false; el("dn-subject").focus();
+  }
+  function confirmNew() {
+    var at = parseClock(el("dn-left").value);
+    if (at === null) { el("dn-msg").textContent = "HH:MM, or now."; return; }
+    if (at > S.clock) { el("dn-msg").textContent = "not in the future."; return; }
+    var subject = el("dn-subject").value, rig = el("dn-rig").value;
+    S.subject = subject; S.rig = rig; S.limitStop = false; S.lastReward = null;
+    S.session = { id: nextId(), subject: subject, rig: rig, dir: S.saveDir, departure: at, opened: S.clock, runs: [], returnedAt: null };
+    S.params = withReward(taskParams(S.task), subject); keys = {}; S.phase = "idle"; S.stim = "blank"; S.session.pulled = null; el("dlg-new").hidden = true;
+    log("session", "mark", S.session.id + " · " + subject + " · " + rig + " · " + actor());
+    log("←cage", "mark", clockOf(at) + " · " + actor());
+    S.session.pf = {}; S.rhxSince = S.rhx === "recording" ? S.clock : null; startFromLast();
+    selectTab("setup"); draw();
+  }
+  var LOADABLE;
+  function openLoad() {
+    LOADABLE = [{ id: "2027-01-14_01", label: "A · rig 1 · open · ended without closing " + clockOf(S.clock - 9 * 60000) + " during run 2" }, { id: "2027-01-13_01", label: "B · rig 1 · closed", closed: true }];
+    el("dl-list").innerHTML = LOADABLE.map(function (s, i) { return '<label><input type="radio" name="dl" value="' + i + '"' + (i === 0 ? " checked" : "") + '><span><span class="mono">' + s.id + '</span><br><span class="sub">' + s.label + "</span></span></label>"; }).join("");
+    el("dl-recover").hidden = true; el("dlg-load").hidden = false;
+  }
+  function confirmLoad() {
+    var s = LOADABLE[Number(el("dl-list").querySelector("input:checked").value)];
+    if (s.closed) { el("dl-recover").hidden = false; el("dl-recover").innerHTML = "<span>ended; it takes no more runs.</span>"; return; }
+    el("dlg-load").hidden = true; recover(); draw(); placeMonkey();
+  }
+
+  /* ---------- scenarios ---------- */
+  function seedSession(departAgoMin, runsSpec, subject, rig) {
+    subject = subject || "A"; rig = rig || "rig 1";
+    S.session = { id: "2027-01-14_01", subject: subject, rig: rig, dir: "/data/sessions", departure: S.clock - departAgoMin * 60000, runs: [], returnedAt: null };
+    S.session.opened = S.session.departure + Math.min(8, departAgoMin / 2) * 60000;
+    var t = S.session.departure + 11 * 60000;
+    runsSpec.forEach(function (spec) { var r = seedRun(spec[0], spec[1], 0.25); r.n = S.session.runs.length + 1; r.started = t; t += spec[2] * 60000; r.ended = t; r.why = spec[3]; t += 3 * 60000; S.session.runs.push(r); });
+    S.subject = subject; S.rig = rig; S.lastReward = runsSpec.length ? t - 3 * 60000 : null;
+    log("session", "mark", "2027-01-14_01 · " + subject + " · " + rig + " · jake at the terminal");
+    log("←cage", "mark", clockOf(S.session.departure) + " · jake at the terminal");
+    S.session.pulled = { commit: "7e1c0d2", at: S.session.opened }; S.session.pf = { sync: "pass", reward: "pass", tones: "pass" }; S.rhxSince = S.session.opened + 6 * 60000;
+    log("tasks", "run", "pulled from GitHub · 7e1c0d2 · " + Object.keys(TASKS).length + " tasks · check 0 blocking · jake (box, unverified)");
+  }
+  var CAL = ["calibration", 52, 6, "every block is finished"], FIX = ["fixation_detection", 342, 85, "stopped by jake (box, unverified)"];
+  function startRun(task, seedTrials) {
+    S.task = task; S.params = withReward(taskParams(task), S.session.subject); keys.params = "";
+    S.run = seedTrials ? seedRun(task, seedTrials, reward()) : newRun(task); S.run.n = S.session.runs.length + 1; S.run.started = S.clock - (seedTrials || 0) * TRIAL_SECONDS * 1000; S.phase = "running"; S.stim = "fix";
+    if (seedTrials) { S.lastReward = S.clock - 4000; S.run.times = S.run.times.map(function (x, i, a) { return S.clock - (a.length - i) * TRIAL_SECONDS * 1000; }); }
+    if (S.rhx === "idle" && S.mode !== "sim") toast("RHX is not recording");
+    S.run.lib = S.session.pulled ? S.session.pulled.commit : null;
+    log("run", "run", S.run.n + " · " + task + " " + libVer() + " · " + actor());
+  }
+  function recover() {
+    S.run = null; S.staged = []; keys = {};
+    seedSession(3 * 60 + 40, [CAL, ["fixation_detection", 187, 48, "interrupted at trial 187"]]);
+    S.session.crashedAt = S.clock - 9 * 60000; S.session.needsConfirm = true; S.phase = "idle"; S.stim = "blank"; S.lastReward = S.session.crashedAt;
+    log("recovered", "mark", "2 runs and " + sessionFluid().toFixed(2) + " mL read back · " + actor());
+  }
+  function scenario(name) {
+    var ghDown = S ? S.ghDown : false, rhx = S ? S.rhx : "recording", viewer = S ? S.viewer : "box", tab = S ? S.tab : currentTab(), rfs = S ? S.rfs : defaultRfs();
+    S = fresh(); S.ghDown = ghDown; S.rhx = rhx; S.viewer = viewer; S.tab = tab; S.rfs = rfs; keys = {};
+    if (name === "running") { seedSession(3 * 60 + 12, [CAL]); startRun("fixation_detection", 118); S.analyses = [{ sent: clockOf(S.clock - 50 * 60000), run: 1, task: "calibration", script: "calres", state: "done" }]; }
+    else if (name === "between") { seedSession(4 * 60 + 5, [CAL, FIX]); S.phase = "idle"; S.stim = "blank"; S.task = "visual_search"; S.params = withReward(taskParams("visual_search"), "A"); S.analyses = [{ sent: clockOf(S.clock - 70 * 60000), run: 1, task: "calibration", script: "calres", state: "done" }, { sent: clockOf(S.clock - 2 * 60000), run: 2, task: "fixation_detection", script: "psychometric", state: "running" }]; }
+    else if (name === "near") { seedSession(11 * 60 + 42, [CAL, FIX]); startRun("visual_search", 64); }
+    else if (name === "limit") { seedSession(12 * 60 + 6, [CAL, FIX, ["visual_search", 130, 42, "out_of_cage: 12:00 limit"]]); S.phase = "idle"; S.stim = "blank"; S.limitStop = true; }
+    else if (name === "crash") { recover(); }
+    else if (name === "sim") { S.mode = "sim"; S.gazeSrc = "mouse"; seedSession(20, [], "test", "sim"); S.params = withReward(taskParams(S.task), "test"); startRun("fixation_detection", 0); S.full = "replica"; el("full").hidden = false; }
+    else if (name === "stalled") { seedSession(2 * 60 + 40, [CAL]); startRun("fixation_detection", 96); S.lastReward = S.clock - 7 * 60000; S.stall = true; }
+    else if (name === "closed") { seedSession(5 * 60, [CAL, FIX]); S.session.returnedAt = S.clock - 4 * 60000; S.session.closedAt = S.clock - 10 * 60000; S.phase = "closed"; S.stim = "blank"; S.session.dirty = "tasks/fixation_detection.py"; log("session", "mark", "ended · " + actor()); packageCode(); log("→cage", "mark", clockOf(S.session.returnedAt) + " · from the wl-works ELN"); S.analyses = [{ sent: clockOf(S.clock - 30 * 60000), run: 2, task: "fixation_detection", script: "psychometric", state: "done" }, { sent: clockOf(S.clock - 28 * 60000), run: 2, task: "fixation_detection", script: "latency", state: "done" }]; }
+    setPressed("scenarios", name); draw(); requestAnimationFrame(placeMonkey);
+  }
+  function setPressed(groupId, value) { Array.prototype.forEach.call(el(groupId).querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.v === value)); }); }
+
+  [["empty", "no session"], ["running", "running"], ["between", "between runs"], ["crash", "after a crash"], ["near", "near the limit"], ["limit", "limit reached"], ["closed", "ended"], ["stalled", "stalled animal"], ["sim", "simulation"]].forEach(function (s) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "seg"; b.dataset.v = s[0]; b.textContent = s[1];
+    b.addEventListener("click", function () { scenario(s[0]); }); el("scenarios").appendChild(b);
+  });
+  [["up", "reachable"], ["down", "unreachable"]].forEach(function (v) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "seg"; b.dataset.v = v[0]; b.textContent = v[1];
+    b.addEventListener("click", function () { S.ghDown = v[0] === "down"; setPressed("gh", v[0]); }); el("gh").appendChild(b);
+  });
+  [["recording", "recording"], ["idle", "idle"]].forEach(function (v) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "seg"; b.dataset.v = v[0]; b.textContent = v[1];
+    b.addEventListener("click", function () { S.rhx = v[0]; if (v[0] === "recording") S.rhxSince = S.clock; setPressed("rhxg", v[0]); keys.pf = ""; draw(); }); el("rhxg").appendChild(b);
+  });
+  [["box", "this box"], ["lan", "LAN viewer"]].forEach(function (v) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "seg"; b.dataset.v = v[0]; b.textContent = v[1];
+    b.addEventListener("click", function () { S.viewer = v[0]; setPressed("viewers", v[0]); keys = {}; draw(); }); el("viewers").appendChild(b);
+  });
+  el("notes-toggle").addEventListener("click", function () { var on = !document.body.classList.contains("notes"); document.body.classList.toggle("notes", on); el("notes-toggle").setAttribute("aria-pressed", String(on)); requestAnimationFrame(placeMonkey); });
+  el("tabs").addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    var i = TABS.findIndex(function (t) { return t[0] === S.tab; }); i = (i + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length;
+    selectTab(TABS[i][0]); el("tab-" + TABS[i][0]).focus();
+  });
+  el("a-new").addEventListener("click", openNew);
+  el("dn-cancel").addEventListener("click", function () { el("dlg-new").hidden = true; });
+  el("dn-ok").addEventListener("click", confirmNew);
+  el("a-load").addEventListener("click", openLoad);
+  el("dl-cancel").addEventListener("click", function () { el("dlg-load").hidden = true; });
+  el("dl-ok").addEventListener("click", confirmLoad);
+  el("a-start").addEventListener("click", function () { startRun(S.task, 0); selectTab("runtime"); draw(); });
+  el("a-stop").addEventListener("click", function () { el("stop-q").textContent = "stop run " + S.run.n + " at the next trial boundary?"; el("stop-confirm").hidden = false; });
+  el("stop-no").addEventListener("click", function () { el("stop-confirm").hidden = true; });
+  el("stop-yes").addEventListener("click", function () { el("stop-confirm").hidden = true; if (S.phase === "running") { endRun("stopped by " + actor()); draw(); } });
+  el("task-sel").addEventListener("change", function () { S.task = el("task-sel").value; S.params = withReward(taskParams(S.task), S.session ? S.session.subject : S.subject); S.startFrom = null; if (S.session && S.phase === "idle") startFromLast(); keys.params = ""; keys.rfs = ""; if (!TASKS[S.task].bindable.length) S.rfs.forEach(function (rf) { rf.use = "display"; }); log("task", "run", S.task + " · check 0 blocking"); draw(); });
+  Array.prototype.forEach.call(el("mode-segs").querySelectorAll("button"), function (b) { b.addEventListener("click", function () {
+    if (S.session && S.phase !== "closed") return;
+    S.mode = b.dataset.mode; S.subject = subjectsFor()[0]; S.rig = rigsFor()[0]; S.params = withReward(taskParams(S.task), S.subject); keys = {};
+    log("mode", "run", (S.mode === "sim" ? "simulation" : "live") + " · " + actor()); draw(); requestAnimationFrame(placeMonkey);
+  }); });
+  Array.prototype.forEach.call(el("gaze-segs").querySelectorAll("button"), function (b) { b.addEventListener("click", function () { S.gazeSrc = b.dataset.g; S.gaze.trail = []; draw(); }); });
+  function onGaze(e) {
+    if (!mouseMode()) return;
+    var r = e.currentTarget.getBoundingClientRect(); if (!r.width) return;
+    if (e.currentTarget.id === "full-screen" && S.full !== "replica") return;
+    S.gaze.x = ((e.clientX - r.left) / r.width * 320 - 160) / PPD - S.gazeOff[0]; S.gaze.y = (90 - (e.clientY - r.top) / r.height * 180) / PPD - S.gazeOff[1];
+    S.gaze.trail.push([S.gaze.x, S.gaze.y]); if (S.gaze.trail.length > 14) S.gaze.trail.shift();
+    S.gazeLostAt = null;
+    if (!gazeRaf) gazeRaf = requestAnimationFrame(function () { gazeRaf = 0; drawDisplays(); });
+  }
+  ["replica", "full-screen", "rf-preview"].forEach(function (id) {
+    var c = el(id); c.classList.add("eye"); c.addEventListener("mousemove", onGaze);
+    c.addEventListener("mouseleave", function () { if (!mouseMode()) return; S.gaze.x = 99; S.gaze.y = 99; S.gaze.trail = []; S.gazeLostAt = performance.now(); drawDisplays(); });
+  });
+  el("save-browse").addEventListener("click", openDir);
+  el("dd-cancel").addEventListener("click", function () { el("dlg-dir").hidden = true; });
+  el("dd-ok").addEventListener("click", function () { S.saveDir = dd.path; el("dlg-dir").hidden = true; log("save dir", "run", dd.path + " · " + actor()); draw(); });
+  el("dd-mk").addEventListener("click", function () {
+    var name = el("dd-new").value.trim(), msg = el("dd-msg");
+    if (!/^[A-Za-z0-9._-]+$/.test(name)) { msg.textContent = "letters, digits, . _ - only."; return; }
+    if ((FS[dd.path] || []).indexOf(name) >= 0) { msg.textContent = "already there."; return; }
+    var pth = (dd.path === "/" ? "" : dd.path) + "/" + name; (FS[dd.path] = FS[dd.path] || []).push(name); FS[pth] = []; dd.path = pth; el("dd-new").value = ""; msg.textContent = ""; drawDir();
+  });
+  el("mr-give").addEventListener("click", giveReward);
+  el("mr-amt").addEventListener("keydown", function (e) { if (e.key === "Enter") giveReward(); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-att]"), function (b) { b.addEventListener("click", function () {
+    var k = b.dataset.att;
+    if (k === "go" || k === "correct") playTone(k);
+    else { S.attn = { kind: k, until: performance.now() + 700 }; drawDisplays(); setTimeout(drawDisplays, 720); }
+    log("attention", "run", b.textContent + " · " + actor()); drawFeed();
+  }); });
+  el("lad-on").addEventListener("change", function () {
+    if (el("lad-on").checked) { if (!setSteps()) { el("lad-on").checked = false; return; } S.train.ladder = true; S.train.step = 0; shapeTo(0, "shaping on · " + actor()); }
+    else { S.train.ladder = false; log("shaping", "run", "off · " + actor()); }
+    draw();
+  });
+  el("lad-param").addEventListener("change", function () { S.train.param = el("lad-param").value; S.train.ladder = false; keys["lad-param"] = ""; draw(); });
+  el("lad-steps").addEventListener("change", function () { if (setSteps() && S.train.ladder) shapeTo(S.train.step, "steps changed · " + actor()); draw(); });
+  el("th-corr").addEventListener("change", function () { S.train.corr = el("th-corr").checked; log("trials", "run", (S.train.corr ? "repeat after error on" : "repeat after error off") + " · " + actor()); drawFeed(); });
+  el("th-timeout").addEventListener("change", function () { var v = Number(el("th-timeout").value); if (!isFinite(v) || v < 0 || v > 10) { el("th-msg").textContent = "error timeout: 0–10 s."; el("th-timeout").value = S.train.timeout; return; } el("th-msg").textContent = ""; S.train.timeout = v; log("trials", "run", "error timeout " + v + " s · " + actor()); drawFeed(); });
+  el("th-fixrew").addEventListener("change", function () { S.train.fixRew = el("th-fixrew").checked; log("trials", "run", "reward fixation " + (S.train.fixRew ? S.train.fixAmt.toFixed(2) + " mL" : "off") + " · " + actor()); drawFeed(); });
+  el("th-fixamt").addEventListener("change", function () {
+    var v = Number(el("th-fixamt").value), ceil = SUBJECTS[S.session ? S.session.subject : S.subject].rewardMax;
+    if (!isFinite(v) || v <= 0 || v > ceil) { el("th-msg").textContent = "fixation reward: above 0, at most " + ceil.toFixed(2) + " mL."; el("th-fixamt").value = S.train.fixAmt.toFixed(2); return; }
+    el("th-msg").textContent = ""; S.train.fixAmt = v;
+  });
+  el("monkey-sel").addEventListener("change", function () { S.subject = el("monkey-sel").value; S.params = withReward(taskParams(S.task), S.subject); keys = {}; draw(); });
+  el("rig-sel").addEventListener("change", function () { S.rig = el("rig-sel").value; keys = {}; draw(); });
+  el("bh-run").addEventListener("change", function () { S.bhRun = Number(el("bh-run").value); keys.plots = ""; drawBehavior(); });
+  el("rf-add").addEventListener("click", function () { if (!canWrite()) return; S.rfs.push({ label: "ch " + (60 + S.rfs.length), x: 4, y: -4, r: 2, show: true, use: "display" }); keys.rfs = ""; draw(); });
+  el("rf-import").addEventListener("click", function () { if (!canWrite()) return; S.rfs = defaultRfs(); keys.rfs = ""; log("overlay", "run", "3 rfs imported from 2027-01-13_01 run 3 · " + actor()); draw(); });
+  el("io-test").addEventListener("click", function () { S.io.strobes += 1; S.io.last = "0x0FFF"; flash(["word", "strobe", "ack"], 600); log("test word", "run", "0x0FFF · sync ack · " + actor()); drawFeed(); });
+  el("xfer-go").addEventListener("click", function () { S.xfer[S.session.id] = { state: "copying", pct: 0 }; log("transfer", "run", S.session.id + " → wl-nas · " + actor()); draw(); });
+  el("an-script").addEventListener("change", function () { el("an-desc").textContent = SCRIPTS[el("an-script").value][1]; });
+  el("an-go").addEventListener("click", function () {
+    var n = Number(el("an-run").value), run = allRuns().find(function (r) { return r.n === n; });
+    S.analyses.unshift({ sent: clockOf(S.clock), run: n, task: run.task, script: el("an-script").value, state: "queued" }); if (S.resultSel !== null) S.resultSel += 1;
+    log("analysis", "run", SCRIPTS[el("an-script").value][0] + " · run " + n + " · " + actor()); draw();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { el("dlg-new").hidden = true; el("dlg-load").hidden = true; el("dlg-dir").hidden = true; el("dlg-params").hidden = true; el("mark-form").hidden = true; el("sched-form").hidden = true; closeFull(); } });
+  /* hotkeys, anywhere but a typing box: P pause, R reward, C recenter. A held key does not repeat. */
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || S.disconnected) return;
+    var t = e.target;
+    if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    var k = e.key.toLowerCase();
+    if (k === "p") { e.preventDefault(); togglePause(); }
+    else if (k === "r") { e.preventDefault(); giveReward(); }
+    else if (k === "c") { e.preventDefault(); recenter(); }
+    else if (k === "m") { e.preventDefault(); openMark(); }
+  });
+  el("a-end").addEventListener("click", function () { el("end-confirm").hidden = false; });
+  el("end-no").addEventListener("click", function () { el("end-confirm").hidden = true; });
+  el("end-yes").addEventListener("click", function () {
+    el("end-confirm").hidden = true;
+    if (S.phase !== "idle") return;
+    S.session.closedAt = S.clock; S.phase = "closed"; S.paused = false; S.stim = "blank";
+    log("session", "mark", "ended · in session " + hms(inSession()) + " · " + actor());
+    packageCode(); draw();
+  });
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest(".arrows button"); if (!b) return;
+    var inp = b.parentNode.previousElementSibling; if (inp && inp.tagName === "INPUT") stepInput(inp, b.classList.contains("up") ? 1 : -1);
+  });
+  document.addEventListener("keydown", function (e) {
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.target.matches && e.target.matches("input[data-step]")) { e.preventDefault(); stepInput(e.target, e.key === "ArrowUp" ? 1 : -1); }
+  });
+  el("a-loadp").addEventListener("click", openLoadParams);
+  el("lp-cancel").addEventListener("click", function () { el("dlg-params").hidden = true; });
+  el("lp-ok").addEventListener("click", applyLoadParams);
+  el("a-pull").addEventListener("click", pullTasks);
+  el("a-mark").addEventListener("click", openMark);
+  el("mark-ok").addEventListener("click", commitMark);
+  el("mark-cancel").addEventListener("click", function () { el("mark-form").hidden = true; });
+  el("mark-text").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); commitMark(); } });
+  el("pf-pill").addEventListener("click", function () { selectTab("setup"); el("pf-panel").scrollIntoView({ block: "nearest" }); });
+  el("pf").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-pf]"); if (!b || b.disabled) return;
+    var k = b.dataset.pf, pf = S.session.pf = S.session.pf || {};
+    if (k === "tasks") pullTasks();
+    else if (k === "sync") { S.io.strobes += 1; S.io.last = "0x0FFF"; flash(["word", "strobe", "ack"], 600); pf.sync = "pass"; log("pre-flight", "run", "test word 0x0FFF · sync ack · " + actor()); }
+    else if (k === "reward") { S.session.manual = (S.session.manual || 0) + 0.05; S.io.rewards += 1; flash(["reward"]); pf.reward = "pass"; log("pre-flight", "applied", "reward pulse 0.05 mL · counted · " + actor()); }
+    else if (k === "tones") { playTone("go"); pf.tones = "pass"; log("pre-flight", "run", "tones played · " + actor()); }
+    draw();
+  });
+  el("start-from").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-sf]"); if (!b || b.disabled) return;
+    if (b.dataset.sf === "defaults") { S.params = withReward(taskParams(S.task), S.session.subject); S.startFrom = "defaults"; S.train.ladder = false; log("set", "applied", "start values: task defaults · " + actor()); keys.params = ""; }
+    else { startFromLast(); }
+    draw();
+  });
+  el("a-sched").addEventListener("click", function () { el("sched-form").hidden = false; el("sched-msg").textContent = ""; el("sched-val").value = el("sched-kind").value === "trials" ? String((S.run ? S.run.trial : 0) + 200) : el("sched-kind").value === "ml" ? "50" : clockOf(S.clock + 3600000); el("sched-val").focus(); });
+  el("sched-kind").addEventListener("change", function () { el("sched-val").value = el("sched-kind").value === "trials" ? String((S.run ? S.run.trial : 0) + 200) : el("sched-kind").value === "ml" ? "50" : clockOf(S.clock + 3600000); });
+  el("sched-cancel").addEventListener("click", function () { el("sched-form").hidden = true; });
+  el("sched-set").addEventListener("click", function () {
+    var k = el("sched-kind").value, raw = el("sched-val").value.trim(), v, msg = el("sched-msg");
+    if (k === "at") { v = parseClock(raw); if (v === null || v <= S.clock) { msg.textContent = "a time later today, HH:MM."; return; } }
+    else { v = Number(raw); if (!isFinite(v) || v <= 0) { msg.textContent = "a number above 0."; return; } if (k === "trials" && S.run && v <= S.run.trial) { msg.textContent = "more than the " + S.run.trial + " trials already run."; return; } }
+    S.sched = { kind: k, v: v, by: actor() }; el("sched-form").hidden = true;
+    log("schedule", "staged", "run " + S.run.n + " stops " + schedText(true) + " · " + actor()); draw();
+  });
+  el("sched-chip").addEventListener("click", function () { if (!S.sched) return; log("schedule", "run", "scheduled stop cleared · " + actor()); S.sched = null; draw(); });
+  el("fullbar").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-act]"); if (!b) return;
+    var a = b.dataset.act; if (a === "pause") togglePause(); else if (a === "reward") giveReward(); else if (a === "recenter") recenter(); else if (a === "mark") { closeFull(); openMark(); }
+  });
+  setInterval(function () { if (S && S.phase === "running" && !S.disconnected) { drawTimeline(); } }, 100);
+  el("pull-retry").addEventListener("click", pullTasks);
+  el("pull-cancel").addEventListener("click", function () { el("pull-warn").hidden = true; });
+  el("pull-use").addEventListener("click", function () {
+    el("pull-warn").hidden = true; if (!S.session) return;
+    S.session.pulled = { commit: LAST_PULL.commit, at: S.clock, stale: true };
+    log("tasks", "mark", "GitHub unreachable · running the last pulled library " + LAST_PULL.commit + " (" + LAST_PULL.at + ") · confirmed by " + actor()); keys = {}; draw();
+  });
+  el("a-pause").addEventListener("click", togglePause);
+  el("a-reward").addEventListener("click", giveReward);
+  el("a-recenter").addEventListener("click", recenter);
+  el("replica").addEventListener("click", function () { openFull("replica"); });
+  el("subject-display").addEventListener("click", function () { openFull("subject"); });
+  el("full-x").addEventListener("click", closeFull);
+  el("a-close").addEventListener("click", function () {
+    S.disconnected = true; S.discAt = S.clock;
+    el("gone-body").innerHTML = "<p>this page no longer follows the session. it keeps running on the box" + (S.session ? ": <b>" + (S.run ? "run " + S.run.n + " · trial " + S.run.trial : S.phase === "closed" ? "closed" : "between runs") + "</b> when you left, at " + clockOf(S.clock) + "." : ".") + "</p><p class=\"sub\">close this tab, or reconnect.</p>";
+    el("gone").hidden = false;
+  });
+  el("gone-re").addEventListener("click", function () {
+    S.disconnected = false; el("gone").hidden = true; keys = {}; draw();
+    toast(S.run ? "reconnected · run " + S.run.n + " · trial " + S.run.trial : "reconnected");
+  });
+  var rz = null; window.addEventListener("resize", function () { clearTimeout(rz); rz = setTimeout(placeMonkey, 150); });
+  try { if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) Array.prototype.forEach.call(document.querySelectorAll("#critter .anim"), function (a) { a.remove(); }); } catch (e) {}
+
+  scenario("running");
+  setPressed("viewers", "box"); setPressed("gh", "up"); setPressed("rhxg", "recording");
+  setInterval(tick, 1500);
+})();
+</script>
