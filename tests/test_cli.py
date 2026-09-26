@@ -27,6 +27,7 @@ from wl_expcontroller.link import (
     Refused,
     SetParameter,
     Staged,
+    Stop,
     Telemetry,
     ZmqConsole,
     ZmqLink,
@@ -361,27 +362,32 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     Fixed two ways, not one: **(a)** wait for a frame that shows `fix_hold` in
     `.staged` and *then* a later frame where it is gone -- proof `_apply_staged()`
     actually ran a pass after staging it, which is what the record depends on --
-    rather than trusting that any frame arriving means the write landed; **(b)** a
-    `--trials` count comfortably past `tasks/reference_bounds.py`'s chair-time
-    ceiling at these task parameters, so the session has hundreds of passes still to
-    run after this early command is sent, and the exact-last-pass coincidence (a)
-    guards against has nowhere near enough room to land by chance.
+    rather than trusting that any frame arriving means the write landed; **(b)** the
+    session must still be running when the console acts, so the last pass has
+    nowhere near enough room to coincide with this command by chance.
 
-    The trial count at which that ceiling bites was measured **on this machine, in
-    this session's scratchpad, and is not committed under `docs/measurements/`** --
-    it is roughly 1,500, and it is not a claim about this system's latency, jitter
-    or throughput (CLAUDE.md). It is also not what this test depends on: `--trials`
-    is 5,000 precisely so the exact figure does not matter, and the two assertions
-    below are on what the telemetry showed, never on how many trials ran. The same
-    disclaimer `_drain_until` carries in `test_link.py`, for the same reason -- an
-    unmarked number sitting beside a marked one reads as the true one, and these two
-    numbers were previously marked inconsistently across the two files.
+    **(b) was a margin, and the margin moved without anyone touching this test**
+    (2026-09-26). It was `tasks/reference_bounds.py`'s chair-time ceiling, measured
+    at "roughly 1,500" trials. The 2026-09-19 rulings replaced that ceiling with a
+    600 s out-of-cage placeholder, and `_hhmm()` starts each run 0-59 s into it, so
+    the session ended after about 300 trials and about 0.3 s of wall time -- figures
+    from this machine and a scratchpad probe, **not committed under
+    `docs/measurements/`, and not a claim about this system**. Started nine minutes
+    into that budget, this test failed 5 of 5 on a receive timeout: the session was
+    over before the console heard it.
+
+    So the session's length is no longer anybody's ceiling. `_far_bounds` puts the
+    out-of-cage limit twelve hours away, and **the console ends the session itself**
+    with a `Stop` once it has seen the change applied -- which also drives a
+    console's `Stop` through a real `wlx run`, the one path the `--stop` tests stub.
+    `--trials` now only bounds how long a *broken* run takes to finish on its own.
     """
     probe = zmq_cleanup(
         ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
     )
     pub_endpoint, rep_endpoint = probe.pub_endpoint, probe.rep_endpoint
     probe.close()
+    far_bounds = _far_bounds(tmp_path)
 
     result: dict[str, int] = {}
 
@@ -390,7 +396,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
             [
                 "run", GOOD,
                 "--allocation", ALLOCATION,
-                "--bounds", BOUNDS,
+                "--bounds", far_bounds,
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_04",
                 "--subject", "REFERENCE",
@@ -424,6 +430,14 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
                     break  # the session ended -- stop polling either way
             assert seen_staged, "the console's SetParameter was never drained"
             assert applied, "fix_hold was staged but never observed applied"
+
+            console.send(Stop(by="jake"))
+            stopped = None
+            for _ in range(2000):
+                stopped = console.receive().stopped_because
+                if stopped:
+                    break
+            assert stopped == "stopped by jake", stopped
     finally:
         runner_thread.join(timeout=15)
     assert not runner_thread.is_alive(), "wlx run did not finish on its own"

@@ -377,7 +377,7 @@ the parser each had a test and the function joining them had none (CLAUDE.md: te
 path, not the piece). It now takes a `cwd` so a test drives it end to end on a
 three-test suite.
 
-### A race found on the way, not shown to be the flake
+### A race found on the way, fixed, and not shown to be the flake
 
 `tests/test_cli.py::test_wlx_run_with_link_lets_a_real_console_attach` says its session
 has "roughly 1,500" trials of margin. That was measured under the chair-time ceiling the
@@ -396,11 +396,18 @@ the departure varied:
 | ~60 s | 0 | 3 | 17 |
 
 A real race with a margin five times smaller than its docstring says — and **probably not
-09-25's culprit**, since here it mostly fails slow and CI's failures were all fast. Not
-fixed here, because fixing it would be fixing a guess. The likely fix, if a decision
-wants it: give the test `_far_bounds`, so the session's length is set by `--trials`
-rather than by a wall-clock-dependent ceiling. The docstring's 1,500 is exactly what
-CLAUDE.md means by a dated claim nothing can check.
+09-25's culprit**, since here it mostly fails slow and CI's failures were all fast. The
+docstring's 1,500 is exactly what CLAUDE.md means by a dated claim nothing can check.
+
+**Fixed as a defect in its own right, not as the flake.** The test now uses `_far_bounds`
+(the out-of-cage limit twelve hours away) and the console ends the session itself with a
+`Stop` once it has seen the change applied, so no ceiling decides how long the session
+lasts. Red first: with `_hhmm()` shifted nine minutes early by a scratch plugin, the old
+test failed 5 of 5 on a receive timeout; the new one passes 5 of 5, in 0.2 s rather than
+5. It also now drives a console's `Stop` through a real `wlx run`, and that assertion was
+shown to fail (`'' == 'stopped by jake'`) with `taskd` made to ignore `Stop`. **If the
+flake the harness eventually names is this test, it was this race; if it is another,
+this one was still wrong.**
 
 ## What moved on 2026-09-20
 

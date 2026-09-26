@@ -55,8 +55,10 @@ failure to 24 mutant runs, and the harness kept only pytest's last line. 0 failu
 full account in the checkpoint's "What moved on 2026-09-26". `tools/mutate.py` now
 prints every failure line when the unmutated suite is red, and ends every mutant's line
 with `<- node ids`, so **the next time it fires it names itself: read those lines on
-every nightly until it has.** Then fix that test, and check whether it is the race the
-same entry describes in `test_wlx_run_with_link_lets_a_real_console_attach`.
+every nightly until it has.** Then fix that test. One candidate is already fixed — the
+race in `test_wlx_run_with_link_lets_a_real_console_attach`, same entry — so if the name
+that comes back is that test, check the run predates `Stop`-ended sessions before
+reopening it.
 
 **Read `main`'s own CI run before anything else** — `gh run list --branch main`, then
 `gh run view <id> --log-failed` and *read it*, because the last two things this gate
