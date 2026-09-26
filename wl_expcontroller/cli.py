@@ -442,12 +442,16 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     carries no such command any more and nothing else can land here while this
     function runs; those three checks are gone with it.
 
-    **The prompt ends.** An empty answer ends it at once, and so do `attempts`
-    answers that are not an accepted mark: a prompt that re-asked forever would hang
-    any script, and any test, that answers with a fixed string. A far time gets the
-    departure's confirmation (PI, 2026-09-20); anything but `confirm` there asks for
-    the time again. **There is no amendment**, because nothing has been marked yet
-    that one could replace -- a corrected time is simply the time entered.
+    **The prompt ends, in one of two ways, and the reason names which.**
+    End-of-input -- a closed stdin -- ends it at once, since nothing further can
+    arrive. Otherwise `attempts` answers that are not an accepted mark end it: a
+    prompt that re-asked forever would hang any script, and any test, that answers
+    with a fixed string. **An empty line is one of those answers** (PI, 2026-09-26:
+    "Count it as an attempt"): it ended the prompt until then, so a stray Enter left
+    the interval open for good. A far time gets the departure's confirmation (PI,
+    2026-09-20); anything but `confirm` there asks for the time again. **There is no
+    amendment**, because nothing has been marked yet that one could replace -- a
+    corrected time is simply the time entered.
     """
     for _ in range(attempts):
         # **The clock, and the warning when there is one, above every attempt**
@@ -461,9 +465,18 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
         warning = session.duration_warning(wall_now)
         if warning is not None:
             print(f"  WARNING: {warning}", file=sys.stderr)
-        raw = _ask(_RETURN_PROMPT).strip()
+        # Not `_ask`, which reads end-of-input as an empty line: here the two differ.
+        try:
+            raw = input(_RETURN_PROMPT).strip()
+        except EOFError:
+            return "end of input at the terminal"
         if not raw:
-            return "no answer at the terminal"
+            print(
+                "  nothing was typed; give the time the animal went back into its "
+                "home cage, or `now`",
+                file=sys.stderr,
+            )
+            continue
         try:
             at = _clock_or_now(raw, session.wall_now)
         except argparse.ArgumentTypeError as bad:
@@ -496,7 +509,7 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
             f", this host's local time"
         )
         return None
-    return "no clock time given at the terminal"
+    return f"{attempts} answers at the terminal, none of them an accepted return time"
 
 
 def _close_interval(session, args) -> bool:

@@ -129,9 +129,12 @@ welfare number is computed anywhere new.
 - **Whichever is accepted first wins.** One lock covers the mark. A second return is refused
   by `welfare`'s existing sentence, and a waiting terminal prompt is told the console
   recorded it.
-- **The terminal prompt ends.** An empty answer, or three answers that are not an accepted
-  mark, end it with `return not recorded` and the reason — a prompt that re-asked forever
-  would hang any script, and any test, that answers with a fixed string.
+- **The terminal prompt ends.** End-of-input (a closed stdin), or three answers that are
+  not an accepted mark, end it with `return not recorded` and a reason that names which
+  — a prompt that re-asked forever would hang any script, and any test, that answers with
+  a fixed string. **An empty line is one of the three** (PI, 2026-09-26, asked at the
+  final review, M4: "Count it as an attempt"); it ended the prompt until then, so a stray
+  Enter left the interval open.
 - **`--await-return-for SECONDS`** bounds the wait when only a console can deliver the mark,
   and records `return not recorded (nobody marked it within N s)` when it lapses. Without it,
   a linked run with no terminal waits until a console marks the return or it is interrupted.

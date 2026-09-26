@@ -23,7 +23,13 @@ from datetime import datetime, timedelta
 import pytest
 
 from wl_expcontroller.bounds import Exceeded
-from wl_expcontroller.cli import _hours_minutes, _wall_clock_time, main, render
+from wl_expcontroller.cli import (
+    _RETURN_PROMPT,
+    _hours_minutes,
+    _wall_clock_time,
+    main,
+    render,
+)
 from wl_expcontroller.link import (
     Refused,
     SetParameter,
@@ -2113,7 +2119,9 @@ def test_three_answers_that_are_not_a_time_end_the_prompt_and_say_so(tmp_path, m
     assert _kinds(tmp_path) == [
         "session opened", "departure", "return not recorded", "session ended",
     ]
-    assert _notes(tmp_path)[-2]["reason"] == "no clock time given at the terminal"
+    assert _notes(tmp_path)[-2]["reason"] == (
+        "3 answers at the terminal, none of them an accepted return time"
+    )
 
 
 def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkeypatch):
@@ -2334,8 +2342,6 @@ def test_the_return_prompt_asks_for_the_home_cage_in_one_constant(
     cage, and says so; it read "returned to cage at", which a person could answer
     while the animal was still in the chair beside the rig. The text lives in one
     constant, and this is the test that holds the terminal to it."""
-    from wl_expcontroller.cli import _RETURN_PROMPT
-
     shown = _prompted(monkeypatch, ["now"])
 
     assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm())) == 0
@@ -2391,12 +2397,13 @@ def test_wlx_run_rejects_await_return_for(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_an_empty_answer_at_the_terminal_ends_the_prompt_and_asks_nothing_more(
+def test_an_empty_line_at_the_return_prompt_is_one_of_the_three_attempts(
     tmp_path, monkeypatch
 ):
-    """Minor 2. An empty answer -- and end of input, `_ask`'s own path for it --
-    is a quiet non-answer, not a re-ask: a script whose input closes mid-prompt
-    must not be asked a second question it has nothing left to answer."""
+    """**Final review M4, PI 2026-09-26: "Count it as an attempt."** An empty line
+    ended the prompt at once, so a stray Enter -- the easiest key to press by
+    accident -- left the interval open for good. It is one of the three attempts
+    now, and the prompt asks again."""
     asked = []
 
     def answer(prompt=""):
@@ -2409,8 +2416,46 @@ def test_an_empty_answer_at_the_terminal_ends_the_prompt_and_asks_nothing_more(
     exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 0
-    assert len(asked) == 1, "no answer at all ends the prompt at once"
+    assert asked == [_RETURN_PROMPT] * 3, "three empty lines are three attempts"
     assert _kinds(tmp_path) == [
         "session opened", "departure", "return not recorded", "session ended",
     ]
-    assert _notes(tmp_path)[-2]["reason"] == "no answer at the terminal"
+    assert _notes(tmp_path)[-2]["reason"] == (
+        "3 answers at the terminal, none of them an accepted return time"
+    )
+
+
+def test_an_empty_line_then_a_time_takes_the_return(tmp_path, monkeypatch):
+    """The point of counting it rather than ending on it: the next answer lands."""
+    answers = iter(["", "now"])
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm())) == 0
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "returned", "session ended",
+    ]
+
+
+def test_end_of_input_at_the_return_prompt_ends_it_and_says_so(tmp_path, monkeypatch):
+    """**Final review M4.** End-of-input -- a closed stdin -- is the one answer that
+    ends the prompt before three: nothing further can arrive, and a script whose
+    input ran out must not be asked twice more. The reason names it, apart from
+    three answers that were not a time."""
+    asked = []
+
+    def closed(prompt=""):
+        asked.append(prompt)
+        raise EOFError
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", closed)
+
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+
+    assert exit_code == 0
+    assert asked == [_RETURN_PROMPT], "nothing more can arrive, so nothing more is asked"
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "end of input at the terminal"
