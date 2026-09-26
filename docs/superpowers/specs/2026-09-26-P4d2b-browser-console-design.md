@@ -175,13 +175,18 @@ builds its part; S9a is amended to match when that slice lands.
 
 ### 4.1 Telemetry, schema 6 → 7
 
-Schema 7 carries §3's fields, plus three more for the strip and the ticks:
+Schema 7 carries §3's fields, plus four more for the strip and the ticks:
 
 - `last_reward_at`: the wall instant of the last reward delivered, taken where `welfare`
   records a delivery; `None` before the first.
 - `recent_outcomes`: the last 60 outcomes' wire strings, oldest first, capped like
   `refusals`.
 - `in_session_seconds`: P4d-2a's.
+- `wall_at`: the frame's own instant on the session's anchored clock, the one wall reading
+  `Telemetry.of` already takes, so that `wlx serve` gives the time since the last reward as
+  `wall_at − last_reward_at` plus its own steady-clock time since the frame arrived and never
+  subtracts its host clock from a session instant, which a host-clock step would throw off
+  (ledger Ruling 1, 2026-09-27).
 
 Trials per minute is derived by `wlx serve` from `trial_index` over the wall time of the
 frames it has seen in the last five minutes, and the page labels it as derived. It is not a
