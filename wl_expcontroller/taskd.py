@@ -305,10 +305,14 @@ class Session:
     def _note(self, kind: str, at: float, by: str, how: str, reason: str = "") -> None:
         """One mark row in `welfare_notes.jsonl` (P4d-2a spec §3).
 
-        Written by the mark methods themselves, so every caller -- the terminal, a
-        console over the link, P4d-2b's browser -- leaves the same row and none can
-        reach the mark around it. `was` and `now` are both the mark's instant: nothing
-        was amended, so there is one value to record.
+        Written by the mark methods themselves, so every caller leaves the same row
+        and none can reach the mark around it. Since P4d-2a spec §10 the one caller
+        in production is `wlx run` (its terminal prompts, and the process itself for
+        `session opened`/`session ended`/`return not recorded`); no console or
+        browser marks either end of the interval, and the wl-works ELN's marks will
+        reach this box through the lab-host protocol, not `link.py`. `was` and `now`
+        are both the mark's instant: nothing was amended, so there is one value to
+        record.
 
         **Called only after `welfare` has accepted the mark, never before**, so a mark
         that never happened cannot be logged as having happened. That ordering has a
