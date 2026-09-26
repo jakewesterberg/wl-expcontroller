@@ -1,12 +1,13 @@
 # P4d-2b — The browser console and `/health`
 
-- **Status: brainstorm in progress.** §1–§3 below were approved in conversation on
-  2026-09-26 (PI). **§4, the page and its testing, has not been presented yet**; resume
-  there. Not ready for a plan until §4 is approved and this file is reviewed whole.
+- **Status:** §1–§3 approved in conversation on 2026-09-26 (PI). §4 covers slice b1, the
+  read-only console, and was approved the same day. Slices b2–b6 get their own sections as
+  each is designed.
 - **Date:** 2026-09-26
 - **Parent:** S9a §6–§9; ADR-0008; `architecture.md`'s `console` and `labhost` rows
-- **Depends on:** P4d-2a (`2026-09-26-P4d2a-return-to-cage-design.md`) — `phase` and
-  `stop_kind` in telemetry schema 6, and the `ReturnedToCage` command this page sends
+- **Depends on:** P4d-2a (`2026-09-26-P4d2a-return-to-cage-design.md`, as amended in its
+  §10): `phase`, `stop_kind` and `in_session_seconds` in telemetry schema 6. The page sends
+  no return to the cage: the wl-works ELN owns it (PI, 2026-09-26)
 
 ---
 
@@ -25,7 +26,7 @@
   same box in one browser would stall (MDN's server-sent events guide; not re-verified
   2026-09-26). S9a §7 is amended from "HTTP/WS" when this slice lands.
 
-## 2. Process and security (decided)
+## 2. Process and security (decided; the write rules apply from slice b2)
 
 - `wlx serve --link PUB,REP --http HOST:PORT --health-token-file PATH`, its own process.
   One `ZmqConsole`. A telemetry thread keeps the latest frame; a command thread owns the
@@ -87,16 +88,16 @@ always empty — no welfare action goes through `wl-works`.
 `unknown` is never emitted: it is `wl-works`' word for a silent host. Contract-tested
 against `HealthResponse` itself, imported at test time with `WLX_REQUIRE_PREPROC=1`.
 
-## 4. The page, and testing — NOT YET PRESENTED
+## 4. Slice b1: the read-only console (approved 2026-09-26)
 
-To cover: the four S9a §3 groups as dense panes; the generated parameter row and its staged
-and refused feed; presence (box vs LAN viewers); Stop; the return-to-cage control from
-P4d-2a; how the page behaves when the stream drops; and the test plan (renderer, handler
-authorization as a pure function, an end-to-end run against `wlx run --link` on loopback,
-the `/health` contract, the mutation gate's module lists).
+The mockup (`docs/superpowers/mockups/2026-09-26-console-mockup-v12.html`) is the page's
+design, and the rulings held below say what each part of it is for. Each slice builds the
+parts whose data exists. b1 builds the page a person reads: nothing on it writes.
 
-**Held from the mockup rounds (PI, 2026-09-26)**, to be written into this section and into
-S9a when the page is presented:
+### 4.0 Rulings held from the mockup rounds
+
+Every ruling the PI made while the mockup was iterated (2026-09-26). Each binds the slice that
+builds its part; S9a is amended to match when that slice lands.
 
 - **The always-visible strip carries four cells**: fluid today / floor, out-of-cage time /
   12:00, correct / trials for the session, and time since the last reward. Fluid session
@@ -161,6 +162,79 @@ S9a when the page is presented:
   
   Overlays, behavior plots, online analysis, the parameter log and RHX status come later,
   behind the parts they depend on.
+
+### 4.1 Telemetry, schema 6 → 7
+
+Schema 7 carries §3's fields, plus three more for the strip and the ticks:
+
+- `last_reward_at`: the wall instant of the last reward delivered, taken where `welfare`
+  records a delivery; `None` before the first.
+- `recent_outcomes`: the last 60 outcomes' wire strings, oldest first, capped like
+  `refusals`.
+- `in_session_seconds`: P4d-2a's.
+
+Trials per minute is derived by `wlx serve` from `trial_index` over the wall time of the
+frames it has seen in the last five minutes, and the page labels it as derived. It is not a
+welfare number and bounds nothing.
+
+### 4.2 What the page shows
+
+- **Header:**
+  - the wl.works logo, and a state pill (from `phase` and `stop_kind`);
+  - session · subject · deployment · block · trial · in session;
+  - presence: this box, or N LAN viewers;
+  - a magenta ✕ that closes this page's stream.
+- **Strip:** four cells:
+  - fluid today / floor;
+  - out-of-cage time / limit;
+  - correct / trials, with % and trials per minute;
+  - time since the last reward.
+  
+  Fluid session and the supplement are shown on Runtime and End of session instead, as ruled
+  in the rulings held above.
+- **Runtime:**
+  - trials: the last 60 outcomes as ticks colored by family, with a legend;
+  - this run: counts by family, with no rollup;
+  - still needed (`owed`);
+  - *Wrong?*: hangs, with drops, tracker staleness and RHX margin shown as *not measured*;
+  - *wl-works sees*: the `/health` readings, as they would be sent;
+  - changes: staged and refused, with `refusals_dropped` when it is not zero.
+- **Task parameters, read-only:** one card per entry in `params`: value, unit, range, the
+  ceiling flag, and a staged marker.
+- **Setup, read-only:** session, subject, deployment, bounds config, allocation.
+- **End of session, read-only:** supplement owed (`shortfall_ml`), fluid session,
+  out-of-cage time, in-session time, and the stop reason.
+- **Right column:** honest placeholders, so the layout never shifts and nothing pretends to be
+  live (PI, 2026-09-26): *replica · V11*, *subject display · no source yet*,
+  *sound · not measured*, *display · not measured*.
+- **Absent until their slices:** every write control, and overlays, behavior, training tools,
+  online analysis, full screen, pre-flight and simulation.
+
+### 4.3 When the stream falters
+
+- **On connect:** one full render, then a fragment per frame.
+- **Stale** (no frame for `--stale-after`): a banner reading *stream stale · last frame N s
+  ago*, and the values are greyed.
+- **Lost:** a banner reading *stream lost*. The browser reconnects on its own and re-renders in
+  full when it does.
+- **The ✕** closes the page's stream and says *disconnected · the session keeps running on the
+  box*, with a reconnect button.
+
+### 4.4 Testing (sim first)
+
+- **The renderer is pure** (telemetry in, HTML fragments out) and is tested like `cli.render`:
+  - fluid session, supplement, out-of-cage time, the duration warning, and
+    `refusals_dropped` when it is above zero are never dropped;
+  - *not measured* is never rendered as 0;
+  - every telemetry string is HTML-escaped. A refusal carrying `<script>` is the test.
+- **The handler:** `GET /`, `GET /events` and `GET /health` (bearer) are served. Everything
+  else gets 404 or 405, with no stdlib error page. b1 has no `POST`.
+- **End to end:** `wlx run --link` in the simulator and `wlx serve`, on loopback. An HTTP
+  client reads the event stream and sees the trial count advance, then the ended state.
+- **`/health`** is contract-tested against `HealthResponse` with `WLX_REQUIRE_PREPROC=1`.
+- **The mutation gate's module lists** gain the server and the web renderer.
+- **The page's JavaScript** only opens the stream, swaps fragments by id, and runs the stale
+  timer, so everything worth testing is in Python.
 
 ## 5. Not in this slice
 
