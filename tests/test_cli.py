@@ -1032,7 +1032,9 @@ def test_console_reports_an_interrupted_watch_as_interrupted(monkeypatch, capsys
 
     monkeypatch.setattr("wl_expcontroller.link.ZmqConsole", _StubConsole)
 
-    code = main(["console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2"])
+    code = _main_uninterrupted(
+        ["console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2"]
+    )
 
     assert code == 130, "an abandoned watch is indistinguishable from a clean stop"
     assert "interrupted" in capsys.readouterr().err
@@ -1478,6 +1480,20 @@ def _notes(tmp_path) -> list:
     return [json.loads(line) for line in path.read_text().splitlines() if line]
 
 
+def _main_uninterrupted(argv: list) -> int:
+    """`main(argv)`, with an escaping `KeyboardInterrupt` turned into a failure.
+
+    **A `KeyboardInterrupt` that escapes a test ends the whole pytest run**, not the
+    test: pytest treats it as the person at the terminal stopping everything (final
+    review M3). So every test here that drives Ctrl-C through `main` calls it through
+    this, and a regression that lets the interrupt out fails that one test instead of
+    aborting the suite around it."""
+    try:
+        return main(argv)
+    except KeyboardInterrupt:
+        pytest.fail("KeyboardInterrupt escaped main(): Ctrl-C must end the run cleanly")
+
+
 def test_a_far_departure_is_refused_when_nobody_can_be_asked(tmp_path):
     """**The non-interactive path must not proceed in silence.**
 
@@ -1581,7 +1597,9 @@ def test_an_interrupted_departure_prompt_exits_130_with_the_clock_closed(
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", interrupt)
 
-    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+    exit_code = _main_uninterrupted(
+        _run_args(tmp_path, "--out-of-cage-at", _hours_ago(9))
+    )
 
     assert exit_code == 130
     assert _kinds(tmp_path) == ["session opened", "session ended"]
@@ -2107,27 +2125,13 @@ def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkey
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", interrupt)
 
-    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+    exit_code = _main_uninterrupted(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 130
     assert _kinds(tmp_path) == [
         "session opened", "departure", "return not recorded", "session ended",
     ]
     assert _notes(tmp_path)[-2]["reason"] == "interrupted at the terminal"
-
-
-def _main_uninterrupted(argv: list) -> int:
-    """`main(argv)`, with an escaping `KeyboardInterrupt` turned into a failure.
-
-    **A `KeyboardInterrupt` that escapes a test ends the whole pytest run**, not the
-    test: pytest treats it as the person at the terminal stopping everything (final
-    review M3). So every test here that drives Ctrl-C through `main` calls it through
-    this, and a regression that lets the interrupt out fails that one test instead of
-    aborting the suite around it."""
-    try:
-        return main(argv)
-    except KeyboardInterrupt:
-        pytest.fail("KeyboardInterrupt escaped main(): Ctrl-C must end the run cleanly")
 
 
 def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
