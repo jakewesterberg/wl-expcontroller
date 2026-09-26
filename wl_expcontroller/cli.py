@@ -472,55 +472,52 @@ def _close_interval(session, args) -> bool:
     refuses to retry it -- `welfare.returned_to_cage` cannot be called a second time
     without being refused by the mark it already accepted.
 
-    **`session.end()` runs last, on every path out of here, in an outer `finally`**
-    (P4d-2a spec §10 item 3): after the return is settled or recorded as not
-    recorded -- normally, on an interrupt, or on a re-raised fault alike -- so
-    `session ended` is always the last row a run writes. `session.open()` has
-    already run by the time `wlx run` ever calls this function (`main` calls it
-    right after building the `Session`, well before `session.run()`), so `end()`
-    here never meets a clock that was never started. A cage-side session (the
-    first `return` below) ends right after `run()` for the same reason: this
-    function's early exit is `end()`'s only path.
+    **Does not call `session.end()`** (Task 9 fix round 1). It used to, in its own
+    `finally`, but that left `session opened` unclosed on every exit from `main`'s
+    run command that happens *before* this function is ever called -- a refused or
+    interrupted departure prompt, chiefly. `main` now owns `end()` from an outer
+    `finally` that wraps this call along with everything before it, so `session
+    ended` is still always the last row a run writes (this function's own writes,
+    `returned`/`return not recorded`, all land first, `main`'s `finally` runs only
+    once this function has returned or raised past it) -- just from one caller
+    higher up than before.
     """
-    try:
-        if session.spec.deployment is Deployment.CAGE_SIDE:
-            return False
-        if not session.phase:
-            session.return_not_recorded("the session did not start")
-            return False
-        if not _at_a_terminal():
-            session.return_not_recorded("no terminal")
-            return False
-        give_up = threading.Event()
-        failure: list[BaseException] = []
+    if session.spec.deployment is Deployment.CAGE_SIDE:
+        return False
+    if not session.phase:
+        session.return_not_recorded("the session did not start")
+        return False
+    if not _at_a_terminal():
+        session.return_not_recorded("no terminal")
+        return False
+    give_up = threading.Event()
+    failure: list[BaseException] = []
 
-        def _wait() -> None:
-            try:
-                session.await_return(give_up)
-            except BaseException as exc:
-                failure.append(exc)
-
-        waiter = threading.Thread(target=_wait, daemon=True)
-        waiter.start()
-        why = None
-        interrupted = False
+    def _wait() -> None:
         try:
-            why = _settle_return(session, args.actor or "")
-        except KeyboardInterrupt:
-            why = "interrupted at the terminal"
-            interrupted = True
-        finally:
-            give_up.set()
-            waiter.join()
-            if session.welfare.returned_wall_at is None:
-                if why is None and failure:
-                    why = f"the post-loop phase failed: {type(failure[0]).__name__}"
-                session.return_not_recorded(why or "interrupted at the terminal")
-        if failure:
-            raise failure[0]
-        return interrupted
+            session.await_return(give_up)
+        except BaseException as exc:
+            failure.append(exc)
+
+    waiter = threading.Thread(target=_wait, daemon=True)
+    waiter.start()
+    why = None
+    interrupted = False
+    try:
+        why = _settle_return(session, args.actor or "")
+    except KeyboardInterrupt:
+        why = "interrupted at the terminal"
+        interrupted = True
     finally:
-        session.end()
+        give_up.set()
+        waiter.join()
+        if session.welfare.returned_wall_at is None:
+            if why is None and failure:
+                why = f"the post-loop phase failed: {type(failure[0]).__name__}"
+            session.return_not_recorded(why or "interrupted at the terminal")
+    if failure:
+        raise failure[0]
+    return interrupted
 
 
 def _value(value: float | None) -> str:
@@ -1019,7 +1016,9 @@ def main(argv: list[str] | None = None) -> int:
             # inside the guard because the refusal can come from any of three
             # places -- `Welfare.__post_init__` on the day's total, `Bounds`
             # rejecting a config's limit, or the subject mismatch -- and a person
-            # reading the message does not care which.
+            # reading the message does not care which. This guard is only about
+            # building the `Session`: nothing here has opened its clock yet, so
+            # there is nothing for a `finally` to close if it raises.
             try:
                 session = Session(
                     SessionSpec(
@@ -1055,20 +1054,39 @@ def main(argv: list[str] | None = None) -> int:
                     pump=SimulatedPump(),
                     **session_kwargs,
                 )
-                # **The session's own clock starts here** (P4d-2a spec §10 item 3):
-                # right after the `Session` exists and before the departure is even
-                # asked about, so `session opened` is the first row this run ever
-                # writes -- ahead of `departure`, and ahead of anything
-                # `_settle_departure` below can still refuse over. It is an
-                # administrative timestamp, not a welfare mark: an unconfirmed
-                # departure still declines to start the session in every way that
-                # matters -- no departure mark, no trial, no fluid -- this row
-                # aside, which is why `_settle_departure`'s own refusal below says
-                # "nothing about the departure" rather than claiming nothing at all
-                # was recorded. `Session.run()` would open the clock anyway if
-                # nothing had by then, which is the backstop for a direct API user,
-                # not the reason this line is here.
-                session.open()
+            except Exceeded as refused:
+                raise SystemExit(f"refused: {refused}") from refused
+
+            # **Guarantees `session.end()` on every exit from here on** (Task 9 fix
+            # round 1). Before this, `session.end()` ran only inside
+            # `_close_interval`'s own `finally`, reached solely from the
+            # `try: census = session.run() finally: ...` below -- so a refused
+            # departure (`_settle_departure`'s "not confirmed", or an `Exceeded`
+            # from `left_cage`/`amend_mark`) or a `KeyboardInterrupt` at either
+            # prompt propagated past this whole function with `session opened` on
+            # record and nothing to close it. Everything from here to this
+            # command's two `return`s now runs inside one `try`, so every exit --
+            # a refusal, an interrupt, a fault `_close_interval` re-raises, or a
+            # clean finish -- reaches the `finally` below exactly once.
+            # `_close_interval` no longer calls `session.end()` itself; this is
+            # the one caller left, which is also why `how="wlx run"` is passed
+            # here rather than left at `end()`'s own `"terminal"` default -- the
+            # process opens and ends the session, not a person at a prompt.
+            #
+            # **The session's own clock starts before the departure is even asked
+            # about** (P4d-2a spec §10 item 3): `session opened` is the first row
+            # this run writes, ahead of `departure` and ahead of anything
+            # `_settle_departure` below can still refuse over. It is an
+            # administrative timestamp, not a welfare mark: an unconfirmed
+            # departure still declines to start the session in every way that
+            # matters -- no departure mark, no trial, no fluid -- this row aside,
+            # which is why `_settle_departure`'s own refusal says "nothing about
+            # the departure" rather than claiming nothing at all was recorded.
+            # `Session.run()` would open the clock anyway if nothing had by then,
+            # which is the backstop for a direct API user, not the reason `open()`
+            # is called here.
+            session.open(how="wlx run")
+            try:
                 # On a rig both of these are the console's actions, and the
                 # difference is the whole reason S8 makes them explicit. Here the
                 # out-of-cage one comes from `--out-of-cage-at`, which has no
@@ -1085,82 +1103,104 @@ def main(argv: list[str] | None = None) -> int:
                 # nowhere to go. The row is written after the mark is accepted, so a
                 # "correction" the ceiling refuses leaves no record of a change that
                 # did not happen.
-                departure, note = _settle_departure(session, args)
-                # `confirmed` is true exactly when a person acted -- an
-                # amendment is its own confirmation, since a named person giving
-                # a reason has done strictly more than click through.
-                # `welfare.left_cage` refuses a far mark without it, so the
-                # console P4d-2 adds cannot reach around this prompt.
-                session.left_cage(at=departure, confirmed=note is not None)
-                if note is not None:
-                    _record.welfare_note(session.directory, **note)
-                if deployment is Deployment.RIG_FIXED:
-                    session.head_fixed(at=session.wall_now())
-            except Exceeded as refused:
-                raise SystemExit(f"refused: {refused}") from refused
-            # **The consequence of a clock time, made visible** (PI, 2026-09-20).
-            # He accepted losing the automatic wall-clock refusal on the condition
-            # that a mistyped hour is legible rather than silent: `08:45` for
-            # `18:45` sits comfortably inside a twelve-hour ceiling, and nothing
-            # else on this path would remark on it. Read from `welfare`, never
-            # recomputed here -- `render`'s rule, on the headless path.
-            #
-            # **`departure`, not `args.out_of_cage_at`**: an amended time is what
-            # the session is bounded by, so it is what this line must show. Printing
-            # the value the operator first typed would have this sentence describe a
-            # clock nothing is running. Read at the wall, as every welfare duration
-            # is (P4d-2a spec §10).
-            so_far = session.welfare.out_of_cage_seconds(session.wall_now())
-            print(
-                f"  out of cage: the animal has been out {_hours_minutes(so_far)}"
-                f", having left its cage at "
-                f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(departure))}"
-                # The zone **at the departure**, not at now. A session started just
-                # after a daylight-saving change would otherwise label a departure
-                # made before it with the zone that is current now -- and that is
-                # precisely the one hour a year when the label carries information.
-                f" ({time.strftime('%Z', time.localtime(departure))}"
-                f", this host's local time)"
-            )
-            # **The return to the cage is taken here, or its absence is recorded**
-            # (P4d-2a spec §3, §5, amended by §10: the terminal, and only the
-            # terminal, until the wl-works ELN exists). `_close_interval` runs in
-            # `finally` so a fault out of `session.run()` still gets a chance at the
-            # terminal path -- and, on a rig, still has a head to release and a
-            # clock to stop publishing -- rather than leaving the interval open
-            # with nothing said about why.
-            interrupted = False
-            try:
-                census = session.run()
-            finally:
-                interrupted = _close_interval(session, args)
-            total = sum(census.outcomes.values()) or 1
-            for outcome, count in census.outcomes.most_common():
-                print(f"  {outcome.value:18} {count:6}  {100 * count / total:5.1f}%")
-            print(f"  {'hangs':18} {census.hangs:6}")
-            print(f"  ended: {session.stopped_because}")
-            print(
-                f"  fluid: {session.welfare.commanded:.2f} mL commanded over "
-                f"{session.welfare.deliveries} deliveries"
-            )
-            # The number a person acts on: how much of the day's minimum is still
-            # owed, to be supplemented after the session (PI, 2026-09-06). `None`
-            # means the day cannot be counted, which is a louder result than any
-            # number.
-            owed = session.welfare.shortfall()
-            print(
-                "  supplement: UNKNOWN -- the day's prior total was not supplied, "
-                "so nothing can say what is still owed"
-                if owed is None
-                else f"  supplement: {owed:.2f} mL to reach the day's floor"
-            )
-            if interrupted:
+                try:
+                    departure, note = _settle_departure(session, args)
+                    # `confirmed` is true exactly when a person acted -- an
+                    # amendment is its own confirmation, since a named person giving
+                    # a reason has done strictly more than click through.
+                    # `welfare.left_cage` refuses a far mark without it, so the
+                    # console P4d-2 adds cannot reach around this prompt.
+                    session.left_cage(at=departure, confirmed=note is not None)
+                    if note is not None:
+                        _record.welfare_note(session.directory, **note)
+                    if deployment is Deployment.RIG_FIXED:
+                        session.head_fixed(at=session.wall_now())
+                except Exceeded as refused:
+                    raise SystemExit(f"refused: {refused}") from refused
+                except KeyboardInterrupt:
+                    # **The departure prompt's own Ctrl-C** (Task 9 fix round 1).
+                    # `_settle_departure`'s interactive prompts run through `_ask`,
+                    # which turns end-of-input into a quiet `""` but leaves
+                    # `KeyboardInterrupt` to propagate -- unlike the return prompt,
+                    # whose `_close_interval` already catches it and reports exit
+                    # 130 (`_settle_return`). Caught here the same way, so Ctrl-C
+                    # at either prompt leaves the terminal the same way, rather
+                    # than one exiting cleanly and the other dumping a traceback.
+                    print(
+                        "run: interrupted -- the departure was not recorded",
+                        file=sys.stderr,
+                    )
+                    return 130
+
+                # **The consequence of a clock time, made visible** (PI, 2026-09-20).
+                # He accepted losing the automatic wall-clock refusal on the
+                # condition that a mistyped hour is legible rather than silent:
+                # `08:45` for `18:45` sits comfortably inside a twelve-hour
+                # ceiling, and nothing else on this path would remark on it. Read
+                # from `welfare`, never recomputed here -- `render`'s rule, on the
+                # headless path.
+                #
+                # **`departure`, not `args.out_of_cage_at`**: an amended time is
+                # what the session is bounded by, so it is what this line must
+                # show. Printing the value the operator first typed would have
+                # this sentence describe a clock nothing is running. Read at the
+                # wall, as every welfare duration is (P4d-2a spec §10).
+                so_far = session.welfare.out_of_cage_seconds(session.wall_now())
                 print(
-                    "run: interrupted -- the return to the cage was not recorded",
-                    file=sys.stderr,
+                    f"  out of cage: the animal has been out {_hours_minutes(so_far)}"
+                    f", having left its cage at "
+                    f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(departure))}"
+                    # The zone **at the departure**, not at now. A session started
+                    # just after a daylight-saving change would otherwise label a
+                    # departure made before it with the zone that is current now --
+                    # and that is precisely the one hour a year when the label
+                    # carries information.
+                    f" ({time.strftime('%Z', time.localtime(departure))}"
+                    f", this host's local time)"
                 )
-                return 130
-            return 1 if census.hangs else 0
+                # **The return to the cage is taken here, or its absence is
+                # recorded** (P4d-2a spec §3, §5, amended by §10: the terminal,
+                # and only the terminal, until the wl-works ELN exists).
+                # `_close_interval` runs in `finally` so a fault out of
+                # `session.run()` still gets a chance at the terminal path -- and,
+                # on a rig, still has a head to release and a clock to stop
+                # publishing -- rather than leaving the interval open with nothing
+                # said about why.
+                interrupted = False
+                try:
+                    census = session.run()
+                finally:
+                    interrupted = _close_interval(session, args)
+                total = sum(census.outcomes.values()) or 1
+                for outcome, count in census.outcomes.most_common():
+                    print(f"  {outcome.value:18} {count:6}  {100 * count / total:5.1f}%")
+                print(f"  {'hangs':18} {census.hangs:6}")
+                print(f"  ended: {session.stopped_because}")
+                print(
+                    f"  fluid: {session.welfare.commanded:.2f} mL commanded over "
+                    f"{session.welfare.deliveries} deliveries"
+                )
+                # The number a person acts on: how much of the day's minimum is
+                # still owed, to be supplemented after the session (PI,
+                # 2026-09-06). `None` means the day cannot be counted, which is a
+                # louder result than any number.
+                owed = session.welfare.shortfall()
+                print(
+                    "  supplement: UNKNOWN -- the day's prior total was not supplied, "
+                    "so nothing can say what is still owed"
+                    if owed is None
+                    else f"  supplement: {owed:.2f} mL to reach the day's floor"
+                )
+                if interrupted:
+                    print(
+                        "run: interrupted -- the return to the cage was not recorded",
+                        file=sys.stderr,
+                    )
+                    return 130
+                return 1 if census.hangs else 0
+            finally:
+                if session.opened_wall_at is not None and session.ended_wall_at is None:
+                    session.end(how="wlx run")
 
     if args.command == "console":
         wants_write = bool(args.set) or args.stop
