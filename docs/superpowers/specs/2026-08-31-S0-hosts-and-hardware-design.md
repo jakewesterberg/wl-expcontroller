@@ -120,7 +120,7 @@ controller-agnostic, which is the point of ADR-0005.
 |---|---|---|
 | DAQ | **NI PCIe-6343** | Fixed by `wl-sync`'s board: 19 digital out, 4 in, 9 analog in, event codes on P0.8–P0.23 |
 | Cables | 2 × `SHC68-68-EPM` per rig | Analog and digital ride physically separate shielded cables |
-| GPU | NVIDIA, **DisplayPort 2.1 UHBR20 preferred** | See §5.3: it is the difference between compression in the visual path and none |
+| GPU | **NVIDIA GeForce RTX 5070 Ti** (PI, 2026-09-26). NVIDIA lists "DisplayPort 2.1b with UHBR20", 3× DisplayPort and 16 GB GDDR7 ([spec page](https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5070-family/), read 2026-09-26). Partner boards' port layouts can vary, so confirm UHBR20 on the board bought | UHBR20 (~77 Gb/s) carries 4K/240 at 10-bit (~60 Gb/s) with no DSC (§5.3). 16 GB rather than the RTX 5070's 12 GB, for preloaded natural-image sets: one 4K 8-bit RGBA image is ~33 MB of VRAM. Rendering load is not the constraint; the link and VRAM are |
 | CPU | High single-thread clock; enough cores to isolate `taskd` | Hot-path discipline uses CPU isolation and SCHED_FIFO (P3) |
 | RAM | Sized for preloaded natural-image sets | No disk I/O once an epoch starts |
 | Storage | NVMe, sized for a session's logs and behavioral tables | Raw neural data never lands here |
@@ -136,6 +136,27 @@ specified for more than two.
 
 **32-inch-class 16:9 flat OLED**, dual-mode preferred. Specific model deferred: the
 intended purchase is a **tandem OLED expected to release in late 2026**.
+
+**Chosen for now (PI, 2026-09-26): the Samsung Odyssey OLED G8 G80SH**, `LS32HG802SNXZA`, a
+2026 model. Samsung lists it as a 32" QD-OLED panel, 4K at 240 Hz, with **"DP 2.1 (UHBR20)"**
+and "OLED Safeguard+" burn-in protection
+([product page](https://www.samsung.com/us/monitors/gaming/32-inch-odyssey-oled-g8-g80sh-4k-gaming-monitor-sku-ls32hg802snxza/),
+read 2026-09-26). With the RTX 5070 Ti it runs 4K/240 **without DSC**, which settles open
+item 4. Three things it does not settle:
+- **It is QD-OLED, not tandem**, so the ABL headroom and burn-in resistance the paragraph below
+  wants from tandem are not assumed. V9 measures them (§5.4 tests 2 and 6).
+- **No FHD/480 mode is listed.** The page gives 240 Hz only, so §5.3's 2.08 ms FHD mode is not
+  available on this panel. The frame quantum is 4.2 ms at 4K/240.
+- **Whether "OLED Safeguard+" is fully defeatable is not stated.** §5.4 test 1 disqualifies a
+  panel on this alone, so ask Samsung before buying.
+
+The page publishes no HDMI version, color depth or full-field luminance figure; they are
+unverified until the panel is measured. §5.2's geometry is recomputed from the panel's
+measured viewable diagonal.
+
+The ASUS PG32UCDP below is kept as history: ASUS lists its input as "DisplayPort 1.4 DSC"
+([spec page](https://rog.asus.com/monitors/27-to-31-5-inches/rog-swift-oled-pg32ucdp/spec/),
+read 2026-09-26), so it compresses 4K/240 whatever the GPU.
 
 Tandem is the right architecture for this application, and for a reason narrower than its
 marketing. Stacked emissive layers reach a given luminance at lower per-layer current, which
@@ -267,7 +288,7 @@ November, production run mid-November to mid-December, with almost no slack for 
 |---|---|---|
 | 1 | `wl-stack` adopting the `rig/*` role vocabulary | the registry entry's `runs_on` |
 | 2 | Whether `rig/intan` and `rig/sglx` are one machine | V8, and the task PC's network layout |
-| 3 | Tandem panel model, and whether burn-in protection is defeatable | the panel purchase |
-| 4 | Whether the chosen GPU + panel can avoid DSC | GPU purchase |
+| 3 | ~~Tandem panel model~~ The Samsung G80SH was chosen for now (PI, 2026-09-26, §5.1). Still open: **whether its "OLED Safeguard+" is fully defeatable** (§5.4 test 1), and whether a tandem panel replaces it later | the panel purchase |
+| 4 | ~~Whether the chosen GPU + panel can avoid DSC~~ **Closed 2026-09-26: yes.** The RTX 5070 Ti and the G80SH both list DisplayPort 2.1 UHBR20 (§4, §5.1), so 4K/240 at 10-bit runs uncompressed | — |
 | 5 | Photodiode patch placement against the real optics | rig build, and `wl-sync` agreement |
 | 6 | Viewing distance against the real chair and head-post geometry | optics build |
