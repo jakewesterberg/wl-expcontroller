@@ -2269,6 +2269,105 @@ def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
     )
 
 
+def test_a_second_ctrl_c_during_the_post_loop_wait_is_recorded_and_exits_130(
+    tmp_path, monkeypatch
+):
+    """**Residual fix round.** `_close_interval`'s wait for the post-loop phase to
+    begin -- the loop just above `_settle_return` -- used to sit before the `try:`
+    that catches `KeyboardInterrupt`. A second Ctrl-C landing there (found by the
+    reviewer's scratch probe, which stretched `head_released` the same way this test
+    does) escaped uncaught: past `give_up.set()` and `session.return_not_recorded`,
+    leaving `['session opened', 'departure', 'session ended']` and a traceback,
+    instead of a `return not recorded` row and a clean 130. The wait now runs inside
+    the `try`, so this second Ctrl-C takes the same path the return prompt's own
+    Ctrl-C already did."""
+    import _thread
+
+    from wl_expcontroller import taskd
+
+    real_run_trial, calls = taskd.run_trial, [0]
+
+    def run_trial(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise KeyboardInterrupt  # the operator's first Ctrl-C, in the loop
+        return real_run_trial(*args, **kwargs)
+
+    real_release = taskd.Session.head_released
+
+    def slow_release(self, at):
+        # `await_return` runs on the background thread and calls this on entry, to
+        # release the head the first Ctrl-C left fixed. A short head start lets the
+        # main thread clear `waiter.start()` and reach `_close_interval`'s wait loop
+        # before the interrupt fires, so it lands in the wait rather than racing
+        # thread start-up; the main thread is still in that wait when it fires --
+        # the operator's second Ctrl-C, mid-wait.
+        time.sleep(0.05)
+        _thread.interrupt_main()
+        time.sleep(0.2)
+        return real_release(self, at)
+
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+    monkeypatch.setattr(taskd.Session, "head_released", slow_release)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    # Never reached if the fix holds: the second Ctrl-C ends the wait before
+    # `_settle_return` ever calls `input()`.
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "now")
+
+    exit_code = _main_uninterrupted(
+        _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--trials", "5")
+    )
+
+    assert exit_code == 130
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "interrupted at the terminal"
+
+
+def test_a_fault_during_the_loop_prints_the_stop_reason_before_the_return_prompt(
+    tmp_path, monkeypatch, capsys
+):
+    """**Residual fix round, Ruling 13.** A fault that ended the loop used to reach
+    the return prompt with nothing on screen about why the session had stopped --
+    an operator typing a return time had no way to know a pump fault had just
+    happened. `main`'s `except BaseException` branch now prints `ended: <reason>`
+    before `_close_interval`, so the reason is visible before the prompt is even
+    shown. **Not the fluid or supplement lines** (decided, not asked): after a pump
+    fault, `welfare.deliver` has already counted the failed delivery as `commanded`,
+    so a supplement figure printed here would count a delivery that never
+    happened."""
+    from wl_expcontroller import taskd
+
+    real_run_trial, calls = taskd.run_trial, [0]
+
+    def run_trial(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise OSError("the pump did not answer")
+        return real_run_trial(*args, **kwargs)
+
+    def answer(_prompt=""):
+        print("<<the return prompt>>")
+        return "now"
+
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", answer)
+
+    with pytest.raises(OSError, match="the pump did not answer"):
+        main(_run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--trials", "5"))
+
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "returned", "session ended",
+    ]
+    out = capsys.readouterr().out
+    assert "ended: fault, session aborted: OSError: the pump did not answer" in out
+    assert "fluid:" not in out
+    assert "supplement:" not in out
+    assert out.index("ended:") < out.index("<<the return prompt>>")
+
+
 # --- final review M1, M2: after the departure mark and before the loop ---------
 
 

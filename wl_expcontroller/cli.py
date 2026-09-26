@@ -565,17 +565,21 @@ def _close_interval(session, args) -> bool:
 
     waiter = threading.Thread(target=_wait, daemon=True)
     waiter.start()
-    # **The prompt waits for the post-loop phase to begin, or for its thread to end**
-    # (P4d-2a final review I4). `await_return` releases a head that a fault or Ctrl-C
-    # left fixed, and only then moves `phase` on; a return answered before that
-    # release lands is refused as an animal home while still in the chair. A person
-    # does not type that fast, and a test's answer does. Joined in short steps rather
-    # than polled, and bounded by the thread: one that fails first ends the wait.
-    while session.phase == "running" and waiter.is_alive():
-        waiter.join(0.01)
     why = None
     interrupted = False
     try:
+        # **The prompt waits for the post-loop phase to begin, or for its thread to
+        # end** (P4d-2a final review I4), **inside this `try`** (residual fix round:
+        # this wait used to sit before the `try`, so a second Ctrl-C landing in it
+        # escaped uncaught -- past `give_up.set()` and `return_not_recorded` below --
+        # leaving no return row and a traceback). `await_return` releases a head
+        # that a fault or Ctrl-C left fixed, and only then moves `phase` on; a
+        # return answered before that release lands is refused as an animal home
+        # while still in the chair. A person does not type that fast, and a test's
+        # answer does. Joined in short steps rather than polled, and bounded by the
+        # thread: one that fails first ends the wait.
+        while session.phase == "running" and waiter.is_alive():
+            waiter.join(0.01)
         why = _settle_return(session, args.actor or "")
     except KeyboardInterrupt:
         why = "interrupted at the terminal"
@@ -1330,6 +1334,15 @@ def main(argv: list[str] | None = None) -> int:
                     # still taken at the terminal, or its absence recorded, before
                     # the exception goes on -- on a rig there is still a head to
                     # release and a clock to publish.
+                    #
+                    # **The stop reason prints first** (residual fix round, Ruling
+                    # 13): an operator typing a return time is entitled to know why
+                    # the session stopped before being asked for it. **Not the rest
+                    # of `_summary`**: `welfare.deliver` counts a delivery as
+                    # `commanded` before `pump.deliver` runs it, so after a pump
+                    # fault the fluid and supplement figures would count the very
+                    # delivery that failed.
+                    print(f"  ended: {session.stopped_because}")
                     _close_interval(session, args)
                     raise
                 if census is None:
