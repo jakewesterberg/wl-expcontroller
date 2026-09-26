@@ -472,10 +472,12 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
 
     # P4d-2a spec §10, Task 8: no terminal, so the interval closes at once rather
     # than waiting on `await_return` for a return nothing here can ever send.
+    # Task 9: `session ended` follows it, from `_close_interval`'s own `finally`.
     notes_path = tmp_path / "2027-01-14_04" / "expcontroller" / "welfare_notes.jsonl"
     notes = [json.loads(line) for line in notes_path.read_text().splitlines()]
-    assert notes[-1]["kind"] == "return not recorded"
-    assert notes[-1]["reason"] == "no terminal"
+    assert notes[-1]["kind"] == "session ended"
+    assert notes[-2]["kind"] == "return not recorded"
+    assert notes[-2]["reason"] == "no terminal"
 
 
 def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch):
@@ -539,6 +541,8 @@ def _telemetry(**overrides) -> Telemetry:
     with no duration bound at all, and a default of `None` would make every
     renderer test here quietly exercise a kiosk. `chair_seconds` defaults to a
     number for the same reason, and `deployment` to the kind that has one.
+    `in_session_seconds` defaults to a number too, for the same reason -- its
+    `None` means a frame from before `open()`, which a live console never shows.
 
     `duration_warning` defaults to `None` -- the quiet case -- so a test that does
     not ask for the warning does not get a line it never checked.
@@ -557,6 +561,7 @@ def _telemetry(**overrides) -> Telemetry:
         shortfall_ml=None,
         out_of_cage_seconds=96.0,
         chair_seconds=42.0,
+        in_session_seconds=123.0,
         deployment="rig_fixed",
         duration_warning=None,
         outcomes={},
@@ -818,6 +823,58 @@ def test_console_renders_the_stop_reason_when_the_session_has_ended():
     rendered = render(frame)
 
     assert "stopped by jake" in rendered
+
+
+# ---------------------------------------------------------------------------
+# P4d-2a spec §10 item 3: the in-session clock, and the phase line
+# ---------------------------------------------------------------------------
+
+
+def test_console_shows_the_in_session_clock_as_a_clock_not_a_raw_float():
+    """The PI's second clock, apart from out-of-cage. Formatted the same way chair
+    time is (`_clock`), because it is a duration a person reads on a screen, not a
+    number to do arithmetic on."""
+    frame = _telemetry(in_session_seconds=4_007.0)
+
+    rendered = render(frame)
+
+    assert "in session: 1:06:47" in rendered
+    assert "4007.0" not in rendered
+
+
+def test_console_says_a_session_that_has_not_opened_has_no_in_session_clock():
+    """`None` is the state before `open()`. Practically never seen on a live frame
+    -- a session publishes nothing before `run()`'s own backstop has opened it --
+    but `render` must not crash on it, and must not print `0:00`, which would say a
+    clock had started that has not."""
+    frame = _telemetry(in_session_seconds=None)
+
+    rendered = render(frame)
+
+    line = [
+        text for text in rendered.splitlines() if text.strip().startswith("in session")
+    ]
+    assert line == ["  in session: n/a -- not yet opened"]
+    assert "0:00" not in rendered
+
+
+def test_console_shows_the_phase_with_a_space_not_the_wire_underscore():
+    """`Telemetry.phase` is `running`/`awaiting_return`/`closed` on the wire
+    (`taskd.Session.phase`); this screen is for a person, not a match against the
+    field's own spelling."""
+    assert "phase: running" in render(_telemetry(phase="running"))
+    assert "phase: awaiting return" in render(_telemetry(phase="awaiting_return"))
+    assert "phase: closed" in render(_telemetry(phase="closed"))
+
+
+def test_the_in_session_clock_has_no_warning_line_of_its_own():
+    """P4d-2a spec §10 item 3: it bounds nothing, so unlike out-of-cage it never
+    produces a WARNING -- `duration_warning` is `welfare.approaching_limit`'s own
+    sentence, about out-of-cage alone, and nothing computes a second one for this
+    clock."""
+    rendered = render(_telemetry(in_session_seconds=999_999.0, duration_warning=None))
+
+    assert "WARNING" not in rendered
 
 
 # ---------------------------------------------------------------------------
@@ -1450,9 +1507,10 @@ def test_the_flag_is_the_non_interactive_confirmation_and_says_so(tmp_path):
     assert exit_code == 0
     rows = _notes(tmp_path)
     assert [row["kind"] for row in rows] == [
-        "departure", "departure confirmed", "return not recorded",
+        "session opened", "departure", "departure confirmed",
+        "return not recorded", "session ended",
     ]
-    assert rows[1]["how"] == "--confirm-out-of-cage, with no terminal attached"
+    assert rows[2]["how"] == "--confirm-out-of-cage, with no terminal attached"
 
 
 def test_a_near_departure_asks_nothing_and_writes_no_confirmation(tmp_path):
@@ -1462,7 +1520,9 @@ def test_a_near_departure_asks_nothing_and_writes_no_confirmation(tmp_path):
     unconditionally, and nobody is here to take the return either, so the run still
     ends with a `return not recorded` row -- neither is what this test is about.)"""
     assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm())) == 0
-    assert _kinds(tmp_path) == ["departure", "return not recorded"]
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
 
 
 def test_an_interactive_run_asks_and_a_person_can_confirm(tmp_path, monkeypatch):
@@ -1478,9 +1538,10 @@ def test_an_interactive_run_asks_and_a_person_can_confirm(tmp_path, monkeypatch)
     # P4d-2a: the return prompt asks too, at the terminal this test also fakes --
     # and its fixed `"confirm"` answer is not a clock time three times running.
     assert [row["kind"] for row in rows] == [
-        "departure", "departure confirmed", "return not recorded",
+        "session opened", "departure", "departure confirmed",
+        "return not recorded", "session ended",
     ]
-    assert rows[1]["how"] == "confirmed at the terminal"
+    assert rows[2]["how"] == "confirmed at the terminal"
 
 
 def test_an_interactive_run_stops_when_the_person_does_not_confirm(
@@ -1495,7 +1556,11 @@ def test_an_interactive_run_stops_when_the_person_does_not_confirm(
         main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
 
     assert "not confirmed" in str(refused.value)
-    assert _notes(tmp_path) == []
+    # Task 9: `session.open()` runs right after the `Session` is built, ahead of
+    # this prompt -- an administrative timestamp, not a welfare mark, so it is the
+    # one row left even though the departure itself is refused and nothing is
+    # delivered (the refusal's own wording, updated to say so precisely).
+    assert _kinds(tmp_path) == ["session opened"]
 
 
 def test_an_interactive_run_can_amend_the_time_with_a_reason_and_a_name(
@@ -1516,11 +1581,12 @@ def test_an_interactive_run_can_amend_the_time_with_a_reason_and_a_name(
     # P4d-2a: the return prompt asks too, at the same terminal, and this run's last
     # answer -- "now" -- takes it.
     assert [row["kind"] for row in rows] == [
-        "departure", "departure amended", "returned",
+        "session opened", "departure", "departure amended", "returned",
+        "session ended",
     ]
-    assert rows[1]["reason"] == "typed 08:45 for 18:45"
-    assert rows[1]["by"] == "jake"
-    assert rows[1]["was"] != rows[1]["now"]
+    assert rows[2]["reason"] == "typed 08:45 for 18:45"
+    assert rows[2]["by"] == "jake"
+    assert rows[2]["was"] != rows[2]["now"]
 
 
 def test_an_amendment_can_be_made_without_a_terminal_too(tmp_path):
@@ -1542,10 +1608,11 @@ def test_an_amendment_can_be_made_without_a_terminal_too(tmp_path):
     # either -- that is a `return not recorded` row, not a second rule about what an
     # amendment is.
     assert [row["kind"] for row in rows] == [
-        "departure", "departure amended", "return not recorded",
+        "session opened", "departure", "departure amended",
+        "return not recorded", "session ended",
     ]
-    assert rows[1]["how"] == "--amend-out-of-cage-to"
-    assert "local" in rows[1]["now_local"]
+    assert rows[2]["how"] == "--amend-out-of-cage-to"
+    assert "local" in rows[2]["now_local"]
 
 
 def test_an_amendment_with_no_reason_is_refused(tmp_path):
@@ -1654,9 +1721,10 @@ def test_a_closed_stdin_is_not_a_terminal_and_the_flag_still_works(
     # P4d-2a: with `sys.stdin` `None` there is no terminal for the return either, so
     # this closed-stdin run still ends with a `return not recorded` row.
     assert [row["kind"] for row in rows] == [
-        "departure", "departure confirmed", "return not recorded",
+        "session opened", "departure", "departure confirmed",
+        "return not recorded", "session ended",
     ]
-    assert rows[1]["how"] == "--confirm-out-of-cage, with no terminal attached"
+    assert rows[2]["how"] == "--confirm-out-of-cage, with no terminal attached"
 
 
 def test_a_closed_stdin_refuses_with_a_sentence_rather_than_a_traceback(
@@ -1687,7 +1755,9 @@ def test_abort_at_the_prompt_stops_rather_than_starting_an_amendment(
         main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
 
     assert "not confirmed" in str(refused.value)
-    assert _notes(tmp_path) == []
+    # Task 9: `session.open()` runs ahead of this prompt, so its administrative
+    # row survives the refusal even though the departure itself does not.
+    assert _kinds(tmp_path) == ["session opened"]
 
 
 def test_the_shipped_reference_config_cannot_reach_the_confirmation_band(tmp_path):
@@ -1786,8 +1856,10 @@ def test_a_headless_run_records_that_nobody_could_mark_the_return(tmp_path):
     exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 0
-    assert _kinds(tmp_path) == ["departure", "return not recorded"]
-    assert _notes(tmp_path)[-1]["reason"] == "no terminal"
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "no terminal"
 
 
 def test_a_linked_headless_run_never_calls_await_return(tmp_path, monkeypatch):
@@ -1824,8 +1896,10 @@ def test_a_linked_headless_run_never_calls_await_return(tmp_path, monkeypatch):
     assert exit_code == 0
     assert calls == [], "await_return must not run at all with no terminal"
     rows = _notes(tmp_path)
-    assert rows[-1]["kind"] == "return not recorded"
-    assert rows[-1]["reason"] == "no terminal"
+    assert [r["kind"] for r in rows] == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert rows[-2]["reason"] == "no terminal"
 
 
 def test_a_run_at_a_terminal_takes_the_return(tmp_path, monkeypatch):
@@ -1835,8 +1909,10 @@ def test_a_run_at_a_terminal_takes_the_return(tmp_path, monkeypatch):
     exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 0
-    assert _kinds(tmp_path) == ["departure", "returned"]
-    assert _notes(tmp_path)[-1]["how"] == "terminal"
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "returned", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["how"] == "terminal"
 
 
 def test_a_head_fixed_run_whose_frames_outran_the_wall_takes_the_return(
@@ -1872,7 +1948,9 @@ def test_a_head_fixed_run_whose_frames_outran_the_wall_takes_the_return(
 
     assert [namespace.deployment for namespace in parsed] == ["rig-fixed"]
     assert exit_code == 0
-    assert _kinds(tmp_path) == ["departure", "returned"]
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "returned", "session ended",
+    ]
     trials = tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
     assert len(trials.read_text().splitlines()) == 200, "the loop ran every trial"
 
@@ -1900,7 +1978,9 @@ def test_the_return_prompt_reads_now_on_the_sessions_clock(tmp_path, monkeypatch
     exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 0
-    assert _kinds(tmp_path) == ["departure", "returned"]
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "returned", "session ended",
+    ]
 
 
 def test_a_far_return_is_confirmed_at_the_terminal(tmp_path, monkeypatch):
@@ -1925,7 +2005,8 @@ def test_a_far_return_is_confirmed_at_the_terminal(tmp_path, monkeypatch):
 
     assert exit_code == 0
     assert _kinds(tmp_path) == [
-        "departure", "departure confirmed", "returned", "return confirmed",
+        "session opened", "departure", "departure confirmed", "returned",
+        "return confirmed", "session ended",
     ]
 
 
@@ -1944,7 +2025,10 @@ def test_a_return_before_the_departure_is_refused_and_asked_again(tmp_path, monk
     )
 
     assert exit_code == 0
-    assert _kinds(tmp_path) == ["departure", "departure confirmed", "returned"]
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "departure confirmed", "returned",
+        "session ended",
+    ]
 
 
 def test_three_answers_that_are_not_a_time_end_the_prompt_and_say_so(tmp_path, monkeypatch):
@@ -1954,8 +2038,10 @@ def test_three_answers_that_are_not_a_time_end_the_prompt_and_say_so(tmp_path, m
     exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 0
-    assert _kinds(tmp_path) == ["departure", "return not recorded"]
-    assert _notes(tmp_path)[-1]["reason"] == "no clock time given at the terminal"
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "no clock time given at the terminal"
 
 
 def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkeypatch):
@@ -1970,8 +2056,10 @@ def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkey
     exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 130
-    assert _kinds(tmp_path) == ["departure", "return not recorded"]
-    assert _notes(tmp_path)[-1]["reason"] == "interrupted at the terminal"
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "interrupted at the terminal"
 
 
 def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monkeypatch):
@@ -1993,7 +2081,11 @@ def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monk
     with pytest.raises(RuntimeError, match="publish failed"):
         main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
-    assert _kinds(tmp_path)[-1] == "returned"
+    # `session.end()` still runs, in `_close_interval`'s outer `finally`, even
+    # though the re-raised fault propagates past it -- so `session ended` is the
+    # last row, after the terminal's own `returned` mark that the fault must not
+    # be allowed to erase.
+    assert _kinds(tmp_path)[-2:] == ["returned", "session ended"]
 
 
 def test_wlx_run_rejects_await_return_for(tmp_path):
@@ -2036,5 +2128,7 @@ def test_an_empty_answer_at_the_terminal_ends_the_prompt_and_asks_nothing_more(
 
     assert exit_code == 0
     assert len(asked) == 1, "no answer at all ends the prompt at once"
-    assert _kinds(tmp_path) == ["departure", "return not recorded"]
-    assert _notes(tmp_path)[-1]["reason"] == "no answer at the terminal"
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "no answer at the terminal"

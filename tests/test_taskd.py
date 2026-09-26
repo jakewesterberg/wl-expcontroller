@@ -31,9 +31,11 @@ from wl_expcontroller.link import (
     SetParameter,
     Simulated,
     Stop,
+    Telemetry,
 )
 from wl_expcontroller.record import REFUSAL_LOG_LIMIT
-from wl_expcontroller.scheduler import Block, Condition, Counting
+from wl_expcontroller.scheduler import Block, Condition, Counting, Scheduler
+from wl_expcontroller.simulate import Tally
 from wl_expcontroller.task import Outcome
 from wl_expcontroller.taskd import Session, SessionSpec
 from wl_expcontroller.welfare import Deployment, Simulated as Pump
@@ -1692,3 +1694,146 @@ def test_a_fault_after_the_loop_is_published_then_raised(tmp_path, monkeypatch):
     assert len(calls) == 2, "the fault frame must still be published after the first fails"
     assert session.stop_kind == "fault"
     assert "disk full" in session.stopped_because
+
+
+# ---------------------------------------------------------------------------
+# Task 9: the in-session clock, apart from out-of-cage (P4d-2a spec §10 item 3)
+# ---------------------------------------------------------------------------
+
+
+def test_open_writes_a_session_opened_row_and_a_second_call_raises(tmp_path):
+    wall = _Wall(WALL_NOW)
+    spec = _spec(
+        tmp_path, trials=3, deployment=Deployment.CAGE_SIDE, bounds=_cage_side_bounds()
+    )
+    session = Session(spec, card=Card(), pump=Pump(), wall_clock=wall)
+
+    session.open()
+
+    assert session.opened_wall_at == WALL_NOW
+    rows = _welfare_notes(session)
+    assert [row["kind"] for row in rows] == ["session opened"]
+    assert rows[0]["was"] == WALL_NOW
+
+    with pytest.raises(RuntimeError, match="open"):
+        session.open()
+
+
+def test_end_refuses_before_open_and_a_second_call_after(tmp_path):
+    wall = _Wall(WALL_NOW)
+    spec = _spec(
+        tmp_path, trials=3, deployment=Deployment.CAGE_SIDE, bounds=_cage_side_bounds()
+    )
+    session = Session(spec, card=Card(), pump=Pump(), wall_clock=wall)
+
+    with pytest.raises(RuntimeError, match="open"):
+        session.end()
+
+    session.open()
+    wall.at = WALL_NOW + 42.0
+    session.end()
+
+    assert session.ended_wall_at == WALL_NOW + 42.0
+    rows = _welfare_notes(session)
+    assert [row["kind"] for row in rows] == ["session opened", "session ended"]
+    assert rows[-1]["was"] == WALL_NOW + 42.0
+
+    with pytest.raises(RuntimeError, match="end"):
+        session.end()
+
+
+def test_run_opens_the_in_session_clock_itself_if_nothing_has(tmp_path):
+    """The backstop for a direct API user who never calls `open()` -- `wlx run`
+    calls it explicitly and earlier still (`tests/test_cli.py`), so this is the
+    only path that ever reaches `run()`'s own call."""
+    session = _session(_spec(tmp_path, trials=3))
+    assert session.opened_wall_at is None
+
+    session.run()
+
+    assert session.opened_wall_at is not None
+    kinds = [row["kind"] for row in _welfare_notes(session)]
+    # `_session()` already marked the departure before `run()` was ever called
+    # (see its own docstring), so `session opened` lands second here -- this test
+    # is about `run()` opening the clock at all, not about row order, which
+    # `tests/test_cli.py` pins for `wlx run`'s own call sequence.
+    assert kinds == ["departure", "session opened"]
+
+
+def test_in_session_seconds_advances_with_the_wall_and_stops_after_end(tmp_path):
+    """P4d-2a spec §10 item 3: `Telemetry.in_session_seconds` reads
+    `(ended_wall_at or wall_now) - opened_wall_at` -- `None` before `open()`, moving
+    with the wall while the session is open, and frozen the instant `end()` has run.
+
+    Cage-side, so no departure or head-fixation mark is needed just to ask
+    `Telemetry.of` for a frame -- `welfare.out_of_cage_seconds` answers `None`
+    outright rather than requiring one, and this test is about the clock `welfare`
+    never sees at all.
+    """
+    wall = _Wall(WALL_NOW)
+    spec = _spec(
+        tmp_path, trials=3, deployment=Deployment.CAGE_SIDE, bounds=_cage_side_bounds()
+    )
+    session = Session(spec, card=Card(), pump=Pump(), wall_clock=wall)
+    scheduler = Scheduler(
+        blocks=[Block(name="only", conditions=[Condition("only", {}, target=1)])],
+        seed=0,
+    )
+    tally = Tally()
+
+    def frame() -> Telemetry:
+        return Telemetry.of(session, tally, scheduler, index=0)
+
+    assert session.opened_wall_at is None
+    assert frame().in_session_seconds is None, "no clock before open()"
+
+    session.open()
+    assert frame().in_session_seconds == pytest.approx(0.0)
+
+    wall.at = WALL_NOW + 90.0
+    assert frame().in_session_seconds == pytest.approx(90.0), "moves with the wall"
+
+    wall.at = WALL_NOW + 150.0
+    session.end()
+    assert frame().in_session_seconds == pytest.approx(150.0)
+
+    wall.at = WALL_NOW + 999.0
+    assert frame().in_session_seconds == pytest.approx(150.0), (
+        "must not advance after end()"
+    )
+
+
+def test_the_in_session_clock_bounds_nothing(tmp_path):
+    """P4d-2a spec §10 item 3, in the brief's own words: **it bounds nothing.** A
+    session open thirteen hours by the wall, whose departure was only an hour ago,
+    must have `must_stop` and `approaching_limit` say nothing about it -- both read
+    `welfare` alone, and `welfare` never receives `opened_wall_at`/`ended_wall_at`
+    (nothing in this file passes either to it, and `Welfare.__init__` takes no such
+    argument)."""
+    wall = _Wall(WALL_NOW)
+    # Twelve hours: comfortably past the thirteen the in-session clock will read,
+    # so a `must_stop`/`approaching_limit` answer here can only be about the
+    # departure, one hour old, never about the in-session clock this test is
+    # actually asking about.
+    spec = _spec(tmp_path, trials=3, bounds=_bounds(out_of_cage=43_200.0))
+    session = Session(spec, card=Card(), pump=Pump(), wall_clock=wall)
+    session.open()
+
+    # Thirteen hours after the session opened -- the reading everything below is
+    # taken at -- with the departure marked an hour before *that* instant, not
+    # before the session's own opening.
+    wall.at = WALL_NOW + 13 * 3_600.0
+    session.left_cage(at=wall.at - 3_600.0, confirmed=True)
+
+    scheduler = Scheduler(
+        blocks=[Block(name="only", conditions=[Condition("only", {}, target=1)])],
+        seed=0,
+    )
+    frame = Telemetry.of(session, Tally(), scheduler, index=0)
+    assert frame.in_session_seconds == pytest.approx(13 * 3_600.0), (
+        "the session really has been open thirteen hours"
+    )
+
+    assert session.welfare.must_stop(session.wall_now()) is None
+    assert session.welfare.approaching_limit(session.wall_now()) is None
+    assert frame.duration_warning is None

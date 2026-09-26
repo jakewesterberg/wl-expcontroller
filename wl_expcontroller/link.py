@@ -76,8 +76,11 @@ from typing import Protocol
 #: renders `chair_seconds` with a `None` in it, and one that coerced would tell an
 #: operator a restrained animal had been restrained for no time at all.
 #:
-#: 6 (2026-09-26, P4d-2a): `phase` and `stop_kind`. A console built against 5 renders
-#: an awaiting-return frame's advancing clock as a running session.
+#: 6 (2026-09-26, P4d-2a): `phase`, `stop_kind`, and -- added later in the same
+#: slice, while schema 6 was still unreleased (Task 9) -- `in_session_seconds`, the
+#: PI's second clock, apart from out-of-cage and bounding nothing. A console built
+#: against 5 renders an awaiting-return frame's advancing clock as a running
+#: session, and has no field at all for the in-session one.
 SCHEMA = 6
 
 #: How many refusals a session keeps, per source, and therefore how many one
@@ -232,6 +235,16 @@ class Telemetry:
     #: clock. `deployment` below is how a console says which of the two reasons it
     #: is.
     chair_seconds: float | None
+    #: `(session.ended_wall_at or wall_now) - session.opened_wall_at` -- the PI's
+    #: second clock (P4d-2a spec §10 item 3), asked for beside out-of-cage and kept
+    #: apart from it: "there should also be a in-session clock that is tracked
+    #: seperately." **`None` before `open()`**, never `0.0`, for the reason every
+    #: other absent clock on this frame is `None` -- a session that has not yet
+    #: opened has no in-session interval to report, and `0.0` would say it has one
+    #: that just started. **It bounds nothing** -- ruled "only shown and
+    #: recorded" -- so `welfare` never sees `opened_wall_at`/`ended_wall_at` and no
+    #: `must_stop`/`approaching_limit` reads it.
+    in_session_seconds: float | None
     #: `session.spec.deployment.value` -- which of `welfare.Deployment`'s three kinds
     #: this session declared. On the wire rather than inferred from which fields are
     #: `None`, because `cli.render` promises to name a field per line and derive
@@ -337,6 +350,23 @@ class Telemetry:
             # `welfare` is given nowhere.
             out_of_cage_seconds=session.welfare.out_of_cage_seconds(wall_now),
             chair_seconds=session.welfare.chair_seconds(wall_now),
+            # `session.opened_wall_at`/`session.ended_wall_at`, read as plain
+            # attributes like `wall_now` above: the session's own clock, apart from
+            # `welfare` entirely (P4d-2a spec §10 item 3) -- there is no method on
+            # `welfare` to ask, because it bounds nothing and no `welfare` method
+            # takes either instant. `None` before `open()`; `ended_wall_at` beats
+            # `wall_now` once `end()` has run, so the frame that closes the clock
+            # is also the last one it advances in.
+            in_session_seconds=(
+                None
+                if session.opened_wall_at is None
+                else (
+                    session.ended_wall_at
+                    if session.ended_wall_at is not None
+                    else wall_now
+                )
+                - session.opened_wall_at
+            ),
             deployment=session.spec.deployment.value,
             duration_warning=session.duration_warning(wall_now),
             outcomes={k.value: v for k, v in tally.outcomes.items()},
@@ -395,6 +425,7 @@ def encode(telemetry: Telemetry) -> bytes:
         "shortfall_ml": telemetry.shortfall_ml,
         "out_of_cage_seconds": telemetry.out_of_cage_seconds,
         "chair_seconds": telemetry.chair_seconds,
+        "in_session_seconds": telemetry.in_session_seconds,
         "deployment": telemetry.deployment,
         "duration_warning": telemetry.duration_warning,
         "outcomes": telemetry.outcomes,
@@ -416,13 +447,15 @@ def decode(payload: bytes) -> Telemetry:
 
     **`None` survives.** msgpack has a native nil, distinct from `0`/`0.0`, and
     `unpackb`'s default `raw=False` returns Python `str` rather than `bytes` for text
-    -- so `fluid_today_ml`/`shortfall_ml`/`out_of_cage_seconds`/`chair_seconds`
-    round-trip as `None` when that is what they were, never silently becoming a
-    number. For the first two that is an unknown day; for the third it is a cage-side
-    session that has no such interval, and a `0.0` on the wire would read as a clock
-    that had not started; for the fourth it is a deployment that takes no
-    head-fixation marks, where a `0.00` would report an animal as unrestrained that
-    is sitting in a chair.
+    -- so `fluid_today_ml`/`shortfall_ml`/`out_of_cage_seconds`/`chair_seconds`/
+    `in_session_seconds` round-trip as `None` when that is what they were, never
+    silently becoming a number. For the first two that is an unknown day; for the
+    third it is a cage-side session that has no such interval, and a `0.0` on the
+    wire would read as a clock that had not started; for the fourth it is a
+    deployment that takes no head-fixation marks, where a `0.00` would report an
+    animal as unrestrained that is sitting in a chair; for the fifth it is a
+    session that has not called `open()` yet, where a `0.0` would read as a clock
+    already running.
     See this module's docstring: an unknown
     day rendered as a confident `0.0` is exactly the failure `welfare.shortfall()`
     exists to prevent, and a console showing it would be the same failure one hop
@@ -445,6 +478,7 @@ def decode(payload: bytes) -> Telemetry:
         shortfall_ml=data["shortfall_ml"],
         out_of_cage_seconds=data["out_of_cage_seconds"],
         chair_seconds=data["chair_seconds"],
+        in_session_seconds=data["in_session_seconds"],
         deployment=data["deployment"],
         duration_warning=data["duration_warning"],
         outcomes=data["outcomes"],
