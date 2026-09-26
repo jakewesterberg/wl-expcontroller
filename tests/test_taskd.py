@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import math
+import threading
+import time
 
 import pytest
 
@@ -1414,3 +1416,168 @@ def test_a_console_return_with_a_nan_at_is_refused_not_fatal(tmp_path):
     assert session.stop_kind == "completed"
     names = [name for name, _by, _why in session.refusals]
     assert names == ["returned_to_cage"]
+
+
+class _Wall:
+    """A wall clock a test can move."""
+
+    def __init__(self, at: float) -> None:
+        self.at = at
+
+    def __call__(self) -> float:
+        return self.at
+
+
+def _until(predicate, seconds: float = 5.0) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.005)
+    return False
+
+
+def _awaiting(session: Session, **kwargs) -> tuple[threading.Thread, threading.Event]:
+    give_up = threading.Event()
+    thread = threading.Thread(
+        target=session.await_return, args=(give_up,), kwargs={"heartbeat": 0.01, **kwargs}
+    )
+    thread.start()
+    return thread, give_up
+
+
+def _chaired_and_run(tmp_path, link, wall) -> Session:
+    spec = _spec(tmp_path, trials=3, deployment=Deployment.RIG_CHAIRED)
+    session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=wall)
+    session.left_cage(at=WALL_NOW)
+    session.run()
+    return session
+
+
+def test_after_the_loop_the_out_of_cage_clock_keeps_running_on_the_wall(tmp_path):
+    """P4d-2a spec §1 item 4: the clock went dark when the loop ended."""
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _chaired_and_run(tmp_path, link, wall)
+    wall.at = WALL_NOW + 600.0
+
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: link.published[-1].phase == "awaiting_return")
+        frame = link.published[-1]
+        assert frame.out_of_cage_seconds == pytest.approx(600.0)
+        assert frame.stop_kind == "completed"
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert link.published[-1].phase == "awaiting_return", "no return, so never closed"
+
+
+def test_past_the_limit_after_the_loop_the_warning_says_so(tmp_path):
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _chaired_and_run(tmp_path, link, wall)
+    wall.at = WALL_NOW + 900.0  # `_bounds()`' ceiling is 800 s
+
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: link.published[-1].phase == "awaiting_return")
+        assert "against a ceiling of" in link.published[-1].duration_warning
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+
+
+def test_a_console_return_after_the_loop_closes_the_interval(tmp_path):
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _chaired_and_run(tmp_path, link, wall)
+    wall.at = WALL_NOW + 120.0
+    link.queue(ReturnedToCage(at=WALL_NOW + 60.0, by="jake", confirmed=False))
+
+    session.await_return(threading.Event(), heartbeat=0.01)
+
+    assert session.phase == "closed"
+    assert link.published[-1].phase == "closed"
+    assert link.published[-1].out_of_cage_seconds == pytest.approx(60.0)
+    assert [r["kind"] for r in _welfare_notes(session)][-1] == "returned"
+
+
+def test_after_the_loop_a_parameter_or_a_stop_is_refused_not_applied(tmp_path):
+    """Review Focus 5."""
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _chaired_and_run(tmp_path, link, wall)
+    link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
+    link.queue(Stop(by="sam"))
+
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: len(session.refusals) == 2)
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+
+    assert [(n, b) for n, b, _ in session.refusals] == [("fix_hold", "jake"), ("stop", "sam")]
+    assert all("waiting for the animal's return" in why for _, _, why in session.refusals)
+    assert session.staged == ()
+    assert session.stop_kind == "completed", "a late stop changes nothing"
+
+
+def test_a_fault_skipped_the_release_and_the_return_can_still_land(tmp_path):
+    """Review Focus 4, and P4d-2a spec §1 item 3: a fault re-raises past the release
+    at the end of `run()`, and `welfare` refuses a return for a head still fixed."""
+
+    class Broken:
+        def deliver(self, ml: float) -> None:
+            raise RuntimeError("solenoid did not answer")
+
+    link = Simulated()
+    session = Session(
+        _spec(tmp_path, trials=200), card=Card(), pump=Broken(), link=link,
+        wall_clock=lambda: WALL_NOW,
+    )
+    session.left_cage(at=WALL_NOW)
+    session.head_fixed(at=0.0)
+    with pytest.raises(RuntimeError, match="solenoid"):
+        session.run()
+    assert session.welfare.released_at is None, "the gap this test closes"
+    link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
+
+    session.await_return(threading.Event(), heartbeat=0.01)
+
+    assert session.welfare.released_at is not None
+    assert session.welfare.returned_at is not None
+    assert link.published[-1].phase == "closed"
+    assert link.published[-1].stop_kind == "fault"
+
+
+def _cage_side_bounds() -> Bounds:
+    """A cage-side config (S13, see `test_welfare._home_bounds`): the same fluid
+    floor as `_bounds()` but **no `out_of_cage` ceiling** -- `welfare.Welfare`
+    refuses a `Deployment.CAGE_SIDE` session declared *with* one, since the animal
+    never left home and there is no interval for that ceiling to bound."""
+    return Bounds(
+        subject="A",
+        ceilings={"reward_correct": Ceiling(value=0.15, maximum=0.40, unit="mL")},
+        minima={"daily_fluid": Floor(value=250.0, unit="mL")},
+    )
+
+
+def test_a_cage_side_session_has_no_return_to_await(tmp_path):
+    link = Simulated()
+    spec = _spec(
+        tmp_path, trials=3, deployment=Deployment.CAGE_SIDE, bounds=_cage_side_bounds()
+    )
+    session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=lambda: WALL_NOW)
+    session.run()
+    published = len(link.published)
+
+    session.await_return(threading.Event(), heartbeat=0.01)
+
+    assert len(link.published) == published
+
+
+def test_await_return_before_the_loop_is_refused(tmp_path):
+    session = _chaired(tmp_path)
+    session.left_cage(at=WALL_NOW)
+
+    with pytest.raises(RuntimeError, match="before run"):
+        session.await_return(threading.Event())

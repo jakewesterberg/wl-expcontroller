@@ -877,3 +877,49 @@ class Session:
         finally:
             record.close()
             self._record = None
+
+    def await_return(self, give_up: threading.Event, heartbeat: float = 1.0) -> None:
+        """Keep a rig session's out-of-cage clock visible until the animal is home.
+
+        **P4d-2a.** Since ruling 4 (PI, 2026-09-20) the interval runs on the wall
+        until the return, but nothing published it after the last trial, so a console
+        showed a frozen clock and a limit crossed after the loop was seen by nobody.
+        This publishes a frame every `heartbeat` seconds -- **a display cadence for a
+        console, not a measurement of this system**, and well inside `ZmqConsole`'s
+        5 s receive timeout so a waiting console never times out between frames -- with
+        the clock read through
+        `welfare_now()`, and drains the link, where the return may arrive.
+
+        **It ends when the return is recorded**, by a console through `_command` or by
+        the terminal through `returned_to_cage` from another thread, and then
+        publishes one `closed` frame. **It never ends on its own otherwise**: `give_up`
+        is its owner's to set, and then it publishes nothing further and the owner
+        writes `return_not_recorded`.
+
+        **A head a fault left fixed is released first.** `run()` releases it at a
+        normal end, but a fault re-raises past that, and `welfare` refuses a return
+        while the head is recorded as fixed. Head-post release bounds nothing (PI,
+        2026-09-19, restated 2026-09-26), so it is marked here rather than asked for.
+
+        A cage-side session has no interval, and this returns at once.
+        """
+        if self.spec.deployment is Deployment.CAGE_SIDE:
+            return
+        if self._scheduler is None:
+            raise RuntimeError(
+                "await_return before run() opened the record: there is no session "
+                "whose clock could be published"
+            )
+        if self.welfare.fixed_at is not None and self.welfare.released_at is None:
+            self.head_released(self.now())
+        self.phase = "awaiting_return"
+        while self.welfare.returned_at is None and not give_up.is_set():
+            for command in self.link.drain():
+                self._command(command, self._index)
+            if self.welfare.returned_at is not None:
+                break
+            self._publish()
+            give_up.wait(heartbeat)
+        if self.welfare.returned_at is not None:
+            self.phase = "closed"
+            self._publish()
