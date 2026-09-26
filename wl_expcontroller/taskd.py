@@ -206,6 +206,13 @@ class Session:
     #: created, and never again. What `wall_now` carries forward when no
     #: `wall_clock` is injected.
     _wall_anchor: tuple = field(init=False, default=(0.0, 0.0), repr=False)
+    #: The session's own clock, apart from out-of-cage (P4d-2a spec §10 item 3).
+    #: `None` until `open()`, a wall instant afterwards. **Bounds nothing** -- no
+    #: `welfare` method reads either this or `ended_wall_at` -- and exists only to
+    #: be shown and recorded, per the PI's own words on the ruling. See `open()`.
+    opened_wall_at: float | None = field(init=False, default=None)
+    #: `None` until `end()`, a wall instant afterwards. See `end()`.
+    ended_wall_at: float | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         self._wall_anchor = (time.time(), time.monotonic())
@@ -326,6 +333,71 @@ class Session:
             how=how,
             recorded_at=self.wall_now(),
         )
+
+    # --- the in-session clock -----------------------------------------------
+
+    def open(self, how: str = "terminal") -> None:
+        """Start the session's own clock: the session opened to the session ended,
+        on the wall, apart from out-of-cage (P4d-2a spec §10 item 3).
+
+        **It is the PI's own second clock, asked for beside out-of-cage**: "there
+        should also be a in-session clock that is tracked seperately." Ruled "only
+        shown and recorded" -- **it bounds nothing**, so no `welfare` method takes
+        `opened_wall_at` or reads it anywhere. Written to `welfare_notes.jsonl`
+        beside `departure` and `returned` because that file already holds the
+        session's clock marks, not because this row bounds anything the way they do.
+
+        **Needs no open record**, exactly as `_note` documents: `welfare_note`
+        creates `self.directory` itself, so this can run, and does for `wlx run`,
+        before `SessionRecord.open()` and before the departure is even asked about.
+
+        **A second call raises.** A session's own clock has one start; calling this
+        twice would leave two `session opened` rows on record for one session and
+        `in_session_seconds` would have no way to say which `opened_wall_at` it
+        meant.
+
+        `run()` calls this itself when nothing already has, so a direct API user
+        gets the clock too, without needing to know to ask for it. `wlx run` calls
+        it explicitly, right after building the `Session` and before the departure
+        is marked, so `session opened` is the first row a run ever writes.
+        """
+        if self.opened_wall_at is not None:
+            raise RuntimeError(
+                "session.open() called twice: a session's own clock starts once, "
+                "and a second start would leave two 'session opened' rows for one "
+                "session with no way to say which opened_wall_at is meant"
+            )
+        self.opened_wall_at = self.wall_now()
+        self._note("session opened", self.opened_wall_at, "", how)
+
+    def end(self, how: str = "terminal") -> None:
+        """Stop the session's own clock. See `open()` for what it is and why.
+
+        **Refuses before `open()`**: there is no clock running to stop, and ending
+        one that was never started would put an `ended_wall_at` before an
+        `opened_wall_at` nobody has, in `in_session_seconds`'s subtraction (this
+        method's own inverse mistake). **Refuses a second call** for the same
+        reason `open()` does: one ending, one instant, one row.
+
+        For `wlx run`, called once from `cli._close_interval`'s `finally`, after
+        the return is settled or recorded as not recorded -- whichever way that
+        interval closed, the session's own clock closes with it.
+        """
+        if self.opened_wall_at is None:
+            raise RuntimeError(
+                "session.end() called before session.open(): there is no "
+                "in-session clock running to stop"
+            )
+        if self.ended_wall_at is not None:
+            raise RuntimeError(
+                "session.end() called twice: a session's own clock ends once, "
+                "and a second end would leave two 'session ended' rows for one "
+                "session with no way to say which ended_wall_at is meant"
+            )
+        self.ended_wall_at = self.wall_now()
+        self._note("session ended", self.ended_wall_at, "", how)
+
+    # --- out of cage, and restraint ---------------------------------------
 
     def left_cage(
         self, at: float, confirmed: bool = False, by: str = "", how: str = "terminal"
@@ -721,13 +793,24 @@ class Session:
         )
 
     def run(self) -> Census:
-        """Check, then require the marks, then run, then record.
+        """Open the in-session clock if nothing has, check, then require the marks,
+        then run, then record.
 
         **In that order, and it is load-bearing.** A malformed task is refused before
         anything else happens -- ideally before the animal is in the chair at all --
         and a session whose welfare marks are missing is refused before its first
         frame, by `welfare.preflight` rather than by a second copy of the rule here.
+
+        **`open()` runs first, ahead of the check it would otherwise be refused
+        alongside** (P4d-2a spec §10 item 3): a direct API user who never called
+        `open()` still gets a `session opened` row and a working
+        `Telemetry.in_session_seconds`, even on a task that goes on to refuse.
+        `wlx run` calls `open()` itself, earlier still -- before the departure is
+        even marked -- so this is a no-op there and only a backstop for everyone
+        else.
         """
+        if self.opened_wall_at is None:
+            self.open()
         trial = self._load()
         findings = check(trial, self.allocation)
         blocking = [f for f in findings if f.blocking]

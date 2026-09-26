@@ -117,6 +117,13 @@ def _session_with(
         # `Telemetry.of` that handed it to `welfare` would fail on this stand-in.
         wall_now=lambda: 0.0,
         duration_warning=lambda wall_now: welfare.approaching_limit(wall_now),
+        # The in-session clock (P4d-2a spec §10 item 3), read as plain attributes
+        # -- like `wall_now` above, never through `welfare`, since it bounds
+        # nothing and no `welfare` method takes either instant. Opened at the same
+        # instant `left_cage` was given above, so `in_session_seconds` is a real
+        # number rather than the `None`-before-`open()` case on this stand-in.
+        opened_wall_at=0.0,
+        ended_wall_at=None,
     )
 
 

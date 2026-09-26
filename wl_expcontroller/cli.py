@@ -395,7 +395,8 @@ def _settle_departure(session, args) -> tuple:
 
     raise SystemExit(
         "refused: the departure time was not confirmed, so the session did not "
-        "start. Nothing has been recorded and nothing was delivered."
+        "start. Nothing about the departure has been recorded, and nothing was "
+        "delivered."
     )
 
 
@@ -470,43 +471,56 @@ def _close_interval(session, args) -> bool:
     terminal side has settled, for the same reason `await_return`'s own docstring
     refuses to retry it -- `welfare.returned_to_cage` cannot be called a second time
     without being refused by the mark it already accepted.
+
+    **`session.end()` runs last, on every path out of here, in an outer `finally`**
+    (P4d-2a spec §10 item 3): after the return is settled or recorded as not
+    recorded -- normally, on an interrupt, or on a re-raised fault alike -- so
+    `session ended` is always the last row a run writes. `session.open()` has
+    already run by the time `wlx run` ever calls this function (`main` calls it
+    right after building the `Session`, well before `session.run()`), so `end()`
+    here never meets a clock that was never started. A cage-side session (the
+    first `return` below) ends right after `run()` for the same reason: this
+    function's early exit is `end()`'s only path.
     """
-    if session.spec.deployment is Deployment.CAGE_SIDE:
-        return False
-    if not session.phase:
-        session.return_not_recorded("the session did not start")
-        return False
-    if not _at_a_terminal():
-        session.return_not_recorded("no terminal")
-        return False
-    give_up = threading.Event()
-    failure: list[BaseException] = []
-
-    def _wait() -> None:
-        try:
-            session.await_return(give_up)
-        except BaseException as exc:
-            failure.append(exc)
-
-    waiter = threading.Thread(target=_wait, daemon=True)
-    waiter.start()
-    why = None
-    interrupted = False
     try:
-        why = _settle_return(session, args.actor or "")
-    except KeyboardInterrupt:
-        why = "interrupted at the terminal"
-        interrupted = True
+        if session.spec.deployment is Deployment.CAGE_SIDE:
+            return False
+        if not session.phase:
+            session.return_not_recorded("the session did not start")
+            return False
+        if not _at_a_terminal():
+            session.return_not_recorded("no terminal")
+            return False
+        give_up = threading.Event()
+        failure: list[BaseException] = []
+
+        def _wait() -> None:
+            try:
+                session.await_return(give_up)
+            except BaseException as exc:
+                failure.append(exc)
+
+        waiter = threading.Thread(target=_wait, daemon=True)
+        waiter.start()
+        why = None
+        interrupted = False
+        try:
+            why = _settle_return(session, args.actor or "")
+        except KeyboardInterrupt:
+            why = "interrupted at the terminal"
+            interrupted = True
+        finally:
+            give_up.set()
+            waiter.join()
+            if session.welfare.returned_wall_at is None:
+                if why is None and failure:
+                    why = f"the post-loop phase failed: {type(failure[0]).__name__}"
+                session.return_not_recorded(why or "interrupted at the terminal")
+        if failure:
+            raise failure[0]
+        return interrupted
     finally:
-        give_up.set()
-        waiter.join()
-        if session.welfare.returned_wall_at is None:
-            if why is None and failure:
-                why = f"the post-loop phase failed: {type(failure[0]).__name__}"
-            session.return_not_recorded(why or "interrupted at the terminal")
-    if failure:
-        raise failure[0]
-    return interrupted
+        session.end()
 
 
 def _value(value: float | None) -> str:
@@ -529,6 +543,12 @@ def render(frame: _link.Telemetry) -> str:
     """One screen's worth of a `Telemetry` frame -- S9a §4's panes this slice has
     data for: fluid, chair, trials by outcome, what is still owed, staged changes
     and refusals. `wlx console`'s only view of a running session.
+
+    **`in session` and `phase` (P4d-2a spec §10 item 3).** The in-session clock is
+    the PI's second one, apart from out-of-cage and bounding nothing -- it has no
+    limit to warn about, unlike the line above it -- and `phase` names where in the
+    session's life this frame was taken: `running`, `awaiting return` (a rig
+    session's post-loop clock, still open), or `closed` (the return recorded).
 
     **Every line names a field of `Telemetry`; nothing here is computed.** That is
     the same discipline `Telemetry.of` itself follows (S9a §9, `link.py`), one hop
@@ -608,6 +628,21 @@ def render(frame: _link.Telemetry) -> str:
     # for different reasons, and a console that worked out which from the pattern of
     # `None`s would be computing -- see this function's second paragraph.
     lines.append(f"  deployment: {frame.deployment}")
+    # **The PI's second clock, apart from out-of-cage** (P4d-2a spec §10 item 3):
+    # "only shown and recorded", never a bound, so it has no WARNING line of its
+    # own the way out-of-cage does. `None` before `open()` -- practically never on
+    # a live frame, since a session publishes nothing before it has run `open()`
+    # itself -- prints `n/a` for the reason every other absent clock here does:
+    # `0:00` would say a clock had started that has not.
+    lines.append(
+        "  in session: n/a -- not yet opened"
+        if frame.in_session_seconds is None
+        else f"  in session: {_clock(frame.in_session_seconds)}"
+    )
+    # `running`/`awaiting_return`/`closed` (`taskd.Session.phase`) spelled with a
+    # space rather than the internal underscore -- this line is for a person, not
+    # a match against the field's own wire spelling.
+    lines.append(f"  phase: {frame.phase.replace('_', ' ')}")
     if frame.stopped_because:
         lines.append(f"  STOPPED: {frame.stopped_because}")
     # Beside the stop reason and above everything else, because that is where a
@@ -1020,6 +1055,20 @@ def main(argv: list[str] | None = None) -> int:
                     pump=SimulatedPump(),
                     **session_kwargs,
                 )
+                # **The session's own clock starts here** (P4d-2a spec §10 item 3):
+                # right after the `Session` exists and before the departure is even
+                # asked about, so `session opened` is the first row this run ever
+                # writes -- ahead of `departure`, and ahead of anything
+                # `_settle_departure` below can still refuse over. It is an
+                # administrative timestamp, not a welfare mark: an unconfirmed
+                # departure still declines to start the session in every way that
+                # matters -- no departure mark, no trial, no fluid -- this row
+                # aside, which is why `_settle_departure`'s own refusal below says
+                # "nothing about the departure" rather than claiming nothing at all
+                # was recorded. `Session.run()` would open the clock anyway if
+                # nothing had by then, which is the backstop for a direct API user,
+                # not the reason this line is here.
+                session.open()
                 # On a rig both of these are the console's actions, and the
                 # difference is the whole reason S8 makes them explicit. Here the
                 # out-of-cage one comes from `--out-of-cage-at`, which has no
