@@ -1494,6 +1494,33 @@ def test_past_the_limit_after_the_loop_the_warning_says_so(tmp_path):
         thread.join(timeout=2)
 
 
+def test_while_the_loop_runs_each_frame_carries_the_sessions_own_warning(tmp_path):
+    """The other half of `Session.duration_warning`: while the loop runs, it is
+    `welfare.approaching_limit`'s sentence (PI, 2026-09-20: a warning, so a block can
+    be finished deliberately). **Task 10 found this half pinned by nothing.**
+    `Telemetry.of` reads the warning through `Session.duration_warning` since P4d-2a,
+    and `test_link.py` checks `Telemetry.of` against a stand-in whose
+    `duration_warning` is a lambda, so a real session that said nothing until the loop
+    ended failed no test. The harness could not see it: neutering the whole method is
+    caught by the post-loop test above.
+
+    `warn_within` is 1,800 s against `_bounds()`' 800 s ceiling, so the threshold
+    spans the whole session and every running frame must warn. The wall stands still,
+    so every frame's sentence is the same one."""
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    spec = _spec(tmp_path, trials=3, warn_within=1_800.0)
+    session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=wall)
+    session.left_cage(at=WALL_NOW)
+    session.head_fixed(at=WALL_NOW)
+    session.run()
+
+    running = [frame for frame in link.published if frame.phase == "running"]
+    warning = session.welfare.approaching_limit(WALL_NOW)
+    assert running, "the loop published its frames"
+    assert warning is not None, "the threshold spans the ceiling"
+    assert [frame.duration_warning for frame in running] == [warning] * len(running)
+
+
 def test_a_head_fixed_session_whose_frames_outran_the_wall_publishes_after_the_loop(
     tmp_path,
 ):
