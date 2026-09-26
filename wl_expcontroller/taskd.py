@@ -272,6 +272,18 @@ class Session:
         console over the link, P4d-2b's browser -- leaves the same row and none can
         reach the mark around it. `was` and `now` are both the mark's instant: nothing
         was amended, so there is one value to record.
+
+        **Called only after `welfare` has accepted the mark, never before**, so a mark
+        that never happened cannot be logged as having happened. That ordering has a
+        cost: if this write itself fails -- disk full, permission -- the exception is
+        `record.welfare_note`'s own, not `Exceeded`, and it propagates unchanged. It is
+        never caught and retried here or by any caller in this module, because a retry
+        would call `welfare.left_cage`/`welfare.returned_to_cage` a second time and be
+        refused by that mark's own sentence ("already recorded as back in its cage"),
+        leaving memory certain and the file still empty with no path back to matching
+        them. A failed write is therefore spec §3's "killed outright" case in
+        disguise -- the missing row downstream is the signal, exactly as it is when
+        nothing runs at all.
         """
         welfare_note(
             self.directory,
@@ -369,6 +381,10 @@ class Session:
         """
         with self._mark_lock:
             wall_now = self.wall_now()
+            # Asked before the mark, deliberately, so there is an answer to decide
+            # afterwards whether a `return confirmed` row is owed; `welfare` asks the
+            # same question again inside `returned_to_cage`, to refuse an unconfirmed
+            # far return.
             far = self.welfare.return_needs_confirmation(at, wall_now)
             self.welfare.returned_to_cage(at, wall_now=wall_now, confirmed=confirmed)
             self._note("returned", at, by, how)
