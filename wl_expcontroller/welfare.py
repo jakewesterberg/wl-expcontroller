@@ -17,8 +17,11 @@ refusal messages an operator actually reads.
   back outside the limit. **And every duration here is read on the wall** (P4d-2a
   spec §10, 2026-09-26): the marks are kept as the wall instants they are, restraint
   included, and the frame clock -- which a simulator counts without waiting for, so
-  it outran the wall -- never enters this file. **The session warns as the limit
-  approaches** (PI,
+  it outran the wall -- never enters this file. **The wall they are read on is here
+  too** (`SessionClock`, P4d-2a final review): the host clock read once and carried
+  forward on a steady clock that counts the time the host is asleep, since that
+  arithmetic decides the interval as much as any method below does. **The session
+  warns as the limit approaches** (PI,
   2026-09-20) so a block can be finished deliberately rather than cut mid-sequence --
   `approaching_limit`, at `WARN_WITHIN_DEFAULT`, which he accepted the same day as a
   starting value.
@@ -52,6 +55,8 @@ them. A restart therefore re-asks a person for the departure time, by design.
 
 from __future__ import annotations
 
+import sys
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
@@ -211,6 +216,92 @@ class Absent:
             "scores trials correct and dispenses nothing is worse than one that "
             "refuses to start. Use welfare.Simulated for a dry run"
         )
+
+
+# --- the session's wall clock ---------------------------------------------
+
+
+def steady_seconds() -> float:
+    """Seconds on a steady clock that **keeps counting while the host is asleep**,
+    from an arbitrary start: only the difference between two readings means anything.
+
+    **Why not `time.monotonic()`** (P4d-2a final review I1, 2026-09-26, ledger Ruling
+    11): it stops while the host sleeps. `SessionClock` carries the session's wall
+    forward on this, so a clock that stopped for a suspend put the session's wall
+    behind real time by the length of the suspend -- a return typed `now` recorded
+    early, the interval short, and `must_stop` late, all in the unsafe direction.
+    Chosen per platform, from the primary sources:
+
+    - **Linux** (the rig): `CLOCK_BOOTTIME`, "identical to CLOCK_MONOTONIC, except
+      that it also includes any time that the system is suspended" -- Linux
+      man-pages 6.19, clock_getres(2), dated 2026-03-07, read at man7.org on
+      2026-09-26; Linux 2.6.39 and later, and `time.CLOCK_BOOTTIME` from Python 3.7
+      (Python docs, `time`, read the same day). `time.monotonic()` there is
+      `CLOCK_MONOTONIC`, which does not count a suspend.
+    - **macOS**: `CLOCK_MONOTONIC`, which "will continue to increment while the
+      system is asleep" -- clock_gettime(3), the macOS 27.0 SDK's page, dated January
+      26, 2016, read on this host on 2026-09-26. `time.monotonic()` there is
+      `mach_absolute_time()` (`time.get_clock_info`), which the same page gives as
+      `CLOCK_UPTIME_RAW`, which "does not increment while the system is asleep".
+      Measured on this host the same day (Python 3.12): `CLOCK_MONOTONIC`'s reading
+      was 111,336 s ahead of `time.monotonic()`'s, and `CLOCK_UPTIME_RAW`'s agreed
+      with it to under a microsecond.
+    - **Anywhere else**: `time.monotonic()`, which **is not assumed to count time
+      asleep** -- whether it does there is UNVERIFIED -- so a suspend on such a host
+      puts the session's wall behind by its length, the unsafe direction. No such
+      host runs a session today.
+
+    **Chosen on every reading rather than once at import**, so a test can stub the
+    platform (`tests/test_welfare.py`); the cost is one attribute lookup, and this
+    is read once per trial boundary and once per published frame, never per frame
+    of a trial.
+    """
+    boottime = getattr(time, "CLOCK_BOOTTIME", None)
+    if boottime is not None:
+        return time.clock_gettime(boottime)
+    if sys.platform == "darwin":
+        return time.clock_gettime(time.CLOCK_MONOTONIC)
+    return time.monotonic()
+
+
+class SessionClock:
+    """The wall clock one session's welfare durations are read on, in POSIX seconds.
+
+    **Here, in the reviewed file, since the P4d-2a final review** (I5, 2026-09-26,
+    ledger Ruling 12). It was `taskd.Session`'s, and it decides the out-of-cage
+    interval as surely as any method of `Welfare` does: every `wall_now` those
+    methods are given comes from it. `Welfare` itself still reads no clock -- the
+    reading is passed in, so a test can hand it any instant -- and `taskd.Session`
+    holds one of these and passes its readings on, unless a test injects a wall of
+    its own.
+
+    **Anchored, not read afresh** (Ruling 8, Task 7 fix round 1): `time.time()` as it
+    read when the clock was created, carried forward on `steady_seconds()`.
+    `time.time()` can be stepped mid-session, by NTP or by a person setting the host
+    clock, and a backward step would shrink the out-of-cage interval by its size.
+    So out-of-cage is departure to return in steady seconds, **the time the host
+    spent asleep included** (I1), however the host clock moves in between.
+
+    **The cost, stated:** a session inherits whatever offset the host clock had when
+    it was created, exactly as `time.time()` would have, and an adjustment made to
+    the host clock mid-session is not seen until the next session. A clock time an
+    operator types is read on the host calendar (`cli._wall_clock_time`), so the two
+    agree at the session's start and differ afterwards only by whatever adjustment
+    the host clock has taken since -- which is why `wlx run` reads the return's `now`
+    from here rather than from `time.time()`.
+
+    A reading that is not a real number is refused where it is used: every method
+    of `Welfare` that takes a `wall_now` checks it (`bounds._finite`).
+    """
+
+    def __init__(self) -> None:
+        # Read together, once, and never again.
+        self._wall = time.time()
+        self._steady = steady_seconds()
+
+    def now(self) -> float:
+        """The anchor, plus the steady seconds since it was taken."""
+        return self._wall + (steady_seconds() - self._steady)
 
 
 @dataclass
@@ -781,9 +872,10 @@ class Welfare:
 
         **It does not check the ceiling**, and claimed to until a review read it:
         `left_cage` refuses a mark at or past the limit and `must_stop` refuses
-        during the loop. `wall_now` is passed rather than read here, so this file
-        keeps no clock of its own -- it was `now`, on the frame clock, until P4d-2a
-        (spec §10), and was passed rather than assumed zero then too.
+        during the loop. `wall_now` is passed rather than read here, so `Welfare`
+        reads no clock of its own -- the session's `SessionClock`, above, is what a
+        caller reads it from. It was `now`, on the frame clock, until P4d-2a (spec
+        §10), and was passed rather than assumed zero then too.
         """
         self.out_of_cage_seconds(wall_now)  # for the refusal; the number is not wanted
         if self.returned_wall_at is not None:

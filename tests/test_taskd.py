@@ -19,6 +19,7 @@ there is no trial cap at all.
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import time
 
@@ -1272,13 +1273,17 @@ def test_the_sessions_wall_does_not_step_when_the_host_clock_does(
 ):
     """**Ruling 8** (Task 7 fix round 1). With no `wall_clock` injected, the
     session's wall is `time.time()` as it read when the session was created,
-    carried forward on `time.monotonic()`. A host clock stepped back an hour -- by
-    NTP or by a person -- would otherwise shrink the out-of-cage interval by an hour
-    mid-session, which the frame clock the wall replaced never could; a step forward
-    would lengthen it. Both clocks are stubbed, so the arithmetic is exact."""
+    carried forward on a steady clock (`welfare.SessionClock`, since the final
+    review's I5). A host clock stepped back an hour -- by NTP or by a person -- would
+    otherwise shrink the out-of-cage interval by an hour mid-session, which the frame
+    clock the wall replaced never could; a step forward would lengthen it. Every
+    steady clock the platform choice could read is stubbed to the same value
+    (`welfare.steady_seconds`), so this holds whichever one this host reads, and the
+    arithmetic is exact."""
     host, steady = [WALL_NOW], [100.0]
     monkeypatch.setattr(time, "time", lambda: host[0])
     monkeypatch.setattr(time, "monotonic", lambda: steady[0])
+    monkeypatch.setattr(time, "clock_gettime", lambda clock: steady[0])
     session = Session(_spec(tmp_path), card=Card(), pump=Pump())
 
     first = session.wall_now()
@@ -1291,6 +1296,35 @@ def test_the_sessions_wall_does_not_step_when_the_host_clock_does(
     assert second >= first, "the host clock stepped back and took the session with it"
     assert second == WALL_NOW + 5.0, "five steady seconds passed, and only those"
     assert third == WALL_NOW + 10.0, "a forward step is not taken either"
+
+
+@pytest.mark.skipif(
+    not (hasattr(time, "CLOCK_BOOTTIME") or sys.platform == "darwin"),
+    reason="this platform has no steady clock known to count suspend "
+    "(welfare.steady_seconds' fallback, which says so)",
+)
+def test_a_host_that_sleeps_mid_session_does_not_take_the_time_off_the_clock(
+    tmp_path, monkeypatch
+):
+    """**Final review I1.** The anchor used to be carried forward on
+    `time.monotonic()`, which stops while the host sleeps -- `mach_absolute_time()` on
+    macOS, `CLOCK_MONOTONIC` on Linux. A laptop lid closed for an hour mid-session put
+    the session's wall an hour behind: the return typed `now` an hour early, the
+    interval an hour short, and `must_stop` an hour late. The session now reads the
+    clock `welfare.steady_seconds` chooses, which counts the suspend on both
+    platforms; `time.monotonic()` is stubbed to stop, as it does."""
+    host, awake, counting = [WALL_NOW], [100.0], [100.0]
+    monkeypatch.setattr(time, "time", lambda: host[0])
+    monkeypatch.setattr(time, "monotonic", lambda: awake[0])
+    monkeypatch.setattr(time, "clock_gettime", lambda clock: counting[0])
+    session = Session(_spec(tmp_path), card=Card(), pump=Pump())
+
+    # Five seconds awake, then an hour asleep.
+    awake[0] += 5.0
+    counting[0] += 3_605.0
+    host[0] += 3_605.0
+
+    assert session.wall_now() == WALL_NOW + 3_605.0
 
 
 def test_before_the_loop_a_session_has_no_phase(tmp_path):

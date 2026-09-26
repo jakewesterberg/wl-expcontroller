@@ -20,6 +20,9 @@ is not, so these tests are as much about *who calls whom* as about arithmetic.
 
 from __future__ import annotations
 
+import sys
+import time
+
 import pytest
 
 from wl_expcontroller import welfare as welfare_module
@@ -2298,3 +2301,113 @@ def test_every_refusal_keeps_its_sentence_on_the_wall_clock(mark, sentence):
     to do."""
     with pytest.raises(Exceeded, match=sentence):
         mark()
+
+
+# ---------------------------------------------------------------------------
+# P4d-2a final review, I1 and I5: the session's wall clock lives here
+# ---------------------------------------------------------------------------
+#
+# **I5.** Every welfare duration is read at a `wall_now` a session passes in, and the
+# clock that produces it decides the out-of-cage interval as surely as any method
+# above does. It was `taskd.Session`'s until the final review moved it here, into the
+# file a person reviews, as `SessionClock`.
+#
+# **I1.** It was anchored to the host clock and carried forward on `time.monotonic()`,
+# which stops while the host sleeps -- on macOS it is `mach_absolute_time()`, and on
+# Linux `CLOCK_MONOTONIC`, and neither counts a suspend. A host that slept an hour
+# mid-session put the anchored wall an hour behind real time: out-of-cage undercounted
+# by the hour, in the unsafe direction. `steady_seconds` reads a clock that counts
+# suspend on each platform that has one, and these tests stub the platform's clocks
+# to prove which is read.
+
+
+class _HostClocks:
+    """Every clock the choice could read, stubbed, and a way to move them.
+
+    `awake` is what `time.monotonic()` reads: it stops while the host sleeps. `boottime`
+    and `monotonic` are what `time.clock_gettime` reads for `CLOCK_BOOTTIME` and
+    `CLOCK_MONOTONIC`: they are set per test to count sleep or not, as the platform
+    under test does. The clock ids are sentinels rather than the host's own integers,
+    so the same test reads the same way on Linux and on macOS.
+    """
+
+    def __init__(self, monkeypatch, platform: str, boottime: bool) -> None:
+        self.host = WALL_NOW
+        self.readings = {"awake": 100.0, "boottime": 100.0, "monotonic": 100.0}
+        monkeypatch.setattr(sys, "platform", platform)
+        monkeypatch.setattr(time, "CLOCK_MONOTONIC", "monotonic", raising=False)
+        if boottime:
+            monkeypatch.setattr(time, "CLOCK_BOOTTIME", "boottime", raising=False)
+        else:
+            monkeypatch.delattr(time, "CLOCK_BOOTTIME", raising=False)
+        monkeypatch.setattr(time, "time", lambda: self.host)
+        monkeypatch.setattr(time, "monotonic", lambda: self.readings["awake"])
+        monkeypatch.setattr(time, "clock_gettime", lambda clock: self.readings[clock])
+
+    def run(self, awake: float, asleep: float, counting: tuple) -> None:
+        """`awake` seconds pass, and `asleep` more with the host suspended. The clocks
+        named in `counting` count the suspend; `time.monotonic()` never does. The host
+        clock counts both, as a battery-backed clock does."""
+        self.readings["awake"] += awake
+        for name in ("boottime", "monotonic"):
+            self.readings[name] += awake + (asleep if name in counting else 0.0)
+        self.host += awake + asleep
+
+
+def test_on_linux_the_session_clock_counts_the_time_the_host_was_suspended(
+    monkeypatch,
+):
+    """`CLOCK_BOOTTIME`: "identical to CLOCK_MONOTONIC, except that it also includes
+    any time that the system is suspended" (Linux clock_getres(2), man-pages 6.19,
+    2026-03-07). `CLOCK_MONOTONIC` is stubbed *not* to count the suspend here, as on
+    Linux it does not, so reading it instead would fail this test."""
+    clocks = _HostClocks(monkeypatch, platform="linux", boottime=True)
+    clock = welfare_module.SessionClock()
+
+    clocks.run(awake=5.0, asleep=3_600.0, counting=("boottime",))
+
+    assert clock.now() == WALL_NOW + 3_605.0, "the hour asleep is time out of the cage"
+
+
+def test_on_macos_the_session_clock_counts_the_time_the_host_was_asleep(monkeypatch):
+    """`CLOCK_MONOTONIC` on macOS "will continue to increment while the system is
+    asleep" (clock_gettime(3), macOS 27.0 SDK). `time.monotonic()` there is
+    `mach_absolute_time()`, which does not -- the defect I1 found."""
+    clocks = _HostClocks(monkeypatch, platform="darwin", boottime=False)
+    clock = welfare_module.SessionClock()
+
+    clocks.run(awake=5.0, asleep=3_600.0, counting=("monotonic",))
+
+    assert clock.now() == WALL_NOW + 3_605.0, "the hour asleep is time out of the cage"
+
+
+def test_elsewhere_the_session_clock_falls_back_to_time_monotonic(monkeypatch):
+    """**The fallback, and what it costs.** With neither clock, `time.monotonic()` is
+    read, and it is not assumed to count a suspend -- so this host's clock falls
+    behind by the time asleep, and `steady_seconds` says so. The `clock_gettime`
+    readings count the suspend here, so a fallback that read them would fail this."""
+    clocks = _HostClocks(monkeypatch, platform="win32", boottime=False)
+    clock = welfare_module.SessionClock()
+
+    clocks.run(awake=5.0, asleep=3_600.0, counting=("boottime", "monotonic"))
+
+    assert clock.now() == WALL_NOW + 5.0
+
+
+def test_the_session_clock_is_anchored_once_and_never_steps_with_the_host(
+    monkeypatch,
+):
+    """**Ruling 8**, now on this file's clock: the host clock is read once, when the
+    clock is created, and carried forward on the steady clock. A host clock stepped
+    back an hour -- by NTP or by a person -- does not take the session with it, and a
+    step forward is not taken either."""
+    clocks = _HostClocks(monkeypatch, platform="linux", boottime=True)
+    clock = welfare_module.SessionClock()
+
+    assert clock.now() == WALL_NOW
+    clocks.run(awake=5.0, asleep=0.0, counting=())
+    clocks.host = WALL_NOW - 3_600.0
+    assert clock.now() == WALL_NOW + 5.0, "the host stepped back; the session did not"
+    clocks.run(awake=5.0, asleep=0.0, counting=())
+    clocks.host = WALL_NOW + 7_200.0
+    assert clock.now() == WALL_NOW + 10.0, "nor forward"

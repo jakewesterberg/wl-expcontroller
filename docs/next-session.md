@@ -110,11 +110,16 @@ What he is asked to approve, one line each, with the test that pins it:
 
 1. **Out-of-cage is counted on the wall clock alone**, from the departure to the return.
    `welfare` keeps the departure, the return and both head-fixation marks as wall instants
-   and reads every duration and cross-check on the wall (`Session.wall_now()`: the wall read
-   once when the session is created, carried forward on a monotonic clock). The frame clock
+   and reads every duration and cross-check on the wall (`Session.wall_now()`, reading
+   `welfare.SessionClock`: the wall read once when the session is created, carried forward
+   on a steady clock that counts the time the host is asleep). The frame clock
    times trials only. `test_welfare.py::test_out_of_cage_is_the_wall_since_the_departure_until_the_return_fixes_it`,
    `test_welfare.py::test_the_restraint_cross_check_compares_two_wall_intervals`,
-   `test_cli.py::test_a_head_fixed_run_whose_frames_outran_the_wall_takes_the_return`.
+   `test_cli.py::test_a_head_fixed_run_whose_frames_outran_the_wall_takes_the_return`;
+   the steady clock counting a suspend (final review I1),
+   `test_taskd.py::test_a_host_that_sleeps_mid_session_does_not_take_the_time_off_the_clock`
+   and the three platform tests in `test_welfare.py` beside
+   `test_the_session_clock_is_anchored_once_and_never_steps_with_the_host`.
 2. **After the loop the duration warning continues**, and past the limit it reads as
    `must_stop`'s sentence. `test_taskd.py::test_past_the_limit_after_the_loop_the_warning_says_so`.
 3. **The return is taken only at `wlx run`'s terminal**, as the stand-in until the ELN

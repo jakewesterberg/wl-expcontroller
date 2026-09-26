@@ -37,7 +37,6 @@ which absence it is looking at. `welfare.Deployment` has the table.
 from __future__ import annotations
 
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -57,6 +56,7 @@ from wl_expcontroller.welfare import (
     Absent as NoPump,
     Deployment,
     Rig,
+    SessionClock,
     Welfare,
 )
 
@@ -148,9 +148,10 @@ class Session:
     #: session's first post-loop frame, and its return typed "now".
     clock: object = None
     #: The **wall** clock, in POSIX seconds, and a different base from `clock`. By
-    #: default, `time.time()` as it read when the session was created, carried forward
-    #: on `time.monotonic()` -- see `wall_now` for why it is anchored rather than read
-    #: afresh. **Every welfare duration is read from it** (P4d-2a spec
+    #: default, the session's own `welfare.SessionClock`: `time.time()` as it read when
+    #: the session was created, carried forward on a steady clock that counts the time
+    #: the host is asleep -- see `wall_now`. **Every welfare duration is read from it**
+    #: (P4d-2a spec
     #: §10): the marks an operator gives as clock times (PI, 2026-09-20), the
     #: head-fixation marks beside them, and the readings `out_of_cage_seconds`,
     #: `chair_seconds`, `must_stop` and `approaching_limit` are asked at. Injectable so
@@ -202,10 +203,10 @@ class Session:
     _tally: Tally | None = field(init=False, default=None, repr=False)
     _scheduler: Scheduler | None = field(init=False, default=None, repr=False)
     _index: int = field(init=False, default=0, repr=False)
-    #: `(time.time(), time.monotonic())`, read together once, when the session is
-    #: created, and never again. What `wall_now` carries forward when no
-    #: `wall_clock` is injected.
-    _wall_anchor: tuple = field(init=False, default=(0.0, 0.0), repr=False)
+    #: The session's anchored wall clock, created with it: what `wall_now` reads when
+    #: no `wall_clock` is injected. A `welfare.SessionClock`, and in the reviewed file
+    #: rather than here since the P4d-2a final review (I5): it decides the interval.
+    _anchored: SessionClock = field(init=False, repr=False)
     #: The session's own clock, apart from out-of-cage (P4d-2a spec §10 item 3).
     #: `None` until `open()`, a wall instant afterwards. **Bounds nothing** -- no
     #: `welfare` method reads either this or `ended_wall_at` -- and exists only to
@@ -215,7 +216,7 @@ class Session:
     ended_wall_at: float | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
-        self._wall_anchor = (time.time(), time.monotonic())
+        self._anchored = SessionClock()
         if self.spec.subject != self.spec.bounds.subject:
             # A dose error with a plausible-looking session behind it: every trial
             # row would say one subject while every limit came from another, and
@@ -258,30 +259,22 @@ class Session:
         `phase`, because nothing welfare reads is on the frame clock. An injected
         `wall_clock` is used as it is. See `wall_clock`.
 
-        **Otherwise it is anchored, not read afresh** (Ruling 8, Task 7 fix round 1):
-        `time.time()` as it read when the session was created, carried forward on
-        `time.monotonic()`. `time.time()` can be stepped mid-session, by NTP or by a
-        person setting the host clock, and a backward step would shrink the
-        out-of-cage interval by its size -- the unsafe direction, and one the frame
-        clock this replaced in the loop's limit check never could move in.
-        `time.monotonic()` cannot: on this host, 2026-09-26 (Python 3.12, macOS),
-        `time.get_clock_info` reports `time` as `adjustable=True` and `monotonic` as
-        `adjustable=False`, and `monotonic`'s own docstring says it "cannot go
-        backward". So out-of-cage is departure to return in steady seconds, however
-        the host clock moves in between.
-
-        **The cost, stated:** a session inherits whatever offset the host clock had
-        when the session was created, exactly as `time.time()` would have, and an
-        adjustment made to the host clock mid-session is not seen until the next
-        session. A clock time an operator types is read on the host calendar
-        (`cli._wall_clock_time`), so the two agree at the session's start and differ
-        afterwards only by whatever adjustment the host clock has taken since --
-        which is why `wlx run` reads `now` from here rather than from `time.time()`.
+        **Otherwise it is the session's `welfare.SessionClock`**, created with the
+        session: `time.time()` as it read then, carried forward on a steady clock
+        (Ruling 8, Task 7 fix round 1). A host clock stepped mid-session, by NTP or by
+        a person, cannot move the interval, and since the P4d-2a final review (I1)
+        **neither can the host going to sleep**: the steady clock counts a suspend
+        on Linux and macOS, where `time.monotonic()`, which this read until then,
+        does not. So out-of-cage is departure to return in steady seconds, the time
+        asleep included, however the host clock moves in between.
+        `welfare.steady_seconds` has the sources for each platform and the fallback
+        elsewhere; `welfare.SessionClock` has the cost of anchoring, and why `wlx run`
+        reads the return's `now` from here. Both live in the reviewed file because
+        this reading decides the interval (I5).
         """
         if self.wall_clock is not None:
             return self.wall_clock()
-        wall, steady = self._wall_anchor
-        return wall + (time.monotonic() - steady)
+        return self._anchored.now()
 
     def duration_warning(self, wall_now: float) -> str | None:
         """What an operator must be told about the time left out of the cage.

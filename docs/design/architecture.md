@@ -78,9 +78,18 @@ fluid and session-duration accounting (a fluid **floor**, an out-of-cage **ceili
 token-to-fluid conversion, stimulation bounds and gating, and the bounded-config loader.
 
 **In code, that is `wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`, and
-nothing else.** Both are kept small deliberately: everything in them can hurt an animal if
-it is wrong, and a small file is one a person can actually read before signing it off. A
-change to either is a change requiring review; a change elsewhere is not.
+three functions in `wl_expcontroller/cli.py`.** Both modules are kept small deliberately:
+everything in them can hurt an animal if it is wrong, and a small file is one a person can
+actually read before signing it off. **The three functions are `cli._wall_clock_time`,
+`cli._clock_or_now` and `cli._settle_return`** (P4d-2a final review I5, 2026-09-26). They
+turn what an operator types at `wlx run` into the instants that bound the out-of-cage
+interval: the departure's clock time, the return's clock time or `now`, and whether a
+far return was confirmed by a person. `welfare` refuses what is impossible, but a wrong
+instant that is merely plausible passes every refusal, so the parsing is part of the
+limit. They stay in `cli.py`, which is where the terminal is, until the wl-works ELN
+records both ends of the interval (P4d-2a spec §10) and the return prompt goes. A change
+to either module or to those three functions is a change requiring review; a change
+elsewhere is not.
 
 The split between the two is what keeps each reviewable. `bounds.py` is **pure** — the
 ceilings, the daily *floor*, and the arithmetic of whether a number is past one or short of
@@ -102,7 +111,10 @@ than an animal earning a ration. `reward_correct`'s maximum is the second kind a
 `out_of_cage`'s the first; a bounded config is expected to say which at each entry.
 
 `welfare.py` has all three: the day's running total, two clocks — the out-of-cage one that
-bounds the session and the restraint one that is recorded beside it — the pump, and `Rig`,
+bounds the session and the restraint one that is recorded beside it — the wall they are both
+read on (`SessionClock`, the host clock read once per session and carried forward on a
+steady clock that counts the time the host is asleep; moved here from `taskd` by the P4d-2a
+final review, because it decides the interval), the pump, and `Rig`,
 which is what a task's `Reward` action actually reaches. **The whole route from a task's
 declaration to fluid is readable in `welfare.py` alone**, which is the property to preserve —
 "can anything deliver reward without asking the ceiling" should stay a question one file

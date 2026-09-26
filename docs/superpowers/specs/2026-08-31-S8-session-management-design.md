@@ -185,8 +185,11 @@ supplement afterwards — is then computed against a figure that describes half 
    intervals. The frame-derived session clock times trials and is passed to `welfare`
    nowhere; the trial loop's limit check reads the wall once per trial boundary where it read
    the frame clock. The wall is read through one anchor per session — `time.time()` as it read
-   when the session was created, carried forward on `time.monotonic()` — so a host-clock step
-   mid-session cannot move the interval (`taskd.Session.wall_now`).
+   when the session was created, carried forward on a steady clock that counts the time the
+   host is asleep — so neither a host-clock step nor a suspend mid-session can move the
+   interval (`welfare.SessionClock`, read through `taskd.Session.wall_now`; P4d-2a final
+   review, 2026-09-26, which found `time.monotonic()` stopping during a suspend and moved the
+   clock into `welfare.py`).
 
    **What the change cost, shown to the PI and accepted.** The old ceiling refusal doubled as
    a wall-clock catch: an *interval* of 1.79e9 seconds is fifty-seven years and self-evidently

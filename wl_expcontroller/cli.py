@@ -111,6 +111,12 @@ _TIME_FORMATS = "HH:MM, HH:MM:SS, or an ISO 8601 date-time such as 2027-01-13T22
 def _wall_clock_time(text: str) -> float:
     """An operator's clock time to POSIX seconds. `argparse`'s `type=` for the mark.
 
+    **Welfare-critical, outside the two welfare modules** (P4d-2a final review I5,
+    `docs/design/architecture.md`): it turns what an operator types into the instants
+    that bound the out-of-cage interval -- the departure, and a return typed as a
+    clock time -- so a mistake here moves the one limit a session has, and a change
+    here wants the same human review as `welfare.py`.
+
     **Two resolutions are stated here rather than left implicit**, because the PI
     asked for both to be decided (2026-09-20):
 
@@ -159,7 +165,7 @@ def _wall_clock_time(text: str) -> float:
     **The departure is read here, by argparse, before the session exists** -- it has
     no `now` spelling -- and `welfare.left_cage` compares it with
     `Session.wall_now()`, which is anchored to the host clock when the session is
-    created a moment later (Ruling 8, Task 7 fix round 1). So the host calendar this
+    created a moment later (`welfare.SessionClock`, Ruling 8). So the host calendar this
     resolves against and the session's wall are one base at the departure; they
     could part only by an adjustment of the host clock between parsing the command
     line and creating the session. The return's `now` is the session's reading, for
@@ -195,13 +201,18 @@ def _clock_or_now(text: str, now: Callable[[], float]) -> float:
     """`now`, or a clock time as `_wall_clock_time` reads one. For the return, which
     is usually marked at the moment it happens (P4d-2a).
 
+    **Welfare-critical, outside the two welfare modules** (P4d-2a final review I5,
+    `docs/design/architecture.md`): the instant it returns closes the out-of-cage
+    interval.
+
     **`now` is read from `now()` -- the session's clock, `Session.wall_now` -- never
     from `time.time()`** (Task 7 fix round 1). The return is compared with marks taken
     on that clock: the loop-end head release, and the wall `returned_to_cage` reads.
     Since Ruling 8 it is the host clock as it read when the session was created,
-    carried forward on the monotonic clock, so a `time.time()` read here would sit on
-    the wrong side of those marks by however far the host clock has been adjusted
-    since, and be refused as in the future or as before the release.
+    carried forward on a steady clock that counts the time the host is asleep
+    (`welfare.SessionClock`), so a `time.time()` read here would sit on the wrong side
+    of those marks by however far the host clock has been adjusted since, and be
+    refused as in the future or as before the release.
 
     **A typed clock time is read on the host calendar** (`_wall_clock_time`: today's
     date, this host's zone), which is `time.time()`'s base. The two bases agree when
@@ -402,6 +413,10 @@ def _settle_departure(session, args) -> tuple:
 
 def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     """Ask the person at the terminal when the animal went back into its cage.
+
+    **Welfare-critical, outside the two welfare modules** (P4d-2a final review I5,
+    `docs/design/architecture.md`): it decides which instant closes the out-of-cage
+    interval and whether a far one was confirmed by a person.
 
     **P4d-2a spec §5, amended by §10.** `None` once the return is recorded here,
     and otherwise the reason it was not, for the row. **The terminal is the only

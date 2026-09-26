@@ -227,9 +227,15 @@ simulator with default flags. Task 6's tests passed only by running `rig-chaired
    the wall clock once per trial boundary where it read the frame clock. The frame clock
    times trials and nothing else. When the ELN exists, its departure and return are wall
    instants already, so this is also the shape it needs. The wall is read through one
-   anchor per session (Ruling 8, Task 7 fix round 1): `Session.wall_now()` is `time.time()`
-   as it read when the session was created, carried forward on `time.monotonic()`, so a
-   host-clock step mid-session cannot move the interval.
+   anchor per session (Ruling 8, Task 7 fix round 1): `Session.wall_now()` reads the
+   session's `welfare.SessionClock`, which is `time.time()` as it read when the session
+   was created, carried forward on a steady clock that counts the time the host is
+   asleep (`welfare.steady_seconds`: `CLOCK_BOOTTIME` on Linux, `CLOCK_MONOTONIC` on
+   macOS). So neither a host-clock step nor a suspend mid-session can move the interval.
+   *Amended by the final review, 2026-09-26 (I1, I5):* it was carried forward on
+   `time.monotonic()`, which stops while the host sleeps, so a suspend put the wall
+   behind by its length; and the clock moved from `taskd` into `welfare.py`, the file a
+   person reviews, because it decides the interval.
 2. **The return is terminal-only, as the ELN's stand-in.**
    - `link.ReturnedToCage` is removed (Task 4 reverted). The browser will not send it, and
      the ELN's return will reach the box through the lab-host protocol, not this link.
