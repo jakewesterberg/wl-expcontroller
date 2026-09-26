@@ -2272,17 +2272,31 @@ def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
 def test_a_second_ctrl_c_during_the_post_loop_wait_is_recorded_and_exits_130(
     tmp_path, monkeypatch
 ):
-    """**Residual fix round.** `_close_interval`'s wait for the post-loop phase to
-    begin -- the loop just above `_settle_return` -- used to sit before the `try:`
-    that catches `KeyboardInterrupt`. A second Ctrl-C landing there (found by the
-    reviewer's scratch probe, which stretched `head_released` the same way this test
-    does) escaped uncaught: past `give_up.set()` and `session.return_not_recorded`,
-    leaving `['session opened', 'departure', 'session ended']` and a traceback,
-    instead of a `return not recorded` row and a clean 130. The wait now runs inside
-    the `try`, so this second Ctrl-C takes the same path the return prompt's own
-    Ctrl-C already did."""
-    import _thread
+    """**Residual fix round, Ruling 14.** `_close_interval`'s wait for the post-loop
+    phase to begin -- the loop just above `_settle_return` -- used to sit before the
+    `try:` that catches `KeyboardInterrupt`. A second Ctrl-C landing there escaped
+    uncaught: past `give_up.set()` and `session.return_not_recorded`, leaving
+    `['session opened', 'departure', 'session ended']` and a traceback, instead of a
+    `return not recorded` row and a clean 130. The wait now runs inside the `try`,
+    so this second Ctrl-C takes the same path the return prompt's own Ctrl-C already
+    did.
 
+    **Deterministic, not timer-based** (Ruling 14). Two earlier versions raced real
+    time: one landed a real interrupt a fixed delay ahead of a slowed
+    `head_released`, which could resolve inside `Thread.start()` itself on a slow
+    host; the next dropped the delay and just monkeypatched `Thread.join` to raise
+    on its first `timeout=0.01` call (the wait loop's own call, and the only one in
+    this codebase with that exact timeout) -- but measured here, `await_return`'s
+    background thread runs far enough on its own scheduling slice, before the main
+    thread's `waiter.start()` even returns, to release the head and move `phase` off
+    `"running"` before the wait loop's first check, every time: the loop then runs
+    zero iterations and never calls `join(0.01)` at all, silently passing for the
+    wrong reason. **A `threading.Event` closes that gap without any clock**:
+    `head_released` blocks on it before doing anything, so `phase` provably cannot
+    leave `"running"` until the gate opens, and the gate only opens from inside the
+    `join(0.01)` patch below -- so the wait loop's first check is guaranteed to find
+    `phase == "running"` and a live thread, call `join(0.01)`, and hit the patch,
+    whatever the host's scheduling looks like."""
     from wl_expcontroller import taskd
 
     real_run_trial, calls = taskd.run_trial, [0]
@@ -2293,22 +2307,29 @@ def test_a_second_ctrl_c_during_the_post_loop_wait_is_recorded_and_exits_130(
             raise KeyboardInterrupt  # the operator's first Ctrl-C, in the loop
         return real_run_trial(*args, **kwargs)
 
-    real_release = taskd.Session.head_released
+    # Blocks `await_return`'s background thread before it can release the head and
+    # move `phase` off "running" -- opened only once the main thread's wait loop has
+    # proven it observed `phase == "running"` (below), never on a timer.
+    gate = threading.Event()
+    real_head_released = taskd.Session.head_released
 
-    def slow_release(self, at):
-        # `await_return` runs on the background thread and calls this on entry, to
-        # release the head the first Ctrl-C left fixed. A short head start lets the
-        # main thread clear `waiter.start()` and reach `_close_interval`'s wait loop
-        # before the interrupt fires, so it lands in the wait rather than racing
-        # thread start-up; the main thread is still in that wait when it fires --
-        # the operator's second Ctrl-C, mid-wait.
-        time.sleep(0.05)
-        _thread.interrupt_main()
-        time.sleep(0.2)
-        return real_release(self, at)
+    def gated_head_released(self, at):
+        gate.wait()
+        return real_head_released(self, at)
+
+    real_join = threading.Thread.join
+    fired: list = []
+
+    def join_raises_once(self, timeout=None):
+        if timeout == 0.01 and not fired:
+            fired.append(True)
+            gate.set()  # let the background thread finish cleanly once released
+            raise KeyboardInterrupt  # the operator's second Ctrl-C, mid-wait
+        return real_join(self, timeout)
 
     monkeypatch.setattr(taskd, "run_trial", run_trial)
-    monkeypatch.setattr(taskd.Session, "head_released", slow_release)
+    monkeypatch.setattr(taskd.Session, "head_released", gated_head_released)
+    monkeypatch.setattr(threading.Thread, "join", join_raises_once)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     # Never reached if the fix holds: the second Ctrl-C ends the wait before
     # `_settle_return` ever calls `input()`.
@@ -2318,6 +2339,7 @@ def test_a_second_ctrl_c_during_the_post_loop_wait_is_recorded_and_exits_130(
         _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--trials", "5")
     )
 
+    assert fired, "join(0.01) was never called -- the wait loop ran zero iterations"
     assert exit_code == 130
     assert _kinds(tmp_path) == [
         "session opened", "departure", "return not recorded", "session ended",
