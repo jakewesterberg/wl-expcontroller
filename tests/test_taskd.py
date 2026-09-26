@@ -1688,8 +1688,23 @@ def test_a_fault_after_the_loop_is_published_then_raised(tmp_path, monkeypatch):
     session = _fixed_and_run(tmp_path, link, wall)
     monkeypatch.setattr(link, "publish", _boom)
 
-    with pytest.raises(OSError, match="disk full"):
-        session.await_return(threading.Event(), heartbeat=0.01)
+    # **Bounded, so a loop that never publishes fails here rather than hanging**
+    # (Task 10's mutation gate). `await_return` ends only on a return, a fault or
+    # `give_up`, and this test supplies no return, so its only way out is the
+    # publish it expects to fail. With `Session._publish` neutered that publish
+    # never happens, and an unset `give_up` kept this call -- on the test's own
+    # thread -- looping until the harness's 300 s timeout, which it reported as
+    # "timed out" rather than as a test noticing. The timer sets `give_up` long
+    # after a working `_publish` has raised; if it fires, `pytest.raises` reports
+    # the missing exception.
+    give_up = threading.Event()
+    deadline = threading.Timer(5.0, give_up.set)
+    deadline.start()
+    try:
+        with pytest.raises(OSError, match="disk full"):
+            session.await_return(give_up, heartbeat=0.01)
+    finally:
+        deadline.cancel()
 
     assert len(calls) == 2, "the fault frame must still be published after the first fails"
     assert session.stop_kind == "fault"
