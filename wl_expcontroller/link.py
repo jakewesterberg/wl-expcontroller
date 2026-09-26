@@ -110,6 +110,12 @@ SCHEMA = 6
 #: and `ZmqLink.refused_dropped`, and `cli.render` prints the count.
 REFUSAL_HISTORY = 50
 
+#: How many recent outcomes a `Telemetry` frame carries, oldest first: the browser
+#: console's Runtime ticks (P4d-2b spec §4.1, "the last 60"). Capped for
+#: `REFUSAL_HISTORY`'s reason -- a frame is re-encoded at every trial boundary -- and a
+#: display bound, not a measurement.
+RECENT_OUTCOMES = 60
+
 
 @dataclass(frozen=True, slots=True)
 class Staged:

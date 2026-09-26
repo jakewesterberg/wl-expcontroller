@@ -22,12 +22,15 @@ import json
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
 from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
+from wl_expcontroller.cli import _load_trial
 from wl_expcontroller.dio import Simulated as Card
 from wl_expcontroller.link import (
+    RECENT_OUTCOMES,
     REFUSAL_HISTORY,
     SetParameter,
     Simulated,
@@ -2148,3 +2151,72 @@ def test_the_in_session_clock_bounds_nothing(tmp_path):
     assert session.welfare.must_stop(session.wall_now()) is None
     assert session.welfare.approaching_limit(session.wall_now()) is None
     assert frame.duration_warning is None
+
+
+# --- what the browser console reads (P4d-2b b1) ------------------------------
+
+
+def test_a_session_keeps_the_last_sixty_outcomes_as_the_record_wrote_them(tmp_path):
+    """Spec §4.1: the Runtime pane's ticks. **The record's own strings**, `hang`
+    included: one string is computed and handed to both, so a tick can never say what
+    `trials.jsonl` does not."""
+    session = _session(_spec(tmp_path, trials=100))
+    assert session.recent_outcomes == ()
+
+    session.run()
+
+    recorded = [
+        json.loads(line)["outcome"]
+        for line in (session.directory / "trials.jsonl").read_text().splitlines()
+    ]
+    assert len(recorded) == 100
+    assert session.recent_outcomes == tuple(recorded[-RECENT_OUTCOMES:])
+    assert len(session.recent_outcomes) == RECENT_OUTCOMES == 60
+
+
+def test_the_parameters_a_console_shows_are_the_declarations_then_the_ceilings(
+    tmp_path,
+):
+    """Spec §3: the parameter pane is generated from `params`. The task's own
+    declarations with their current values, then each ceiling a console could stage
+    -- and not the out-of-cage ceiling, which is the limit a clock runs against and
+    not a task setting."""
+    session = _session(_spec(tmp_path))
+    declared = _load_trial(Path("tasks/fixation_detection.py")).params
+
+    rows = session.parameters
+    by_name = {row[0]: row for row in rows}
+
+    assert [row[0] for row in rows[: len(declared)]] == [p.name for p in declared]
+    fix_hold = next(p for p in declared if p.name == "fix_hold")
+    assert by_name["fix_hold"] == (
+        "fix_hold",
+        fix_hold.unit,
+        fix_hold.low,
+        fix_hold.high,
+        0.3,
+        False,
+    )
+    assert by_name["reward_correct"] == ("reward_correct", "mL", 0.0, 0.40, 0.15, True)
+    assert "out_of_cage" not in by_name
+
+
+def test_a_parameter_nobody_set_is_unset_not_zero(tmp_path):
+    spec = _spec(tmp_path)
+    del spec.values["fix_hold"]
+    session = _session(spec)
+
+    values = {row[0]: row[4] for row in session.parameters}
+
+    assert values["fix_hold"] is None
+
+
+def test_the_config_snapshot_names_the_bounded_config_it_ran_under(tmp_path):
+    """S9a §3's "which bounded config" had no source: `SessionSpec` holds `Bounds`,
+    never the file it came from. It is recorded where the task and allocation are."""
+    session = _session(_spec(tmp_path, trials=2, bounds_config="subjects/A/bounds.py"))
+
+    session.run()
+
+    config = json.loads((session.directory / "config.json").read_text())
+    assert config["versions"]["bounds"] == "subjects/A/bounds.py"

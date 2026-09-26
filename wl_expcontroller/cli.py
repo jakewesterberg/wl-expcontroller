@@ -1183,6 +1183,9 @@ def main(argv: list[str] | None = None) -> int:
                             if args.warn_within is None
                             else args.warn_within
                         ),
+                        # Which bounded config, as the operator named it: recorded in
+                        # the config snapshot and published to consoles (P4d-2b §3).
+                        bounds_config=str(args.bounds),
                     ),
                     # Simulators, because that is what this subcommand is for.
                     # The refusing implementations are the defaults everywhere

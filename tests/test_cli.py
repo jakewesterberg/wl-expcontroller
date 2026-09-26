@@ -2671,3 +2671,28 @@ def test_end_of_input_at_the_return_prompt_ends_it_and_says_so(tmp_path, monkeyp
         "session opened", "departure", "return not recorded", "session ended",
     ]
     assert _notes(tmp_path)[-2]["reason"] == "end of input at the terminal"
+
+
+def test_wlx_run_records_which_bounded_config_it_ran_under(tmp_path):
+    """P4d-2b spec §3: the console's Setup pane names the bounded config, read from
+    the same place the record keeps it."""
+    exit_code = main(
+        [
+            "run", GOOD,
+            "--allocation", ALLOCATION,
+            "--bounds", BOUNDS,
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_09",
+            "--subject", "REFERENCE",
+            "--out-of-cage-at", _hhmm(),
+            "--delivered-today", "0",
+            "--trials", "2",
+            *_TASK_SETS,
+        ]
+    )
+
+    assert exit_code == 0
+    config = json.loads(
+        (tmp_path / "2027-01-14_09" / "expcontroller" / "config.json").read_text()
+    )
+    assert config["versions"]["bounds"] == BOUNDS

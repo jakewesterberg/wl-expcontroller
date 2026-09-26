@@ -37,6 +37,7 @@ which absence it is looking at. `welfare.Deployment` has the table.
 from __future__ import annotations
 
 import threading
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,6 +53,7 @@ from wl_expcontroller.simulate import Census, Subject, Tally, prepare
 from wl_expcontroller.run import run_trial
 from wl_expcontroller.task import Entered, Exited, Outcome, Param, SaccadeTo, Trial
 from wl_expcontroller.welfare import (
+    OUT_OF_CAGE,
     WARN_WITHIN_DEFAULT,
     Absent as NoPump,
     Deployment,
@@ -102,6 +104,12 @@ class SessionSpec:
     #: because it bounds nothing: the session ends at the same instant whatever it
     #: is. See `welfare.WARN_WITHIN_DEFAULT` for the figure and why it is a proposal.
     warn_within: float = WARN_WITHIN_DEFAULT
+    #: Where `bounds` was loaded from, as the operator named it: S9a §3's "which
+    #: bounded config" (P4d-2b spec §3). Written into the config snapshot beside the
+    #: task and the allocation, and published from there. Empty when a caller built
+    #: `Bounds` in code, as the tests do; a console then says *not given* rather than
+    #: inventing a name.
+    bounds_config: str = ""
     #: Rates per second, not per frame (S9/simulate). Roughly: acquires fixation
     #: within a few hundred ms, saccades to a target at a plausible latency, and
     #: breaks fixation about once every twenty seconds of holding.
@@ -200,6 +208,14 @@ class Session:
     #: The kind of `stopped_because`: `completed`, `operator`, `limit` or `fault`.
     #: `operator` is a console's `Stop` or Ctrl-C at `wlx run`'s terminal.
     stop_kind: str | None = field(init=False, default=None)
+    #: The last `link.RECENT_OUTCOMES` outcomes as the strings `trials.jsonl` records
+    #: (`hang` for a trial with no outcome), oldest first (P4d-2b spec §4.1). Appended
+    #: beside `record.trial`, from the one string both are given.
+    _recent: deque = field(
+        init=False,
+        default_factory=lambda: deque(maxlen=_link.RECENT_OUTCOMES),
+        repr=False,
+    )
     #: The loop's own state, kept so a frame can still be built after it returns.
     _tally: Tally | None = field(init=False, default=None, repr=False)
     _scheduler: Scheduler | None = field(init=False, default=None, repr=False)
@@ -647,6 +663,39 @@ class Session:
         """
         return tuple(self._staged)
 
+    @property
+    def recent_outcomes(self) -> tuple:
+        """The last `link.RECENT_OUTCOMES` outcome strings, oldest first -- the public
+        face of `_recent`, for the reason `staged` is public."""
+        return tuple(self._recent)
+
+    @property
+    def parameters(self) -> tuple:
+        """Every settable value a console shows, as `(name, unit, low, high, value,
+        bounded)` -- the shape `link.Telemetry.of` builds its `ParamRow`s from (P4d-2b
+        spec §3: "the parameter row is generated from it").
+
+        The task's own `Param` declarations first, in declaration order, each with
+        its value in `spec.values` (`None` when nobody set it); then every welfare
+        ceiling a console could stage through `set`, bounded, over `[0, maximum]` --
+        a ceiling's value is a magnitude (`bounds._magnitude`), so zero is its floor.
+
+        **Not the out-of-cage ceiling.** It is the limit the session's clock runs
+        against, published as that (`Telemetry.out_of_cage_limit_s`); a parameter
+        card for it would set the duration limit beside a fixation hold as though it
+        were a task setting.
+        """
+        declared = tuple(
+            (p.name, p.unit, p.low, p.high, self.spec.values.get(p.name), False)
+            for p in self._params().values()
+        )
+        ceilings = tuple(
+            (name, ceiling.unit, 0.0, ceiling.maximum, ceiling.value, True)
+            for name, ceiling in self.spec.bounds.ceilings.items()
+            if name != OUT_OF_CAGE
+        )
+        return declared + ceilings
+
     def _refuse(self, name: str, by: str, why: str) -> None:
         """One refusal onto the capped list -- see `refusals`."""
         self.refusals.append((name, by, why))
@@ -855,7 +904,11 @@ class Session:
         record.snapshot(
             layers={"session": dict(self.spec.values)},
             resolved=dict(self.spec.values),
-            versions={"task": self.spec.task, "allocation": self.spec.allocation},
+            versions={
+                "task": self.spec.task,
+                "allocation": self.spec.allocation,
+                "bounds": self.spec.bounds_config,
+            },
         )
         self._tally = tally
         self._scheduler = scheduler
@@ -973,9 +1026,13 @@ class Session:
                     self.card.emit(self.allocation.outcomes[result.outcome])
                 tally.add(result)
                 scheduler.record(condition.name, result.outcome)
+                # One string for the record and for a console's recent outcomes, so
+                # the two cannot disagree (P4d-2b spec §4.1).
+                recorded = result.outcome.value if result.outcome else "hang"
+                self._recent.append(recorded)
                 record.trial(
                     index=index,
-                    outcome=result.outcome.value if result.outcome else "hang",
+                    outcome=recorded,
                     params=values,
                     block=scheduler.block.name,
                     condition=condition.name,
