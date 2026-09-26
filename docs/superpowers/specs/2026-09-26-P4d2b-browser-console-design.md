@@ -69,11 +69,21 @@ PI defines it (open: fixed on the enum or per task, and where `early_response`,
 `late_response` and `no_response` fall). Shown identically on the Working? pane and on
 `/health`.
 
+**One rollup is ruled, for the strip only** (PI, 2026-09-26): its *correct* counts `correct`
+plus `correct_reject`, since both are the right answer on their trial. Every other count
+stays unrolled.
+
 **`/health`** is `wl_preproc.contracts.protocol.HealthResponse`, schema version 1: readings
 are plain text, with `<`, `>` and `&` spelled out as `wl-preproc`'s `plain_text` does.
-Readings, featured marked \*: \*session (id · subject · task); \*state; \*time out of cage
-against its limit, or *cage-side, no limit*; \*the duration warning when active; fluid this
-session; \*supplement owed; the behavioral counts above; age of the last frame. `actions` is
+Readings: session (id · subject · task); state; time out of cage against its limit, or
+*cage-side, no limit*; the duration warning when active; fluid this session; supplement
+owed; the behavioral counts above; age of the last frame. **Exactly one is featured**,
+because wl-works' home page shows only the first and wl-preproc's responder features
+exactly one. It is the most urgent (PI, 2026-09-26, amending the five first marked here):
+- the duration warning when active;
+- else the state, when the session faulted or ended on the limit and the animal is not back;
+- else the last frame's age, when the stream went stale;
+- else the time out of cage. `actions` is
 always empty — no welfare action goes through `wl-works`.
 
 | Situation | Verdict |
@@ -204,6 +214,10 @@ welfare number and bounds nothing.
 - **Setup, read-only:** session, subject, deployment, bounds config, allocation.
 - **End of session, read-only:** supplement owed (`shortfall_ml`), fluid session,
   out-of-cage time, in-session time, and the stop reason.
+- **Fonts are served by the box** (PI, 2026-09-26): IBM Plex Sans, Plex Sans Condensed,
+  Plex Mono and Newsreader are bundled and served from `wlx serve`, so the page keeps the
+  wl-works look and never reaches the internet. Each font's license is verified against its
+  primary source and entered in ADR-0004's inventory when it is added.
 - **Right column:** honest placeholders, so the layout never shifts and nothing pretends to be
   live (PI, 2026-09-26): *replica · V11*, *subject display · no source yet*,
   *sound · not measured*, *display · not measured*.

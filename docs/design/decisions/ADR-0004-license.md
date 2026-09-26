@@ -54,6 +54,17 @@ as of 2026-09-05. Dependency additions still require a license entry in the inve
 below (CLAUDE.md policy), and an added dependency under a copyleft license is now a
 decision that reopens this ADR rather than a routine addition.
 
+**Amended 2026-09-26: OFL fonts may ship as assets** (PI). The browser console (P4d-2b)
+bundles IBM Plex Sans, Plex Sans Condensed, Plex Mono and Newsreader, so the page keeps the
+wl-works look without reaching the internet. All four are SIL OFL-1.1, verified against
+their primary sources on 2026-09-26. OFL-1.1 is copyleft on the font files themselves
+(condition 5), which is why this ADR was reopened. It is not copyleft on software that
+bundles them (condition 2), so the code stays Apache-2.0. The rule:
+- a font under OFL-1.1 may ship **unmodified** as a served asset;
+- each font family's `OFL.txt` ships beside its files;
+- each font gets a row in the inventory below;
+- a modified font, or any other copyleft asset or dependency, still reopens this ADR.
+
 **The copyright holder is Jacob A. Westerberg**, decided 2026-09-05 and applied
 across the family in the same pass: `wl-expcontroller`, `wl-preproc`, `wl-sync`,
 `wl-stack`, `wl-expviz`, `wl-shook`, `wl-style`, `wl-orchestrator`. Every one shipped
