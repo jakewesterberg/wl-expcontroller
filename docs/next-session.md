@@ -15,7 +15,7 @@ fix rounds before it was removed rather than corrected a fourth time. Run `git l
 
 > **Since then, 2026-09-26 (P4d-2a):** branch `p4d2a-return-to-cage` closes the out-of-cage
 > interval on the wall clock, takes the return at `wlx run`'s terminal as the stand-in until
-> the wl-works ELN records it, and adds a separate in-session clock. It has **739 tests**, is
+> the wl-works ELN records it, and adds a separate in-session clock. It has **740 tests**, is
 > rebased on `main` and pushed. **It changes `welfare.py`, so the welfare review is pending
 > again (§1)**, and it does not merge before the PI approves. The paragraph above describes
 > `main`.
