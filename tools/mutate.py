@@ -90,21 +90,72 @@ def _clear_pycache() -> None:
 #: that no longer terminates has certainly noticed the mutation.
 SUITE_TIMEOUT_SECONDS = 300
 
+#: `-rfE` makes pytest end with one line per failed or errored test. **Keeping only
+#: the last line is how the 2026-09-25 nightly went red on a flaky test without once
+#: naming it** (run 36115579357: `1 failed, 673 passed` on 7 of 41 unmutated runs).
+#: The message on each line is trimmed to the terminal width *unless* `CI` or
+#: `BUILD_NUMBER` is set, which GitHub Actions does -- pytest 9.1.1,
+#: `_pytest/terminal.py:_get_line_with_reprcrash_message` and
+#: `_pytest/compat.py:running_on_ci`, read 2026-09-26 -- so CI gets it whole.
+SUITE_ARGV = ["-m", "pytest", "-q", "-p", "no:cacheprovider", "-rfE"]
 
-def _run_suite() -> tuple[bool, str]:
+#: How many failing tests a mutant's line names before it only counts the rest.
+NAMED = 3
+
+
+def _run_suite(cwd: Path = ROOT) -> tuple[bool, str, list[str]]:
+    """Whether the suite passed, pytest's final line, and one line per failure.
+
+    `cwd` is only ever the repository in use; it is a parameter so a test can run
+    this, end to end, against a three-test suite rather than this one.
+    """
     _clear_pycache()
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
-            cwd=ROOT,
+            [sys.executable, *SUITE_ARGV],
+            cwd=cwd,
             capture_output=True,
             text=True,
             timeout=SUITE_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
-        return False, f"timed out after {SUITE_TIMEOUT_SECONDS}s (mutation hangs)"
+        return False, f"timed out after {SUITE_TIMEOUT_SECONDS}s (mutation hangs)", []
     output = result.stdout.strip().splitlines()
-    return result.returncode == 0, output[-1] if output else "no output"
+    return (
+        result.returncode == 0,
+        output[-1] if output else "no output",
+        _failures(result.stdout),
+    )
+
+
+def _failures(stdout: str) -> list[str]:
+    """The `FAILED ...`/`ERROR ...` lines of pytest's short test summary.
+
+    **Only the summary is read.** A failing test's captured output is echoed above
+    it, verbatim, so a line there that happens to start `FAILED ` is not a failure.
+    """
+    lines = stdout.splitlines()
+    start = next(
+        (n for n, line in enumerate(lines) if "short test summary info" in line), None
+    )
+    if start is None:
+        return []
+    return [line for line in lines[start + 1 :] if line.startswith(("FAILED ", "ERROR "))]
+
+
+def _caught_by(failures: list[str]) -> str:
+    """What to append to a mutant's line: the tests that failed, by node id.
+
+    On 2026-09-25 a flaky test added exactly one failure to 24 mutant runs. A mutant
+    nothing really covers reads `1 failed` in that run and is reported `caught`; the
+    name of the test that did the catching is the only thing that shows it.
+    """
+    if not failures:
+        return ""
+    names = [line.split(" ", 1)[1].split(" - ", 1)[0] for line in failures]
+    shown = ", ".join(names[:NAMED])
+    rest = len(names) - NAMED
+    return f"  <- {shown}" + (f", +{rest} more" if rest > 0 else "")
 
 
 def _function_names(source: str) -> list[str]:
@@ -309,8 +360,8 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
         SENTINEL.write_text(
             json.dumps({"path": str(path), "original": original, "mutated": mutated})
         )
-        passed, summary = _run_suite()
-        return not passed, summary
+        passed, summary, failures = _run_suite()
+        return not passed, summary + _caught_by(failures)
     finally:
         path.write_text(original)
         SENTINEL.unlink(missing_ok=True)
@@ -340,9 +391,11 @@ def main() -> int:
         targets = [args.function]
 
     _restore_any_interrupted_run()
-    baseline_ok, baseline = _run_suite()
+    baseline_ok, baseline, failures = _run_suite()
     if not baseline_ok:
-        raise SystemExit(f"suite is not green to begin with: {baseline}")
+        raise SystemExit(
+            "\n".join([f"suite is not green to begin with: {baseline}", *failures])
+        )
     print(f"baseline: {baseline}\n")
 
     survivors = []
@@ -362,8 +415,8 @@ def main() -> int:
         if not caught:
             survivors.append(name)
 
-    ok, summary = _run_suite()
-    print(f"\nrestored: {summary}")
+    ok, summary, failures = _run_suite()
+    print("\n".join([f"\nrestored: {summary}", *failures]))
     if inert:
         # Printed, never fatal, and never silent: these are functions no mutation
         # can reach, and a reader has to be able to tell that from coverage.

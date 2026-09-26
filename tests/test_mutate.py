@@ -290,3 +290,165 @@ def test_a_name_defined_more_than_once_is_mutated_once():
     )
 
     assert mutate_tool._function_names(source) == ["satisfied", "free"]
+
+
+# ---------------------------------------------------------------------------
+# Naming what failed: the 2026-09-25 nightly (run 36115579357) went red because
+# the *unmutated* suite reported `1 failed, 673 passed` on 7 of 41 runs, and
+# nothing in the log said which test -- `_run_suite` kept pytest's last line and
+# threw the rest away. The same flake landing during a mutant run turns a real
+# survivor into `caught`, and nothing said that either.
+# ---------------------------------------------------------------------------
+
+
+def test_a_suite_run_names_every_failure_and_error(tmp_path, monkeypatch):
+    """`_run_suite` itself, against real pytest rather than a transcript of it -- a
+    parser proven against output we wrote down is a proof about our transcript. The
+    first version of this test ran pytest with `SUITE_ARGV` directly, and neutering
+    `_run_suite` left the whole suite green: the argv and the parser were each
+    tested and the function joining them was not. A failing test, an erroring
+    fixture, and a passing test that prints a line shaped like a failure."""
+    monkeypatch.setattr(mutate_tool, "_clear_pycache", lambda: None)
+    (tmp_path / "test_sample.py").write_text(
+        "import pytest\n"
+        "@pytest.fixture\n"
+        "def broken():\n"
+        "    raise RuntimeError('fixture broke')\n"
+        "def test_passes():\n"
+        "    print('FAILED test_sample.py::test_passes - printed, not a failure')\n"
+        "def test_fails():\n"
+        "    assert 1 == 2\n"
+        "def test_errors(broken):\n"
+        "    pass\n"
+    )
+
+    passed, summary, failures = mutate_tool._run_suite(tmp_path)
+
+    assert passed is False
+    assert summary.startswith("1 failed, 1 passed, 1 error in "), summary
+    assert [line.split(" - ")[0] for line in failures] == [
+        "FAILED test_sample.py::test_fails",
+        "ERROR test_sample.py::test_errors",
+    ], failures
+    assert "assert 1 == 2" in failures[0]
+    assert "fixture broke" in failures[1]
+
+
+def test_a_failure_line_printed_by_a_test_is_not_mistaken_for_one():
+    """Only the short summary is read. A test's captured output is echoed in its
+    failure section, so a line there that merely looks like a failure must not be
+    counted as one."""
+    stdout = (
+        "F.\n"
+        "=================================== FAILURES ===================================\n"
+        "__________________________________ test_real ___________________________________\n"
+        "----------------------------- Captured stdout call -----------------------------\n"
+        "FAILED tests/test_decoy.py::test_decoy - not a real failure\n"
+        "=========================== short test summary info ============================\n"
+        "FAILED tests/test_a.py::test_real - assert False\n"
+        "1 failed, 1 passed in 0.02s\n"
+    )
+
+    assert mutate_tool._failures(stdout) == [
+        "FAILED tests/test_a.py::test_real - assert False"
+    ]
+
+
+def test_a_red_baseline_names_what_failed(monkeypatch):
+    """The exact line that ended the 09-25 sweep, now with the test and its message."""
+    monkeypatch.setattr(mutate_tool, "_restore_any_interrupted_run", lambda: None)
+    monkeypatch.setattr(
+        mutate_tool,
+        "_run_suite",
+        lambda: (
+            False,
+            "1 failed, 673 passed in 16.20s",
+            ["FAILED tests/test_x.py::test_flaky - AssertionError: never drained"],
+        ),
+    )
+    monkeypatch.setattr("sys.argv", ["mutate.py", "wl_expcontroller/check.py", "check"])
+
+    with pytest.raises(SystemExit) as raised:
+        mutate_tool.main()
+
+    message = str(raised.value)
+    assert message.startswith("suite is not green to begin with: 1 failed, 673 passed")
+    assert "FAILED tests/test_x.py::test_flaky - AssertionError: never drained" in message
+
+
+def test_a_red_restore_names_what_failed(monkeypatch, capsys):
+    """Five of the seven red suites on 09-25 were restores, not baselines."""
+    runs = iter(
+        [
+            (True, "674 passed in 16.05s", []),
+            (
+                False,
+                "1 failed, 673 passed in 16.26s",
+                ["FAILED tests/test_x.py::test_flaky - AssertionError: never drained"],
+            ),
+        ]
+    )
+    monkeypatch.setattr(mutate_tool, "_restore_any_interrupted_run", lambda: None)
+    monkeypatch.setattr(mutate_tool, "_run_suite", lambda: next(runs))
+    monkeypatch.setattr(
+        mutate_tool, "mutate", lambda path, name, returns: (True, "3 failed, 671 passed")
+    )
+    monkeypatch.setattr("sys.argv", ["mutate.py", "wl_expcontroller/check.py", "check"])
+
+    assert mutate_tool.main() == 1
+
+    out = capsys.readouterr().out
+    restored = out[out.index("restored:"):]
+    assert "FAILED tests/test_x.py::test_flaky - AssertionError: never drained" in restored
+
+
+def test_a_caught_mutant_says_which_tests_caught_it(monkeypatch, tmp_path):
+    """Through `mutate` itself, on a scratch file, with the sentinel and the cache
+    sweep pointed away from the real tree. On 09-25 the flake added exactly one
+    failure to 24 mutant runs; a mutant nothing really covers would have read
+    `1 failed` and been reported caught. Naming the test is what makes that visible."""
+    target = tmp_path / "module.py"
+    target.write_text("def covered():\n    return [1]\n")
+    monkeypatch.setattr(mutate_tool, "SENTINEL", tmp_path / "sentinel.json")
+    monkeypatch.setattr(mutate_tool, "_clear_pycache", lambda: None)
+    monkeypatch.setattr(
+        mutate_tool,
+        "_run_suite",
+        lambda: (
+            False,
+            "2 failed, 672 passed in 16.1s",
+            [
+                "FAILED tests/test_a.py::test_one - assert [] == [1]",
+                "FAILED tests/test_b.py::test_two - AssertionError",
+            ],
+        ),
+    )
+
+    caught, summary = mutate_tool.mutate(target, "covered", "[]")
+
+    assert caught is True
+    assert summary == (
+        "2 failed, 672 passed in 16.1s  <- tests/test_a.py::test_one, tests/test_b.py::test_two"
+    )
+    assert target.read_text() == "def covered():\n    return [1]\n"
+
+
+def test_a_mutant_caught_by_many_tests_names_a_few_and_counts_the_rest():
+    failures = [f"FAILED tests/test_a.py::test_{n} - assert False" for n in range(40)]
+
+    assert mutate_tool._caught_by(failures) == (
+        "  <- tests/test_a.py::test_0, tests/test_a.py::test_1, "
+        "tests/test_a.py::test_2, +37 more"
+    )
+
+
+def test_a_collection_error_is_named_by_its_file():
+    """What the four `geometry` entries on 2026-09-20 were caught by: an import at
+    module scope in an unrelated test file, not an assertion."""
+    failures = ["ERROR tests/test_gaze.py - TypeError: unsupported operand type(s)"]
+
+    assert mutate_tool._caught_by(failures) == "  <- tests/test_gaze.py"
+
+
+def test_nothing_is_appended_when_nothing_failed():
+    assert mutate_tool._caught_by([]) == ""
