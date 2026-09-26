@@ -320,13 +320,8 @@ figure was one low. In order:
 
 ## What moved on 2026-09-26, afternoon
 
-**Resume here:**
-- **P4d-2a:** built, gated and pushed; it waits on the PI's review of spec §7
-  (`docs/next-session.md` §1). The ledger is
-  `.superpowers/sdd/2026-09-26-p4d2a-return-to-cage/progress.md` in the worktree
-  `.claude/worktrees/p4d2a-return-to-cage`. It is git-ignored, so it exists only on the
-  machine that ran it; `git log` on the branch is the fallback.
-- **b1:** once P4d-2a has merged, start P4d-2b's b1 from its plan.
+**Resume here:** P4d-2a is merged (below). Start P4d-2b's b1 from its plan, after checking
+the plan against the merged code.
 
 ### The console was designed by mockup, and the PI ruled as it went
 
@@ -348,7 +343,7 @@ figure was one low. In order:
   family's `OFL.txt` beside its files. The code stays Apache-2.0. The licenses of IBM Plex
   and Newsreader were verified at their primary sources.
 
-### P4d-2a was re-cut by the ELN ruling, and awaits the PI's review
+### P4d-2a was re-cut by the ELN ruling, approved by the PI, and is on `main`
 
 - **The amendment:** spec `2026-09-26-P4d2a-return-to-cage-design.md` §10 moves every welfare duration onto the wall clock.
   - The session reads the host clock once and carries it forward on a steady clock that counts the time the host is asleep (`welfare.SessionClock`, since the final review), so neither a host clock step nor a suspend can shrink out-of-cage time.
@@ -382,7 +377,11 @@ figure was one low. In order:
   - **Minors:** every exit after the departure mark reaches the return path (M1, M2); Ctrl-C tests fail rather than abort pytest (M3); an empty line at the return prompt is one of the three attempts, by the PI's answer (M4); the departure row names who gave it and how (M5); stale console text corrected (M6); a card fault releasing the head after the loop is published (M7). **M8** (`SetParameter.value`'s type) is deferred to P4d-2b's b2, before writes ship.
   - **Refusals:** checked with the AST against `920e61e`: `welfare.py`'s 29 raise messages and `bounds.py`'s 5 are unchanged; `cli.py` gains one `refused: …` site, M1's split of the existing one.
   - **CI on the round's push `f6850ec` (run `36265291974`), read from the job logs:** `761 passed` on 3.11, 3.12 and 3.13 with `WLX_REQUIRE_PREPROC: 1`. The gate selected `cli`, `taskd` and `welfare` (base `920e61e`) and read 76 caught — `cli` 19, `taskd` 30, `welfare` 27 — every one a real `N failed`, with no timeouts; `welfare.emit` inert as before; and **one survivor, `cli._interrupted`** (`761 passed`), so the job failed. The round had mutated only `welfare`'s new functions and `scheduler.record` locally, and `_interrupted` is a `cli` helper it added: the last line of a Ctrl-C'd run, asserted by nothing. `cd3a83b` pins both branches (`3 failed`, naming the three Ctrl-C tests), and its CI (run `36267879930`) is green: `761 passed` on 3.11, 3.12 and 3.13, and the gate, base `f6850ec`, selected `cli` alone and read 20 caught, 0 survivors, 0 skips, no timeouts, `_interrupted` at `3 failed`.
-- **Next:** the PI reviews spec §7; `docs/next-session.md` §1 has the seven items, each with the test that pins it. **It does not merge before his review**, and then only by fast-forward.
+- **Approved by the PI on 2026-09-26**, all seven items of spec §7, each asked with the test that pins it (`docs/next-session.md` §1). Fast-forwarded onto `main` at `0c18827`; `763 passed` on the merged tree. The last rounds before approval, written up in the ledger that has since been removed:
+  - the final review's fixes;
+  - the residuals: a second Ctrl-C during the post-loop wait, a fault printing its stop reason before the return prompt, and `cli._settle_departure` added to the welfare-critical list;
+  - a deterministic test for the second Ctrl-C.
+- **Next:** P4d-2b slice b1, from `docs/superpowers/plans/2026-09-26-p4d2b-b1-read-only-console.md`. Check the plan against the merged code first: it was written before P4d-2a's final rounds.
 
 ### CI
 
@@ -1791,7 +1790,7 @@ runs out of context before it produces anything.**
 | ~~P4b~~ | ~~Session management: blocks, scheduler, bounded config, welfare accounting, the live parameter path~~ | **done 2026-09-06** — a session runs blocks with criterion transitions, enforces its one duration ceiling (**time out of the cage**, since the 2026-09-19 rulings; chair time and a trial cap until then) and reports the day's fluid shortfall at close; `welfare.py` is the second welfare-critical module and **wants human review** | — | — |
 | **P4c** | Parquet derivation at close ~~; the `labhost` endpoint~~ (`labhost` moved under `console`, ADR-0008 — see P4d-2) | Contract-tested against `wl-preproc`'s published schema | S10 | nothing. Independently ready to pick up; `trials.jsonl` now carries block and condition per row, so the derivation has what it needs |
 | ~~P4d-1~~ | ~~The console link: telemetry out, commands in, over a real socket~~ | **done 2026-09-19** — `Session` gains a `Link` port drained once per trial boundary, never per frame; `link.py`'s `Telemetry`/`Staged`/`Refused` message and `SetParameter`/`Stop` commands; `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB + REQ/REP; `wlx console` as a terminal client. Not welfare-critical and built to stay that way. Three items found and deliberately left open; **one of them (a pump fault publishing nothing) was closed by the PI on 2026-09-19 and one was widened by the same decisions** — see "What moved" above | — | — |
-| **P4d-2a** | Close the out-of-cage interval: both ends recorded as wall instants, the return taken at `wlx run`'s terminal as the ELN's stand-in, the clock published after the loop, and a separate in-session clock | **Built on branch `p4d2a-return-to-cage` (2026-09-26), awaiting the PI's welfare review of spec §7.** It merges by fast-forward only after he approves | `docs/superpowers/specs/2026-09-26-P4d2a-return-to-cage-design.md` §7, §10 | **the PI's review** |
+| **P4d-2a** | Close the out-of-cage interval: both ends recorded as wall instants, the return taken at `wlx run`'s terminal as the ELN's stand-in, the clock published after the loop, and a separate in-session clock | **On `main` (`0c18827`), approved by the PI 2026-09-26** | `docs/superpowers/specs/2026-09-26-P4d2a-return-to-cage-design.md` §7, §10 | **the PI's review** |
 | **P4d-2b** | The browser console and `GET /health` (S9a §7), with the `labhost` endpoint it carries (`labhost` is a surface of `console`, not its own process), in six slices b1–b6 | **b1 specified and planned; b2–b6 still to be brainstormed.** Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0. §4 is slice b1, the read-only console, and its plan is `docs/superpowers/plans/2026-09-26-p4d2b-b1-read-only-console.md`. b2–b6 each get a section as they are designed | that spec | **P4d-2a merging** (b1 builds on telemetry schema 6) |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
 | **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |

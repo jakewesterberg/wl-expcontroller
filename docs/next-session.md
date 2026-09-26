@@ -16,8 +16,8 @@ fix rounds before it was removed rather than corrected a fourth time. Run `git l
 > **Since then, 2026-09-26 (P4d-2a):** branch `p4d2a-return-to-cage` closes the out-of-cage
 > interval on the wall clock, takes the return at `wlx run`'s terminal as the stand-in until
 > the wl-works ELN records it, and adds a separate in-session clock. It has **740 tests**, is
-> rebased on `main` and pushed. **It changes `welfare.py`, so the welfare review is pending
-> again (§1)**, and it does not merge before the PI approves. The paragraph above describes
+> rebased on `main`. **It changed `welfare.py`, so it went to the welfare review (§1). The PI
+> approved it on 2026-09-26, and it is on `main` at `0c18827`.** The paragraph above describes
 > `main`.
 
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
@@ -95,7 +95,10 @@ closed, verified 2026-09-06 by reading the runs.
 
 ---
 
-## 1. The thing that needs a person, not a session — pending again since 2026-09-26 (P4d-2a)
+## 1. The thing that needs a person, not a session — approved 2026-09-26 (P4d-2a)
+
+**The PI approved all seven items below on 2026-09-26.** The branch was fast-forwarded onto
+`main` at `0c18827`. This section is now the record of what he approved.
 
 **`welfare.py` has changed again, so the rule below applies again.** Branch
 `p4d2a-return-to-cage` closes the out-of-cage interval (spec
