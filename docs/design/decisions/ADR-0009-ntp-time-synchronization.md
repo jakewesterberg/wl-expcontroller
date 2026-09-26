@@ -13,6 +13,14 @@ deployments, the rig and the cage-side kiosk, that cannot see each other's recor
 need to agree on what "today" is and what "09:15" means, and nothing today guarantees
 that they do: each host keeps whatever clock it booted with.
 
+> **Superseded in part, 2026-09-26, by P4d-2a spec §10.** `welfare.left_cage` no longer
+> maps onto the session clock: every welfare duration is on the wall clock, with the
+> departure, the return and the head-fixation marks kept as wall instants. And a session
+> reads the host clock once, when it is created, and carries that forward on the monotonic
+> clock (`taskd.Session.wall_now`, Ruling 8 of that slice), so a synchronization step
+> during a session does not move its out-of-cage interval; the host's offset at session
+> creation is what the session inherits. The decision below is unchanged.
+
 **What was verified, and when:**
 
 - `docs/design/architecture.md` states, unqualified until this commit: wl-works binds

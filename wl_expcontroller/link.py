@@ -331,13 +331,14 @@ class Telemetry:
             fluid_session_ml=session.welfare.session_total(),
             fluid_today_ml=session.welfare.total_today(),
             shortfall_ml=session.welfare.shortfall(),
-            # Both on the wall, read once so the two are one instant (P4d-2a spec
-            # §10). Never `session.now()`: that is the frame clock, which times
-            # trials and which `welfare` is given nowhere.
+            # On the wall, read once above so these two and `duration_warning` below
+            # are one instant (P4d-2a spec §10; Task 7 fix round 1). Never
+            # `session.now()`: that is the frame clock, which times trials and which
+            # `welfare` is given nowhere.
             out_of_cage_seconds=session.welfare.out_of_cage_seconds(wall_now),
             chair_seconds=session.welfare.chair_seconds(wall_now),
             deployment=session.spec.deployment.value,
-            duration_warning=session.duration_warning(),
+            duration_warning=session.duration_warning(wall_now),
             outcomes={k.value: v for k, v in tally.outcomes.items()},
             hangs=tally.hangs,
             owed={c: scheduler.owed(c) for c in scheduler.upcoming()},

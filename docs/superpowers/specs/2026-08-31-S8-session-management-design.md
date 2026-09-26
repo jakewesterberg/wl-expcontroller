@@ -156,8 +156,9 @@ supplement afterwards — is then computed against a figure that describes half 
    implausible until there are animals, per that file's own two guards.
 
    ~~**The mark is "how long ago", and the time base is checked.**~~ **The mark is a clock
-   time, and the mapping lives in `welfare` — PI, 2026-09-20.** *"A clock time is what an
-   operator reads."*
+   time** ~~**, and the mapping lives in `welfare`**~~ **— PI, 2026-09-20.** *"A clock time
+   is what an operator reads."* (Nothing is mapped since P4d-2a spec §10, 2026-09-26: every
+   welfare duration is on the wall — see the note below.)
 
    ~~The time-base problem is unchanged and so is its solution: the session clock is
    frame-derived and reads zero when the session starts, so the animal leaving its cage sits
@@ -183,7 +184,9 @@ supplement afterwards — is then computed against a figure that describes half 
    transport and chairing count by subtraction and the cross-check compares two wall
    intervals. The frame-derived session clock times trials and is passed to `welfare`
    nowhere; the trial loop's limit check reads the wall once per trial boundary where it read
-   the frame clock.
+   the frame clock. The wall is read through one anchor per session — `time.time()` as it read
+   when the session was created, carried forward on `time.monotonic()` — so a host-clock step
+   mid-session cannot move the interval (`taskd.Session.wall_now`).
 
    **What the change cost, shown to the PI and accepted.** The old ceiling refusal doubled as
    a wall-clock catch: an *interval* of 1.79e9 seconds is fifty-seven years and self-evidently
