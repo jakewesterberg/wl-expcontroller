@@ -532,6 +532,8 @@ def _telemetry(**overrides) -> Telemetry:
         trial_index=3,
         block="session",
         stopped_because="",
+        stop_kind=None,
+        phase="running",
         fluid_session_ml=1.25,
         fluid_today_ml=None,
         shortfall_ml=None,

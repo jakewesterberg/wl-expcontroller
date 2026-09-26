@@ -36,6 +36,7 @@ which absence it is looking at. `welfare.Deployment` has the table.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -178,6 +179,19 @@ class Session:
     _staged: list = field(init=False, default_factory=list, repr=False)
     _sequence: int = field(init=False, default=0, repr=False)
     _record: SessionRecord | None = field(init=False, default=None, repr=False)
+    #: `""` until `run()` opens the record, then `running`; `await_return` moves it
+    #: to `awaiting_return` and `closed` (P4d-2a). Published as `Telemetry.phase`.
+    phase: str = field(init=False, default="")
+    #: The kind of `stopped_because`: `completed`, `operator`, `limit` or `fault`.
+    stop_kind: str | None = field(init=False, default=None)
+    #: The loop's own state, kept so a frame can still be built after it returns.
+    _tally: Tally | None = field(init=False, default=None, repr=False)
+    _scheduler: Scheduler | None = field(init=False, default=None, repr=False)
+    _index: int = field(init=False, default=0, repr=False)
+    #: One mark at a time: the terminal and a console can both offer the return.
+    _mark_lock: threading.Lock = field(
+        init=False, default_factory=threading.Lock, repr=False
+    )
 
     def __post_init__(self) -> None:
         if self.spec.subject != self.spec.bounds.subject:
@@ -223,6 +237,31 @@ class Session:
         if self.wall_clock is not None:
             return self.wall_clock()
         return time.time()
+
+    def welfare_now(self) -> float:
+        """The session-base instant the welfare clocks are read at.
+
+        `now()` while the loop runs. **After it, the wall mapped through the
+        departure** (P4d-2a): the frame clock stopped with the last trial and the
+        interval did not, and `welfare.now_from_wall` is the one place that mapping
+        is made.
+        """
+        if self.phase == "awaiting_return":
+            return self.welfare.now_from_wall(self.wall_now())
+        return self.now()
+
+    def duration_warning(self) -> str | None:
+        """What an operator must be told about the time left out of the cage.
+
+        `approaching_limit`'s sentence, as during the loop. **After the loop, past the
+        limit, `must_stop`'s** (P4d-2a spec §4): there is no loop left to stop, and
+        the warning is what tells someone the animal is still out.
+        """
+        at = self.welfare_now()
+        warning = self.welfare.approaching_limit(at)
+        if warning is None and self.phase == "awaiting_return":
+            warning = self.welfare.must_stop(at)
+        return warning
 
     # --- out of cage, and restraint ---------------------------------------
 
@@ -442,6 +481,7 @@ class Session:
         """
         if isinstance(command, _link.Stop):
             self.stopped_because = f"stopped by {command.by}"
+            self.stop_kind = "operator"
             return
         try:
             self.set(command.name, command.value, by=command.by)
@@ -552,6 +592,14 @@ class Session:
 
         return make
 
+    def _publish(self) -> None:
+        """One frame from the state the loop last left -- the body of `run()`'s
+        `publish`, kept callable after the loop so `await_return` publishes the same
+        shape rather than a second one."""
+        self.link.publish(
+            _link.Telemetry.of(self, self._tally, self._scheduler, self._index)
+        )
+
     def run(self) -> Census:
         """Check, then require the marks, then run, then record.
 
@@ -584,6 +632,10 @@ class Session:
             resolved=dict(self.spec.values),
             versions={"task": self.spec.task, "allocation": self.spec.allocation},
         )
+        self._tally = tally
+        self._scheduler = scheduler
+        self._index = 0
+        self.phase = "running"
         try:
             index = 0
             #: Block transitions taken. Bounded by the plan -- see the check below.
@@ -606,7 +658,8 @@ class Session:
                 lossy and latest-wins by design (S9a §9), so nothing downstream cares
                 that two frames share a `trial_index`.
                 """
-                self.link.publish(_link.Telemetry.of(self, tally, scheduler, index))
+                self._index = index
+                self._publish()
 
             while True:
                 self._apply_staged()
@@ -629,11 +682,13 @@ class Session:
                 stop = self.welfare.must_stop(self.now())
                 if stop:
                     self.stopped_because = stop
+                    self.stop_kind = "limit"
                     publish()
                     break
                 if scheduler.finished:
                     if scheduler.done:
                         self.stopped_because = "every block is finished"
+                        self.stop_kind = "completed"
                         publish()
                         break
                     # **A plan can be advanced through only as many times as it has
@@ -730,6 +785,7 @@ class Session:
             self.stopped_because = (
                 f"fault, session aborted: {type(fault).__name__}: {fault}"
             )
+            self.stop_kind = "fault"
             publish()
             raise
         finally:

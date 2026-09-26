@@ -111,6 +111,10 @@ def _session_with(
         refusals_dropped=0,
         link=Absent(),
         now=lambda: 0.0,
+        phase="running",
+        stop_kind=None,
+        welfare_now=lambda: 0.0,
+        duration_warning=lambda: welfare.approaching_limit(0.0),
     )
 
 
@@ -725,3 +729,21 @@ def test_close_releases_both_sockets(zmq_cleanup):
 
     assert link._pub.closed and link._rep.closed
     assert console._sub.closed and console._req.closed
+
+
+def test_the_phase_and_the_kind_of_stop_survive_the_wire():
+    """Schema 6 (P4d-2a). A console built against 5 would render an awaiting-return
+    frame's advancing clock as a running session, which is why the version moved."""
+    original = _telemetry(phase="awaiting_return", stop_kind="limit")
+
+    restored = decode(encode(original))
+
+    assert restored == original
+    assert restored.schema == 6
+
+
+def test_a_running_sessions_stop_kind_is_none_on_the_wire_and_never_empty():
+    restored = decode(encode(_telemetry()))
+
+    assert restored.stop_kind is None
+    assert restored.phase == "running"
