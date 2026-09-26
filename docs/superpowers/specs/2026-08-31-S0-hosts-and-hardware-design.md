@@ -137,22 +137,42 @@ specified for more than two.
 **32-inch-class 16:9 flat OLED**, dual-mode preferred. Specific model deferred: the
 intended purchase is a **tandem OLED expected to release in late 2026**.
 
-**Chosen for now (PI, 2026-09-26): the Samsung Odyssey OLED G8 G80SH**, `LS32HG802SNXZA`, a
-2026 model. Samsung lists it as a 32" QD-OLED panel, 4K at 240 Hz, with **"DP 2.1 (UHBR20)"**
-and "OLED Safeguard+" burn-in protection
-([product page](https://www.samsung.com/us/monitors/gaming/32-inch-odyssey-oled-g8-g80sh-4k-gaming-monitor-sku-ls32hg802snxza/),
-read 2026-09-26). With the RTX 5070 Ti it runs 4K/240 **without DSC**, which settles open
-item 4. Three things it does not settle:
-- **It is QD-OLED, not tandem**, so the ABL headroom and burn-in resistance the paragraph below
-  wants from tandem are not assumed. V9 measures them (§5.4 tests 2 and 6).
-- **No FHD/480 mode is listed.** The page gives 240 Hz only, so §5.3's 2.08 ms FHD mode is not
-  available on this panel. The frame quantum is 4.2 ms at 4K/240.
-- **Whether "OLED Safeguard+" is fully defeatable is not stated.** §5.4 test 1 disqualifies a
-  panel on this alone, so ask Samsung before buying.
+**QD-OLED is a requirement** (PI, 2026-09-26).
 
-The page publishes no HDMI version, color depth or full-field luminance figure; they are
-unverified until the panel is measured. §5.2's geometry is recomputed from the panel's
-measured viewable diagonal.
+**Chosen (PI, 2026-09-26): the ASUS ROG Swift OLED PG32UCDM Gen 3 (PG32UCDM3).** ASUS lists:
+- a 31.5" **Tandem QD-OLED** panel at 4K/240;
+- **"DisplayPort 2.1a UHBR20 (80Gbps full bandwidth)"**, carrying "4K at 240Hz ... without
+  compression";
+- DisplayHDR 500 True Black;
+- a three-year warranty that includes panel burn-in.
+
+Sources:
+- [product page](https://rog.asus.com/us/monitors/27-to-31-5-inches/rog-swift-oled-pg32ucdm-gen3-pg32ucdm3/)
+- [spec page](https://rog.asus.com/us/monitors/27-to-31-5-inches/rog-swift-oled-pg32ucdm-gen3-pg32ucdm3/spec/)
+
+Both were read 2026-09-26. It is QD-OLED **and** tandem, the architecture the paragraph
+below argues for, and with the RTX 5070 Ti it runs 4K/240 without DSC, which settles open
+item 4. Three things remain:
+- **No FHD/480 mode is listed**, so §5.3's 2.08 ms FHD mode is unavailable on this panel.
+  The frame quantum is 4.2 ms at 4K/240.
+- **OLED Care may not be defeatable.** ASUS lists pixel shift ("users can choose between
+  several movement levels") and a **Neo Proximity Sensor that "switches to a black screen"**
+  when it decides no one is present. Neither page says either can be turned off. On a rig,
+  the one in front of the screen is an animal at a fixed distance, so either could corrupt a
+  session. §5.4 test 1 disqualifies a panel on this, so ask ASUS before buying.
+- **Unpublished figures:** full-field luminance at 100% APL and color depth are not listed,
+  so they are unverified until V9 measures them.
+
+§5.2's geometry is recomputed from the 31.5" viewable diagonal.
+
+**Considered the same day:**
+- The **Samsung Odyssey OLED G8 G80SH** (`LS32HG802SNXZA`; QD-OLED, "DP 2.1 (UHBR20)",
+  [product page](https://www.samsung.com/us/monitors/gaming/32-inch-odyssey-oled-g8-g80sh-4k-gaming-monitor-sku-ls32hg802snxza/)
+  read 2026-09-26), was chosen briefly. It was replaced because the Gen 3's panel is tandem.
+- The **ASUS PG32UCDMR** is the like-for-like non-tandem alternative: third-generation
+  QD-OLED, DP 2.1a UHBR20, DisplayHDR 400 True Black.
+- The **ASUS PG32UCWM** is a tandem *RGB* OLED with an FHD/480 dual mode. It is excluded by
+  the QD-OLED requirement, and would be the choice if the fast mode ever outweighs it.
 
 The ASUS PG32UCDP below is kept as history: ASUS lists its input as "DisplayPort 1.4 DSC"
 ([spec page](https://rog.asus.com/monitors/27-to-31-5-inches/rog-swift-oled-pg32ucdp/spec/),
@@ -288,7 +308,7 @@ November, production run mid-November to mid-December, with almost no slack for 
 |---|---|---|
 | 1 | `wl-stack` adopting the `rig/*` role vocabulary | the registry entry's `runs_on` |
 | 2 | Whether `rig/intan` and `rig/sglx` are one machine | V8, and the task PC's network layout |
-| 3 | ~~Tandem panel model~~ The Samsung G80SH was chosen for now (PI, 2026-09-26, §5.1). Still open: **whether its "OLED Safeguard+" is fully defeatable** (§5.4 test 1), and whether a tandem panel replaces it later | the panel purchase |
-| 4 | ~~Whether the chosen GPU + panel can avoid DSC~~ **Closed 2026-09-26: yes.** The RTX 5070 Ti and the G80SH both list DisplayPort 2.1 UHBR20 (§4, §5.1), so 4K/240 at 10-bit runs uncompressed | — |
+| 3 | ~~Tandem panel model~~ **The ASUS PG32UCDM Gen 3, a tandem QD-OLED, was chosen** (PI, 2026-09-26, §5.1). Still open: **whether its pixel shift and Neo Proximity Sensor can be fully turned off** (§5.4 test 1). Ask ASUS before buying | the panel purchase |
+| 4 | ~~Whether the chosen GPU + panel can avoid DSC~~ **Closed 2026-09-26: yes.** The RTX 5070 Ti and the PG32UCDM Gen 3 both list DisplayPort 2.1 UHBR20, and ASUS states 4K/240 "without compression" (§4, §5.1) | — |
 | 5 | Photodiode patch placement against the real optics | rig build, and `wl-sync` agreement |
 | 6 | Viewing distance against the real chair and head-post geometry | optics build |
