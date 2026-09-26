@@ -2,12 +2,30 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Assumes P4d-2a merged, including its Tasks 7–9.** Every welfare duration is on the
-> session's anchored wall clock (`Session.wall_now()`, Task 7 and its Ruling 8);
-> `ReturnedToCage` and `--await-return-for` are gone, and a linked `wlx run` with no
-> terminal records `return not recorded (no terminal)` and exits without post-loop frames
-> (Task 8); `Session.open()`/`Session.end()` exist and `Telemetry.in_session_seconds` is
-> on schema 6 (Task 9). Do not start this plan on a `main` that lacks them.
+> **Built on the merged P4d-2a** (fast-forwarded at `0c18827`, approved by the PI
+> 2026-09-26; `main` at `e78e111`, 763 passed), **and checked against it before the build**
+> (pre-flight, 2026-09-26; the SDD ledger's untracked
+> `.superpowers/sdd/2026-09-26-p4d2b-b1-read-only-console/preflight.md` lists every drift
+> corrected here, and this commit's message the design-level ones). What this plan relies
+> on, as merged:
+> - **One anchored clock.** Every welfare instant is read through `Session.wall_now()`,
+>   which is the session's `welfare.SessionClock` unless a test injects `Session.wall_clock`
+>   (Ruling 8). The final review moved that clock into `welfare.py` (I5) and carried it
+>   forward on `welfare.steady_seconds`, which counts host suspend (I1). One frame is one
+>   instant: `Telemetry.of` reads the wall once and hands that reading to
+>   `Session.duration_warning(wall_now)` and both durations.
+> - `welfare.approaching_limit`, and so `duration_warning`, is `None` once the return is
+>   recorded (I2).
+> - `ReturnedToCage` and `--await-return-for` are gone. A linked `wlx run` with no terminal
+>   records `return not recorded (no terminal)` and publishes no post-loop frames; at a
+>   terminal it prints the summary, then publishes `awaiting_return` frames once a second
+>   while `cli._settle_return` asks for the return (Task 8, I3).
+> - Ctrl-C in the loop is an operator's stop: `stop_kind="operator"`,
+>   `stopped_because="interrupted at the terminal"`, one frame, then the return path (I4).
+> - `Session.open(how=...)`/`Session.end(how=...)` exist, `cli.main` owns `end()`, and
+>   `Telemetry.in_session_seconds` is on schema 6 (Task 9).
+> - `tests/test_cli.py` fails a `wlx run` that cannot finish with an autouse trial budget
+>   (Ruling 10) and drives Ctrl-C through `main` via `_main_uninterrupted` (M3).
 
 **Goal:** A person on the lab network opens `http://BOX:PORT/` and reads a running session — header, the four-cell strip, Runtime, Task parameters, Setup and End of session — live from the session's telemetry, with nothing on the page able to write; and wl-works reads the same session from `GET /health`.
 
@@ -20,15 +38,17 @@
 ## Global Constraints
 
 - **Branch, not `main`.** Work in a worktree on branch `p4d2b-b1-read-only-console`, cut from `main` after P4d-2a's fast-forward. **Task 2 changes `welfare.py`** (reward delivery), so this slice is welfare-critical (CLAUDE.md) and **must not merge to `main` until the PI has approved Task 13's welfare item** (the fonts' license is already settled by ADR-0004's 2026-09-26 amendment). Push the branch; do not fast-forward `main`.
-- **The merged code wins over this plan's quotations of P4d-2a.** P4d-2a was still moving when this was written. Where a step quotes an existing line to anchor an edit and the merged line differs, anchor on the named function or field and keep its meaning; never restore the quoted text.
+- **The merged code wins over this plan's quotations of P4d-2a.** Every anchor below was re-checked against the merged tree (`e78e111`) in pre-flight, and every task's code was applied to a scratch copy of it and run. If a step's quoted line still differs from what is on disk, anchor on the named function or field and keep its meaning; never restore the quoted text.
+- **Every welfare-facing instant is read through `Session.wall_now()`** — the one anchored clock (P4d-2a Ruling 8; `welfare.SessionClock` since the final review's I5). Nothing in this slice reads `time.time()` for a welfare quantity or hands `welfare` a second clock: `Rig` reads `Session.wall_now` (Task 2), and a frame's instants are the one reading `Telemetry.of` already takes.
 - **US English** in code, comments and docs.
 - **No timing claim without a measurement.** `DEFAULT_STALE_AFTER_S` (30 s) is a display choice (spec §3); `KEEPALIVE_S`, `RECEIVE_TIMEOUT_S`, `RETRY_MS`, `QUEUE_DEPTH` and the rate window's sampling are housekeeping. Every docstring that names one says so. No latency, jitter or throughput number enters the repo.
-- **Hot path.** The only new work inside `run_trial` is `Rig.reward`'s one call to the session's wall clock and one float store per reward (Task 2). Everything else happens at a trial boundary, as `Telemetry.of` already does, or in `wlx serve`'s own process.
+- **Hot path.** The only new work inside `run_trial` is `Rig.reward`'s one call to `Session.wall_now()` — one `SessionClock.now()`, one steady-clock read — and one float store per reward (Task 2). Everything else happens at a trial boundary, as `Telemetry.of` already does, or in `wlx serve`'s own process.
 - **No new code dependency.** Everything above is stdlib or already declared. The bundled fonts are the one new third-party asset: licensed OFL-1.1, verified at their primary sources, entered in ADR-0004's inventory with a justification each, under the ADR's 2026-09-26 amendment allowing unmodified OFL-1.1 fonts as assets (PI; Task 8). `link.py` keeps importing `zmq`/`msgpack` inside functions; `serve.py`, `web.py` and `health.py` import cleanly without them (Task 11 extends `tests/_transport_import_blocker.py` to prove it).
 - **Nothing leaves the box from the page, and the fonts are bundled** (PI, 2026-09-26, spec §4.2). The mockup's Google Fonts `<link>` is replaced by the same four families shipped in the package — IBM Plex Sans, Plex Sans Condensed, Plex Mono and Newsreader, unmodified woff2 files with each family's `OFL.txt` beside them (Task 8) — and served by `wlx serve` at `/fonts/<file>` (Task 10). The page contains no `http://` or `https://` URL, and its Content-Security-Policy is `default-src 'none'` plus its own script by nonce, inline styles, `font-src 'self'` and `connect-src 'self'`.
 - **Every telemetry string reaches the page through `web._e`** (`html.escape(..., quote=True)`), and every `/health` value through `health.plain_text`.
-- **Every welfare number comes from `welfare`** (S9a §9). The renderer does display arithmetic only: the strip's correct count — `correct` plus `correct_reject`, the one rollup the PI ruled, for the strip alone (2026-09-26, spec §3) — and its percentage, two bar widths, and the time since the last reward (server clock minus `last_reward_at`). Every other count is shown as it occurred. Trials per minute is derived by `wlx serve` and labeled as derived.
+- **Every welfare number comes from `welfare`** (S9a §9). The renderer does display arithmetic only: the strip's correct count — `correct` plus `correct_reject`, the one rollup the PI ruled, for the strip alone (2026-09-26, spec §3) — and its percentage, two bar widths, and the time since the last reward (`wlx serve`'s host clock minus `last_reward_at`, which is on the session's anchored clock — two clocks, and this plan's one open question: see "Open question" below; build it as written here until the PI rules). Every other count is shown as it occurred. Trials per minute is derived by `wlx serve` and labeled as derived.
 - **Tests that open a socket set a client timeout** (5 s for HTTP requests, 10 s for event streams), register every `ZmqLink`/`ZmqConsole` they build with `zmq_cleanup`, and call `gc.collect()` after closing a `Server` or joining a background `wlx run` — both build a `ZmqConsole`/`ZmqLink` no test can register (`ZmqLink.close`'s docstring has the 300 s hang this prevents).
+- **Tests that start a `wlx run` follow P4d-2a's two test rules** (`tests/test_cli.py`): a session that cannot finish fails on a trial budget rather than running on until the mutation harness kills the suite (Ruling 10), and a test that drives Ctrl-C through `main` calls it through a `_main_uninterrupted` guard, so an escaping `KeyboardInterrupt` fails that test instead of ending the pytest run (M3). `tests/test_serve.py` carries its own copies (Task 11); it does not import `test_cli.py`, whose tests would then be collected twice.
 - **Do not edit `tests/conftest.py`.** Shared test data lives in `tests/_frames.py` (not collected: no `test_` prefix), imported as `from _frames import frame, view`.
 - **Prove each new test can fail** (CLAUDE.md): Task 13 runs the mutation gate and reads its output line by line — `N failed` is a test noticing; `N errors in 0.8s` is not.
 - **Never run the suite, edit a test, or `git add` while a mutation sweep is in flight.**
@@ -45,13 +65,23 @@ The five conditions the spec implies that a person will meet and no task's main 
 4. **A browser tab that stops reading** (asleep, backgrounded) while a simulator publishes at full speed → its queue stays at `QUEUE_DEPTH`, the telemetry thread never waits on it, it catches up in one render, and when it is closed the server forgets it. *Task 9 (`test_a_stream_that_falls_behind_keeps_only_the_newest_frames`), Task 10 (`test_a_browser_that_goes_away_is_forgotten`).*
 5. **`wlx serve` restarted mid-session** → the session never notices, and the new console picks the running session up where it is. *Task 11 (`test_the_console_follows_a_simulated_session_through_a_restart_to_its_end`).*
 
+## Open question (raised in pre-flight, 2026-09-26; the PI's to rule)
+
+**Which clock the strip's *time since the last reward* is read on.** As written (Tasks 7 and 9) it is `wlx serve`'s `time.time()` at render (`View.now`) minus `last_reward_at`, and `last_reward_at` is on the session's `welfare.SessionClock`. Those are two clocks: they differ by any step of the host clock since the session began, and a step back reads the age short, clamped at `0 s` — the direction that hides an unpaid animal, which is what the PI said this cell is for (spec §4.0). P4d-2a's rule is one frame, one instant, on the one anchored clock. Keeping to it needs the frame's own instant on the wire, which spec §4.1's field list does not have, so it is a spec change and not the pre-flight's to make. The options:
+
+- **(a) As written.** Two clocks, the cost stated in `web.View.now`'s comment. No schema change; the cell ticks between frames.
+- **(b) The frame's instant, aged on `wlx serve`'s steady clock** (recommended). Task 4 gains one field, `wall_at` — the reading `Telemetry.of` already takes once per frame — and `web._last_reward` reads `frame.wall_at - frame.last_reward_at + view.frame_age_s`. Both terms are intervals on steady or anchored clocks, the first on the session's own, so no host clock is compared with another; the cell still ticks between frames, and it agrees with the out-of-cage cell beside it, which is read at that same instant.
+- **(c) Publish the age itself** (`Telemetry.of` computes `wall_now - last_delivery_wall_at`). One instant as well, but frozen between frames unless `wlx serve` ages it anyway, and a derived number on the wire where (b) carries the two readings it is made from.
+
+**Build Tasks 7 and 9 as written until the PI rules.**
+
 ## File Structure
 
 | File | Responsibility |
 |---|---|
 | `wl_expcontroller/task.py` (modify) | `Family` and `Outcome.family`: the enum's documented groups, as data |
 | `wl_expcontroller/welfare.py` (modify, **welfare-critical**) | `Welfare.last_delivery_wall_at`; `deliver(ref, wall_now)`; `Rig.wall_clock` |
-| `wl_expcontroller/taskd.py` (modify) | `SessionSpec.bounds_config`; `Session.recent_outcomes`; `Session.parameters`; the Rig wired to the session's wall; the bounds path in the config snapshot |
+| `wl_expcontroller/taskd.py` (modify) | `SessionSpec.bounds_config`; `Session.recent_outcomes`; `Session.parameters`; the Rig wired to `Session.wall_now`; the bounds path in the config snapshot |
 | `wl_expcontroller/link.py` (modify) | `RECENT_OUTCOMES`; `ParamRow`; schema 7 fields, codec and `Telemetry.of`; `ZmqConsole(receive_timeout_s=...)` |
 | `wl_expcontroller/cli.py` (modify) | `wlx run` passes the bounds path; `render` for schema 7; the `serve` subcommand's arguments |
 | `wl_expcontroller/health.py` (create) | `/health`'s body: verdict, readings, plain text, outcome grouping — pure |
@@ -226,7 +256,7 @@ _FAMILY: dict[Outcome, Family] = {
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_task.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass (`Outcome`'s members and values are unchanged, so nothing else moves).
+Expected: all pass (`Outcome`'s members and values are unchanged, so nothing else moves). **767 passed** (763 on the merged tree; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -241,14 +271,16 @@ git commit -m "Hold the outcome families on the enum as data"
 
 **Why:** spec §4.1 — `last_reward_at` is "the wall instant of the last reward delivered, taken where `welfare` records a delivery". The strip's fourth cell (spec §4.0) is what keeps an unpaid working animal visible now that fluid session left the strip: fluid today standing still while the time since the last reward grows. **This changes `welfare.py`, so it is the item the PI approves in Task 13.**
 
+**Which clock `Rig` reads, checked against the merged P4d-2a (pre-flight).** The reward's instant is a welfare-facing instant, so it is read on the one anchored clock (Ruling 8): **`Rig` is handed `Session.wall_now`, the bound method** — never a clock of its own, and never the `SessionClock` object directly. `Session.wall_now()` *is* `self._anchored.now()`, the session's `welfare.SessionClock`, unless a test has injected `Session.wall_clock`; reading the `SessionClock` directly would skip that injection, and a test's reward instants would then sit on the host clock while its departure, its frames and its limit sat on the injected wall — two bases, which is what Ruling 8 exists to prevent. A bound method also reads a wall injected after construction, as `tests/test_taskd.py`'s `_session` does. `Welfare` still reads no clock: the instant is passed in, as every other `wall_now` in the file is. `test_a_rewards_instant_is_on_the_sessions_anchored_clock_not_the_host_clock` pins it, with no wall injected.
+
 **Files:**
 - Modify: `wl_expcontroller/welfare.py` (`Welfare.last_delivery_wall_at`; `Welfare.deliver`; `Rig`)
 - Modify: `wl_expcontroller/taskd.py` (the one `Rig(...)` construction, in `Session.__post_init__`)
 - Test: `tests/test_welfare.py`, `tests/test_taskd.py`
 
 **Interfaces:**
-- Consumes: `Session.wall_now()` (P4d-2a Task 7 and Ruling 8: the session's anchored wall).
-- Produces: `Welfare.last_delivery_wall_at: float | None` (default `None`); `Welfare.deliver(self, ref: str, wall_now: float) -> float`; `Rig.wall_clock: Callable[[], float]` (required field, after `welfare`). Task 4's `Telemetry.of` reads `session.welfare.last_delivery_wall_at`.
+- Consumes: `Session.wall_now()` — the session's `welfare.SessionClock` (anchored once, carried forward on `welfare.steady_seconds`, which counts host suspend) unless a test injected `Session.wall_clock` (P4d-2a Ruling 8; final review I1, I5).
+- Produces: `Welfare.last_delivery_wall_at: float | None` (default `None`); `Welfare.deliver(self, ref: str, wall_now: float) -> float`; `Rig.wall_clock: Callable[[], float]` (required field, after `welfare`), which `Session` sets to its own `wall_now` and nothing else. Task 4's `Telemetry.of` reads `session.welfare.last_delivery_wall_at`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -269,7 +301,8 @@ def test_a_delivery_records_the_wall_instant_it_was_charged_at():
 
 def test_a_rewards_instant_is_read_from_the_rigs_wall_clock():
     """`Rig` is what a task's `Reward` reaches, so it is what reads the clock: the
-    session's own wall, handed to it as `wall_clock`."""
+    session's `wall_now`, handed to it as `wall_clock` (`tests/test_taskd.py` pins
+    that the session hands it that and nothing else)."""
     welfare = _welfare()
     rig = Rig(card=Card(), wall_clock=lambda: WALL_NOW + 12.5, welfare=welfare)
 
@@ -307,19 +340,45 @@ Append to `tests/test_taskd.py`, after `test_a_session_delivers_reward_and_the_d
 def test_a_session_records_when_it_last_paid_on_its_own_wall_clock(tmp_path):
     """The path, not the piece: a task's `Reward`, through `Rig`, into `welfare`, on
     the session's wall. `_session` gives the wall `WALL_NOW` plus the frame clock, so
-    a `Rig` that read `time.time()` instead would land decades outside this range."""
+    a `Rig` that read `time.time()` instead would land years past this range --
+    `WALL_NOW` is November 2023."""
     session = _session(_spec(tmp_path, trials=50))
 
     census = session.run()
 
     assert census.outcomes[Outcome.CORRECT] > 0
     assert WALL_NOW <= session.welfare.last_delivery_wall_at <= session.wall_now()
+
+
+def test_a_rewards_instant_is_on_the_sessions_anchored_clock_not_the_host_clock(
+    tmp_path, monkeypatch
+):
+    """**Ruling 8, on the reward path.** With no wall injected, `Rig` reads
+    `Session.wall_now`, which is the session's `welfare.SessionClock`: the host clock
+    as it read when the session was created, carried forward on a steady clock. So
+    the host clock stepped back an hour before a reward moves that reward's instant
+    not at all, and it is the instant every other welfare reading of that moment
+    gets. A `Rig` given `time.time` would record `WALL_NOW - 3_593.0` here; one given
+    the `SessionClock` itself would pass this and fail the test above, whose wall is
+    injected. Every steady clock `welfare.steady_seconds` could read is stubbed to one
+    value, as `test_the_sessions_wall_does_not_step_when_the_host_clock_does` does."""
+    host, steady = [WALL_NOW], [100.0]
+    monkeypatch.setattr(time, "time", lambda: host[0])
+    monkeypatch.setattr(time, "monotonic", lambda: steady[0])
+    monkeypatch.setattr(time, "clock_gettime", lambda clock: steady[0])
+    session = Session(_spec(tmp_path), card=Card(), pump=Pump())
+    host[0], steady[0] = WALL_NOW - 3_600.0 + 7.0, 107.0
+
+    session.rig.reward("reward_correct")
+
+    assert session.welfare.last_delivery_wall_at == WALL_NOW + 7.0
+    assert session.welfare.last_delivery_wall_at == session.wall_now()
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_welfare.py tests/test_taskd.py -k "charged_at or rigs_wall_clock or still_charged or last_paid"`
-Expected: FAIL — `TypeError: Welfare.deliver() got an unexpected keyword argument 'wall_now'`, `TypeError: Rig.__init__() got an unexpected keyword argument 'wall_clock'`, and `AttributeError: 'Welfare' object has no attribute 'last_delivery_wall_at'`.
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_welfare.py tests/test_taskd.py -k "charged_at or rigs_wall_clock or still_charged or last_paid or anchored_clock_not_the_host"`
+Expected: 5 failed — `TypeError: Welfare.deliver() got an unexpected keyword argument 'wall_now'`, `TypeError: Rig.__init__() got an unexpected keyword argument 'wall_clock'`, and `AttributeError: 'Welfare' object has no attribute 'last_delivery_wall_at'` (the two `tests/test_taskd.py` tests reach the last one).
 
 - [ ] **Step 3: Implement in `welfare.py`**
 
@@ -353,8 +412,9 @@ Replace `deliver` with:
         **`wall_now` says when, and it bounds nothing** (P4d-2b spec §4.1). It is kept
         as `last_delivery_wall_at` beside the charge and compared with no limit, so it
         is not refused when it is not a number: a refusal here would end a trial the
-        animal completed over a display field. `Rig.reward` passes the session's
-        wall, which is the only caller.
+        animal completed over a display field. `Rig.reward` is the only caller, and
+        passes `taskd.Session.wall_now()` -- the session's `SessionClock` (above),
+        the one clock every welfare instant is read on (P4d-2a Ruling 8).
         """
         ml = self.bounds.value(ref)
         self.commanded += ml
@@ -368,11 +428,15 @@ In `Rig`, append this paragraph to the class docstring (before its closing `"""`
 
 ```python
 
-    **`wall_clock` is the session's wall** (`taskd.Session.wall_now`), read once per
-    reward so `Welfare.deliver` can record when it paid (P4d-2b spec §4.1) -- one
-    clock read and one float store on the trial's path, per reward and never per
-    frame. Required, with no default: a default of `time.time` would quietly disagree
-    with a session whose wall a test injects, or that P4d-2a anchored.
+    **`wall_clock` is `taskd.Session.wall_now`, and nothing else** -- the session's
+    `SessionClock` above, or the wall a test injected -- read once per reward so
+    `Welfare.deliver` can record when it paid (P4d-2b spec §4.1): one clock read and
+    one float store on the trial's path, per reward and never per frame. **The one
+    anchored clock, not a second one** (P4d-2a Ruling 8): the reward's instant is on
+    the base the departure, the return and every published frame are. Required, with
+    no default: a default of `time.time` would be that second clock -- off the anchor
+    by any step of the host clock since the session began, and off an injected wall
+    entirely.
 ```
 
 and replace its fields and `reward` with:
@@ -394,9 +458,11 @@ and replace its fields and `reward` with:
 In `Session.__post_init__`, replace `self.rig = Rig(card=self.card, welfare=self.welfare)` with:
 
 ```python
-        # The session's own wall, so a reward's instant is on the base every welfare
-        # mark is (P4d-2a spec §10) -- a bound method, so a wall a test injects after
-        # construction is the one read.
+        # `wall_now`, the one clock every welfare instant is read on (P4d-2a spec §10,
+        # Ruling 8): `self._anchored`, the session's `SessionClock`, unless a test
+        # injected `wall_clock`. Not `self._anchored.now` itself, which would skip an
+        # injected wall, and a bound method, so a wall injected after construction is
+        # the one read.
         self.rig = Rig(card=self.card, welfare=self.welfare, wall_clock=self.wall_now)
 ```
 
@@ -452,7 +518,7 @@ Then add three entries to `NOT_ENTRY_POINTS` in `tests/test_welfare.py`, after t
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_welfare.py tests/test_taskd.py`
 Expected: all pass, including `test_the_enumeration_of_numeric_entry_points_is_complete` (it would name the three new doors if the exemptions were missing).
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **772 passed** (767 after Task 1; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 7: Commit**
 
@@ -708,7 +774,7 @@ In `wl_expcontroller/cli.py`, in `wlx run`'s `SessionSpec(...)` call, directly a
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_taskd.py tests/test_cli.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **777 passed** (772 after Task 2; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -725,14 +791,14 @@ git commit -m "Keep the recent outcomes, the parameter rows and the bounds path 
 **Files:**
 - Modify: `wl_expcontroller/link.py` (import two welfare constants; `ParamRow`; `SCHEMA`; eight `Telemetry` fields; `Telemetry.of`; `encode`; `decode`)
 - Test: `tests/test_link.py` (the `_session_with` stand-in; new tests; one assertion in `test_the_phase_and_the_kind_of_stop_survive_the_wire`)
-- Modify tests: `tests/test_cli.py` (the `_telemetry` fixture constructs a `Telemetry` field by field)
+- Modify tests: `tests/test_cli.py` (the `_telemetry` fixture constructs a `Telemetry` field by field; its default limit is chosen so no line Task 5 adds contains `0:00`, which a merged P4d-2a render test refuses anywhere on the screen)
 
 **Interfaces:**
 - Consumes: Task 2's `Welfare.last_delivery_wall_at`; Task 3's `Session.parameters`, `Session.recent_outcomes`, `SessionSpec.bounds_config`; `welfare.DAILY_FLUID`, `welfare.OUT_OF_CAGE`.
 - Produces:
   - `link.ParamRow(name: str, unit: str, low: float | None, high: float | None, value: float | str | None, bounded: bool)` — frozen, slotted.
   - `link.SCHEMA == 7`.
-  - `Telemetry` gains, after its last existing field: `task: str`, `allocation: str`, `bounds_config: str`, `params: tuple` (of `ParamRow`), `floor_ml: float`, `out_of_cage_limit_s: float | None`, `last_reward_at: float | None`, `recent_outcomes: tuple` (of `str`).
+  - `Telemetry` gains, after its last existing field (`refusals_dropped`; schema 6's `in_session_seconds` sits after `chair_seconds`, not at the end, and is unchanged): `task: str`, `allocation: str`, `bounds_config: str`, `params: tuple` (of `ParamRow`), `floor_ml: float`, `out_of_cage_limit_s: float | None`, `last_reward_at: float | None`, `recent_outcomes: tuple` (of `str`).
   Tasks 5–11 read these by name.
 
 - [ ] **Step 1: Write the failing tests**
@@ -868,9 +934,23 @@ In `tests/test_cli.py`, in the `_telemetry` fixture's `Telemetry(...)` call, add
         bounds_config="tasks/reference_bounds.py",
         params=(),
         floor_ml=250.0,
-        out_of_cage_limit_s=600.0,
+        # Fifteen minutes, chosen so its clock (`15:00`) contains no `0:00`:
+        # `test_console_says_a_session_that_has_not_opened_has_no_in_session_clock`
+        # refuses `0:00` anywhere on the screen, and `render` prints this limit beside
+        # the out-of-cage clock -- `10:00` or `12:00:00` would fail it on a line it is
+        # not about. A test about the limit passes its own.
+        out_of_cage_limit_s=900.0,
         last_reward_at=None,
         recent_outcomes=(),
+```
+
+and append this paragraph to the fixture's docstring, after its last paragraph (the one about `duration_warning`) and before its closing `"""`:
+
+```python
+
+    Schema 7's fields (P4d-2b b1) default to a configured rig session with nothing
+    rewarded and no outcome yet: `last_reward_at` is `None` and `recent_outcomes`
+    empty, so a test that does not ask for either sees their *none yet* lines.
 ```
 
 - [ ] **Step 2: Run them to see them fail**
@@ -1019,7 +1099,7 @@ In `decode`'s `Telemetry(...)` call, add after the last existing argument:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_cli.py tests/test_taskd.py`
 Expected: all pass. `test_wlx_run_with_link_lets_a_real_console_attach` decodes real schema-7 frames from a real `wlx run`, so it is the path check for Tasks 2–4 together.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass, and `tests/test_no_transport_leak.py` still passes (`welfare` imports no transport).
+Expected: all pass, and `tests/test_no_transport_leak.py` still passes (`welfare` imports no transport). **782 passed** (777 after Task 3; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -1040,7 +1120,7 @@ git commit -m "Carry the session's configuration, limits, last reward and recent
 
 **Interfaces:**
 - Consumes: Task 4's fields and `link.ParamRow`.
-- Produces: `render` prints, in this order among its lines: `  task: T  allocation: A  bounds: B` after the deployment line; `  fluid today: X mL of a F mL floor` (or the `UNKNOWN` sentence with `(floor F mL)`); `  out of cage: C of L` when a limit is published; `  last reward: none yet` or `  last reward: at HH:MM:SS`; one `  param: ...` line per `ParamRow`; `  recent (oldest first): ...` or `  recent: none yet`.
+- Produces: `render` prints, in this order among its lines: `  task: T  allocation: A  bounds: B` directly after the deployment line (so above P4d-2a's `  in session:` and `  phase:` lines, which stay where they are); `  fluid today: X mL of a F mL floor` (or the `UNKNOWN` sentence with `(floor F mL)`); `  out of cage: C of L` when a limit is published; `  last reward: none yet` or `  last reward: at HH:MM:SS`; one `  param: ...` line per `ParamRow`; `  recent (oldest first): ...` or `  recent: none yet`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1240,9 +1320,9 @@ Add one paragraph to `render`'s docstring, before its closing `"""`:
 - [ ] **Step 4: Run the tests, then the suite**
 
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_cli.py`
-Expected: all pass, the earlier render tests included (`out of cage: 1:06:47` is still a substring of its line, and no new line prints `0:00`, `107.0` or `task parameter`).
+Expected: all pass, the earlier render tests included (`out of cage: 1:06:47` is still a substring of its line, and no new line prints `0:00`, `107.0` or `task parameter`). **`0:00` is checked as a substring of the whole screen** by `test_console_says_a_cage_side_session_has_no_duration_bound` and by P4d-2a's `test_console_says_a_session_that_has_not_opened_has_no_in_session_clock`, so a limit of `10:00` (600 s) or `12:00:00` on the fixture's default line would fail the second: that is why Task 4 gives `_telemetry` a fifteen-minute default, and why the one test here about the limit passes 600 s itself.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **790 passed** (782 after Task 4; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -2004,7 +2084,7 @@ In `tools/mutation_gate.py`, add `"health": "None",` to `RETURNS` (after `"link"
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_health.py tests/test_mutation_gate.py`
 Expected: all pass, the `_contract` tests included (none skipped: check the summary line says `0 skipped`, or run with `-rs` and see no skip reasons).
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **858 passed** (790 after Task 5; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -2493,10 +2573,13 @@ class View:
     about the session."""
 
     #: The wall instant of this render, POSIX seconds, from `wlx serve`'s host clock.
-    #: Read only to say how long ago the last reward was. The session's wall is
-    #: anchored when the session is created (P4d-2a, Ruling 8), so the two differ by
-    #: however far the host clock has been adjusted since; the cell is an age for a
-    #: person to read, and bounds nothing.
+    #: Read only to say how long ago the last reward was. **A second clock, stated**:
+    #: `last_reward_at` is on the session's `welfare.SessionClock` -- the host clock
+    #: read once when the session was created and carried forward on a steady clock
+    #: (P4d-2a Ruling 8, final review I1/I5) -- so the two differ by however far the
+    #: host clock has been stepped since. A step back reads the age short by the
+    #: step, clamped at `0 s` (`health.ago`). The cell is an age for a person to read
+    #: and bounds nothing.
     now: float
     #: Seconds since `wlx serve` received the latest frame; `None` before any.
     frame_age_s: float | None
@@ -3026,7 +3109,7 @@ In `tools/mutation_gate.py`, add `"web": "None",` to `RETURNS` (after `"health":
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_web.py tests/test_health.py tests/test_mutation_gate.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **895 passed** (858 after Task 6; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -3058,7 +3141,7 @@ google/fonts' `ofl/newsreader` carries only variable TTF files, so the woff2 fil
 **Files:**
 - Create: `wl_expcontroller/fonts/ibm-plex-sans/` (`IBMPlexSans-Regular.woff2`, `IBMPlexSans-Medium.woff2`, `IBMPlexSans-SemiBold.woff2`, `OFL.txt`); `wl_expcontroller/fonts/ibm-plex-sans-condensed/` (`IBMPlexSansCondensed-Regular.woff2`, `IBMPlexSansCondensed-SemiBold.woff2`, `IBMPlexSansCondensed-Bold.woff2`, `OFL.txt`); `wl_expcontroller/fonts/ibm-plex-mono/` (`IBMPlexMono-Regular.woff2`, `IBMPlexMono-Medium.woff2`, `IBMPlexMono-SemiBold.woff2`, `OFL.txt`); `wl_expcontroller/fonts/newsreader/` (`Newsreader72pt-Bold.woff2`, `Newsreader72pt-BoldItalic.woff2`, `OFL.txt`)
 - Modify: `pyproject.toml` (a `[tool.setuptools.package-data]` table — the package has no data files yet, so this is the first)
-- Modify: `docs/design/decisions/ADR-0004-license.md` (two inventory rows, under its 2026-09-26 amendment allowing unmodified OFL-1.1 fonts as assets)
+- Modify: `docs/design/decisions/ADR-0004-license.md` (four inventory rows, one per font family, as its 2026-09-26 amendment allowing unmodified OFL-1.1 fonts as assets requires; the amendment itself is already in place)
 - Modify: `wl_expcontroller/web.py` (add `Font`, `FONTS`, `font_bytes`, `_FONT_FACES`, `_CSS`, `_LOGO`, `_SCRIPT`, `page`)
 - Test: `tests/test_web.py`
 
@@ -3138,25 +3221,16 @@ curl -fsSL https://raw.githubusercontent.com/google/fonts/main/ofl/newsreader/OF
 
 Expected: `7e6b2818…`, then `Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"` and `This Font Software is licensed under the SIL Open Font License, Version 1.1.`; then `fdfad381…`, `Copyright 2020 The Newsreader Project Authors (http://github.com/productiontype/Newsreader)` and the same license line. **If a primary source cannot be read, or its text differs, write UNVERIFIED and the date in that inventory row instead of "verified", and say so in the task report.**
 
-In `docs/design/decisions/ADR-0004-license.md`, add two rows to the Dependency inventory table:
+In `docs/design/decisions/ADR-0004-license.md`, add four rows to the Dependency inventory table, after the `msgpack` row — **one per font family**, as the ADR's "Amended 2026-09-26: OFL fonts may ship as assets" paragraph requires ("each font gets a row in the inventory below"):
 
 ```markdown
-| IBM Plex Sans, Plex Sans Condensed, Plex Mono (fonts, bundled unmodified as woff2 in `wl_expcontroller/fonts/`) | OFL-1.1, Reserved Font Name "Plex" (`LICENSE.txt` at the root of github.com/IBM/plex and in each release zip, byte-identical, verified 2026-09-26) | The console page's wl-works typography, served by `wlx serve` so the page never reaches the internet (P4d-2b spec §4.2, PI 2026-09-26). From the `@ibm/plex-sans@1.1.0`, `@ibm/plex-sans-condensed@2.0.0` and `@ibm/plex-mono@2.5.0` releases; never subset or converted, which would make a Modified Version that could not be called Plex |
+| IBM Plex Sans (font, bundled unmodified as woff2 in `wl_expcontroller/fonts/ibm-plex-sans/`) | OFL-1.1, Reserved Font Name "Plex" (`LICENSE.txt` at the root of github.com/IBM/plex and in the release zip, byte-identical, verified 2026-09-26) | The console page's body text in the wl-works typography, served by `wlx serve` so the page never reaches the internet (P4d-2b spec §4.2, PI 2026-09-26). From the `@ibm/plex-sans@1.1.0` release, 400, 500 and 600; never subset or converted, which would make a Modified Version that could not be called Plex |
+| IBM Plex Sans Condensed (font, bundled unmodified as woff2 in `wl_expcontroller/fonts/ibm-plex-sans-condensed/`) | OFL-1.1, Reserved Font Name "Plex" (as IBM Plex Sans, verified 2026-09-26) | The console page's labels and headings. From the `@ibm/plex-sans-condensed@2.0.0` release, 400, 600 and 700; never subset or converted |
+| IBM Plex Mono (font, bundled unmodified as woff2 in `wl_expcontroller/fonts/ibm-plex-mono/`) | OFL-1.1, Reserved Font Name "Plex" (as IBM Plex Sans, verified 2026-09-26) | The console page's numbers and paths. From the `@ibm/plex-mono@2.5.0` release, 400, 500 and 600; never subset or converted |
 | Newsreader (font, bundled unmodified as woff2 in `wl_expcontroller/fonts/newsreader/`) | OFL-1.1 (`OFL.txt` at productiontype/Newsreader `cfcb4f7`, byte-identical to google/fonts `ofl/newsreader/OFL.txt`, verified 2026-09-26) | The wl.works logo's face on the console page: 700 upright and italic, from the 72pt optical-size cut, the size the logo's text is set at |
 ```
 
-and, at the end of its Consequences section, add:
-
-```markdown
-**Reopened for the console's fonts (2026-09-26, P4d-2b b1)**, as the paragraph above requires
-of a copyleft addition. OFL-1.1's condition 5 keeps the font files under the OFL. Its
-condition 2 permits bundling them "with any software, provided that each copy contains the
-above copyright notice and this license", and condition 5 does "not apply to any document
-created using the Font Software" -- so the Apache-2.0 code, and the pages it serves, stay
-Apache-2.0. The files ship unmodified, each family's license beside them as `OFL.txt`, read
-from its primary source on 2026-09-26 (see the inventory). Put to the PI with the branch's
-welfare item.
-```
+**Add nothing to the Consequences section.** The amendment is already there (committed with this plan, `9cfb94f`): unmodified OFL-1.1 fonts may ship as served assets, each family's `OFL.txt` beside its files, and the code stays Apache-2.0. The PI settled it; it is not put to him again (Task 13 Step 6 item 2 is for information).
 
 In `pyproject.toml`, add directly after the `[tool.setuptools.packages.find]` table:
 
@@ -3737,7 +3811,7 @@ node --check "${TMPDIR:-/tmp}/wlx-console.js" && echo "script parses"
 Expected: `script parses`. With no `node`, Task 13's browser check is where the script is first run; say so in the task report.
 
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **907 passed** (895 after Task 7; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 7: Commit**
 
@@ -4224,7 +4298,7 @@ In `tools/mutation_gate.py`, add `"serve": "None",` to `RETURNS` (after `"web": 
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_serve.py tests/test_mutation_gate.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **920 passed** (907 after Task 8; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -4888,7 +4962,7 @@ def make_handler(
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_serve.py`
 Expected: all pass, the `_contract` test included. Run it three times; the stream tests use threads and must not flake.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **938 passed** (920 after Task 9; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -4912,8 +4986,9 @@ Body: names the one deliberate difference from wl-preproc's responder (an unknow
 - Modify: `tests/_transport_import_blocker.py`, `tests/test_no_transport_leak.py`
 
 **Interfaces:**
-- Consumes: Task 9's `Hub`; Task 10's `make_handler`, `KEEPALIVE_S`; `link.ZmqConsole`, `link.SCHEMA`.
+- Consumes: Task 9's `Hub`; Task 10's `make_handler`, `KEEPALIVE_S`; `link.ZmqConsole`, `link.SCHEMA`; `cli.main`'s `run` path as P4d-2a merged it (with no terminal: `return not recorded (no terminal)`, no post-loop frames, exit 0 once a `Stop` ends the loop cleanly); `taskd.run_trial` as the seam a trial budget wraps (as `tests/test_cli.py`'s Ruling 10 fixture does).
 - Produces:
+  - Test helpers in `tests/test_serve.py` only: `E2E_TRIAL_BUDGET = 20_000`, `_trial_budget(monkeypatch, allowed)` (Ruling 10) and `_main_uninterrupted(argv)` (M3), copies of `tests/test_cli.py`'s rules for this file's own `wlx run` and Ctrl-C tests.
   - `link.ZmqConsole(pub_endpoint: str, req_endpoint: str, settle_s: float = 0.05, receive_timeout_s: float = 5.0)` — `receive_timeout_s` sets the SUB socket's `RCVTIMEO`; the REQ socket keeps 5 s.
   - `serve.RECEIVE_TIMEOUT_S = 0.5`.
   - `serve.Server(*, sub: str, req: str, http: tuple[str, int], token: str, stale_after_s: float = DEFAULT_STALE_AFTER_S, keepalive_s: float = KEEPALIVE_S, receive_timeout_s: float = RECEIVE_TIMEOUT_S)` — binds the HTTP port on construction; `.hub: Hub`; `.address -> tuple[str, int]`; `.start() -> None`; `.close() -> None` (idempotent).
@@ -4983,6 +5058,50 @@ _TASK_SETS = [
     "--set", "target_position=10.0",
 ]
 
+#: **Ruling 10** (P4d-2a final review), as `tests/test_cli.py`'s autouse fixture has it:
+#: a `wlx run` here that cannot finish fails rather than running on until the mutation
+#: harness kills the suite. The end-to-end session below declares 100,000 trials and
+#: is ended by a console's `Stop` after about 900 (898 to 916 over five runs of this
+#: test in the plan's pre-flight, 2026-09-26: a scratch count, not a claim about this
+#: system). A mutant that breaks the `Stop` path would otherwise leave that session
+#: running on its daemon thread past the test, into the rest of the suite and
+#: interpreter shutdown. Flat rather than scaled to the declared trials, which are
+#: deliberately unreachable here.
+E2E_TRIAL_BUDGET = 20_000
+
+
+def _trial_budget(monkeypatch, allowed: int) -> None:
+    """Fail the session a test starts once it has run `allowed` trials: `taskd`'s
+    `run_trial` raises past that, so the session faults, publishes that it did, and
+    `wlx run` ends -- `tests/test_cli.py`'s budget, for the one test here that runs a
+    session. The session's own clocks stay under test."""
+    from wl_expcontroller import taskd
+
+    real, left = taskd.run_trial, [allowed]
+
+    def run_trial(*args, **kwargs):
+        left[0] -= 1
+        if left[0] < 0:
+            raise RuntimeError(
+                "this session has run more trials than its budget "
+                "(tests/test_serve.py, Ruling 10): nothing ended it"
+            )
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+
+
+def _main_uninterrupted(argv: list) -> int:
+    """`main(argv)`, with an escaping `KeyboardInterrupt` turned into a failure --
+    `tests/test_cli.py`'s helper of the same name, for its reason (P4d-2a final review
+    M3): a `KeyboardInterrupt` that escapes a test ends the whole pytest run, not the
+    test. Copied rather than imported, since importing `test_cli` would collect its
+    tests a second time."""
+    try:
+        return main(argv)
+    except KeyboardInterrupt:
+        pytest.fail("KeyboardInterrupt escaped main(): Ctrl-C must end wlx serve cleanly")
+
 
 @pytest.fixture
 def server_cleanup():
@@ -5039,17 +5158,20 @@ def _advancing(server: Server, count: int = 2) -> list[int]:
 
 
 def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
-    tmp_path, zmq_cleanup, server_cleanup
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
 ):
     """Spec §4.4's end to end, and spec §2's "restarting `wlx serve` changes nothing
     in `taskd`" (Review Focus 5): a real `wlx run --link` in the simulator, a real
     `wlx serve` on loopback, and the event stream read as a browser reads it.
 
     The session is ended by a console's `Stop` -- what slice b2's page will send --
-    because under the twelve-hour reference config nothing else would end it soon.
-    With no terminal attached, `wlx run` records that nobody took the return and exits
-    (P4d-2a Task 8), so the stop frame is the last one the console sees.
+    because under the twelve-hour reference config nothing else would end it soon,
+    and `E2E_TRIAL_BUDGET` fails it if the `Stop` never lands (Ruling 10). With no
+    terminal attached -- pytest's stdin is not one -- `wlx run` records `return not
+    recorded (no terminal)` and publishes nothing after the loop (P4d-2a Task 8), so
+    the stop frame, `phase` still `running`, is the last one the console sees.
     """
+    _trial_budget(monkeypatch, E2E_TRIAL_BUDGET)
     pub, rep = _endpoints(zmq_cleanup)
     first = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
     first.start()
@@ -5230,7 +5352,7 @@ def test_wlx_serve_serves_until_interrupted_then_closes(
 
     monkeypatch.setattr(serve, "_wait", interrupted)
 
-    assert main(_serve_args(tmp_path, link=f"{pub},{rep}")) == 130
+    assert _main_uninterrupted(_serve_args(tmp_path, link=f"{pub},{rep}")) == 130
     assert seen["page"] == 200 and seen["health"] == 200
     captured = capsys.readouterr()
     assert f"http://127.0.0.1:{seen['port']}/" in captured.out
@@ -5650,7 +5772,7 @@ and directly after `args = parser.parse_args(argv)`, add:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_serve.py tests/test_link.py tests/test_no_transport_leak.py`
 Expected: all pass. Run `tests/test_serve.py` three times in a row; the end-to-end test must not flake.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+Expected: all pass: **962 passed** (938 after Task 10; the pre-flight's scratch build of this plan on `e78e111`).
 
 - [ ] **Step 5: Commit**
 
@@ -5685,7 +5807,7 @@ git commit -m "Add wlx serve: one ZmqConsole, a telemetry thread, the page and /
 
 4. After the paragraph that begins "`welfare.py` has all three", add:
 
-   > **`deliver` also records when it charged** (`Welfare.last_delivery_wall_at`, P4d-2b b1, 2026-09-26): the wall instant, read from the session's own clock by `Rig`, for the console's time since the last reward. Nothing compares it with a limit, and it is not refused when it is not a number, so a display field can never end a trial.
+   > **`deliver` also records when it charged** (`Welfare.last_delivery_wall_at`, P4d-2b b1, 2026-09-26): the wall instant, which `Rig` reads through `Session.wall_now` — the session's `SessionClock`, the one clock every welfare instant is on — for the console's time since the last reward. Nothing compares it with a limit, and it is not refused when it is not a number, so a display field can never end a trial.
 
 - [ ] **Step 2: S9a (`docs/superpowers/specs/2026-08-31-S9a-console-design.md`)**
 
@@ -5699,25 +5821,28 @@ git commit -m "Add wlx serve: one ZmqConsole, a telemetry thread, the page and /
    |---|---|
    | Configuration: task, allocation, bounded config | `SessionSpec.task`, `.allocation`, `.bounds_config` — what the config snapshot's `versions` records. Display mode and stimulus calibration have no source yet and say so |
    | The day's floor; the out-of-cage limit | `welfare.bounds.minima[DAILY_FLUID]` and `ceilings[OUT_OF_CAGE].value` — the numbers `shortfall` and `must_stop` read. The limit is `None` cage-side |
-   | Time since the last reward | `welfare.last_delivery_wall_at` (`Telemetry.last_reward_at`) less the console's clock. **What keeps a working, unpaid animal visible on the strip** since 2026-09-26: fluid today standing still while this grows |
+   | Time since the last reward | `wlx serve`'s clock less `welfare.last_delivery_wall_at` (`Telemetry.last_reward_at`, on the session's `SessionClock`). **What keeps a working, unpaid animal visible on the strip** since 2026-09-26: fluid today standing still while this grows. Two clocks, which part by any step of the host clock since the session began; a step back reads the age short |
    | Recent outcomes | `Session.recent_outcomes` — the last 60 strings `trials.jsonl` records, from the one string both are handed |
    | Correct / trials, on the strip | `Telemetry.outcomes["correct"]` plus `["correct_reject"]`, over `trial_index`: **the one rollup, ruled for the strip only** (PI, 2026-09-26: both are the right answer on their trial). The Working? pane and `/health` count every outcome as it occurred |
    | Parameter row | `Session.parameters` → `Telemetry.params`: the task's own `Param` declarations with their values, then the welfare ceilings a console may stage; writes return through `Session.set` |
    | Trials per minute | **Derived by `wlx serve`**, from `trial_index` over the last five minutes of frames, labeled derived on the page, bounding nothing — the one console number not in the record, and it says so |
 
+   If the PI has ruled on this plan's open question (the clock the time since the last reward is read on) by the time this task runs, the "Time since the last reward" row says what he ruled and what was built, instead of its last sentence.
+
 3. At the end of the paragraph "**And two of those numbers may not be removed**", add:
 
    > **Since 2026-09-26 neither is on the always-visible strip** (P4d-2b spec §4.0; asked against this paragraph, the PI answered "fine as is"): both are on Runtime and End of session in every state, and `tests/test_web.py::test_fluid_session_and_the_supplement_are_never_dropped` holds that. What keeps a working, unpaid animal visible at a glance is fluid today standing still on the strip while the time since the last reward grows.
 
-4. In the schema history sentence (P4d-2a's Task 10 carried it through 6), append:
+4. The schema history (below §9's table, "Schema-versioned with golden-file tests…") is a headline sentence and a bullet per version since P4d-2a. Change the headline's "**`SCHEMA` is 6 as of 2026-09-26** (P4d-2a)" to "**`SCHEMA` is 7 as of 2026-09-26** (P4d-2b b1)", and add a bullet after the **6** one:
 
-   > At 7 (2026-09-26, P4d-2b b1) the configuration, the floor and the out-of-cage limit, the last reward's instant and the recent outcomes were added. Nothing changed meaning; a schema-7 reader refuses a schema-6 frame rather than guessing, and `wlx serve` says so on its page.
+   > - **7 (2026-09-26, P4d-2b b1):** `task`, `allocation`, `bounds_config` and `params` (the configuration), `floor_ml` and `out_of_cage_limit_s` (the limits its numbers are read against), `last_reward_at` and `recent_outcomes` arrived. Nothing changed meaning; a schema-7 reader cannot decode a schema-6 frame, which lacks them, so `wlx serve` refuses it and says so on its page rather than guessing.
 
 - [ ] **Step 3: `docs/CHECKPOINT.md`**
 
-1. Add a "What moved" entry, dated the day the branch is finished, headed "P4d-2b slice b1: the read-only browser console". It says, in this order:
+1. Add a "What moved" entry above "What moved on 2026-09-26, afternoon", dated the day the branch is finished, headed "P4d-2b slice b1: the read-only browser console", and move that section's **Resume here:** line into it, pointing at b2. It says, in this order:
    - what was built: schema 7, `wlx serve`, the page, `/health`, and the files (`serve.py`, `web.py`, `health.py`);
-   - **the one welfare-critical change** (`Welfare.deliver`'s `wall_now` and `last_delivery_wall_at`, and `Rig.wall_clock`), the fonts shipped under ADR-0004's 2026-09-26 amendment, and that the branch awaits the PI's approval of the welfare item;
+   - **the one welfare-critical change** (`Welfare.deliver`'s `wall_now` and `last_delivery_wall_at`, and `Rig.wall_clock`, which is `Session.wall_now` — the one anchored clock), the fonts shipped under ADR-0004's 2026-09-26 amendment, and that the branch awaits the PI's approval of the welfare item;
+   - the open question on the clock the time since the last reward is read on, and the PI's answer if there is one;
    - the PI's three rulings on the plan (2026-09-26, recorded in spec §3 and §4.2): exactly one featured reading, the most urgent; the strip's correct counts `correct` plus `correct_reject`, the one rollup, while every other count stays unrolled; and the fonts bundled and served by the box, with ADR-0004 reopened for their OFL-1.1 licenses. Also: tick colors are by family, where the mockup's were not;
    - the page's stale banner runs only while frames are due (running, or awaiting the return), which is also `/health`'s staleness rule;
    - one line on how a refused frame shows: a schema-6 `wlx run` beside a schema-7 `wlx serve` shows a *Refused* banner, by design.
@@ -5727,8 +5852,8 @@ The gate's result and the test count are added to this entry in Task 13 Step 3, 
 
 - [ ] **Step 4: `docs/next-session.md`**
 
-1. §1: add Task 13 Step 6's numbered item (the welfare item). The fonts' license question is settled by ADR-0004's 2026-09-26 amendment.
-2. §6: P4d-2b b1 is built; b2 is next — writes from the box (spec §2's four conditions on `POST /commands`, the `NAME (box, unverified)` attribution, and the greyed controls' sentence), per spec §4.0's slice list. The command thread that owns the REQ socket arrives with b2 (`serve.py`'s module docstring names it).
+1. §1 is P4d-2a's list as merged — "The thing that needs a person, not a session — approved 2026-09-26 (P4d-2a)" — and it is now a record of what the PI approved. **Do not add b1's item to it**: under that heading it would read as approved. Add a new section above it, "## 1. The thing that needs a person, not a session — P4d-2b b1, awaiting the PI", holding Task 13 Step 6's numbered item 1 (the welfare item, with the tests that pin it), item 2 as information (the fonts' license is settled by ADR-0004's 2026-09-26 amendment), and the plan's open question on the clock the time since the last reward is read on, if he has not yet answered it. Renumber P4d-2a's section "## 1a." and leave its text as it is.
+2. §6 is headed "P4d-1 shipped; P4d-2a awaits review; P4d-2b is next", which the merge already made stale. Retitle it "P4d-2a is on `main`; P4d-2b b1 is built; b2 is next", and replace its first paragraph: b1 is built on branch `p4d2b-b1-read-only-console` and awaits the PI's approval of its welfare item; b2 is next — writes from the box (spec §2's four conditions on `POST /commands`, the `NAME (box, unverified)` attribution, and the greyed controls' sentence), per spec §4.0's slice list, and it first closes P4d-2a's M8 (`SetParameter.value`'s type) before any write ships. The command thread that owns the REQ socket arrives with b2 (`serve.py`'s module docstring names it).
 
 - [ ] **Step 5: Commit**
 
@@ -5748,7 +5873,7 @@ git commit -m "Record the read-only browser console, and what the PI is asked to
 - [ ] **Step 1: The whole suite, three times**
 
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider -rs` three times in a row.
-Expected: all pass each time, and the `-rs` summary lists no skip from `test_health.py` or `test_serve.py` (their contract tests must run). Note the passed count; Step 3 records it.
+Expected: all pass each time, and the `-rs` summary lists no skip from `test_health.py` or `test_serve.py` (their contract tests must run). Note the passed count; Step 3 records it. It is **962** if nothing was added after Task 11 (Task 12 adds no test), as the pre-flight's scratch build read it.
 
 - [ ] **Step 2: The mutation gate, read line by line**
 
@@ -5796,8 +5921,8 @@ Open `http://127.0.0.1:8080/` and confirm, writing down what was seen:
 2. `curl -s -H "Authorization: Bearer $(cat ~/.config/wlx/health.token)" http://127.0.0.1:8080/health` returns `ok` with one featured reading, and the page's *wl-works sees* pane matches it.
 3. Stop `wlx serve` with Ctrl-C: the page says *stream lost*. Start it again: the page re-renders in full on its own, and the session never paused.
 4. The ✕ closes the stream and shows *disconnected · the session keeps running on the box*; *reconnect* brings the page back.
-5. Send `python -m wl_expcontroller.cli console --sub tcp://127.0.0.1:5571 --req tcp://127.0.0.1:5572 --as jake --stop`: the pill reads *ended · operator*, and after `--stale-after` seconds nothing greys (no frames are due).
-6. Start a second session and stop its `wlx run` with Ctrl-Z (suspend, so no stop frame is sent): after `--stale-after` seconds the page greys and says *stream stale · last frame N s ago*, and `/health` says `degraded`. Resume it with `fg` and the page recovers.
+5. Send `python -m wl_expcontroller.cli console --sub tcp://127.0.0.1:5571 --req tcp://127.0.0.1:5572 --as jake --stop`. This `wlx run` has a terminal, so after the loop it prints its summary, then asks `returned to its home cage at (HH:MM, or now):` while it publishes the out-of-cage clock once a second (P4d-2a, I3): the pill reads *ended · operator · awaiting return*, the banner *stopped by jake*, and the out-of-cage cell keeps advancing with nothing greyed. Answer `now` at the `wlx run` terminal: the pill reads *ended · operator · returned*, and after `--stale-after` seconds nothing greys (no frames are due). `/health` says `ok` throughout.
+6. Start a second session (another `--session-id` and `--root`) and stop its `wlx run` with Ctrl-Z (suspend, so no stop frame is sent): after `--stale-after` seconds the page greys and says *stream stale · last frame N s ago*, and `/health` says `degraded`. Resume it with `fg` and the page recovers. Then end it with Ctrl-C at its terminal — the operator's stop made there (P4d-2a, I4): the banner reads *interrupted at the terminal*, the pill *ended · operator · awaiting return*, and the return prompt follows; answer `now`.
 7. Open the page in a browser's private window with network access disabled: it renders fully, in IBM Plex with the Newsreader logo, and the developer tools' network panel shows requests to the box only — `/`, `/events` and the `/fonts/...` files.
 
 If any of these fails, fix it in the owning task with a test where Python can reach it, and repeat this step.
@@ -5814,9 +5939,11 @@ Then read the branch's CI run (`gh run list --branch p4d2b-b1-read-only-console`
 
 Give the PI (memory: he wants numbered items to approve, not the files):
 
-1. **`welfare.deliver` now records when it charged each reward.** It takes the session's wall instant and keeps the last one as `last_delivery_wall_at`, set beside `commanded` and `deliveries`, before the valve opens. Nothing compares it with a limit, and it is not refused when it is not a number, so a display field can never end a trial the animal completed. `Rig` reads the session's own clock for it, once per reward. Pinned by `test_a_delivery_records_the_wall_instant_it_was_charged_at`, `test_a_rewards_instant_is_read_from_the_rigs_wall_clock`, `test_a_delivery_the_pump_refused_is_still_charged_and_timed` and `test_a_session_records_when_it_last_paid_on_its_own_wall_clock`.
+1. **`welfare.deliver` now records when it charged each reward.** It takes the session's wall instant and keeps the last one as `last_delivery_wall_at`, set beside `commanded` and `deliveries`, before the valve opens. Nothing compares it with a limit, and it is not refused when it is not a number, so a display field can never end a trial the animal completed. `Rig` reads it through `Session.wall_now`, once per reward: the session's `SessionClock`, the one anchored clock every other welfare instant is on (Ruling 8), so a host clock stepped mid-session does not move it. Pinned by `test_a_delivery_records_the_wall_instant_it_was_charged_at`, `test_a_rewards_instant_is_read_from_the_rigs_wall_clock`, `test_a_delivery_the_pump_refused_is_still_charged_and_timed`, `test_a_session_records_when_it_last_paid_on_its_own_wall_clock` and `test_a_rewards_instant_is_on_the_sessions_anchored_clock_not_the_host_clock`.
 
 2. **The fonts ship under ADR-0004's amendment of 2026-09-26** (PI: "Allow OFL fonts"), for information, not for approval. The PI settled it when asked: the fonts ship unmodified with each family's `OFL.txt`; condition 2 permits bundling them with any software; and condition 5 exempts "any document created using the Font Software", so the Apache-2.0 code and the pages it serves are unaffected. Pinned by `test_every_font_the_page_uses_is_bundled_with_its_license` and `test_the_fonts_ship_with_the_package`.
+
+3. **Only if he has not already answered it when the pre-flight raised it:** the plan's open question — which clock the strip's time since the last reward is read on — with the options and the recommendation in "Open question" at the top of this plan. Built as written until he rules.
 
 The featured reading (exactly one, the most urgent) and the strip's correct count (`correct` plus `correct_reject`) were ruled on 2026-09-26 and are in spec §3; they are not asked again.
 
