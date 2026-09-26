@@ -901,6 +901,22 @@ class Session:
         while the head is recorded as fixed. Head-post release bounds nothing (PI,
         2026-09-19, restated 2026-09-26), so it is marked here rather than asked for.
 
+        **One frame naming the fault, then it propagates unchanged** -- the same rule
+        `run()`'s own `except Exception as fault:` follows (fix round 1). `welfare`
+        accepts a return -- setting `returned_at` -- *before* `_note` writes its row,
+        so the row write (`record.welfare_note`, disk full or otherwise) can still
+        fail with the mark already recorded in memory. Left unguarded, that exception
+        would escape with `phase` stuck at `awaiting_return` forever, no `closed`
+        frame, and -- on Task 6's background thread -- a traceback nobody joins. This
+        publishes one `fault` frame, unguarded as `run()`'s is (a second failure here
+        chains onto the first rather than hiding it), and then re-raises. **Surfacing
+        that exception is the thread's owner's job, never this method's**: Task 6
+        re-raises it in the main thread rather than swallowing or retrying it, for the
+        same reason `_note`'s own docstring gives -- a retry would call
+        `welfare.returned_to_cage` a second time and be refused by that mark's own
+        sentence, leaving memory certain and the file still empty with no path back to
+        matching them.
+
         A cage-side session has no interval, and this returns at once.
         """
         if self.spec.deployment is Deployment.CAGE_SIDE:
@@ -913,13 +929,22 @@ class Session:
         if self.welfare.fixed_at is not None and self.welfare.released_at is None:
             self.head_released(self.now())
         self.phase = "awaiting_return"
-        while self.welfare.returned_at is None and not give_up.is_set():
-            for command in self.link.drain():
-                self._command(command, self._index)
+        try:
+            while self.welfare.returned_at is None and not give_up.is_set():
+                for command in self.link.drain():
+                    self._command(command, self._index)
+                if self.welfare.returned_at is not None:
+                    break
+                self._publish()
+                give_up.wait(heartbeat)
             if self.welfare.returned_at is not None:
-                break
+                self.phase = "closed"
+                self._publish()
+        except Exception as fault:
+            self.stopped_because = (
+                f"fault after the loop, the return may not be recorded: "
+                f"{type(fault).__name__}: {fault}"
+            )
+            self.stop_kind = "fault"
             self._publish()
-            give_up.wait(heartbeat)
-        if self.welfare.returned_at is not None:
-            self.phase = "closed"
-            self._publish()
+            raise

@@ -1581,3 +1581,26 @@ def test_await_return_before_the_loop_is_refused(tmp_path):
 
     with pytest.raises(RuntimeError, match="before run"):
         session.await_return(threading.Event())
+
+
+def test_a_fault_after_the_loop_is_published_then_raised(tmp_path, monkeypatch):
+    """Fix round 1: `_note`'s row write can fail (OSError) after `welfare` has
+    already accepted the return -- `returned_at` is set, but the write that follows
+    it can still fail, disk full or otherwise. `await_return` must mirror `run()`'s
+    one-frame-then-propagate rule rather than leaving `phase` stuck at
+    `awaiting_return` forever with no fault frame, which is what a background thread
+    dying with an unjoined traceback would otherwise look like from a console."""
+
+    def _boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _chaired_and_run(tmp_path, link, wall)
+    monkeypatch.setattr("wl_expcontroller.taskd.welfare_note", _boom)
+    link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
+
+    with pytest.raises(OSError, match="disk full"):
+        session.await_return(threading.Event(), heartbeat=0.01)
+
+    assert link.published[-1].stop_kind == "fault"
+    assert "disk full" in link.published[-1].stopped_because
