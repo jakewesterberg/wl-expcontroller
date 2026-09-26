@@ -24,7 +24,13 @@ import pytest
 
 from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
 from wl_expcontroller.dio import Simulated as Card
-from wl_expcontroller.link import REFUSAL_HISTORY, SetParameter, Simulated, Stop
+from wl_expcontroller.link import (
+    REFUSAL_HISTORY,
+    ReturnedToCage,
+    SetParameter,
+    Simulated,
+    Stop,
+)
 from wl_expcontroller.record import REFUSAL_LOG_LIMIT
 from wl_expcontroller.scheduler import Block, Condition, Counting
 from wl_expcontroller.task import Outcome
@@ -1361,3 +1367,32 @@ def test_a_failed_row_write_is_never_swallowed(tmp_path, monkeypatch):
 
     with pytest.raises(OSError, match="disk full"):
         session.returned_to_cage(at=WALL_NOW)
+
+
+def test_a_console_return_during_the_loop_ends_a_chaired_session(tmp_path):
+    """A chaired animal can be walked home mid-session, and the loop must not run a
+    trial outside the interval: `must_stop` answers for a closed one."""
+    link = Simulated()
+    link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
+    spec = _spec(tmp_path, trials=50, deployment=Deployment.RIG_CHAIRED)
+    session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=lambda: WALL_NOW)
+    session.left_cage(at=WALL_NOW)
+
+    session.run()
+
+    assert "back in its cage" in session.stopped_because
+    assert session.stop_kind == "limit"
+    assert [r["how"] for r in _welfare_notes(session) if r["kind"] == "returned"] == ["console"]
+
+
+def test_a_console_return_while_the_head_is_fixed_is_refused_and_the_session_runs_on(tmp_path):
+    link = Simulated()
+    link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    names = [name for name, _by, _why in session.refusals]
+    assert names == ["returned_to_cage"]
+    assert "head-fixed" in session.refusals[0][2]

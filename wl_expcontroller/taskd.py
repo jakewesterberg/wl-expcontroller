@@ -516,6 +516,13 @@ class Session:
         """
         return tuple(self._staged)
 
+    def _refuse(self, name: str, by: str, why: str) -> None:
+        """One refusal onto the capped list -- see `refusals`."""
+        self.refusals.append((name, by, why))
+        if len(self.refusals) > _link.REFUSAL_HISTORY:
+            self.refusals_dropped += len(self.refusals) - _link.REFUSAL_HISTORY
+            del self.refusals[: -_link.REFUSAL_HISTORY]
+
     def _command(self, command, index: int) -> None:
         """A console's request, routed to the one write path.
 
@@ -539,7 +546,28 @@ class Session:
         network peer rather than the operator -- one entry per `SetParameter` it
         sends, as fast as it can send them. This list is driven by exactly the same
         peer and was the third one, unbounded.
+
+        **The return is accepted in any phase; nothing else is, once the loop has
+        ended** (P4d-2a). A parameter staged after the last trial could never be
+        applied, and a stop has nothing left to stop -- both are refused with the
+        reason rather than silently kept.
         """
+        if isinstance(command, _link.ReturnedToCage):
+            try:
+                self.returned_to_cage(
+                    command.at, confirmed=command.confirmed, by=command.by, how="console"
+                )
+            except Exceeded as refused:
+                self._refuse("returned_to_cage", command.by, str(refused))
+            return
+        if self.phase != "running":
+            self._refuse(
+                "stop" if isinstance(command, _link.Stop) else command.name,
+                command.by,
+                "the session has ended and is waiting for the animal's return to its "
+                "cage; the return is the only mark it still takes",
+            )
+            return
         if isinstance(command, _link.Stop):
             self.stopped_because = f"stopped by {command.by}"
             self.stop_kind = "operator"
@@ -556,10 +584,7 @@ class Session:
                     trial_index=index,
                     session_seconds=self.now(),
                 )
-            self.refusals.append((command.name, command.by, str(refused)))
-            if len(self.refusals) > _link.REFUSAL_HISTORY:
-                self.refusals_dropped += len(self.refusals) - _link.REFUSAL_HISTORY
-                del self.refusals[: -_link.REFUSAL_HISTORY]
+            self._refuse(command.name, command.by, str(refused))
 
     def _params(self) -> dict[str, Param]:
         trial = self._trial if self._trial is not None else self._load()

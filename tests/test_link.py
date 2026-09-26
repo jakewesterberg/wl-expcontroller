@@ -19,6 +19,7 @@ from wl_expcontroller.link import (
     Absent,
     Refused,
     RemoteBindRefused,
+    ReturnedToCage,
     Simulated,
     SetParameter,
     Staged,
@@ -747,3 +748,16 @@ def test_a_running_sessions_stop_kind_is_none_on_the_wire_and_never_empty():
 
     assert restored.stop_kind is None
     assert restored.phase == "running"
+
+
+def test_a_return_to_the_cage_crosses_a_real_socket(zmq_cleanup):
+    """P4d-2a. The mark a console sends is a POSIX wall instant, a name, and whether
+    a person confirmed a far time -- all three must arrive as sent."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    console.send(ReturnedToCage(at=1_700_000_123.5, by="jake", confirmed=True))
+
+    assert _drain_until(link) == [
+        ReturnedToCage(at=1_700_000_123.5, by="jake", confirmed=True)
+    ]
