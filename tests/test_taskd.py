@@ -57,9 +57,13 @@ def _bounds(daily_fluid: float = 250.0, **over: float) -> Bounds:
     ceilings = {
         "reward_correct": Ceiling(value=0.15, maximum=0.40, unit="mL"),
         # **The session's one duration ceiling** (PI, 2026-09-19), and since
-        # `max_trials` went it is also what bounds a *broken* session here. Small
-        # enough that a scheduler whose counts stop advancing runs out of session
-        # seconds in a fraction of a wall second rather than grinding on forever --
+        # `max_trials` went it is also what bounds a *broken* session here -- on
+        # the wall since P4d-2a, so only for a session whose wall follows its
+        # frames (`_session`, `_Wall.follow`; Ruling 10). Every test here whose
+        # loop nothing else would end has one, or, cage-side and without this
+        # ceiling, a trial budget (`_trial_budget`). Small enough that a scheduler
+        # whose counts stop advancing runs out of session seconds in a fraction of
+        # a wall second rather than grinding on forever --
         # which under a mutation run is a 300-second timeout per function, paid once
         # for every function in the module. Eight hundred seconds is a little over
         # four hundred trials of this task, so it replaces `max_trials=400` with a
@@ -1488,13 +1492,53 @@ def test_a_failed_row_write_is_never_swallowed(tmp_path, monkeypatch):
 
 
 class _Wall:
-    """A wall clock a test can move."""
+    """A wall clock a test can move by hand -- and, while `follow` is set, one that
+    advances with a session's frames, at `pace` wall seconds per frame second.
+
+    **Ruling 10** (P4d-2a final review). With every welfare duration on the wall, a
+    session whose wall stood still could never reach its out-of-cage ceiling, so a
+    mutant that stops sessions finishing -- `scheduler.record` neutered -- ran eight
+    tests here forever instead of failing them, and the harness read `timed out`.
+    Following the frames while the loop runs puts the ceiling back in reach at
+    simulated speed, as `_session`'s wall does. A test about the post-loop clock then
+    calls `still()` and moves the wall by hand from wherever the loop left it.
+    """
 
     def __init__(self, at: float) -> None:
         self.at = at
+        self.follow = None
+        self.pace = 1.0
 
     def __call__(self) -> float:
-        return self.at
+        if self.follow is None:
+            return self.at
+        return self.at + self.pace * self.follow()
+
+    def still(self) -> None:
+        """Stop following the frames, keeping the reading it had."""
+        self.at = self()
+        self.follow = None
+
+
+def _trial_budget(spec: SessionSpec):
+    """An `observe` hook that fails a session whose scheduler never finishes.
+
+    **For the one session no wall can bound**: a cage-side session has no
+    out-of-cage ceiling at all, so following the frames ends nothing (Ruling 10).
+    Ten times the declared trials, and a hundred more, is far past anything a
+    working scheduler runs here -- a hang is the only way a trial goes uncounted.
+    """
+    allowed, seen = 10 * spec.trials + 100, [0]
+
+    def observe(condition, values, result) -> None:
+        seen[0] += 1
+        if seen[0] > allowed:
+            raise RuntimeError(
+                f"{seen[0]} trials in a session of {spec.trials}: its scheduler is "
+                f"not finishing, and nothing else ends a cage-side session"
+            )
+
+    return observe
 
 
 def _until(predicate, seconds: float = 5.0) -> bool:
@@ -1524,12 +1568,19 @@ def _fixed_and_run(tmp_path, link, wall) -> Session:
     is about chairing, and chaired sessions mark no head-fixation, so the
     frame-against-wall mismatch that refused a head-fixed session's post-loop frames
     never ran here.
+
+    **The wall follows the frames while the loop runs, and stands still after it**
+    (Ruling 10), so the loop ends -- at `_bounds()`' 800 s ceiling if nothing else
+    ends it -- and each caller moves the wall by hand for the post-loop clock it is
+    about. Three trials put the loop's end a few seconds after `WALL_NOW`.
     """
     spec = _spec(tmp_path, trials=3)
     session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=wall)
     session.left_cage(at=WALL_NOW)
     session.head_fixed(at=wall())
+    wall.follow = session.now
     session.run()
+    wall.still()
     return session
 
 
@@ -1627,20 +1678,26 @@ def test_while_the_loop_runs_each_frame_carries_the_sessions_own_warning(tmp_pat
     caught by the post-loop test above.
 
     `warn_within` is 1,800 s against `_bounds()`' 800 s ceiling, so the threshold
-    spans the whole session and every running frame must warn. The wall stands still,
-    so every frame's sentence is the same one."""
+    spans the whole session and every running frame must warn. The wall follows the
+    frames (Ruling 10), so each frame's sentence names the time left at that frame's
+    own reading: the first is `approaching_limit`'s at the departure, asked before
+    the loop, and every one says what its own out-of-cage clock leaves."""
     link, wall = Simulated(), _Wall(WALL_NOW)
     spec = _spec(tmp_path, trials=3, warn_within=1_800.0)
     session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=wall)
     session.left_cage(at=WALL_NOW)
     session.head_fixed(at=WALL_NOW)
+    first = session.welfare.approaching_limit(WALL_NOW)
+    wall.follow = session.now
     session.run()
 
     running = [frame for frame in link.published if frame.phase == "running"]
-    warning = session.welfare.approaching_limit(WALL_NOW)
     assert running, "the loop published its frames"
-    assert warning is not None, "the threshold spans the ceiling"
-    assert [frame.duration_warning for frame in running] == [warning] * len(running)
+    assert first is not None, "the threshold spans the ceiling"
+    assert running[0].duration_warning == first
+    for frame in running:
+        left = f"has {800.0 - frame.out_of_cage_seconds:.0f} s left of its 800 s"
+        assert left in (frame.duration_warning or ""), frame
 
 
 def test_a_head_fixed_session_whose_frames_outran_the_wall_publishes_after_the_loop(
@@ -1649,37 +1706,42 @@ def test_a_head_fixed_session_whose_frames_outran_the_wall_publishes_after_the_l
     """**The simulator finding, at the session** (P4d-2a spec §10). The frame clock is
     counted, not waited for, so a simulated session's frames run far ahead of the
     wall. Two hundred trials here carry at least a hundred frame-clock seconds of
-    inter-trial interval alone while the injected wall moves two seconds in all.
+    inter-trial interval alone while the injected wall, following the frames at a
+    hundredth of their pace (Ruling 10), moves a few seconds in all.
 
     While the welfare clocks read the frame base, this `RIG_FIXED` session's release
     landed at its frame-clock end, hundreds of seconds after its fixation, and the
     first post-loop frame read out-of-cage through the wall: the minute before the
-    session plus the wall's two seconds, beside hundreds of seconds of restraint,
+    session plus the wall's few seconds, beside hundreds of seconds of restraint,
     which `out_of_cage_seconds` refuses as impossible. On the wall alone, both
     intervals are the wall's, and the frame is the wall's too.
     """
     link, wall = Simulated(), _Wall(WALL_NOW)
     spec = _spec(tmp_path, trials=200)
-    # Twelve hours: the ceiling is not what this is about, and must not end the loop.
-    spec.bounds = _bounds(out_of_cage=43_200.0)
+    # The ceiling is not what this is about and must not end the loop -- two hundred
+    # trials move this wall a few seconds -- but it must be *reachable*: a scheduler
+    # that never finishes then ends here at simulated speed, not never (Ruling 10).
+    spec.bounds = _bounds(out_of_cage=120.0)
     session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=wall)
     session.left_cage(at=WALL_NOW - 60.0)
     session.head_fixed(at=WALL_NOW)
-    # The wall creeps a hundredth of a second per trial and stops at two seconds.
-    session.observe = lambda condition, values, result: setattr(
-        wall, "at", min(wall.at + 0.01, WALL_NOW + 2.0)
-    )
+    # The wall follows the frames at a hundredth of their pace.
+    wall.follow, wall.pace = session.now, 0.01
 
     session.run()
+    wall.still()
+    assert session.stop_kind == "completed", "the ceiling must not end the loop"
     assert session.now() >= 100.0, "the frames must outrun the wall, or this is idle"
-    assert wall.at == pytest.approx(WALL_NOW + 2.0)
+    assert wall.at == pytest.approx(WALL_NOW + session.now() / 100.0)
 
     thread, give_up = _awaiting(session)
     try:
         assert _until(lambda: link.published[-1].phase == "awaiting_return")
         frame = link.published[-1]
         assert frame.out_of_cage_seconds == pytest.approx(wall.at - (WALL_NOW - 60.0))
-        assert frame.chair_seconds == pytest.approx(2.0), "restraint is the wall's too"
+        assert frame.chair_seconds == pytest.approx(session.now() / 100.0), (
+            "restraint is the wall's too"
+        )
     finally:
         give_up.set()
         thread.join(timeout=2)
@@ -1839,6 +1901,7 @@ def test_a_cage_side_session_has_no_return_to_await(tmp_path):
         tmp_path, trials=3, deployment=Deployment.CAGE_SIDE, bounds=_cage_side_bounds()
     )
     session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=lambda: WALL_NOW)
+    session.observe = _trial_budget(spec)
     session.run()
     published = len(link.published)
 

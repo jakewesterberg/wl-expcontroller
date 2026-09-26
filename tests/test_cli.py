@@ -60,6 +60,58 @@ _TASK_SETS = [
 ]
 
 
+#: **Ruling 10** (P4d-2a final review): the trials a `wlx run` session in this file
+#: may run, per trial it declared plus a flat allowance, before it is failed as one
+#: that cannot finish. Measured on this suite, 2026-09-26: no test here runs more
+#: than 227 trials, and each runs its declared count except the linked-console one,
+#: which declares 5,000 and is stopped by its console after about 200.
+TRIALS_PER_DECLARED = 10
+TRIAL_ALLOWANCE = 1_000
+
+
+@pytest.fixture(autouse=True)
+def _a_session_that_cannot_finish_fails_instead_of_running_on(monkeypatch):
+    """**Ruling 10.** A `wlx run` session here reaches its out-of-cage ceiling only
+    in real time, since every welfare duration moved to the wall (P4d-2a spec §10) --
+    ten minutes for `tasks/reference_bounds.py`, twelve hours for `_far_bounds`. So a
+    mutant that stops sessions finishing (`scheduler.record` neutered) left 25 tests
+    here running until the mutation harness killed the suite at 300 s, and it read
+    `timed out`: the harness noticing, not a test.
+
+    This wraps `taskd.run_trial` and raises once a session has run
+    `TRIALS_PER_DECLARED` times its declared trials plus `TRIAL_ALLOWANCE` -- far
+    past anything a working one runs here, and about a second of trials for the
+    stuck ones. **Scaled to the session rather than one fixed count**: a fixed ten
+    thousand cost about 6.5 s per stuck test on this host (a scratch measurement, not
+    a claim about this system), and thirty such tests would put the whole mutated
+    suite near the harness's limit again. `Session.run` is wrapped only to read how
+    many trials the session declared. The anchored clock stays under test, and
+    `conftest.py` is untouched, so the mutation gate does not escalate to a full
+    sweep for it.
+    """
+    from wl_expcontroller import taskd
+
+    real_run, real_trial = taskd.Session.run, taskd.run_trial
+    left: list = [None]
+
+    def run(self):
+        left[0] = TRIALS_PER_DECLARED * self.spec.trials + TRIAL_ALLOWANCE
+        return real_run(self)
+
+    def run_trial(*args, **kwargs):
+        if left[0] is not None:
+            left[0] -= 1
+            if left[0] < 0:
+                raise RuntimeError(
+                    "this session has run more trials than its budget "
+                    "(tests/test_cli.py, Ruling 10): its scheduler is not finishing"
+                )
+        return real_trial(*args, **kwargs)
+
+    monkeypatch.setattr(taskd.Session, "run", run)
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+
+
 def test_a_clean_task_exits_zero(capsys):
     assert main(["check", GOOD, "--allocation", ALLOCATION]) == 0
     assert "no findings" in capsys.readouterr().out
