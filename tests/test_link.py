@@ -92,7 +92,7 @@ def _session_with(
     # unmarked rig session refuses rather than answering zero (PI, 2026-09-19). A
     # stand-in that skipped it would make every telemetry test here a test of that
     # refusal instead.
-    welfare.left_cage(at=0.0, wall_now=0.0, now=0.0)
+    welfare.left_cage(at=0.0, wall_now=0.0)
     return SimpleNamespace(
         spec=SimpleNamespace(
             session_id="2027-01-14_01",
@@ -111,10 +111,12 @@ def _session_with(
         # frame or a cap reads as a quiet session.
         refusals_dropped=0,
         link=Absent(),
-        now=lambda: 0.0,
         phase="running",
         stop_kind=None,
-        welfare_now=lambda: 0.0,
+        # The one clock `Telemetry.of` reads (P4d-2a spec §10). There is no `now`
+        # here on purpose: the frame clock is for timing trials, and a
+        # `Telemetry.of` that handed it to `welfare` would fail on this stand-in.
+        wall_now=lambda: 0.0,
         duration_warning=lambda: welfare.approaching_limit(0.0),
     )
 

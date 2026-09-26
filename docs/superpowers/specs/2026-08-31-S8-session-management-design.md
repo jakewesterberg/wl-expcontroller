@@ -159,18 +159,31 @@ supplement afterwards — is then computed against a figure that describes half 
    time, and the mapping lives in `welfare` — PI, 2026-09-20.** *"A clock time is what an
    operator reads."*
 
-   The time-base problem is unchanged and so is its solution: the session clock is
+   ~~The time-base problem is unchanged and so is its solution: the session clock is
    frame-derived and reads zero when the session starts, so the animal leaving its cage sits
-   at a *negative* instant in that base — counting transport and chairing requires it. A
+   at a *negative* instant in that base — counting transport and chairing requires it.~~ A
    plain timestamp parameter invited a caller to pass zero, and `wlx run` did, which made
    out-of-cage time identical to chair time: the under-count this clock exists to remove,
    reintroduced by the interface. What changed is **where the arithmetic happens**.
-   `welfare.left_cage(at, wall_now, now)` takes the departure as a wall-clock instant, takes
-   the wall clock the session is reading beside it, and does the subtraction itself — so
-   there is exactly one place the two bases meet, and it is inside the welfare-critical file.
-   A caller that computed the interval would be a second such place, which is how the first
-   one came to pass zero. `wlx run --out-of-cage-at` is **required with no default**, for the
-   reason `--as WHO` is.
+   ~~`welfare.left_cage(at, wall_now, now)`~~ `welfare.left_cage(at, wall_now)` takes the
+   departure as a wall-clock instant, takes the wall clock the session is reading beside it,
+   and does the subtraction itself — ~~so there is exactly one place the two bases meet, and
+   it is inside the welfare-critical file~~. A caller that computed the interval would be a
+   second place for that arithmetic, which is how the first one came to pass zero. `wlx run
+   --out-of-cage-at` is **required with no default**, for the reason `--as WHO` is.
+
+   **Superseded 2026-09-26 (P4d-2a spec §10): there is no second base.** The mapping struck
+   above assumed the frame clock and the wall advance together. A simulator counts frames
+   without waiting for them, so its frame clock outran the wall, and a `rig-fixed` simulated
+   session's first post-loop frame and its return typed "now" were both refused — the
+   restraint cross-check compared minutes of frame-clock chair time with seconds of wall
+   out-of-cage. The PI's answer was that both ends of the interval are the wl-works ELN's,
+   and wall instants. `welfare` now keeps every mark — the departure, the return and both
+   head-fixation marks — as the wall instant it is, and reads every duration on the wall, so
+   transport and chairing count by subtraction and the cross-check compares two wall
+   intervals. The frame-derived session clock times trials and is passed to `welfare`
+   nowhere; the trial loop's limit check reads the wall once per trial boundary where it read
+   the frame clock.
 
    **What the change cost, shown to the PI and accepted.** The old ceiling refusal doubled as
    a wall-clock catch: an *interval* of 1.79e9 seconds is fifty-seven years and self-evidently
@@ -357,12 +370,16 @@ supplement afterwards — is then computed against a figure that describes half 
    walk back — minutes of an animal out of its cage — fell outside the twelve hours, every
    time. With both ends read from the wall, the frame clock stopping no longer matters.
 
-   **`welfare.returned_to_cage(at, wall_now, confirmed=False)` maps against `left_cage`'s
+   ~~**`welfare.returned_to_cage(at, wall_now, confirmed=False)` maps against `left_cage`'s
    anchor, not against a fresh `now`/`wall_now` pair.** Those two are the same instant only
    while the loop is running; afterwards the session clock is frozen and the wall clock is not,
-   and a mapping built on them would drop exactly the interval this ruling exists to count.
-   `Welfare.left_cage_wall_at` is that anchor, set by `left_cage` and by nothing else, and the
-   return refuses when it is absent rather than mapping against `None`.
+   and a mapping built on them would drop exactly the interval this ruling exists to count.~~
+   **Nothing is mapped since P4d-2a (spec §10, 2026-09-26)**: the mapping through the
+   departure assumed the frame clock kept pace with the wall while the loop ran, and in a
+   simulator it does not (see the note on the departure above). `welfare.returned_to_cage(at,
+   wall_now, confirmed=False)` keeps the return as the wall instant it is,
+   `Welfare.returned_wall_at`, beside the departure's `Welfare.left_cage_wall_at` — set by
+   `left_cage` and by nothing else — and the return refuses when that is absent.
 
    **Every refusal the return already had is preserved**, now read against wall instants:
    nothing to close, a second return, an animal still head-fixed, a return before the
@@ -382,7 +399,7 @@ supplement afterwards — is then computed against a figure that describes half 
    **The session warns as the limit approaches — PI, 2026-09-20.** The console showed the
    clock and nothing drew attention as it ran out, so the limit arrived as an interruption
    rather than as a deadline an operator had been working towards; he asked for a warning so a
-   block can be finished deliberately. `welfare.approaching_limit(now)` returns the sentence
+   block can be finished deliberately. `welfare.approaching_limit(wall_now)` returns the sentence
    or `None`, `Telemetry.duration_warning` carries it, and `cli.render` prints it beside the
    stop reason. It is `None` once the limit is past, where `must_stop` speaks instead.
 
@@ -467,10 +484,11 @@ Instants are the clock readings and the marks; magnitudes are volumes, durations
 limit on them. `bounds._finite` and `bounds._magnitude` are the two guards, spelled with
 `math.isfinite` because `calibration._yaml_float` already spells it that way.
 
-**Three readings for one mark since 2026-09-20.** `left_cage` takes the departure, the wall
-clock and the session clock, all three *instants*, and checks the interval it computes from
-the first two — the fifth blind spot below, closed where it lives rather than by enumerating
-it. `Welfare.warn_within` is the one new *magnitude*: a NaN there makes
+**Two readings for one mark since 2026-09-26** (three from 2026-09-20 until P4d-2a spec §10
+took the session clock out of it). `left_cage` takes the departure and the wall clock, both
+*instants*, and checks the interval it computes from them — the fifth blind spot below,
+closed where it lives rather than by enumerating it. `Welfare.warn_within` is the one new
+*magnitude*: a NaN there makes
 `remaining > warn_within` `False` forever, which would leave a welfare-facing line silently
 off.
 
@@ -544,7 +562,7 @@ made by the PI and conditional on the reporting above.
 
 **"Is this refusal earned?" should be a lookup, not a reading.** §5.2c earns the
 `_finite`/`_magnitude` refusals as a class — two messages every numeric entry point reaches
-— but `welfare.py` has **thirty-one** `raise` sites and `bounds.py` **five**, and a
+— but `welfare.py` has **twenty-nine** `raise` sites and `bounds.py` **five**, and a
 reviewer sitting at `returned_to_cage`'s five would not find them there. Every one is below,
 with the failure it was written against and where the argument lives.
 
@@ -593,16 +611,14 @@ wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
 | `is already recorded as head-fixed at` | Two restraint clocks, and the shorter one would silently win | §5.2 |
 | `is not recorded as head-fixed, so there is nothing to release` | **The guard added on 2026-09-20 stopped one check short.** It asked which deployment this was and not whether there was anything to release, so a `RIG_FIXED` session never fixed accepted the release: `released_at` set, a 4129 strobed into a stream with no 4128, `chair_seconds` then answering `0.00` for it, and `returned_to_cage`'s "fixed and not released" check blind to it because `fixed_at` was still `None` | §5.2 item 4 |
 | `cannot have been released at … having been head-fixed at` | A release before the fixation. `returned_to_cage` refused a backwards interval from the day it was written and the restraint clock had no equivalent, so `head_fixed(500)` and `head_released(100)` were both accepted | §5.2 item 4 |
-| `the restraint clock for subject … reads` | **The computed duration, not only the marks** — `out_of_cage_seconds`' rule, which `chair_seconds` did not have. It guarded `now`, which is not the quantity, so a backwards restraint interval reached the wire and rendered `chair: -1:53:20`. It is also the only thing that makes the entry-point enumeration's exemption for `fixed_at`/`released_at` true | §5.2c |
+| `the restraint clock for subject … reads` | **The computed duration, not only the marks** — `out_of_cage_seconds`' rule, which `chair_seconds` did not have. It guarded `now`, which is not the quantity, so a backwards restraint interval reached the wire and rendered `chair: -1:53:20`. It is also the only thing that makes the entry-point enumeration's exemption for `fixed_wall_at`/`released_wall_at` true | §5.2c |
 | `which takes no head-fixation marks, so the animal cannot be recorded as fixed` | **A deployment recording restraint it declared it does not mark.** Accepted silently until 2026-09-20: a cage-side session could be recorded as head-fixed and nothing disagreed. Without it, `chair_seconds` answering `None` for the two kinds that take no marks would be *discarding* a measurement somebody took rather than reporting one nobody could | §5.2 item 4 |
 | `which takes no head-fixation marks, so the animal cannot be recorded as released` | **The closing half of the same record.** `taskd.Session.head_released` strobes `HEAD_RELEASED`, so guarding only the opening mark left a console action able to put a 4129 in a stream that never carried a 4128 — a restraint record for restraint nothing marked. Found by asking what the documented claim *"no stream carries a HEAD_RELEASED with no HEAD_FIXED before it"* actually depended on: `run()`, and nothing else | §5.2 item 4 |
 | `was amended with no reason given, so it is refused rather than recorded blank` | **A blank reason looks like an answer.** The PI asked for a reason on 2026-09-20 precisely so that a departure time somebody changed can be explained months later; a row recording the change and not the cause answers nothing it would be read for, and is worse than the absence of a row because it appears to | §5.2 item 4 |
 | `was amended by nobody, so it is refused` | **An anonymous change to the clock that bounds a session.** `--as WHO` is required for a console write because a forgeable or invented actor is worse than none, and this moves the one quantity `must_stop` reads. It is in `welfare` rather than in `cli` so that the console action P4d-2 adds cannot reach the record around it | §5.2 item 4 |
-| `is at home, so there is no out-of-cage clock to read against the wall` | **P4d-2a.** `now_from_wall` is the one mapping from the wall clock onto the session clock, through the departure; a cage-side session has no departure and therefore no interval for a wall instant to fall inside | §5.2 item 4 |
-| `is not recorded as having left its cage, so the wall clock has no departure to be read through` | **The same method, the rig side.** A session with no `left_cage` anchor has nothing for `wall_now` to be mapped through — the same absence `out_of_cage_seconds` refuses, read where the wall clock is the one asking | §5.2 item 4 |
 
-**Thirty-six refusals. Two rows are the §5.2c guards** — `is not a real number` and
-`cannot be negative`, which every numeric entry point reaches — **and thirty-four are
+**Thirty-four refusals. Two rows are the §5.2c guards** — `is not a real number` and
+`cannot be negative`, which every numeric entry point reaches — **and thirty-two are
 structural.** (This said "nine of them are the two guards"; that figure counted neither rows
 nor `raise` sites and could not be reproduced from either, so it is replaced with two that
 `tests/test_welfare.py` checks.) Every message is kept verbatim in the code — they are what an

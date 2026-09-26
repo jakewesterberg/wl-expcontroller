@@ -121,10 +121,13 @@ recorded head-fixed, and refused before the departure; a closed interval refuses
 and stops a running session rather than freezing its clock. **Out and back is one session**
 (PI, asked and answered 2026-09-20): an animal returned briefly and brought out again starts a
 new one, at the cost — which he weighed and accepted — of two session directories for an
-animal returned mid-day, rather than one record with an unexplained gap. And the opening mark
-is **how long ago**, against the session's frame-derived clock, so that counting transport and
-chairing does not depend on a caller knowing to pass a negative instant — S8 §5.2 item 4 has
-all three accounts.
+animal returned mid-day, rather than one record with an unexplained gap. And **both marks are
+wall-clock instants, and every welfare duration is read on the wall** (PI, 2026-09-20; P4d-2a
+spec §10, 2026-09-26): the departure, the return and the head-fixation marks are kept as the
+wall instants they are, so transport and chairing count by subtraction and no caller has a
+second base to get wrong. The frame-derived session clock times trials and is passed to
+`welfare` nowhere — a simulator counts frames without waiting for them, and mapping one base
+onto the other is what failed. S8 §5.2 item 4 has all three accounts.
 
 **Nor may a value that is not a number.** Every guard above is an *ordered* comparison and
 **NaN is `False` against all of them**, so one NaN switched the duration limit off entirely —

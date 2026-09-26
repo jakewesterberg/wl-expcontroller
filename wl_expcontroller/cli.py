@@ -375,14 +375,14 @@ def _console_recorded_it(session) -> bool:
     """Whether a console has already taken the return, said once, here.
 
     **Task 6 review, fix round 1, Important 3.** `_settle_return` reads
-    `welfare.returned_at` at three points around anything that blocks or can be
+    `welfare.returned_wall_at` at three points around anything that blocks or can be
     refused -- before the prompt, after it, and after a refused mark -- because a
     console can win the race at any of them. The three sites used to repeat the
     same three lines; a fourth (Minor 1, below) would have made it four. One
     function, so the message and the check can never drift apart the way three
     copies eventually would.
     """
-    if session.welfare.returned_at is None:
+    if session.welfare.returned_wall_at is None:
         return False
     print("  the return was recorded from a console", file=sys.stderr)
     return True
@@ -497,7 +497,7 @@ def _close_interval(session, args, linked: bool) -> bool:
             # Not `failure`'s to name here: a background fault can end the wait
             # well before the timeout, and the finally block's own fallback below
             # is where that fault's name belongs (Important 1).
-            if session.welfare.returned_at is None and not failure:
+            if session.welfare.returned_wall_at is None and not failure:
                 why = f"nobody marked it within {args.await_return_for:g} s"
         else:
             waiter.join()
@@ -507,7 +507,7 @@ def _close_interval(session, args, linked: bool) -> bool:
     finally:
         give_up.set()
         waiter.join()
-        if session.welfare.returned_at is None:
+        if session.welfare.returned_wall_at is None:
             if why is None and failure:
                 why = f"the post-loop phase failed: {type(failure[0]).__name__}"
             session.return_not_recorded(why or "interrupted at the terminal")
@@ -1042,7 +1042,9 @@ def main(argv: list[str] | None = None) -> int:
                 # default: a headless run states the departure as a clock time and
                 # means it, rather than arriving at the session's own zero by
                 # omission and quietly reporting chair time as time out of the cage.
-                # Head-fixation lands at the session's own zero -- and only for the
+                # Head-fixation is marked at the wall instant it is taken -- the
+                # base every welfare duration is read in since P4d-2a (spec §10),
+                # where it was the frame clock's zero before -- and only for the
                 # kind that has it, since `welfare.head_fixed` refuses the other.
                 # **A departure far from now is a person's to confirm or amend**
                 # (PI, 2026-09-20), and that happens before the mark: `left_cage`
@@ -1060,7 +1062,7 @@ def main(argv: list[str] | None = None) -> int:
                 if note is not None:
                     _record.welfare_note(session.directory, **note)
                 if deployment is Deployment.RIG_FIXED:
-                    session.head_fixed(at=0.0)
+                    session.head_fixed(at=session.wall_now())
             except Exceeded as refused:
                 raise SystemExit(f"refused: {refused}") from refused
             # **The consequence of a clock time, made visible** (PI, 2026-09-20).
@@ -1073,10 +1075,11 @@ def main(argv: list[str] | None = None) -> int:
             # **`departure`, not `args.out_of_cage_at`**: an amended time is what
             # the session is bounded by, so it is what this line must show. Printing
             # the value the operator first typed would have this sentence describe a
-            # clock nothing is running.
+            # clock nothing is running. Read at the wall, as every welfare duration
+            # is (P4d-2a spec §10).
+            so_far = session.welfare.out_of_cage_seconds(session.wall_now())
             print(
-                f"  out of cage: the animal has been out "
-                f"{_hours_minutes(session.welfare.out_of_cage_seconds(session.now()))}"
+                f"  out of cage: the animal has been out {_hours_minutes(so_far)}"
                 f", having left its cage at "
                 f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(departure))}"
                 # The zone **at the departure**, not at now. A session started just

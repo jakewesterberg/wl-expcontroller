@@ -49,6 +49,9 @@ The five conditions the spec implies that a person will meet and no task's main 
 
 ### Task 1: `welfare.now_from_wall` — one mapping between the clocks, shared
 
+> **Superseded (spec §10): Task 7 removed `now_from_wall`.** Kept as the record of what
+> Task 1 built.
+
 **Files:**
 - Modify: `wl_expcontroller/welfare.py` (add a method after `return_needs_confirmation`; change one line in `returned_to_cage`)
 - Test: `tests/test_welfare.py` (three new tests; one line added to `ENTRY_POINTS`)
@@ -174,6 +177,9 @@ git commit -m "Read the wall through the departure in one place, so the clock su
 ---
 
 ### Task 2: Telemetry schema 6 — `phase` and `stop_kind`, and a clock that can outlive the loop
+
+> **Superseded in part (spec §10): Task 7 removed `Session.welfare_now`**; every welfare
+> call reads `Session.wall_now()`. The rest of this task stands.
 
 **Files:**
 - Modify: `wl_expcontroller/link.py` (`SCHEMA`, `Telemetry` fields, `Telemetry.of`, `encode`, `decode`)

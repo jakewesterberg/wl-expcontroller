@@ -90,6 +90,10 @@ whatever the stop reason. **Cage-side sessions skip it**: there is no interval t
 `wlx run` runs `await_return` on a background thread while its main thread holds the
 terminal prompt (§5). The two meet only at the lock around the mark.
 
+> **Superseded by §10 (built, then removed in Task 7).** The method below no longer exists:
+> every welfare duration is read on the wall, so there is nothing to map. What follows is
+> kept as the design that was built and why it failed.
+
 The wall-to-session mapping is one new method on `welfare.Welfare`, the mapping
 `returned_to_cage` already performs inline, lifted so both use it:
 

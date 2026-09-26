@@ -262,10 +262,13 @@ class SessionRecord:
         **`trial_index` and `session_seconds` place it, and nothing else does.** A
         row whose own reason for existing is "this is asked months later" has to say
         *when* within the session, or a reader has only an ordering. `session_seconds`
-        is `taskd.Session.now()` -- the same frame-derived clock `chair_seconds` and
-        the out-of-cage ceiling use, not a wall clock: a wall clock here would invite
-        someone to align a refusal to the neural recording, which is exactly what
-        `parameter_change`'s `sequence` exists to do properly and this cannot.
+        is `taskd.Session.now()` -- the frame-derived clock the trials are timed on,
+        not a wall clock: a wall clock here would invite someone to align a refusal to
+        the neural recording, which is exactly what `parameter_change`'s `sequence`
+        exists to do properly and this cannot. (It was also the clock `chair_seconds`
+        and the out-of-cage ceiling read, until P4d-2a moved every welfare duration to
+        the wall -- spec §10. This row stays on the frame clock: it places a refusal
+        among trials, and bounds nothing.)
 
         No `sequence`, unlike `parameter_change`: that number exists to join a
         change to the `PARAM_CHANGE` escape on the recording clock, and a change
