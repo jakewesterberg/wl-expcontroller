@@ -286,9 +286,12 @@ def test_reconciliation_is_what_the_shortfall_is_computed_from():
     assert welfare.shortfall() == pytest.approx(50.0)
 
 
-def test_a_delivery_records_the_wall_instant_it_was_charged_at():
+def test_a_delivery_records_the_wall_instant_it_was_delivered_at():
     """P4d-2b spec §4.1: the console's time since the last reward. **`None` before the
-    first**, never `0.0`, which would read as a reward paid at the epoch."""
+    first**, never `0.0`, which would read as a reward paid at the epoch. Named
+    *delivered*, not *charged*, since Ruling 3 (fix round 1) moved the store to after
+    the pump returns -- see
+    `test_a_delivery_the_pump_refused_is_charged_but_not_timed`."""
     welfare = _welfare()
     assert welfare.last_delivery_wall_at is None
 
@@ -310,10 +313,15 @@ def test_a_rewards_instant_is_read_from_the_rigs_wall_clock():
     assert welfare.last_delivery_wall_at == WALL_NOW + 12.5
 
 
-def test_a_delivery_the_pump_refused_is_still_charged_and_timed():
-    """Charged before the valve opens, like `commanded` and `deliveries`, so the three
-    always describe the same deliveries. A pump that raises ends the session anyway
-    (`test_a_pump_fault_reaches_the_session_rather_than_being_absorbed`)."""
+def test_a_delivery_the_pump_refused_is_charged_but_not_timed():
+    """**Ruling 3, fix round 1** (spec §4.1 says "the wall instant of the last reward
+    *delivered*"): `last_delivery_wall_at` is set only once the pump returns, so a
+    pump that never answers leaves no delivered instant behind, and it keeps
+    whatever it held before -- `None`, here, since this is the first delivery.
+    `commanded` and `deliveries` are the older, separate rule -- charged before the
+    valve opens, so a pump that raises after opening still leaves no fluid
+    unaccounted -- and are counted regardless. A pump that raises ends the session
+    anyway (`test_a_pump_fault_reaches_the_session_rather_than_being_absorbed`)."""
 
     class Failing:
         def deliver(self, ml: float) -> None:
@@ -329,8 +337,24 @@ def test_a_delivery_the_pump_refused_is_still_charged_and_timed():
     with pytest.raises(RuntimeError, match="solenoid"):
         welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
+    assert welfare.commanded == pytest.approx(0.15)
     assert welfare.deliveries == 1
-    assert welfare.last_delivery_wall_at == WALL_NOW
+    assert welfare.last_delivery_wall_at is None
+
+
+def test_a_delivery_with_an_unknown_ref_is_refused_before_the_charge():
+    """**M2, fix round 1.** `bounds.value` raises `KeyError` before the charge, so an
+    unknown ref leaves nothing behind at all -- not `commanded`, not `deliveries`,
+    and not `last_delivery_wall_at`. Catches the store having been moved above the
+    lookup, which the scratch mutant in the fix round's report demonstrates."""
+    welfare = _welfare()
+
+    with pytest.raises(KeyError):
+        welfare.deliver("no_such_reward", wall_now=WALL_NOW)
+
+    assert welfare.commanded == 0.0
+    assert welfare.deliveries == 0
+    assert welfare.last_delivery_wall_at is None
 
 
 # --- the clock the limit is actually about ----------------------------------

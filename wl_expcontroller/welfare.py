@@ -254,8 +254,9 @@ def steady_seconds() -> float:
 
     **Chosen on every reading rather than once at import**, so a test can stub the
     platform (`tests/test_welfare.py`); the cost is one attribute lookup, and this
-    is read at trial boundaries, for each published frame and at each mark, never
-    per frame of a trial.
+    is read at trial boundaries, for each published frame, at each mark and, since
+    P4d-2b spec §4.1, once per reward -- the last of these inside a trial rather
+    than at one of its boundaries -- never per frame of a trial.
     """
     boottime = getattr(time, "CLOCK_BOOTTIME", None)
     if boottime is not None:
@@ -292,7 +293,11 @@ class SessionClock:
     from here rather than from `time.time()`.
 
     A reading that is not a real number is refused where it is used: every method
-    of `Welfare` that takes a `wall_now` checks it (`bounds._finite`).
+    of `Welfare` that takes a `wall_now` checks it (`bounds._finite`) -- **except
+    `deliver`** (P4d-2b spec §4.1). Its `wall_now` becomes `last_delivery_wall_at`, a
+    display instant compared against no limit, so it is stored rather than refused
+    when it is not a number: a refusal there would abort a trial the animal already
+    completed over a display field.
     """
 
     def __init__(self) -> None:
@@ -329,13 +334,16 @@ class Welfare:
     #: arrives; S8 open item 2 is whether that is continuous or only at close.
     delivered: float | None = None
     deliveries: int = 0
-    #: The wall instant, POSIX seconds, at which the last delivery was charged, or
-    #: `None` before the first -- never `0.0`, which would read as a reward paid at
-    #: the epoch. **Recorded for the console's time since the last reward, and
-    #: compared against nothing** (P4d-2b spec §4.1, 2026-09-26): fluid today standing
-    #: still while this ages is what keeps a working, unpaid animal visible now that
-    #: the console's strip no longer carries fluid session (spec §4.0). Set where
-    #: `commanded` and `deliveries` are, for their reason: charged before the valve.
+    #: The wall instant, POSIX seconds, at which the last reward was *delivered* --
+    #: spec §4.1's word -- or `None` before the first, never `0.0`, which would read
+    #: as a reward paid at the epoch. **Recorded for the console's time since the
+    #: last reward, and compared against nothing** (P4d-2b spec §4.1, 2026-09-26):
+    #: fluid today standing still while this ages is what keeps a working, unpaid
+    #: animal visible now that the console's strip no longer carries fluid session
+    #: (spec §4.0). **Set once the pump returns** (Ruling 3, fix round 1) -- after
+    #: `commanded` and `deliveries`, which are charged before the valve opens for
+    #: their own, older reason -- so a pump that raises leaves this at its previous
+    #: value while those two still count the attempt.
     last_delivery_wall_at: float | None = None
     #: The clock that bounds the session opens here: **the departure, as the wall
     #: instant it is**, in POSIX seconds. **Set through `left_cage`, never by
@@ -469,18 +477,23 @@ class Welfare:
         a task can only name it. **Charged before the valve opens**, so a pump that
         raises after opening leaves no fluid unaccounted.
 
-        **`wall_now` says when, and it bounds nothing** (P4d-2b spec §4.1). It is kept
-        as `last_delivery_wall_at` beside the charge and compared with no limit, so it
-        is not refused when it is not a number: a refusal here would end a trial the
-        animal completed over a display field. `Rig.reward` is the only caller, and
-        passes `taskd.Session.wall_now()` -- the session's `SessionClock` (above),
-        the one clock every welfare instant is read on (P4d-2a Ruling 8).
+        **`wall_now` says when, and it bounds nothing** (P4d-2b spec §4.1). Spec §4.1
+        names it "the wall instant of the last reward *delivered*", so it is kept as
+        `last_delivery_wall_at` only once the pump returns -- **after the charge**,
+        which is the older, separate rule above, so a pump that raises leaves
+        `last_delivery_wall_at` at its previous value (`None` if this was the first
+        delivery) while `commanded` and `deliveries` still count it. It is compared
+        with no limit, so it is not refused when it is not a number: a refusal here
+        would end a trial the animal completed over a display field. `Rig.reward` is
+        the only caller, and passes `taskd.Session.wall_now()` -- the session's
+        `SessionClock` (above), the one clock every welfare instant is read on
+        (P4d-2a Ruling 8).
         """
         ml = self.bounds.value(ref)
         self.commanded += ml
         self.deliveries += 1
-        self.last_delivery_wall_at = wall_now
         self.pump.deliver(ml)
+        self.last_delivery_wall_at = wall_now
         return ml
 
     # --- out of cage, and back in -----------------------------------------
@@ -1148,6 +1161,17 @@ class Rig:
     no default: a default of `time.time` would be that second clock -- off the anchor
     by any step of the host clock since the session began, and off an injected wall
     entirely.
+
+    **This closes a reference cycle** (Ruling 4, fix round 1): `taskd.Session` holds
+    this `Rig` (`self.rig`), and this `Rig` holds `wall_clock`, a bound method whose
+    `__self__` is that same `Session`. `Session` -> `rig` -> `wall_clock` -> `Session`
+    is a cycle no refcount alone collects; only Python's cyclic collector frees a
+    finished session's chain. This is left as it is here -- a session is one process's
+    worth of objects today, so there is nothing yet that holds many of them. **Whoever
+    holds sessions across runs must deal with it**: P4d-2b slice b3's box service,
+    which keeps sessions live between them, either breaks this cycle when a session
+    ends or manages GC around trials rather than during one (CLAUDE.md, hot-path
+    discipline) so a cyclic collection never lands inside the frame loop.
     """
 
     card: Card
