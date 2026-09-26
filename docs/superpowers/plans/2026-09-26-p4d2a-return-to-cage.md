@@ -10,6 +10,18 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-26-P4d2a-return-to-cage-design.md` — read it first; this plan argues from it.
 
+> **Amended 2026-09-26 (spec §10), after the PI's answers on the ELN.** Tasks 1–6 are built.
+> Tasks 7–10 below replace the first plan's Tasks 7–8:
+> - Task 7 moves every welfare duration onto the wall clock and removes Task 1's
+>   `now_from_wall`.
+> - Task 8 removes Task 4's `ReturnedToCage`, and Task 6's `--await-return-for` and
+>   console race.
+> - Task 9 adds the in-session clock, and the phase line the old Task 7 owed.
+> - Task 10 proves it and hands it to the PI.
+>
+> Where an earlier task's text says otherwise, spec §10 wins. Goal and Architecture above
+> describe the first plan; the amendment's shape is spec §10.
+
 ## Global Constraints
 
 - **Branch, not `main`.** Work in a worktree on branch `p4d2a-return-to-cage` cut from `main`. This slice changes `welfare.py` and touches session-duration tracking, so it is welfare-critical (CLAUDE.md) and **must not merge to `main` until the PI has approved spec §7's numbered list against the finished code**. Push the branch; do not fast-forward `main`.
@@ -28,7 +40,7 @@
 The five conditions the spec implies that a person will meet and no task's main tests pin — each has its test added to the owning task:
 
 1. **Ctrl-C at the return prompt** → the run ends, the row says `return not recorded (interrupted at the terminal)`, the exit code is 130, nothing hangs. *Task 6.*
-2. **A console records the return while the terminal prompt is waiting** → the next terminal answer is told so, and there is exactly one `returned` row. *Task 6.*
+2. ~~A console records the return while the terminal prompt is waiting~~ — superseded by spec §10: there is no console return. *Task 8 removes it.*
 3. **A return typed before the departure (the wrong day, the wrong half of the day)** → refused with `welfare`'s sentence and asked again, not taken and not fatal. *Task 6.*
 4. **A pump fault ends the loop of a `RIG_FIXED` session** → the exception still propagates, and the return can still be recorded because `await_return` releases the head a fault skipped. *Task 5.*
 5. **A `SetParameter` or `Stop` arriving after the loop** → refused with a sentence, never applied, the session keeps waiting for the return. *Task 5.*
@@ -1382,191 +1394,135 @@ git commit -m "Take the return at the terminal, and record why when nobody can"
 
 ---
 
-### Task 7: `wlx console --returned`, and a console that shows the phase
+### Task 7: Every welfare duration on the wall clock (welfare-critical)
+
+**Why:** spec §10, item 1. Task 6's implementer found the fault. `Session.now()` is
+accumulated frame time, which outruns the wall in the simulator. The frame-based interval
+and a wall-mapped return therefore disagree. With the default `rig-fixed` deployment, a
+simulated session's first post-loop frame is refused by the restraint cross-check, and its
+return is refused as "before the head release".
 
 **Files:**
-- Modify: `wl_expcontroller/cli.py` (`console` subparser, the `console` branch, `render`)
-- Test: `tests/test_cli.py`
+- Modify: `wl_expcontroller/welfare.py`, `wl_expcontroller/taskd.py`, `wl_expcontroller/link.py` (`Telemetry.of`), `wl_expcontroller/cli.py` (the `head_fixed` call, and the interval printed at session start)
+- Modify tests: `tests/test_welfare.py`, `tests/test_taskd.py`, `tests/test_cli.py`, `tests/test_link.py`, and every other test that builds a departure or restraint mark in the session base. Grep for `left_cage(`, `now_from_wall`, `welfare_now`, `out_of_cage_seconds(`, `chair_seconds(`, `head_fixed(`, `head_released(`, `must_stop(`, `approaching_limit(`, `preflight(`.
+- Modify docs: every mention of `now_from_wall` in the repo (grep). This includes the S8 §5.2d refusal-table rows and the entry-point census line that Task 1 added. Each mention is removed or rewritten; none is left describing a function that no longer exists.
 
-**Interfaces:**
-- Consumes: `_clock_or_now` (Task 6), `link.ReturnedToCage` (Task 4), `Telemetry.phase` (Task 2).
-- Produces: `wlx console ... --as WHO --returned TIME|now [--confirm-return]`; `render` prints `AWAITING RETURN TO CAGE` / `CLOSED` lines.
+**Interfaces (after this task):**
+- `Welfare.left_cage(at: float, wall_now: float, confirmed: bool = False) -> None`: no `now` parameter; the departure is kept as a wall instant.
+- `Welfare.returned_to_cage(at: float, wall_now: float, confirmed: bool = False) -> None`: the return is kept as a wall instant.
+- `Welfare.out_of_cage_seconds(wall_now)`, `preflight(wall_now)`, `must_stop(wall_now)`, `approaching_limit(wall_now)`, `chair_seconds(wall_now)`: every argument is a POSIX wall instant.
+- `Welfare.head_fixed(at)`, `Welfare.head_released(at)`: wall instants.
+- `Welfare.now_from_wall`: removed. `Session.welfare_now()`: removed; every caller uses `Session.wall_now()`. `Session.now()` (frame time) stays for trial timing and is passed to `welfare` nowhere.
+- **A field whose base changes is renamed**, so no reader silently gets the other base. For example, `left_cage_at` + `left_cage_wall_at` become one `left_cage_wall_at`, `returned_at` becomes `returned_wall_at`, and `fixed_at`/`released_at` become `fixed_wall_at`/`released_wall_at`. The implementer picks the exact names and applies them everywhere. Telemetry field names do not change: they carry durations.
 
-- [ ] **Step 1: Write the failing tests**
+**Consumes:** Task 3's rows (their `at` is already a wall instant), Task 5's `await_return` and `duration_warning`, Task 6's `_settle_return` and `_close_interval`.
 
-Append to `tests/test_cli.py`:
+- [ ] **Step 1: Failing tests first.** Write these, run them, and see each fail for the stated reason before touching `welfare.py`:
+  1. `tests/test_cli.py`: `wlx run` in the simulator with the **default** deployment (`rig-fixed`), running trials, with stdin a terminal that answers the return prompt `now`. Expected: exit 0, and `welfare_notes.jsonl` holds a `departure` and a `returned` row (plus any confirmation rows the departure needs). It fails today: the return is refused as before the head release, or the post-loop phase faults.
+  2. `tests/test_taskd.py`: a `RIG_FIXED` session with an injected wall clock that advances far less than its frame clock over its trials (for example, many trials while the wall moves 2 s). Expected: `await_return`'s first frame publishes without raising, and its `out_of_cage_seconds` equals wall minus departure.
+  3. `tests/test_welfare.py` covers:
+     - before the return, `out_of_cage_seconds(w)` is `w - departure`; after it, the value is fixed at `return - departure`;
+     - the restraint cross-check compares wall chair time with wall out-of-cage;
+     - these are still refused, each with its existing sentence: a return before the release, a departure in the future, a non-finite reading, and a mark at or past the ceiling.
+- [ ] **Step 2: Implement.** Keep every refusal and its sentence; change only the base.
+  - The trial loop's `must_stop` check reads `self.wall_now()` where it read `self.now()`: one clock read replacing another, at the same place, not a new per-frame read.
+  - `wlx run` marks head fixation with the wall instant it reads at the moment it used to pass `0.0`.
+  - Docstrings that argue about the two bases, and about ruling 4's mapping, are rewritten to say what is now true: the departure and return are wall instants, and the ELN's will be too.
+- [ ] **Step 3: Remove the Ruling 6 mitigations.**
+  - Every `--deployment rig-chaired` that Task 6 added to `tests/test_cli.py` to sidestep the mismatch returns to the default, and its explanatory comment is removed, unless the test is about the chaired kind.
+  - Any `RIG_CHAIRED` choice in `tests/test_taskd.py` that exists only to sidestep the mismatch goes too. Keep Task 5's `_chaired_and_run` only where chairing is the point.
+- [ ] **Step 4: Run the suite.** `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`: all pass, three runs in a row (the post-loop tests use threads).
+- [ ] **Step 5: Commit.** Subject: `Count every welfare duration on the wall clock`. The body names the simulator finding and spec §10.
 
-```python
-def test_a_console_shows_a_session_waiting_for_the_return():
-    frame = _telemetry(stopped_because="every block is finished", phase="awaiting_return")
+### Task 8: The return is taken at the terminal only
 
-    rendered = render(frame)
-
-    assert "AWAITING RETURN TO CAGE" in rendered
-
-
-def test_a_console_shows_a_closed_session():
-    assert "CLOSED" in render(_telemetry(phase="closed"))
-
-
-def test_a_console_return_needs_a_name(capsys):
-    code = main(
-        ["console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2",
-         "--returned", "now"]
-    )
-
-    assert code == 1
-    assert "--as" in capsys.readouterr().err
-
-
-def test_wlx_console_marks_the_return_of_a_real_session(tmp_path, zmq_cleanup):
-    """The whole path, end to end: `wlx run --link` finishes its trials, waits, and
-    `wlx console --returned now` closes it."""
-    probe = zmq_cleanup(
-        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    )
-    pub_endpoint, rep_endpoint = probe.pub_endpoint, probe.rep_endpoint
-    probe.close()
-    far_bounds = _far_bounds(tmp_path)
-    result: dict[str, int] = {}
-
-    def _run() -> None:
-        result["exit_code"] = main(
-            [
-                "run", GOOD, "--allocation", ALLOCATION, "--bounds", far_bounds,
-                "--root", str(tmp_path), "--session-id", "2027-01-14_01",
-                "--subject", "REFERENCE", "--out-of-cage-at", _hhmm(),
-                "--delivered-today", "0", "--trials", "3", *_TASK_SETS,
-                "--link", f"{pub_endpoint},{rep_endpoint}",
-            ]
-        )
-
-    runner = threading.Thread(target=_run)
-    runner.start()
-    try:
-        with zmq_cleanup(ZmqConsole(pub_endpoint, rep_endpoint)) as watcher:
-            phase = None
-            for _ in range(2000):
-                phase = watcher.receive().phase
-                if phase == "awaiting_return":
-                    break
-            assert phase == "awaiting_return", phase
-
-        code = main(
-            ["console", "--sub", pub_endpoint, "--req", rep_endpoint,
-             "--as", "jake", "--returned", "now"]
-        )
-        assert code == 0
-    finally:
-        runner.join(timeout=15)
-    assert not runner.is_alive()
-    gc.collect()
-    assert result["exit_code"] == 0
-    returned = [row for row in _notes(tmp_path) if row["kind"] == "returned"]
-    assert [(row["by"], row["how"]) for row in returned] == [("jake", "console")]
-```
-
-- [ ] **Step 2: Run them to see them fail**
-
-Run: `python -m pytest -q -p no:cacheprovider tests/test_cli.py -k "waiting_for_the_return or closed_session or return_needs_a_name or marks_the_return"`
-Expected: FAIL — no such lines in `render`; `unrecognized arguments: --returned`.
-
-- [ ] **Step 3: Implement**
-
-In `render`, directly after the `STOPPED:` line block, add:
-
-```python
-    # P4d-2a. The loop has ended and the interval has not: the clock below is the
-    # wall, still running, and it stops only when someone marks the return.
-    if frame.phase == "awaiting_return":
-        lines.append(
-            "  AWAITING RETURN TO CAGE: the session has ended and the out-of-cage "
-            "clock is still running until the return is marked"
-        )
-    elif frame.phase == "closed":
-        lines.append("  CLOSED: the animal is recorded back in its cage")
-```
-
-Add to the `console` subparser, after `--stop`:
-
-```python
-    console_parser.add_argument(
-        "--returned",
-        type=_clock_or_now,
-        default=None,
-        metavar="TIME",
-        help="mark the animal's return to its cage at TIME (HH:MM, a date and time, "
-        "or `now`), for a session that has ended and is waiting for it (P4d-2a)",
-    )
-    console_parser.add_argument(
-        "--confirm-return",
-        action="store_true",
-        help="confirm a --returned time more than thirty minutes off; without it the "
-        "session refuses such a time and says why",
-    )
-```
-
-In the `console` branch: change `wants_write = bool(args.set) or args.stop` to `wants_write = bool(args.set) or args.stop or args.returned is not None`, and extend its refusal text's first words from `--set/--stop` to `--set/--stop/--returned`. After the `if args.stop:` block that appends `Stop`, add:
-
-```python
-        if args.returned is not None:
-            commands.append(
-                _link.ReturnedToCage(
-                    at=args.returned, by=args.actor, confirmed=args.confirm_return
-                )
-            )
-```
-
-In the watch loop, replace `if frame.stopped_because: break` with:
-
-```python
-                    # A return is watched until the session says it is closed; a
-                    # refusal (a far time without --confirm-return) is printed by
-                    # `render` above, and the operator re-sends. Otherwise the
-                    # session's stop is the end of the watch, as before.
-                    if args.returned is not None:
-                        if frame.phase == "closed":
-                            break
-                    elif frame.stopped_because:
-                        break
-```
-
-- [ ] **Step 4: Run the whole suite**
-
-Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass. Run `tests/test_cli.py` three times.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add wl_expcontroller/cli.py tests/test_cli.py
-git commit -m "Let wlx console mark the return, and show when a session is waiting for it"
-```
-
----
-
-### Task 8: Prove it, write it down, and hand it to the PI
+**Why:** spec §10, item 2. The ELN owns the return, the browser will not send one, and `wlx run`'s prompt is the stand-in until the ELN exists.
 
 **Files:**
-- Modify: `docs/CHECKPOINT.md`, `docs/next-session.md`, `docs/superpowers/specs/2026-08-31-S9a-console-design.md` (§9), `docs/superpowers/specs/2026-08-31-S8-session-management-design.md` (§5.2 item 4), `docs/design/architecture.md` (`console` row)
+- Modify: `wl_expcontroller/link.py`, `wl_expcontroller/taskd.py`, `wl_expcontroller/cli.py`
+- Modify tests: `tests/test_link.py`, `tests/test_taskd.py`, `tests/test_cli.py`
+- Modify: `docs/design/architecture.md` (the `console` row lists the link's commands as `SetParameter` and `Stop`)
 
-- [ ] **Step 1: Mutation gate, read line by line**
+**Interfaces (after this task):**
+- `link.Command = SetParameter | Stop`, and the codec has no `"returned"` kind.
+- `wlx run` has no `--await-return-for`.
+- `_close_interval` has two paths:
+  - **With a terminal:** the background thread runs `await_return`, publishing while `_settle_return` asks.
+  - **With no terminal, linked or not:** it writes one `return not recorded (no terminal)` row and returns without waiting; `wlx run` exits 0.
 
-Run: `python tools/mutation_gate.py --base main 2>&1 | tee /tmp/p4d2a-gate.txt` (from the worktree; it takes a while).
-Expected: it selects at least `welfare`, `taskd`, `link`, `cli`, `record`. **Read every line.** Zero `SURVIVED`, zero `SKIPPED`. Every `caught` shows `N failed` and a `<-` naming tests about that function — not `N errors`, and not a single unrelated test. For each new function (`now_from_wall`, `welfare_now`, `duration_warning`, `_publish`, `_note`, `return_needs_confirmation`, `return_not_recorded`, `_refuse`, `await_return`, `_clock_or_now`, `_settle_return`, `_close_interval`), find its line and confirm the `<-` names a test written in this plan. A survivor gets a test that fails without it; a function nothing can test gets deleted, not exempted.
+- [ ] **Step 1: Failing tests first:**
+  1. A linked `wlx run` with no terminal never calls `Session.await_return`: monkeypatch it to record calls, and assert zero. Its row reads `return not recorded (no terminal)`, and the exit code is 0.
+  2. `link`'s decoder, given a msgpack command tagged `"returned"`, refuses it through the existing unknown-kind path; it does not build a command.
+  3. `wlx run ... --await-return-for 5` is rejected by argparse (exit 2).
+- [ ] **Step 2: Implement.**
+  - Remove `ReturnedToCage`: the class, the union member, the codec entries, and `taskd._command`'s route.
+  - Remove `--await-return-for`, `_console_recorded_it`, and every console-race branch in `_settle_return` and `_close_interval`.
+  - Delete `Session._mark_lock` if the terminal is now the only writer of the return, and say so in the commit body. Keep it if another writer remains.
+  - After the loop, `SetParameter` and `Stop` are still refused, with the same sentence.
+- [ ] **Step 3: Rewrite the tests that assumed a console return.**
+  - Remove Task 4's `ReturnedToCage` tests, the console-wins-the-race test, and the two `--await-return-for` tests from Task 6's fix round.
+  - The `--link` tests that closed the session with `ReturnedToCage` now end on `return not recorded (no terminal)`.
+  - `test_wlx_run_with_link_lets_a_real_console_attach` keeps its point: a real console attaches and receives frames. It now ends as a no-terminal run.
+- [ ] **Step 4: Run the suite.** `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`: all pass, three runs in a row.
+- [ ] **Step 5: Commit.** Subject: `Take the return at the terminal only, until the ELN takes it`.
 
-- [ ] **Step 2: Documents**
+### Task 9: The in-session clock, and a console that shows the phase
 
-- `docs/CHECKPOINT.md`: a "What moved" entry for P4d-2a — the four findings, what was built, the gate result as read, and **that the branch awaits the PI's review of spec §7**. In the Work packages table, split P4d-2 into P4d-2a (built, on branch `p4d2a-return-to-cage`, awaiting welfare review) and P4d-2b (brainstorm in progress; spec `2026-09-26-P4d2b-browser-console-design.md`, resume at its §4). Update the Status table's Tests count and its Session duration row (the return is now taken; the clock is published after the loop).
-- `docs/next-session.md`: §1 — the welfare review is pending again, with spec §7's six items restated as a numbered list to approve; §6 — P4d-2b is next after approval, resuming its brainstorm at §4.
-- S9a §9: add rows for `phase` and `stop_kind` to the telemetry table, and replace the stale "`SCHEMA` is 4" sentence with the current history through 6.
-- S8 §5.2 item 4: one paragraph — the return is now taken by `wlx run`'s prompt or a console's `ReturnedToCage`, both ends are rows in `welfare_notes.jsonl`, and the interval is published after the loop.
-- `architecture.md` `console` row: the link's commands are now `SetParameter`, `Stop` and `ReturnedToCage`.
+**Why:** spec §10, item 3. The PI ruled the in-session clock "only shown and recorded". The first plan's Task 7 also owed `wlx console` a line for `phase`.
 
-- [ ] **Step 3: Full suite, then commit and push the branch**
+**Files:**
+- Modify: `wl_expcontroller/taskd.py`, `wl_expcontroller/link.py`, `wl_expcontroller/cli.py`
+- Modify tests: `tests/test_taskd.py`, `tests/test_link.py`, `tests/test_cli.py`, and the telemetry golden files
 
-Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: all pass.
+**Interfaces (after this task):**
+- `Session.opened_wall_at: float | None` is set when `run()` opens the record, which also writes a `session opened` row through `Session._note`.
+- `Session.end(how: str = "terminal") -> None` sets `ended_wall_at` and writes a `session ended` row. Before `run()` it raises `RuntimeError`, and a second call raises `RuntimeError` too.
+- `Telemetry.in_session_seconds: float | None` reads `(ended_wall_at or wall_now) - opened_wall_at`, and is `None` before the record opens. It is added to schema 6, which has not left this branch; update the golden files and the stand-in fixtures.
+- `wlx run` calls `session.end()` once, in `_close_interval`'s `finally`, after the return is settled or recorded as not recorded. A cage-side session ends right after `run()`.
+- `cli.render` prints two lines: `  in session: H:MM:SS`, and `  phase: running`, `awaiting return` or `closed` (from `Telemetry.phase`).
+
+- [ ] **Step 1: Failing tests first:**
+  1. The rows arrive in order: `session opened` before `departure`, and `session ended` last.
+  2. `in_session_seconds` advances with an injected wall clock and stops advancing after `end()`.
+  3. **It bounds nothing.** Take a session open 13 hours by the wall, whose departure was 1 hour ago: `must_stop` and `approaching_limit` return nothing about it.
+  4. `render` prints both lines (golden).
+- [ ] **Step 2: Implement.** Nothing in `welfare` reads the in-session clock.
+- [ ] **Step 3: Run the suite.** `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`: all pass, three runs in a row.
+- [ ] **Step 4: Commit.** Subject: `Keep an in-session clock, apart from the out-of-cage one`.
+
+### Task 10: Prove it, write it down, and hand it to the PI
+
+**Files:**
+- Modify: `docs/CHECKPOINT.md`, `docs/next-session.md`, `docs/superpowers/specs/2026-08-31-S9a-console-design.md` (§9), `docs/superpowers/specs/2026-08-31-S8-session-management-design.md` (§5.2 item 4)
+
+- [ ] **Step 1: Mutation gate, read line by line.**
+
+Run: `python tools/mutation_gate.py --base main 2>&1 | tee /tmp/p4d2a-gate.txt` from the worktree (it takes a while). It should select at least `welfare`, `taskd`, `link`, `cli` and `record`. **Read every line.**
+- The result must show zero `SURVIVED` and zero `SKIPPED`.
+- Every `caught` must show `N failed` and a `<-` naming tests about that function; `N errors` or a single unrelated test does not count.
+- Confirm each new or changed function this way: find its line and check that the `<-` names a test written in this plan. The functions are `duration_warning`, `_publish`, `_note`, `return_needs_confirmation`, `return_not_recorded`, `_refuse`, `await_return`, `_clock_or_now`, `_settle_return`, `_close_interval`, `end`, and every `welfare` method whose base changed in Task 7.
+- A survivor gets a test that fails without it. A function nothing can test gets deleted, not exempted.
+
+- [ ] **Step 2: Documents.**
+  - `docs/CHECKPOINT.md`: add a "What moved" entry for P4d-2a. It covers:
+    - the findings, including the simulator clock fault and the PI's ELN answers;
+    - what was built, and the gate result as read;
+    - **that the branch awaits the PI's review of spec §7**.
+  - `docs/CHECKPOINT.md`, the Work packages table: split P4d-2 into P4d-2a (built on branch `p4d2a-return-to-cage`, awaiting welfare review) and P4d-2b (brainstorm in progress; spec `2026-09-26-P4d2b-browser-console-design.md`, resume at its §4, with the mockup rulings held there).
+  - `docs/CHECKPOINT.md`, the Status table: update the test count and the Session duration row.
+  - `docs/next-session.md`, §1: the welfare review is pending again, with spec §7's seven items as a numbered list.
+  - `docs/next-session.md`, §6: P4d-2b is next after approval.
+  - S9a §9: add rows for `phase`, `stop_kind` and `in_session_seconds` to the telemetry table, and replace the stale "`SCHEMA` is 4" sentence with the history through 6.
+  - S8 §5.2 item 4: add one paragraph:
+    - both ends of the interval are wall instants;
+    - the return is taken by `wlx run`'s prompt, as the stand-in until the wl-works ELN records it;
+    - both ends are rows in `welfare_notes.jsonl`;
+    - the interval is published after the loop;
+    - the in-session clock is kept apart and bounds nothing.
+
+- [ ] **Step 3: Full suite, then commit and push the branch.**
+
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`. Expected: all pass.
 
 ```bash
 git add docs/
@@ -1574,8 +1530,6 @@ git commit -m "Record closing the out-of-cage interval, and what the PI is asked
 git push -u origin p4d2a-return-to-cage
 ```
 
-Then read the branch's CI run (`gh run list --branch p4d2a-return-to-cage`) — its log, not its verdict.
+Then read the branch's CI run (`gh run list --branch p4d2a-return-to-cage`): its log, not its verdict.
 
-- [ ] **Step 4: Hand the PI the review**
-
-Give the PI spec §7's six items as a numbered list, each with one sentence on what the code now does and the test that pins it. **Do not merge to `main`.** It merges by fast-forward only after the PI approves.
+- [ ] **Step 4: Hand the PI the review.** Give the PI spec §7's seven items as a numbered list. Each item gets one sentence on what the code now does, and the test that pins it. **Do not merge to `main`.** It merges by fast-forward only after the PI approves.

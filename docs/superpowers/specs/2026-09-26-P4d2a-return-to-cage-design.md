@@ -1,6 +1,8 @@
 # P4d-2a — Close the out-of-cage interval
 
-- **Status:** approved in conversation 2026-09-26 (PI); written spec for PI review
+- **Status:** approved in conversation 2026-09-26 (PI); written spec for PI review.
+  **Amended 2026-09-26 (§10)** after the PI's answers on the ELN: §4's wall-to-session
+  mapping, §5's console path and `--await-return-for`, and §7 are superseded where §10 says so
 - **Date:** 2026-09-26
 - **Parent:** S8 §5.2 item 4 (the one welfare limit); S9a §7, §9
 - **Welfare-critical:** yes — it touches session-duration tracking. `welfare.py` changes, and
@@ -139,18 +141,26 @@ render an `awaiting_return` frame's advancing clock as a running session.
 
 ## 7. For PI review (welfare-critical)
 
-1. `welfare.now_from_wall` — the post-loop clock is the departure's wall anchor, the same
-   mapping `returned_to_cage` has used since ruling 4, now shared.
+*As amended by §10.* The list first written here is kept in the history; this is the one
+to review.
+
+1. **Out-of-cage is counted on the wall clock alone**, from the departure to the return.
+   The frame clock never enters a welfare duration, and head-fixation marks are taken on
+   the wall too, so every cross-check compares like with like. This replaces
+   `welfare.now_from_wall`'s mapping.
 2. After the loop, the duration warning continues, and past the limit it reads as
    `must_stop`'s sentence.
-3. The return can arrive from a console (`ReturnedToCage`), with the same refusals and the
-   same thirty-minute confirmation as the terminal.
+3. **The return is taken only at `wlx run`'s terminal**, as a stand-in until the wl-works
+   ELN records it, with the same refusals and the same thirty-minute confirmation. There is
+   no console or browser path.
 4. `departure` and `returned` rows are written for every rig session, not only on
    confirmation.
-5. With no terminal and no console, `wlx run` records `return not recorded` and exits
+5. With no terminal, linked or not, `wlx run` records `return not recorded` and exits
    instead of waiting.
 6. If a fault skipped the release, `await_return` marks a `RIG_FIXED` session's head
    release on entry, so the return is never refused for a head nobody can release.
+7. **The in-session clock** (the session opened to the session ended, on the wall) is
+   published and recorded, and bounds nothing.
 
 ## 8. Testing (sim first)
 
@@ -177,3 +187,50 @@ Then:
 - The browser, `/health`, and the verdict table — P4d-2b.
 - A session summary file for `wl-preproc` to ingest — P4c's, and it will read these rows.
 - Any change to how restraint is recorded beyond marking the release at the loop's end.
+
+## 10. Amendment, 2026-09-26: the ELN owns the interval
+
+**What the PI ruled**, asked while the P4d-2b console was being mocked up:
+
+- "out-of-cage should be grabbed from the wl-works eln (not built yet), but there should
+  also be a in-session clock that is tracked seperately."
+- "Yes, the ELN handles return to cage. you can take it out of this interface."
+- The in-session clock: "only shown and recorded."
+- Until the ELN exists, `wlx run` keeps taking the return at the terminal: "stand-in."
+
+**What was found that made the first design wrong**, by Task 6's implementer (2026-09-26):
+`Session.now()` is accumulated frame time, and in the simulator frames run as fast as the
+host allows, so the frame clock outruns the wall. §4 counted out-of-cage in the frame base
+and mapped the wall into it through the departure. In the simulator that mapping put a
+return typed "now" long before the loop-end head release, so `welfare` refused it, and the
+first post-loop frame was itself refused by the restraint cross-check (chair time longer
+than out-of-cage). `wlx run` defaults to `rig-fixed`, so the slice's main path failed in the
+simulator with default flags. Task 6's tests passed only by running `rig-chaired`.
+
+**The amendment:**
+
+1. **Every welfare duration is on the wall clock.** `welfare` keeps the departure and the
+   return as wall instants only. `out_of_cage_seconds`, `approaching_limit`, `must_stop`
+   and `preflight` read the wall, so no conversion happens and there is nothing to map.
+   `now_from_wall` (Task 1) goes. `head_fixed` and `head_released` take wall instants, so
+   the restraint cross-check compares two wall intervals. The trial loop's limit check reads
+   the wall clock once per trial boundary where it read the frame clock. The frame clock
+   times trials and nothing else. When the ELN exists, its departure and return are wall
+   instants already, so this is also the shape it needs.
+2. **The return is terminal-only, as the ELN's stand-in.**
+   - `link.ReturnedToCage` is removed (Task 4 reverted). The browser will not send it, and
+     the ELN's return will reach the box through the lab-host protocol, not this link.
+   - `wlx console --returned` is not built (the first plan's Task 7).
+   - `--await-return-for` is removed. A linked run with no terminal has nothing that can
+     deliver the mark, so it records `return not recorded (no terminal)` and exits, as a
+     headless run does.
+   - The post-loop phase stays: it publishes the out-of-cage clock and the warning while
+     the terminal waits.
+3. **The in-session clock** is the session's own interval, the session opened to the
+   session ended, on the wall. It is published as `in_session_seconds` (added to telemetry
+   schema 6, which has not left this branch). It is recorded as `session opened` and
+   `session ended` rows in `welfare_notes.jsonl`, beside `departure` and `returned`,
+   because that file already holds the session's clock marks. It bounds nothing. For
+   `wlx run`, it opens when `run()` opens the record, and ends when the process settles the
+   return, or records why it could not.
+
