@@ -1728,6 +1728,10 @@ ENTRY_POINTS = {
         INSTANT,
         lambda v: _marked().approaching_limit(v),
     ),
+    "Welfare.now_from_wall.wall_now": (
+        INSTANT,
+        lambda v: _marked().now_from_wall(v),
+    ),
     # A duration, so a magnitude -- and on the welfare path even though it bounds
     # nothing: a NaN threshold makes `remaining > warn_within` False forever, so the
     # warning would never fire and a welfare-facing line would be silently off.
@@ -2157,3 +2161,33 @@ def test_the_zero_reward_ruling_records_why_zero_is_a_designed_outcome():
         "fluid. Without it the section argues only that zero is visible"
     )
     assert "2026-09-20" in section
+
+
+def test_after_the_loop_the_wall_maps_through_the_departure():
+    """P4d-2a. The frame clock stops when the loop does and the wall does not, so the
+    interval after the last trial can only be read through the departure's anchor --
+    the mapping `returned_to_cage` has used since ruling 4 (PI, 2026-09-20)."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW - 100.0, wall_now=WALL_NOW, now=0.0)
+
+    later = welfare.now_from_wall(WALL_NOW + 600.0)
+
+    assert later == pytest.approx(600.0)
+    assert welfare.out_of_cage_seconds(later) == pytest.approx(700.0)
+
+
+def test_a_cage_side_session_has_no_wall_mapping():
+    welfare = Welfare(
+        bounds=_home_bounds(),
+        pump=Simulated(),
+        already_today=0.0,
+        deployment=Deployment.CAGE_SIDE,
+    )
+
+    with pytest.raises(Exceeded, match="at home"):
+        welfare.now_from_wall(WALL_NOW)
+
+
+def test_a_rig_session_with_no_departure_has_nothing_to_map_through():
+    with pytest.raises(Exceeded, match="not recorded as having left its cage"):
+        _welfare().now_from_wall(WALL_NOW)
