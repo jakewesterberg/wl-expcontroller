@@ -31,6 +31,7 @@ from wl_expcontroller.cli import (
     render,
 )
 from wl_expcontroller.link import (
+    ParamRow,
     Refused,
     SetParameter,
     Staged,
@@ -1480,6 +1481,82 @@ def test_the_console_is_quiet_when_there_is_nothing_to_warn_about():
     assert "WARNING" not in render(_telemetry(duration_warning=None))
 
 
+# ---------------------------------------------------------------------------
+# `render` and schema 7 (P4d-2b b1)
+# ---------------------------------------------------------------------------
+
+
+def test_console_names_the_task_allocation_and_bounded_config():
+    rendered = render(_telemetry())
+
+    assert (
+        "  task: tasks/fixation_detection.py  allocation: tasks/allocation.py"
+        "  bounds: tasks/reference_bounds.py"
+    ) in rendered.splitlines()
+
+
+def test_console_names_an_absent_allocation_and_bounded_config():
+    """An empty allocation is the provisional one and an empty bounds path means
+    nobody named the file: both said, never printed as nothing."""
+    rendered = render(_telemetry(allocation="", bounds_config=""))
+
+    assert "allocation: PROVISIONAL (none given)" in rendered
+    assert "bounds: not given" in rendered
+
+
+def test_console_reads_fluid_today_against_the_days_floor():
+    known = render(_telemetry(fluid_today_ml=61.25)).splitlines()
+    unknown = render(_telemetry(fluid_today_ml=None))
+
+    assert "  fluid today: 61.25 mL of a 250.00 mL floor" in known
+    assert "fluid today: UNKNOWN" in unknown
+    assert "(floor 250.00 mL)" in unknown
+
+
+def test_console_reads_the_out_of_cage_clock_against_its_limit():
+    rendered = render(_telemetry(out_of_cage_seconds=96.0, out_of_cage_limit_s=600.0))
+
+    assert "  out of cage: 1:36 of 10:00" in rendered.splitlines()
+
+
+def test_console_says_no_reward_yet_rather_than_a_time():
+    assert "  last reward: none yet" in render(
+        _telemetry(last_reward_at=None)
+    ).splitlines()
+
+
+def test_console_prints_the_last_rewards_clock_time():
+    at = 1_700_000_000.0
+    expected = time.strftime("%H:%M:%S", time.localtime(at))
+
+    assert f"  last reward: at {expected}" in render(
+        _telemetry(last_reward_at=at)
+    ).splitlines()
+
+
+def test_console_lists_every_parameter_with_its_range_or_its_ceiling():
+    rendered = render(
+        _telemetry(
+            params=(
+                ParamRow("fix_hold", "s", 0.1, 1.0, 0.3, False),
+                ParamRow("reward_correct", "mL", 0.0, 10.0, 0.05, True),
+                ParamRow("target_looks", "", None, None, None, False),
+                ParamRow("fix_window", "deg", None, 5.0, 2.0, False),
+            )
+        )
+    ).splitlines()
+
+    assert "  param: fix_hold 0.30 s (range 0.1 to 1 s)" in rendered
+    assert "  param: reward_correct 0.05 mL (welfare ceiling 10.00 mL)" in rendered
+    assert "  param: target_looks unset (no declared range)" in rendered
+    assert "  param: fix_window 2.00 deg (range open to 5 deg)" in rendered
+
+
+def test_console_lists_the_recent_outcomes_oldest_first():
+    assert "  recent (oldest first): correct hang no_fixation" in render(
+        _telemetry(recent_outcomes=("correct", "hang", "no_fixation"))
+    ).splitlines()
+    assert "  recent: none yet" in render(_telemetry()).splitlines()
 
 
 # ---------------------------------------------------------------------------

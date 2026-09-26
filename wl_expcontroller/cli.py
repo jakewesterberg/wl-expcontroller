@@ -674,6 +674,26 @@ def _value(value: float | None) -> str:
     return "unset" if value is None else f"{value:.2f}"
 
 
+def _shown(value: object) -> str:
+    """A parameter's value on the terminal: `unset` for `None`, two decimals for a
+    number, like every other figure on this screen, and the text of a categorical
+    choice. Formatting, not derivation -- see `_value`."""
+    if value is None:
+        return "unset"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{value:.2f}"
+    return str(value)
+
+
+def _edge(value: float | None) -> str:
+    """One end of a declared range: `open` where the task declared none."""
+    return "open" if value is None else f"{value:g}"
+
+
+def _with_unit(text: str, unit: str) -> str:
+    return f"{text} {unit}" if unit else text
+
+
 def render(frame: _link.Telemetry) -> str:
     """One screen's worth of a `Telemetry` frame -- S9a §4's panes this slice has
     data for: fluid, chair, trials by outcome, what is still owed, staged changes
@@ -754,6 +774,12 @@ def render(frame: _link.Telemetry) -> str:
     screen.** `reward_correct` appears on the staged line, and printing it at raw
     `repr` while the fluid lines above use `:.2f` puts `0.15 -> 0.3` and `0.30 mL` on
     the same screen for the same quantity.
+
+    **Schema 7 adds the configuration and the limits** (P4d-2b b1): which task,
+    allocation and bounded config; fluid today against the day's floor; the
+    out-of-cage clock against the ceiling it is stopped on; when the last reward was
+    charged; the parameter rows; and the last outcomes. Each absence is a word --
+    *PROVISIONAL*, *not given*, *none yet*, *unset*, *open* -- never a zero.
     """
     lines = [
         f"session {frame.session_id}  subject {frame.subject}  "
@@ -763,6 +789,14 @@ def render(frame: _link.Telemetry) -> str:
     # for different reasons, and a console that worked out which from the pattern of
     # `None`s would be computing -- see this function's second paragraph.
     lines.append(f"  deployment: {frame.deployment}")
+    # P4d-2b spec §3: S9a §3's configuration information. Named, never guessed: an
+    # empty allocation is the provisional one (`_load_allocation`), and an empty
+    # bounds path means the caller built `Bounds` in code.
+    lines.append(
+        f"  task: {frame.task}"
+        f"  allocation: {frame.allocation or 'PROVISIONAL (none given)'}"
+        f"  bounds: {frame.bounds_config or 'not given'}"
+    )
     # **The PI's second clock, apart from out-of-cage** (P4d-2a spec §10 item 3):
     # "only shown and recorded", never a bound, so it has no WARNING line of its
     # own the way out-of-cage does. `None` before `open()` -- practically never on
@@ -788,9 +822,11 @@ def render(frame: _link.Telemetry) -> str:
 
     lines.append(f"  fluid session: {frame.fluid_session_ml:.2f} mL")
     lines.append(
-        "  fluid today: UNKNOWN -- the day's prior total was not supplied"
+        f"  fluid today: UNKNOWN -- the day's prior total was not supplied "
+        f"(floor {frame.floor_ml:.2f} mL)"
         if frame.fluid_today_ml is None
-        else f"  fluid today: {frame.fluid_today_ml:.2f} mL"
+        else f"  fluid today: {frame.fluid_today_ml:.2f} mL of a "
+        f"{frame.floor_ml:.2f} mL floor"
     )
     # Matches `wlx run`'s own wording (below) exactly -- see this function's
     # docstring for why the two must agree.
@@ -804,11 +840,16 @@ def render(frame: _link.Telemetry) -> str:
     # (PI, 2026-09-19). Chair time is below it and bounds nothing; showing only
     # chair time, as this screen did until then, meant an operator watched a
     # session stop on a clock the console had never displayed.
-    lines.append(
-        "  out of cage: n/a -- cage-side, the animal is home"
-        if frame.out_of_cage_seconds is None
-        else f"  out of cage: {_clock(frame.out_of_cage_seconds)}"
-    )
+    if frame.out_of_cage_seconds is None:
+        lines.append("  out of cage: n/a -- cage-side, the animal is home")
+    elif frame.out_of_cage_limit_s is None:
+        lines.append(f"  out of cage: {_clock(frame.out_of_cage_seconds)}")
+    else:
+        # Against the ceiling's value, the number the session is stopped on (schema 7).
+        lines.append(
+            f"  out of cage: {_clock(frame.out_of_cage_seconds)} of "
+            f"{_clock(frame.out_of_cage_limit_s)}"
+        )
     # **Absent is not zero, and the two absences are not each other** (PI,
     # 2026-09-20). `chair: 0:00` on a chaired-but-unfixed session would tell an
     # operator a restrained animal had been restrained for no time at all -- a
@@ -835,6 +876,33 @@ def render(frame: _link.Telemetry) -> str:
     # are, with no total claimed; a reader who wants one can add what is on screen.
     by_outcome = ", ".join(f"{name} {count}" for name, count in frame.outcomes.items())
     lines.append(f"  trials: {by_outcome or 'none yet'}, hangs {frame.hangs}")
+
+    # When the last reward was charged, as a clock time on this host (P4d-2b spec
+    # §4.1). None yet is said, never printed as a time.
+    lines.append(
+        "  last reward: none yet"
+        if frame.last_reward_at is None
+        else f"  last reward: at "
+        f"{time.strftime('%H:%M:%S', time.localtime(frame.last_reward_at))}"
+    )
+    for row in frame.params:
+        if row.bounded:
+            limit = f"(welfare ceiling {_with_unit(_shown(row.high), row.unit)})"
+        elif row.low is None and row.high is None:
+            limit = "(no declared range)"
+        else:
+            limit = (
+                f"(range {_edge(row.low)} to "
+                f"{_with_unit(_edge(row.high), row.unit)})"
+            )
+        lines.append(
+            f"  param: {row.name} {_with_unit(_shown(row.value), row.unit)} {limit}"
+        )
+    lines.append(
+        f"  recent (oldest first): {' '.join(frame.recent_outcomes)}"
+        if frame.recent_outcomes
+        else "  recent: none yet"
+    )
 
     still_owed = ", ".join(f"{name} {count}" for name, count in frame.owed.items())
     lines.append(f"  still owed: {still_owed or 'none'}")
