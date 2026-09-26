@@ -333,8 +333,8 @@ def _settle_departure(session, args) -> tuple:
 
     if args.amend_out_of_cage_to is not None:
         amended = args.amend_out_of_cage_to
-        # Refuses a blank reason or a blank actor, in `welfare`, so the console
-        # action P4d-2 adds cannot reach the record around this rule.
+        # Refuses a blank reason or a blank actor, in `welfare`, so no other
+        # caller of `Session.amend_mark` can reach the record around this rule.
         session.amend_mark(
             "departure",
             original=at,
@@ -1205,7 +1205,8 @@ def main(argv: list[str] | None = None) -> int:
             # is called here.
             session.open(how="wlx run")
             try:
-                # On a rig both of these are the console's actions, and the
+                # On a rig both of these are a person's marks -- out-of-cage the
+                # wl-works ELN's once it exists (P4d-2a spec §10) -- and the
                 # difference is the whole reason S8 makes them explicit. Here the
                 # out-of-cage one comes from `--out-of-cage-at`, which has no
                 # default: a headless run states the departure as a clock time and

@@ -499,9 +499,10 @@ class Welfare:
 
         **`confirmed` is on the mark rather than only on the caller** (PI,
         2026-09-20), and that is the CLAUDE.md rule rather than belt and braces:
-        `wlx run` asks a person, but `taskd.Session.left_cage` is a console action
-        and the console P4d-2 adds would otherwise reach around the prompt entirely.
-        A caller can lie to this flag; it cannot forget it.
+        `wlx run` asks a person, but `taskd.Session.left_cage` is public, and any
+        other caller -- a script, or the wl-works ELN's departure once it reaches
+        this box (P4d-2a spec §10) -- would otherwise reach around the prompt
+        entirely. A caller can lie to this flag; it cannot forget it.
         """
         if self.deployment is Deployment.CAGE_SIDE:
             raise Exceeded(
@@ -623,10 +624,12 @@ class Welfare:
         """Turn "a person should see this" into "a person did", or refuse.
 
         **The confirmation is enforced on the marks rather than only in `wlx run`**,
-        which is CLAUDE.md's rule and not caution: the departure prompt has a consumer
-        and the return has none until the console gains the action, and a guardrail
-        written now and wired later is how `bounds`' fluid check went a week called by
-        nothing. A caller can lie to `confirmed`; it cannot forget it.
+        which is CLAUDE.md's rule and not caution: both marks are taken at `wlx
+        run`'s terminal today, as the stand-in until the wl-works ELN takes them (P4d-2a
+        spec §10), and a rule that lived only in its first caller would not follow the
+        mark to the next one -- a guardrail its caller had to remember is how `bounds`'
+        fluid check went a week called by nothing. A caller can lie to `confirmed`; it
+        cannot forget it.
         """
         if sentence is None or confirmed:
             return

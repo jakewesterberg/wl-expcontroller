@@ -53,7 +53,7 @@ person confirmed or amended a far mark:
 | `kind` | Written when | `how` |
 |---|---|---|
 | `departure` | `left_cage` accepts the mark | how the time was given: `--out-of-cage-at`, or the confirmation's or amendment's own `how` when one was made (final review M5; it read `terminal` whatever happened) |
-| `returned` | `returned_to_cage` accepts the mark | `terminal` or `console` |
+| `returned` | `returned_to_cage` accepts the mark | `terminal` (`console` is superseded by §10: no console marks the return) |
 | `return not recorded` | the process ends with no return on a rig session | the reason |
 
 The existing `departure confirmed` / `departure amended` rows are unchanged and still written
@@ -260,6 +260,9 @@ simulator with default flags. Task 6's tests passed only by running `rig-chaired
    schema 6, which has not left this branch). It is recorded as `session opened` and
    `session ended` rows in `welfare_notes.jsonl`, beside `departure` and `returned`,
    because that file already holds the session's clock marks. It bounds nothing. For
-   `wlx run`, it opens when `run()` opens the record, and ends when the process settles the
-   return, or records why it could not.
+   `wlx run`, it opens right after the `Session` is built, before the departure is asked
+   about, so `session opened` is the run's first row; and it ends from `main`'s outer
+   `finally` on every way out, after the return is settled or recorded as not recorded
+   (Task 9 and its fix round; corrected by the final review, M6, where this said it opened
+   when `run()` opens the record).
 

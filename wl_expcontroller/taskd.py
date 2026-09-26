@@ -680,7 +680,8 @@ class Session:
                 "stop" if isinstance(command, _link.Stop) else command.name,
                 command.by,
                 "the session has ended and is waiting for the animal's return to its "
-                "cage; the return is the only mark it still takes",
+                "cage, which is marked at wlx run's terminal; a command sent now is "
+                "not applied",
             )
             return
         if isinstance(command, _link.Stop):
