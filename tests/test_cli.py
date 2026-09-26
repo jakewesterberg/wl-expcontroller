@@ -1556,11 +1556,35 @@ def test_an_interactive_run_stops_when_the_person_does_not_confirm(
         main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
 
     assert "not confirmed" in str(refused.value)
-    # Task 9: `session.open()` runs right after the `Session` is built, ahead of
-    # this prompt -- an administrative timestamp, not a welfare mark, so it is the
-    # one row left even though the departure itself is refused and nothing is
-    # delivered (the refusal's own wording, updated to say so precisely).
-    assert _kinds(tmp_path) == ["session opened"]
+    # Task 9 fix round 1: `session.open()` runs right after the `Session` is
+    # built, ahead of this prompt -- an administrative timestamp, not a welfare
+    # mark, so it survives the refusal even though the departure itself does not.
+    # `main`'s outer `finally` closes it too, on this path as on every other, so
+    # `session ended` follows it rather than leaving the clock open.
+    assert _kinds(tmp_path) == ["session opened", "session ended"]
+
+
+def test_an_interrupted_departure_prompt_exits_130_with_the_clock_closed(
+    tmp_path, monkeypatch
+):
+    """Task 9 fix round 1. `_settle_departure`'s interactive prompts run through
+    `_ask`, which turns end-of-input into a quiet `""` but leaves
+    `KeyboardInterrupt` to propagate -- before this fix it escaped `main`
+    altogether as a raw `KeyboardInterrupt` (a traceback, and no `session ended`
+    for the `session opened` row already on record), unlike the return prompt,
+    which `_close_interval` already turns into exit 130. Ctrl-C here now does the
+    same: exit 130, no departure mark, and the in-session clock still closed."""
+
+    def interrupt(_prompt=""):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", interrupt)
+
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+
+    assert exit_code == 130
+    assert _kinds(tmp_path) == ["session opened", "session ended"]
 
 
 def test_an_interactive_run_can_amend_the_time_with_a_reason_and_a_name(
@@ -1640,6 +1664,29 @@ def test_an_amendment_with_no_actor_is_refused(tmp_path):
                 "--amend-reason", "typed 08:45 for 18:45",
             )
         )
+
+
+def test_a_refused_amendment_still_opens_and_closes_the_clock(tmp_path):
+    """Task 9 fix round 1. `welfare.amend_mark` raises inside `_settle_departure`,
+    before `session.left_cage` is ever reached -- the same `SystemExit`-via-
+    `Exceeded` shape as `test_an_amendment_with_no_reason_is_refused` above, pinned
+    separately here because the point of this test is what happens to the
+    in-session clock, not the amendment refusal itself. `session.open()` has
+    already run by the time `amend_mark` refuses, and `main`'s outer `finally`
+    -- which wraps this whole exception, not only `_close_interval` -- still ends
+    it: no departure mark, no trial, no fluid, but `session opened` and
+    `session ended` both land."""
+    with pytest.raises(SystemExit, match="refused: .*no reason"):
+        main(
+            _run_args(
+                tmp_path,
+                "--out-of-cage-at", _hours_ago(9),
+                "--amend-out-of-cage-to", _hhmm(),
+                "--as", "jake",
+            )
+        )
+
+    assert _kinds(tmp_path) == ["session opened", "session ended"]
 
 
 def test_an_amended_time_still_meets_every_refusal_the_original_would(tmp_path):
@@ -1755,9 +1802,10 @@ def test_abort_at_the_prompt_stops_rather_than_starting_an_amendment(
         main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
 
     assert "not confirmed" in str(refused.value)
-    # Task 9: `session.open()` runs ahead of this prompt, so its administrative
-    # row survives the refusal even though the departure itself does not.
-    assert _kinds(tmp_path) == ["session opened"]
+    # Task 9 fix round 1: `session.open()` runs ahead of this prompt, so its
+    # administrative row survives the refusal even though the departure itself
+    # does not, and `main`'s outer `finally` closes it too.
+    assert _kinds(tmp_path) == ["session opened", "session ended"]
 
 
 def test_the_shipped_reference_config_cannot_reach_the_confirmation_band(tmp_path):
@@ -1856,10 +1904,16 @@ def test_a_headless_run_records_that_nobody_could_mark_the_return(tmp_path):
     exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 0
-    assert _kinds(tmp_path) == [
+    rows = _notes(tmp_path)
+    assert [row["kind"] for row in rows] == [
         "session opened", "departure", "return not recorded", "session ended",
     ]
-    assert _notes(tmp_path)[-2]["reason"] == "no terminal"
+    assert rows[-2]["reason"] == "no terminal"
+    # Task 9 fix round 1: the process opens and ends the session, not a person
+    # at a prompt -- `how` says so on both rows, following
+    # `return_not_recorded`'s own `"wlx run"` precedent.
+    assert rows[0]["how"] == "wlx run"
+    assert rows[-1]["how"] == "wlx run"
 
 
 def test_a_linked_headless_run_never_calls_await_return(tmp_path, monkeypatch):
