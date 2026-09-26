@@ -103,8 +103,10 @@ closed, verified 2026-09-06 by reading the runs.
 after the PI's answers on the wl-works ELN). It is built, reviewed task by task,
 mutation-gated and pushed, and **it does not merge until the PI approves spec §7**. It then
 merges by fast-forward. `git diff origin/main..p4d2a-return-to-cage --
-wl_expcontroller/welfare.py` is the welfare-critical part; `taskd.py`, `cli.py`, `link.py`
-and `record.py` carry the rest.
+wl_expcontroller/welfare.py` is the welfare-critical part, with three functions in `cli.py`
+that parse the out-of-cage marks (`_wall_clock_time`, `_clock_or_now`, `_settle_return`;
+the final review, I5); `taskd.py`, the rest of `cli.py`, `link.py` and `record.py` carry the
+rest. The final review's fix round (2026-09-26) is in `docs/CHECKPOINT.md`.
 
 What he is asked to approve, one line each, with the test that pins it:
 
