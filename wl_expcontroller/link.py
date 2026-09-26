@@ -475,71 +475,24 @@ class Stop:
     by: str
 
 
-@dataclass(frozen=True, slots=True)
-class ReturnedToCage:
-    """The animal is home (P4d-2a). `at` is a POSIX wall instant -- a clock time is
-    what an operator reads (PI, 2026-09-20, ruling 4). `confirmed` says a person
-    acted on a time more than thirty minutes off; `welfare.returned_to_cage` refuses
-    a far one without it, and that refusal comes back as a `Refused` with the
-    sentence a person needs. Carries the request, never a second validator.
-
-    **`__post_init__` checks types, not finiteness -- fix round 1, measured.**
-    `ReturnedToCage(at="banana", by="jake", confirmed=False)` reached
-    `bounds._finite` (via `welfare._far_from_now`, via `return_needs_confirmation`),
-    and `math.isfinite("banana")` raises `TypeError`, not `Exceeded`.
-    `taskd.Session._command` catches only `Exceeded` -- "Refusals do not end the
-    session" is its own rule -- so the `TypeError` escaped into `run()`'s fault
-    handler and ended the session outright, which is the one outcome a malformed
-    command must never cause. **`confirmed` has the same shape of problem on a
-    different guard**: `welfare._refuse_unconfirmed` tests `if sentence is None or
-    confirmed:`, so any truthy non-bool -- the string `"no"` included -- satisfies it
-    as though a person had confirmed a far mark, silently defeating the one guard
-    `confirmed` exists for. Both are checked here, at the one place every
-    `ReturnedToCage` is built, whether directly or through `_decode_command` -- a
-    packet that fails this check then fails inside `ZmqLink.drain`'s existing broad
-    `except` around decode and becomes a `Refused`, never reaching `_command` at
-    all. **Finiteness is deliberately not checked here**: `nan`/`inf` are real
-    numbers by this check and stay welfare's to refuse, via `_finite`, exactly as
-    they already are -- this class carries the request, never a second validator,
-    and `_finite`'s job is not being duplicated, only guarded against a type it was
-    never written to accept.
-    """
-
-    at: float
-    by: str
-    confirmed: bool
-
-    def __post_init__(self) -> None:
-        # `bool` is an `int` subclass, so `isinstance(True, (int, float))` alone
-        # would silently accept a wall instant of `1` where a person meant "yes".
-        if isinstance(self.at, bool) or not isinstance(self.at, (int, float)):
-            raise TypeError(
-                f"a return's `at` must be a real number (a POSIX wall instant), "
-                f"not {self.at!r}"
-            )
-        if not isinstance(self.by, str):
-            raise TypeError(
-                f"a return's `by` must be a string naming who sent it, not "
-                f"{self.by!r}"
-            )
-        if not isinstance(self.confirmed, bool):
-            raise TypeError(
-                f"a return's `confirmed` must be exactly a bool, not "
-                f"{self.confirmed!r} -- a truthy non-bool would silently satisfy "
-                f"the confirmation check it exists to gate"
-            )
-
-
-Command = SetParameter | Stop | ReturnedToCage
+Command = SetParameter | Stop
 
 
 def _encode_command(command: Command) -> bytes:
-    """`SetParameter`/`Stop`/`ReturnedToCage` to msgpack, tagged by kind so
-    `_decode_command` knows which dataclass to rebuild.
+    """`SetParameter`/`Stop` to msgpack, tagged by kind so `_decode_command` knows
+    which dataclass to rebuild.
 
     Private, unlike `encode`/`decode`: `ZmqConsole.send` is the only caller, in this
     same file, so this is an implementation detail of the REQ/REP leg rather than a
     wire contract another module is meant to import.
+
+    **No `"returned"` kind (P4d-2a spec §10, Task 8).** `ReturnedToCage` lived here
+    briefly (Task 4) and is gone: the PI ruled the wl-works ELN owns the return, not
+    a console, so the browser will never send one and this file has nothing left to
+    encode for it. A packet still tagged `"returned"` -- an old console build, or one
+    that never got the memo -- reaches `_decode_command` below and is refused
+    through the same unknown-kind path as any other kind this file does not
+    recognize, never built into a command.
     """
     import msgpack
 
@@ -547,20 +500,20 @@ def _encode_command(command: Command) -> bytes:
         payload = {"kind": "set", "name": command.name, "value": command.value, "by": command.by}
     elif isinstance(command, Stop):
         payload = {"kind": "stop", "by": command.by}
-    elif isinstance(command, ReturnedToCage):
-        payload = {
-            "kind": "returned",
-            "at": command.at,
-            "by": command.by,
-            "confirmed": command.confirmed,
-        }
     else:
         raise TypeError(f"no wire encoding for {command!r}")
     return msgpack.packb(payload, use_bin_type=True)
 
 
 def _decode_command(payload: bytes) -> Command:
-    """The inverse of `_encode_command`. `ZmqLink.drain` is the only caller."""
+    """The inverse of `_encode_command`. `ZmqLink.drain` is the only caller.
+
+    **`"returned"` is deliberately not a recognized kind** (P4d-2a spec §10, Task
+    8): it falls through to the `unknown command kind` refusal below like any other
+    kind this file does not implement, exactly as it would have before `Task 4`
+    ever added it -- there is no special case for it here to keep it from being a
+    special case.
+    """
     import msgpack
 
     data = msgpack.unpackb(payload, raw=False)
@@ -569,10 +522,6 @@ def _decode_command(payload: bytes) -> Command:
         return SetParameter(name=data["name"], value=data["value"], by=data["by"])
     if kind == "stop":
         return Stop(by=data["by"])
-    if kind == "returned":
-        return ReturnedToCage(
-            at=data["at"], by=data["by"], confirmed=data["confirmed"]
-        )
     raise ValueError(f"unknown command kind on the wire: {kind!r}")
 
 

@@ -19,7 +19,6 @@ there is no trial cap at all.
 from __future__ import annotations
 
 import json
-import math
 import threading
 import time
 
@@ -29,7 +28,6 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
 from wl_expcontroller.dio import Simulated as Card
 from wl_expcontroller.link import (
     REFUSAL_HISTORY,
-    ReturnedToCage,
     SetParameter,
     Simulated,
     Stop,
@@ -1327,16 +1325,19 @@ def test_a_departure_is_recorded_whether_or_not_anyone_confirmed_it(tmp_path):
 
 
 def test_a_return_is_recorded_with_who_and_how(tmp_path):
+    """`how` is an arbitrary label `returned_to_cage` records rather than validates
+    -- this pins that it and `by` pass through untouched. Task 8: `"terminal"`
+    rather than `"console"`, since a console can no longer be the one calling this."""
     session = _chaired(tmp_path)
     session.left_cage(at=WALL_NOW - 60.0)
 
-    session.returned_to_cage(at=WALL_NOW, by="jake", how="console")
+    session.returned_to_cage(at=WALL_NOW, by="jake", how="terminal")
 
     rows = _welfare_notes(session)
     assert [row["kind"] for row in rows] == ["departure", "returned"]
     assert rows[1]["now"] == WALL_NOW
     assert rows[1]["by"] == "jake"
-    assert rows[1]["how"] == "console"
+    assert rows[1]["how"] == "terminal"
 
 
 def test_a_far_return_that_was_confirmed_says_so(tmp_path):
@@ -1360,14 +1361,18 @@ def test_a_refused_return_writes_no_row(tmp_path):
 
 
 def test_a_return_nobody_recorded_says_why(tmp_path):
+    """`return_not_recorded` records whatever reason it is given verbatim -- this
+    pins the pass-through, not any one reason's exact wording (`cli._close_interval`
+    owns that; see `test_a_headless_run_records_that_nobody_could_mark_the_return`
+    in `tests/test_cli.py`)."""
     session = _chaired(tmp_path)
     session.left_cage(at=WALL_NOW - 60.0)
 
-    session.return_not_recorded("no terminal and no console attached")
+    session.return_not_recorded("no terminal")
 
     rows = _welfare_notes(session)
     assert rows[-1]["kind"] == "return not recorded"
-    assert rows[-1]["reason"] == "no terminal and no console attached"
+    assert rows[-1]["reason"] == "no terminal"
 
 
 def test_the_session_says_when_a_return_needs_a_person(tmp_path):
@@ -1406,52 +1411,6 @@ def test_a_failed_row_write_is_never_swallowed(tmp_path, monkeypatch):
 
     with pytest.raises(OSError, match="disk full"):
         session.returned_to_cage(at=WALL_NOW)
-
-
-def test_a_console_return_during_the_loop_ends_a_chaired_session(tmp_path):
-    """A chaired animal can be walked home mid-session, and the loop must not run a
-    trial outside the interval: `must_stop` answers for a closed one."""
-    link = Simulated()
-    link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
-    spec = _spec(tmp_path, trials=50, deployment=Deployment.RIG_CHAIRED)
-    session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=lambda: WALL_NOW)
-    session.left_cage(at=WALL_NOW)
-
-    session.run()
-
-    assert "back in its cage" in session.stopped_because
-    assert session.stop_kind == "limit"
-    assert [r["how"] for r in _welfare_notes(session) if r["kind"] == "returned"] == ["console"]
-
-
-def test_a_console_return_while_the_head_is_fixed_is_refused_and_the_session_runs_on(tmp_path):
-    link = Simulated()
-    link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
-    session = _session(_spec(tmp_path, trials=3), link=link)
-
-    session.run()
-
-    assert session.stop_kind == "completed"
-    names = [name for name, _by, _why in session.refusals]
-    assert names == ["returned_to_cage"]
-    assert "head-fixed" in session.refusals[0][2]
-
-
-def test_a_console_return_with_a_nan_at_is_refused_not_fatal(tmp_path):
-    """Fix round 1: `ReturnedToCage`'s `__post_init__` checks type, not finiteness --
-    `nan` is a real number by that check, so this must still reach `welfare`'s own
-    `_finite` refusal (via `return_needs_confirmation`) and come back as an ordinary,
-    non-fatal `returned_to_cage` refusal, the same shape as a head-fixed refusal.
-    Pins that finiteness stays welfare's to refuse, not `link.ReturnedToCage`'s."""
-    link = Simulated()
-    link.queue(ReturnedToCage(at=math.nan, by="jake", confirmed=False))
-    session = _session(_spec(tmp_path, trials=3), link=link)
-
-    session.run()
-
-    assert session.stop_kind == "completed"
-    names = [name for name, _by, _why in session.refusals]
-    assert names == ["returned_to_cage"]
 
 
 class _Wall:
@@ -1576,15 +1535,30 @@ def test_a_head_fixed_session_whose_frames_outran_the_wall_publishes_after_the_l
     assert not thread.is_alive(), "the post-loop phase did not end when given up"
 
 
-def test_a_console_return_after_the_loop_closes_the_interval(tmp_path):
+def test_the_terminal_can_record_the_return_while_await_return_is_polling(tmp_path):
+    """The shape `cli._close_interval` actually drives: `await_return` runs on a
+    background thread, publishing the clock, while the terminal calls
+    `returned_to_cage` from a different thread once a person answers.
+
+    **Task 8:** this used to queue a console's `ReturnedToCage` on the link and let
+    `await_return`'s own drain notice it -- that route is gone, the PI having ruled
+    the wl-works ELN owns the return rather than a console, so `link.py` carries no
+    such command any more. The terminal is the one caller of `returned_to_cage` left
+    in production, and it calls it directly, from a thread of its own, exactly as
+    reproduced here."""
     link, wall = Simulated(), _Wall(WALL_NOW)
     session = _fixed_and_run(tmp_path, link, wall)
     wall.at = WALL_NOW + 120.0
-    link.queue(ReturnedToCage(at=WALL_NOW + 60.0, by="jake", confirmed=False))
 
-    session.await_return(threading.Event(), heartbeat=0.01)
-
-    assert session.phase == "closed"
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: link.published[-1].phase == "awaiting_return")
+        session.returned_to_cage(at=WALL_NOW + 60.0, by="jake")
+        assert _until(lambda: session.phase == "closed")
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+    assert not thread.is_alive()
     assert link.published[-1].phase == "closed"
     assert link.published[-1].out_of_cage_seconds == pytest.approx(60.0)
     assert [r["kind"] for r in _welfare_notes(session)][-1] == "returned"
@@ -1612,7 +1586,13 @@ def test_after_the_loop_a_parameter_or_a_stop_is_refused_not_applied(tmp_path):
 
 def test_a_fault_skipped_the_release_and_the_return_can_still_land(tmp_path):
     """Review Focus 4, and P4d-2a spec §1 item 3: a fault re-raises past the release
-    at the end of `run()`, and `welfare` refuses a return for a head still fixed."""
+    at the end of `run()`, and `welfare` refuses a return for a head still fixed.
+    `await_return` releases it before its own loop runs.
+
+    **Task 8:** the return itself is the terminal's alone now, called from another
+    thread once the release has happened -- the same shape `cli._close_interval`
+    drives -- not the link's: the console route this test used to land it by is
+    gone."""
 
     class Broken:
         def deliver(self, ml: float) -> None:
@@ -1628,9 +1608,15 @@ def test_a_fault_skipped_the_release_and_the_return_can_still_land(tmp_path):
     with pytest.raises(RuntimeError, match="solenoid"):
         session.run()
     assert session.welfare.released_wall_at is None, "the gap this test closes"
-    link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
 
-    session.await_return(threading.Event(), heartbeat=0.01)
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: session.welfare.released_wall_at is not None)
+        session.returned_to_cage(at=WALL_NOW, by="jake")
+        assert _until(lambda: session.phase == "closed")
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
 
     assert session.welfare.released_wall_at is not None
     assert session.welfare.returned_wall_at is not None
@@ -1673,23 +1659,36 @@ def test_await_return_before_the_loop_is_refused(tmp_path):
 
 
 def test_a_fault_after_the_loop_is_published_then_raised(tmp_path, monkeypatch):
-    """Fix round 1: `_note`'s row write can fail (OSError) after `welfare` has
-    already accepted the return -- `returned_wall_at` is set, but the write that follows
-    it can still fail, disk full or otherwise. `await_return` must mirror `run()`'s
-    one-frame-then-propagate rule rather than leaving `phase` stuck at
-    `awaiting_return` forever with no fault frame, which is what a background thread
-    dying with an unjoined traceback would otherwise look like from a console."""
+    """Fix round 1: a fault raised while `await_return`'s own loop is running must
+    mirror `run()`'s one-frame-then-propagate rule rather than leaving `phase` stuck
+    at `awaiting_return` forever with no fault frame, which is what a background
+    thread dying with an unjoined traceback would otherwise look like from a
+    console.
 
-    def _boom(*args, **kwargs):
-        raise OSError("disk full")
+    **Task 8:** this used to reproduce the fault through a queued console
+    `ReturnedToCage` reaching a failed `_note` write, drained from inside this
+    loop -- that route is gone, and `returned_to_cage` runs only on the terminal's
+    own thread now (`test_a_failed_row_write_is_never_swallowed` above already pins
+    that a failed write there is not swallowed). What is still `await_return`'s own
+    work to fail at is publishing a frame, so this drives the same
+    publish-then-raise contract through that instead: the loop's first `publish()`
+    raises, and the `except` block's own recovery `publish()` -- the one frame
+    naming the fault -- must still get out before the original exception does."""
+
+    calls: list = []
+
+    def _boom(telemetry) -> None:
+        calls.append(telemetry)
+        if len(calls) == 1:
+            raise OSError("disk full")
 
     link, wall = Simulated(), _Wall(WALL_NOW)
     session = _fixed_and_run(tmp_path, link, wall)
-    monkeypatch.setattr("wl_expcontroller.taskd.welfare_note", _boom)
-    link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
+    monkeypatch.setattr(link, "publish", _boom)
 
     with pytest.raises(OSError, match="disk full"):
         session.await_return(threading.Event(), heartbeat=0.01)
 
-    assert link.published[-1].stop_kind == "fault"
-    assert "disk full" in link.published[-1].stopped_because
+    assert len(calls) == 2, "the fault frame must still be published after the first fails"
+    assert session.stop_kind == "fault"
+    assert "disk full" in session.stopped_because

@@ -399,28 +399,17 @@ def _settle_departure(session, args) -> tuple:
     )
 
 
-def _console_recorded_it(session) -> bool:
-    """Whether a console has already taken the return, said once, here.
-
-    **Task 6 review, fix round 1, Important 3.** `_settle_return` reads
-    `welfare.returned_wall_at` at three points around anything that blocks or can be
-    refused -- before the prompt, after it, and after a refused mark -- because a
-    console can win the race at any of them. The three sites used to repeat the
-    same three lines; a fourth (Minor 1, below) would have made it four. One
-    function, so the message and the check can never drift apart the way three
-    copies eventually would.
-    """
-    if session.welfare.returned_wall_at is None:
-        return False
-    print("  the return was recorded from a console", file=sys.stderr)
-    return True
-
-
 def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     """Ask the person at the terminal when the animal went back into its cage.
 
-    **P4d-2a spec §5.** `None` once the return is recorded -- here, or by a console
-    while this was waiting -- and otherwise the reason it was not, for the row.
+    **P4d-2a spec §5, amended by §10.** `None` once the return is recorded here,
+    and otherwise the reason it was not, for the row. **The terminal is the only
+    caller of `Session.returned_to_cage` left** (Task 8): a console could once win
+    this race from another thread, and this function read `welfare.returned_wall_at`
+    at three points to notice -- before the prompt, after it, and after a refused
+    mark. The PI ruled the wl-works ELN owns the return, not a console, so `link.py`
+    carries no such command any more and nothing else can land here while this
+    function runs; those three checks are gone with it.
 
     **The prompt ends.** An empty answer ends it at once, and so do `attempts`
     answers that are not an accepted mark: a prompt that re-asked forever would hang
@@ -428,19 +417,9 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     departure's confirmation (PI, 2026-09-20); anything but `confirm` there asks for
     the time again. **There is no amendment**, because nothing has been marked yet
     that one could replace -- a corrected time is simply the time entered.
-
-    **The last check, after the last attempt, is not decorative** (Task 6 review,
-    fix round 1, Minor 1). Without it, a console that records the return during the
-    final rejected answer -- the same race `_console_recorded_it` exists to catch
-    everywhere else -- fell through to "no clock time given at the terminal" even
-    though the return was, by then, recorded.
     """
     for _ in range(attempts):
-        if _console_recorded_it(session):
-            return None
         raw = _ask("  returned to cage at (HH:MM, or now): ").strip()
-        if _console_recorded_it(session):
-            return None
         if not raw:
             return "no answer at the terminal"
         try:
@@ -462,23 +441,28 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
         try:
             session.returned_to_cage(at, confirmed=confirmed, by=actor, how="terminal")
         except Exceeded as refused:
-            if _console_recorded_it(session):
-                return None
             print(f"  refused: {refused}", file=sys.stderr)
             continue
-        return None
-    if _console_recorded_it(session):
         return None
     return "no clock time given at the terminal"
 
 
-def _close_interval(session, args, linked: bool) -> bool:
-    """Take the return, or record why nobody could (P4d-2a spec §3, §5).
+def _close_interval(session, args) -> bool:
+    """Take the return at the terminal, or record why nobody could (P4d-2a spec §3,
+    §5, amended by §10: the wl-works ELN owns the return, and `wlx run`'s terminal
+    prompt is the stand-in until it exists).
 
-    `await_return` runs on a background thread, publishing the clock and draining
-    the link; this thread holds the terminal prompt. **The two meet only at
-    `Session._mark_lock`.** Returns `True` if the operator interrupted, so the caller
-    can exit 130 as `wlx console` does.
+    **With no terminal, nothing waits, console attached or not** (Task 8). A linked
+    run with no terminal has nobody who could ever answer the prompt -- the ELN's
+    return does not reach this box through `link.py`, and the browser console this
+    slice once planned to build for the purpose was ruled out with it -- so
+    `await_return` is not even started; one `return not recorded (no terminal)` row
+    is written at once and `wlx run` exits 0.
+
+    **With a terminal**, `await_return` runs on a background thread, publishing the
+    clock, while this thread holds the terminal prompt (`_settle_return`). Returns
+    `True` if the operator interrupted, so the caller can exit 130 as `wlx console`
+    does.
 
     **A fault on that background thread is captured and re-raised on this one, never
     retried.** `_wait` below catches whatever `await_return` raises so the thread
@@ -486,23 +470,14 @@ def _close_interval(session, args, linked: bool) -> bool:
     terminal side has settled, for the same reason `await_return`'s own docstring
     refuses to retry it -- `welfare.returned_to_cage` cannot be called a second time
     without being refused by the mark it already accepted.
-
-    **The timed wait's own reason is only true when the timeout is what actually
-    happened** (Task 6 review, fix round 1, Important 1). `waiter.join(timeout=...)`
-    returns the instant the background thread dies, which can be long before the
-    timeout it was given -- and "nobody marked it within N s" would then be false:
-    N seconds never passed. Read together with the shared fallback below, a fault
-    during the timed wait leaves `why` unset here and picks up "the post-loop phase
-    failed: ..." instead, which is what actually happened.
     """
     if session.spec.deployment is Deployment.CAGE_SIDE:
         return False
     if not session.phase:
         session.return_not_recorded("the session did not start")
         return False
-    terminal = _at_a_terminal()
-    if not terminal and not linked:
-        session.return_not_recorded("no terminal and no console attached")
+    if not _at_a_terminal():
+        session.return_not_recorded("no terminal")
         return False
     give_up = threading.Event()
     failure: list[BaseException] = []
@@ -518,17 +493,7 @@ def _close_interval(session, args, linked: bool) -> bool:
     why = None
     interrupted = False
     try:
-        if terminal:
-            why = _settle_return(session, args.actor or "")
-        elif args.await_return_for is not None:
-            waiter.join(timeout=args.await_return_for)
-            # Not `failure`'s to name here: a background fault can end the wait
-            # well before the timeout, and the finally block's own fallback below
-            # is where that fault's name belongs (Important 1).
-            if session.welfare.returned_wall_at is None and not failure:
-                why = f"nobody marked it within {args.await_return_for:g} s"
-        else:
-            waiter.join()
+        why = _settle_return(session, args.actor or "")
     except KeyboardInterrupt:
         why = "interrupted at the terminal"
         interrupted = True
@@ -802,15 +767,6 @@ def main(argv: list[str] | None = None) -> int:
         "refused by the ceiling before a confirmation is ever offered -- "
         "tasks/twelve_hour_bounds.py is a second reference config, with the real "
         "institutional figure, that this path can be dry-run against",
-    )
-    runner.add_argument(
-        "--await-return-for",
-        type=float,
-        default=None,
-        metavar="SECONDS",
-        help="with --link and no terminal, how long to wait for a console to mark "
-        "the return to the cage before recording that nobody did (P4d-2a). Without "
-        "it, such a run waits until the return is marked or it is interrupted",
     )
     runner.add_argument(
         "--amend-out-of-cage-to",
@@ -1118,18 +1074,17 @@ def main(argv: list[str] | None = None) -> int:
                 f", this host's local time)"
             )
             # **The return to the cage is taken here, or its absence is recorded**
-            # (P4d-2a spec §3, §5). `_close_interval` runs in `finally` so a fault
-            # out of `session.run()` still gets a chance at the terminal/console
-            # path -- and, on a rig, still has a head to release and a clock to stop
-            # publishing -- rather than leaving the interval open with nothing said
-            # about why.
+            # (P4d-2a spec §3, §5, amended by §10: the terminal, and only the
+            # terminal, until the wl-works ELN exists). `_close_interval` runs in
+            # `finally` so a fault out of `session.run()` still gets a chance at the
+            # terminal path -- and, on a rig, still has a head to release and a
+            # clock to stop publishing -- rather than leaving the interval open
+            # with nothing said about why.
             interrupted = False
             try:
                 census = session.run()
             finally:
-                interrupted = _close_interval(
-                    session, args, linked=opened_link is not None
-                )
+                interrupted = _close_interval(session, args)
             total = sum(census.outcomes.values()) or 1
             for outcome, count in census.outcomes.most_common():
                 print(f"  {outcome.value:18} {count:6}  {100 * count / total:5.1f}%")
