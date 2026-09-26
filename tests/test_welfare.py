@@ -112,7 +112,7 @@ def _home_welfare(already: float | None = 0.0) -> Welfare:
 def test_a_delivery_reaches_the_pump_and_is_accounted():
     welfare = _welfare()
 
-    delivered = welfare.deliver("reward_correct")
+    delivered = welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     assert delivered == 0.15
     assert welfare.pump.delivered == [0.15]
@@ -126,7 +126,7 @@ def test_the_days_total_carries_what_another_deployment_already_delivered():
     start-time number from the deployment that ran first is a current one."""
     welfare = _welfare(already=100.0)
 
-    welfare.deliver("reward_correct")
+    welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     assert welfare.total_today() == pytest.approx(100.15)
 
@@ -138,7 +138,7 @@ def test_a_delivery_is_never_refused_on_volume():
     welfare = _welfare(already=249.95)
 
     for _ in range(20):
-        welfare.deliver("reward_correct")
+        welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     assert len(welfare.pump.delivered) == 20
     assert welfare.total_today() == pytest.approx(249.95 + 20 * 0.15)
@@ -148,7 +148,7 @@ def test_a_day_short_of_its_floor_reports_what_must_be_supplemented():
     """The whole of what the daily figure is for: the top-up after the session."""
     welfare = _welfare(already=100.0)
 
-    welfare.deliver("reward_correct")
+    welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     assert welfare.shortfall() == pytest.approx(149.85)
 
@@ -166,7 +166,7 @@ def test_an_unknown_prior_total_leaves_the_shortfall_unknown_and_still_pays():
     animal that is working."""
     welfare = _welfare(already=None)
 
-    welfare.deliver("reward_correct")
+    welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     assert welfare.pump.delivered == [0.15]
     assert welfare.total_today() is None
@@ -175,7 +175,7 @@ def test_an_unknown_prior_total_leaves_the_shortfall_unknown_and_still_pays():
 
 def test_a_human_confirming_a_figure_makes_the_day_countable_again():
     welfare = _welfare(already=None)
-    welfare.deliver("reward_correct")
+    welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     welfare.confirm_already_today(12.0, by="jake")
 
@@ -200,7 +200,7 @@ def test_the_commanded_total_is_charged_before_the_valve_opens():
     )
 
     with pytest.raises(RuntimeError):
-        welfare.deliver("reward_correct")
+        welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     assert welfare.commanded == 0.15
 
@@ -216,7 +216,7 @@ def test_an_absent_pump_refuses_rather_than_delivering_nothing():
     )
 
     with pytest.raises(RuntimeError, match="no pump"):
-        welfare.deliver("reward_correct")
+        welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
 
 def test_a_bounded_config_without_a_daily_fluid_floor_refuses_to_start():
@@ -257,7 +257,7 @@ def test_the_delivered_line_replaces_our_commanded_total_when_it_is_larger():
     """P17: the panel button reaches the pump through the board's OR gate and never
     through us, so our commanded figure is a lower bound."""
     welfare = _welfare()
-    welfare.deliver("reward_correct")
+    welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     welfare.reconcile(delivered=5.0)
 
@@ -268,7 +268,7 @@ def test_the_delivered_line_replaces_our_commanded_total_when_it_is_larger():
 def test_a_delivered_line_below_commanded_is_a_fault_and_the_larger_figure_stands():
     welfare = _welfare()
     for _ in range(10):
-        welfare.deliver("reward_correct")
+        welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     welfare.reconcile(delivered=0.5)
 
@@ -280,10 +280,57 @@ def test_reconciliation_is_what_the_shortfall_is_computed_from():
     """Hand rewards count toward the day. A shortfall computed from what we commanded
     would ask for a top-up the animal has already had."""
     welfare = _welfare(already=0.0)
-    welfare.deliver("reward_correct")
+    welfare.deliver("reward_correct", wall_now=WALL_NOW)
     welfare.reconcile(delivered=200.0)
 
     assert welfare.shortfall() == pytest.approx(50.0)
+
+
+def test_a_delivery_records_the_wall_instant_it_was_charged_at():
+    """P4d-2b spec §4.1: the console's time since the last reward. **`None` before the
+    first**, never `0.0`, which would read as a reward paid at the epoch."""
+    welfare = _welfare()
+    assert welfare.last_delivery_wall_at is None
+
+    welfare.deliver("reward_correct", wall_now=WALL_NOW + 5.0)
+    welfare.deliver("reward_correct", wall_now=WALL_NOW + 9.0)
+
+    assert welfare.last_delivery_wall_at == WALL_NOW + 9.0
+
+
+def test_a_rewards_instant_is_read_from_the_rigs_wall_clock():
+    """`Rig` is what a task's `Reward` reaches, so it is what reads the clock: the
+    session's `wall_now`, handed to it as `wall_clock` (`tests/test_taskd.py` pins
+    that the session hands it that and nothing else)."""
+    welfare = _welfare()
+    rig = Rig(card=Card(), wall_clock=lambda: WALL_NOW + 12.5, welfare=welfare)
+
+    rig.reward("reward_correct")
+
+    assert welfare.last_delivery_wall_at == WALL_NOW + 12.5
+
+
+def test_a_delivery_the_pump_refused_is_still_charged_and_timed():
+    """Charged before the valve opens, like `commanded` and `deliveries`, so the three
+    always describe the same deliveries. A pump that raises ends the session anyway
+    (`test_a_pump_fault_reaches_the_session_rather_than_being_absorbed`)."""
+
+    class Failing:
+        def deliver(self, ml: float) -> None:
+            raise RuntimeError("solenoid did not answer")
+
+    welfare = Welfare(
+        bounds=_bounds(),
+        pump=Failing(),
+        already_today=0.0,
+        deployment=Deployment.RIG_FIXED,
+    )
+
+    with pytest.raises(RuntimeError, match="solenoid"):
+        welfare.deliver("reward_correct", wall_now=WALL_NOW)
+
+    assert welfare.deliveries == 1
+    assert welfare.last_delivery_wall_at == WALL_NOW
 
 
 # --- the clock the limit is actually about ----------------------------------
@@ -753,7 +800,7 @@ def test_a_reward_volume_of_exactly_zero_is_allowed_because_it_is_visible():
     )
 
     for _ in range(20):
-        welfare.deliver("reward_correct")
+        welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     assert welfare.pump.delivered == [0.0] * 20, "twenty trials, no fluid"
     # The two numbers the ruling rests on. `session_total()` is what
@@ -772,7 +819,7 @@ def test_a_cage_side_session_pays_and_counts_the_day_like_any_other():
     the duration bound, not the fluid accounting -- the daily figure is shared."""
     welfare = _home_welfare(already=100.0)
 
-    welfare.deliver("reward_correct")
+    welfare.deliver("reward_correct", wall_now=WALL_NOW)
 
     assert welfare.pump.delivered == [0.15]
     assert welfare.shortfall() == pytest.approx(149.85)
@@ -1494,7 +1541,7 @@ def test_a_rewards_only_path_to_the_pump_runs_through_the_days_accounting():
     action reaches, and it has no way to reach a pump that the day's total does not
     see -- which is what makes the shortfall at close a real number."""
     welfare = _welfare()
-    rig = Rig(card=Card(), welfare=welfare)
+    rig = Rig(card=Card(), wall_clock=lambda: WALL_NOW, welfare=welfare)
 
     rig.reward("reward_correct")
 
@@ -1503,7 +1550,7 @@ def test_a_rewards_only_path_to_the_pump_runs_through_the_days_accounting():
 
 
 def test_a_mark_reaches_the_card_and_never_the_pump():
-    rig = Rig(card=Card(), welfare=_welfare())
+    rig = Rig(card=Card(), wall_clock=lambda: WALL_NOW, welfare=_welfare())
 
     rig.mark(4102)
 
@@ -1513,7 +1560,7 @@ def test_a_mark_reaches_the_card_and_never_the_pump():
 
 def test_a_reward_past_the_days_floor_is_delivered_like_any_other():
     """No refusal path exists for volume, so there is nothing for `Rig` to swallow."""
-    rig = Rig(card=Card(), welfare=_welfare(already=249.95))
+    rig = Rig(card=Card(), wall_clock=lambda: WALL_NOW, welfare=_welfare(already=249.95))
 
     rig.reward("reward_correct")
 
@@ -1531,6 +1578,7 @@ def test_a_pump_fault_reaches_the_session_rather_than_being_absorbed():
 
     rig = Rig(
         card=Card(),
+        wall_clock=lambda: WALL_NOW,
         welfare=Welfare(
             bounds=_bounds(),
             pump=Failing(),
@@ -1828,6 +1876,20 @@ NOT_ENTRY_POINTS = {
     "Absent.deliver.ml": "as Pump.deliver; refuses unconditionally anyway",
     "Card.emit.code": "an event code leaving this module; dio owns its range",
     "Rig.mark.code": "an event code, not a welfare quantity; dio owns its range",
+    # P4d-2b b1 (spec §4.1): when the last reward was charged, for the console's time
+    # since the last reward. Compared against nothing, so refusing a non-finite one
+    # would end a trial the animal completed over a display field -- the reason
+    # `Welfare.deliveries` is exempt, on an instant.
+    "Welfare.deliver.wall_now": (
+        "a display instant stored as last_delivery_wall_at and compared against no "
+        "limit; refusing it would abort a completed trial over a display field"
+    ),
+    "Welfare.last_delivery_wall_at": (
+        "as Welfare.deliver.wall_now; read by telemetry and compared against nothing"
+    ),
+    "Rig.wall_clock": (
+        "a callable, not a number; the instant it returns is Welfare.deliver.wall_now"
+    ),
 }
 
 

@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
@@ -328,6 +329,14 @@ class Welfare:
     #: arrives; S8 open item 2 is whether that is continuous or only at close.
     delivered: float | None = None
     deliveries: int = 0
+    #: The wall instant, POSIX seconds, at which the last delivery was charged, or
+    #: `None` before the first -- never `0.0`, which would read as a reward paid at
+    #: the epoch. **Recorded for the console's time since the last reward, and
+    #: compared against nothing** (P4d-2b spec §4.1, 2026-09-26): fluid today standing
+    #: still while this ages is what keeps a working, unpaid animal visible now that
+    #: the console's strip no longer carries fluid session (spec §4.0). Set where
+    #: `commanded` and `deliveries` are, for their reason: charged before the valve.
+    last_delivery_wall_at: float | None = None
     #: The clock that bounds the session opens here: **the departure, as the wall
     #: instant it is**, in POSIX seconds. **Set through `left_cage`, never by
     #: constructing a `Welfare` around it** -- the guards live on that method.
@@ -451,7 +460,7 @@ class Welfare:
         self.already_today = total
         self.notes.append(("already_today confirmed", total, by))
 
-    def deliver(self, ref: str) -> float:
+    def deliver(self, ref: str, wall_now: float) -> float:
         """The only path from a `Reward` action to fluid.
 
         **No volume check, deliberately** (PI, 2026-09-06): there is no fluid
@@ -459,10 +468,18 @@ class Welfare:
         a console *sets* the volume -- the magnitude is a configuration decision and
         a task can only name it. **Charged before the valve opens**, so a pump that
         raises after opening leaves no fluid unaccounted.
+
+        **`wall_now` says when, and it bounds nothing** (P4d-2b spec §4.1). It is kept
+        as `last_delivery_wall_at` beside the charge and compared with no limit, so it
+        is not refused when it is not a number: a refusal here would end a trial the
+        animal completed over a display field. `Rig.reward` is the only caller, and
+        passes `taskd.Session.wall_now()` -- the session's `SessionClock` (above),
+        the one clock every welfare instant is read on (P4d-2a Ruling 8).
         """
         ml = self.bounds.value(ref)
         self.commanded += ml
         self.deliveries += 1
+        self.last_delivery_wall_at = wall_now
         self.pump.deliver(ml)
         return ml
 
@@ -1121,13 +1138,24 @@ class Rig:
     next trial boundary; the shape was right and the premise was not, and a
     *stopping* condition arriving mid-trial still belongs here rather than raising
     out of the frame loop.
+
+    **`wall_clock` is `taskd.Session.wall_now`, and nothing else** -- the session's
+    `SessionClock` above, or the wall a test injected -- read once per reward so
+    `Welfare.deliver` can record when it paid (P4d-2b spec §4.1): one clock read and
+    one float store on the trial's path, per reward and never per frame. **The one
+    anchored clock, not a second one** (P4d-2a Ruling 8): the reward's instant is on
+    the base the departure, the return and every published frame are. Required, with
+    no default: a default of `time.time` would be that second clock -- off the anchor
+    by any step of the host clock since the session began, and off an injected wall
+    entirely.
     """
 
     card: Card
     welfare: Welfare
+    wall_clock: Callable[[], float]
 
     def mark(self, code: int) -> None:
         self.card.emit(code)
 
     def reward(self, ref: str) -> None:
-        self.welfare.deliver(ref)
+        self.welfare.deliver(ref, wall_now=self.wall_clock())

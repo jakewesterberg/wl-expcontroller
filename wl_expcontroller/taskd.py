@@ -237,7 +237,12 @@ class Session:
             deployment=self.spec.deployment,
             warn_within=self.spec.warn_within,
         )
-        self.rig = Rig(card=self.card, welfare=self.welfare)
+        # `wall_now`, the one clock every welfare instant is read on (P4d-2a spec §10,
+        # Ruling 8): `self._anchored`, the session's `SessionClock`, unless a test
+        # injected `wall_clock`. Not `self._anchored.now` itself, which would skip an
+        # injected wall, and a bound method, so a wall injected after construction is
+        # the one read.
+        self.rig = Rig(card=self.card, welfare=self.welfare, wall_clock=self.wall_now)
 
     # --- the clock --------------------------------------------------------
 

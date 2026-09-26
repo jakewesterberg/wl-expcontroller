@@ -256,6 +256,44 @@ def test_a_session_delivers_reward_and_the_day_counts_every_one(tmp_path):
     assert session.welfare.total_today() == pytest.approx(correct * 0.15)
 
 
+def test_a_session_records_when_it_last_paid_on_its_own_wall_clock(tmp_path):
+    """The path, not the piece: a task's `Reward`, through `Rig`, into `welfare`, on
+    the session's wall. `_session` gives the wall `WALL_NOW` plus the frame clock, so
+    a `Rig` that read `time.time()` instead would land years past this range --
+    `WALL_NOW` is November 2023."""
+    session = _session(_spec(tmp_path, trials=50))
+
+    census = session.run()
+
+    assert census.outcomes[Outcome.CORRECT] > 0
+    assert WALL_NOW <= session.welfare.last_delivery_wall_at <= session.wall_now()
+
+
+def test_a_rewards_instant_is_on_the_sessions_anchored_clock_not_the_host_clock(
+    tmp_path, monkeypatch
+):
+    """**Ruling 8, on the reward path.** With no wall injected, `Rig` reads
+    `Session.wall_now`, which is the session's `welfare.SessionClock`: the host clock
+    as it read when the session was created, carried forward on a steady clock. So
+    the host clock stepped back an hour before a reward moves that reward's instant
+    not at all, and it is the instant every other welfare reading of that moment
+    gets. A `Rig` given `time.time` would record `WALL_NOW - 3_593.0` here; one given
+    the `SessionClock` itself would pass this and fail the test above, whose wall is
+    injected. Every steady clock `welfare.steady_seconds` could read is stubbed to one
+    value, as `test_the_sessions_wall_does_not_step_when_the_host_clock_does` does."""
+    host, steady = [WALL_NOW], [100.0]
+    monkeypatch.setattr(time, "time", lambda: host[0])
+    monkeypatch.setattr(time, "monotonic", lambda: steady[0])
+    monkeypatch.setattr(time, "clock_gettime", lambda clock: steady[0])
+    session = Session(_spec(tmp_path), card=Card(), pump=Pump())
+    host[0], steady[0] = WALL_NOW - 3_600.0 + 7.0, 107.0
+
+    session.rig.reward("reward_correct")
+
+    assert session.welfare.last_delivery_wall_at == WALL_NOW + 7.0
+    assert session.welfare.last_delivery_wall_at == session.wall_now()
+
+
 def test_a_session_strobes_the_codes_its_task_declares(tmp_path):
     """The other half of the same defect. A session that runs a full protocol and
     emits no event codes writes a record that cannot be aligned to any recording,
