@@ -15,13 +15,34 @@ from enum import Enum
 from wl_expcontroller.photometry import Color
 
 
+class Family(Enum):
+    """Which kind of ending an `Outcome` is: the groups `Outcome`'s own comments have
+    always drawn, held as data so a console can group by them (P4d-2b spec §3).
+
+    **Grouping, never a rollup.** A console shows each outcome that occurred with its
+    count, under its family, and never sums a family into one number. Nothing here
+    defines correct, error or aborted: that is the PI's to define -- fixed on this
+    enum or per task, and where `early_response`, `late_response` and `no_response`
+    fall is open (spec §3, 2026-09-26).
+
+    The values are the words a console prints.
+    """
+
+    TARGET = "target"
+    DISTRACTOR = "distractor"
+    WITHHOLD = "withhold"
+    NO_ENGAGEMENT = "no engagement"
+    BREAKS = "breaks"
+    RIG = "rig"
+
+
 class Outcome(Enum):
     """How a trial ended.
 
-    Two families. **Responses** are what the animal did about a stimulus, crossed
-    with when: to the target or to a distractor, early, on time, or late. **Breaks**
-    are the trial ending because a hold was not maintained -- of fixation, of the
-    target, of a catch trial, or because the chair moved too much.
+    **Six families, held as data** (`Family`, `Outcome.family`, P4d-2b spec §3):
+    responses to the target, responses to a distractor, withholding, no engagement,
+    breaks -- the trial ending because a hold was not maintained -- and the rig. The
+    comments below mark the same groups.
 
     `ABORT` is the residual and is deliberately not a break: the animal went
     somewhere that was neither target nor distractor, which is a different statement
@@ -64,6 +85,37 @@ class Outcome(Enum):
     # to tell whether to fix the animal or the camera.
     TRACKER_LOST = "tracker_lost"
     FAULT = "fault"
+
+    @property
+    def family(self) -> "Family":
+        """This outcome's `Family`, from `_FAMILY` below the class. A property rather
+        than part of the value, so `Outcome.value` stays the wire string every record
+        and every telemetry frame already carries."""
+        return _FAMILY[self]
+
+
+#: Every `Outcome`'s family: the comment groups above, as data. **Total** --
+#: `tests/test_task.py` fails if an outcome is added without one.
+_FAMILY: dict[Outcome, Family] = {
+    Outcome.CORRECT: Family.TARGET,
+    Outcome.EARLY_RESPONSE: Family.TARGET,
+    Outcome.LATE_RESPONSE: Family.TARGET,
+    Outcome.WRONG_TARGET: Family.DISTRACTOR,
+    Outcome.EARLY_ERROR: Family.DISTRACTOR,
+    Outcome.LATE_ERROR: Family.DISTRACTOR,
+    Outcome.CORRECT_REJECT: Family.WITHHOLD,
+    Outcome.FALSE_ALARM: Family.WITHHOLD,
+    Outcome.NO_FIXATION: Family.NO_ENGAGEMENT,
+    Outcome.NO_RESPONSE: Family.NO_ENGAGEMENT,
+    Outcome.ABORT: Family.NO_ENGAGEMENT,
+    Outcome.FIXATION_BREAK: Family.BREAKS,
+    Outcome.TARGET_BREAK: Family.BREAKS,
+    Outcome.CATCH_BREAK: Family.BREAKS,
+    Outcome.MOTION_BREAK: Family.BREAKS,
+    Outcome.BLINK_BREAK: Family.BREAKS,
+    Outcome.TRACKER_LOST: Family.RIG,
+    Outcome.FAULT: Family.RIG,
+}
 
 
 @dataclass(frozen=True, slots=True)

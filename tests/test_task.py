@@ -14,7 +14,7 @@ system cannot distinguish from a hand-written one.
 
 from __future__ import annotations
 
-from wl_expcontroller.task import Disc, FixPoint, P, Stimulus
+from wl_expcontroller.task import Disc, Family, FixPoint, Outcome, P, Stimulus
 
 
 def test_a_fix_point_is_an_ordinary_stimulus():
@@ -52,3 +52,54 @@ def test_a_parameter_reaches_both_the_position_and_the_size():
 
     assert fix.at == P("where")
     assert fix.looks.size == P("how_big")
+
+
+# ---------------------------------------------------------------------------
+# Outcome families (P4d-2b spec §3): the groups the enum's comments draw, as data
+# ---------------------------------------------------------------------------
+
+
+def test_every_outcome_has_a_family():
+    """Total, so a console can never meet an outcome it cannot group: a member added
+    without one fails here rather than on a rig's screen."""
+    for outcome in Outcome:
+        assert isinstance(outcome.family, Family), outcome
+
+
+def test_the_families_are_the_groups_the_enums_comments_draw():
+    grouped = {
+        family: [o.value for o in Outcome if o.family is family] for family in Family
+    }
+
+    assert grouped == {
+        Family.TARGET: ["correct", "early_response", "late_response"],
+        Family.DISTRACTOR: ["wrong_target", "early_error", "late_error"],
+        Family.WITHHOLD: ["correct_reject", "false_alarm"],
+        Family.NO_ENGAGEMENT: ["no_fixation", "no_response", "abort"],
+        Family.BREAKS: [
+            "fixation_break",
+            "target_break",
+            "catch_break",
+            "motion_break",
+            "blink_break",
+        ],
+        Family.RIG: ["tracker_lost", "fault"],
+    }
+
+
+def test_the_family_words_are_the_specs_in_its_order():
+    assert [family.value for family in Family] == [
+        "target",
+        "distractor",
+        "withhold",
+        "no engagement",
+        "breaks",
+        "rig",
+    ]
+
+
+def test_a_family_leaves_the_wire_value_alone():
+    """`family` is a property, not part of the value, so every record and every frame
+    that carries `Outcome.value` reads exactly what it did before."""
+    assert Outcome.CORRECT.value == "correct"
+    assert Outcome("abort") is Outcome.ABORT
