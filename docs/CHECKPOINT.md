@@ -1518,10 +1518,17 @@ invisible in every artifact the session produces. Now pitfall **P21**.
   the limit rather than being it. A rig session refuses to start without the
   out-of-cage mark; a cage-side one declares `CAGE_SIDE` and has no duration
   bound at all. A `RIG_CHAIRED` one carries the mark, no head-fixation, and reports
-  restraint as **absent rather than zero**. See "The welfare clock, and the four rulings that reshaped it". The
-  session clock is derived from frames rather than the wall, which is what keeps
-  "stops at its duration ceiling" deterministic; on a rig frames *are* the clock, so
-  it is the honest choice there too.
+  restraint as **absent rather than zero**. See "The welfare clock, and the four rulings that reshaped it".
+  **History, not current fact:** when this was written the session clock was derived
+  from frames rather than the wall, and this line called that what kept "stops at its
+  duration ceiling" deterministic, and the honest choice on a rig, where frames *are*
+  the clock. **P4d-2a (2026-09-26, spec §10) took that base off every welfare
+  duration**: in the simulator frames outran the wall, so the default `rig-fixed` path
+  could not record its return. Out-of-cage, restraint and the limit check now read
+  `Session.wall_now()` — the wall as read once at session creation, carried forward on
+  a monotonic clock — and the frame clock times trials and nothing else. A simulated
+  dry run reaches its ceiling only in real time; tests that need the ceiling inject a
+  wall clock.
 - **`HEAD_FIXED`/`HEAD_RELEASED` are strobed** (4128/4129). Restraint is the one
   welfare quantity with no hardware line, so the codes *are* its durable record —
   which is why they stayed when chair time stopped bounding anything — **for

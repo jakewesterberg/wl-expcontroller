@@ -472,7 +472,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
 
     # P4d-2a spec §10, Task 8: no terminal, so the interval closes at once rather
     # than waiting on `await_return` for a return nothing here can ever send.
-    # Task 9: `session ended` follows it, from `_close_interval`'s own `finally`.
+    # Task 9: `session ended` follows it, from `cli.main`'s outer `finally`.
     notes_path = tmp_path / "2027-01-14_04" / "expcontroller" / "welfare_notes.jsonl"
     notes = [json.loads(line) for line in notes_path.read_text().splitlines()]
     assert notes[-1]["kind"] == "session ended"
@@ -2135,10 +2135,10 @@ def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monk
     with pytest.raises(RuntimeError, match="publish failed"):
         main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
-    # `session.end()` still runs, in `_close_interval`'s outer `finally`, even
-    # though the re-raised fault propagates past it -- so `session ended` is the
-    # last row, after the terminal's own `returned` mark that the fault must not
-    # be allowed to erase.
+    # `session.end()` still runs, in `cli.main`'s outer `finally` (Task 9 fix
+    # round 1), even though the fault `_close_interval` re-raises propagates past
+    # it -- so `session ended` is the last row, after the terminal's own
+    # `returned` mark that the fault must not be allowed to erase.
     assert _kinds(tmp_path)[-2:] == ["returned", "session ended"]
 
 

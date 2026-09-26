@@ -379,9 +379,11 @@ class Session:
         method's own inverse mistake). **Refuses a second call** for the same
         reason `open()` does: one ending, one instant, one row.
 
-        For `wlx run`, called once from `cli._close_interval`'s `finally`, after
-        the return is settled or recorded as not recorded -- whichever way that
-        interval closed, the session's own clock closes with it.
+        For `wlx run`, called once from `cli.main`'s outer `finally` (Task 9 fix
+        round 1), which wraps everything from `open()` on: after the return is
+        settled or recorded as not recorded when the run got that far, and after
+        a refused or interrupted departure when it did not. Whichever way the
+        run left, the session's own clock closes with it.
         """
         if self.opened_wall_at is None:
             raise RuntimeError(
