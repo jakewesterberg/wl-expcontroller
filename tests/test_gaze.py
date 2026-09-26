@@ -581,11 +581,33 @@ def _calibration_bounds() -> Bounds:
             # block is twenty-six trials of at most a second and a half, so this
             # admits them several times over -- and still bounds a scheduler whose
             # counters stop advancing, which since `max_trials` went is the only
-            # backstop a criterion-free block has besides its own quota.
+            # backstop a criterion-free block has besides its own quota. It is read
+            # on the wall since P4d-2a (spec §10), so these sessions are given a
+            # wall that follows their frames (`_marked`); against this host's own
+            # clock it would bound nothing for ten real minutes.
             "out_of_cage": Ceiling(value=600.0, maximum=600.0, unit="s"),
         },
         minima={"daily_fluid": Floor(value=20.0, unit="mL")},
     )
+
+
+#: The wall instant these sessions start at, in POSIX seconds. Only differences
+#: from it matter.
+WALL_NOW = 1_700_000_000.0
+
+
+def _marked(session: Session) -> Session:
+    """The marks a `RIG_FIXED` session needs, on a wall that follows its frames.
+
+    Every welfare duration is read on the wall since P4d-2a (spec §10), and both
+    marks are wall instants. The wall is `WALL_NOW` plus the session's frame clock,
+    so the out-of-cage ceiling above still ends a runaway block on simulated seconds
+    -- the same arrangement `tests/test_taskd.py`'s `_session` makes.
+    """
+    session.wall_clock = lambda: WALL_NOW + session.now()
+    session.left_cage(at=session.wall_now())
+    session.head_fixed(at=session.wall_now())
+    return session
 
 
 def _calibration_session(tmp_path, repeats: int = 2):
@@ -626,9 +648,7 @@ def _calibration_session(tmp_path, repeats: int = 2):
         world=driver.world,
         observe=driver.observe,
     )
-    session.left_cage(at=session.wall_now())
-    session.head_fixed(at=0.0)
-    return session, driver
+    return _marked(session), driver
 
 
 def test_a_session_runs_the_calibration_block_and_installs_the_map(tmp_path):
@@ -733,10 +753,10 @@ def test_the_fit_uses_the_hold_and_not_the_whole_trial(tmp_path):
             )
         ],
     )
-    session = Session(spec, card=Card(), pump=Pump(), world=driver.world,
-                      observe=driver.observe)
-    session.left_cage(at=session.wall_now())
-    session.head_fixed(at=0.0)
+    session = _marked(
+        Session(spec, card=Card(), pump=Pump(), world=driver.world,
+                observe=driver.observe)
+    )
 
     session.run()
     mapping, findings = driver.install(at=1.0, tested_eccentricity_deg=16.0)

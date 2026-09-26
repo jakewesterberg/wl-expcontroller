@@ -207,11 +207,12 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   real duration, so an `inf` ceiling is never exceeded either. Only the mark route
   refused it. **If you write a guard as `<` or `>`, ask what `nan`, `inf` and a
   negative value each do to it.**
-- **`left_cage` takes a clock time and maps it itself** (PI, 2026-09-20: *"a clock time
+- **`left_cage` takes a clock time and keeps it as one** (PI, 2026-09-20: *"a clock time
   is what an operator reads"*). It takes the departure and the wall clock as wall-clock
-  instants and the session clock beside them, and does the subtraction inside
-  `welfare.py` — **one place where the two bases meet**, because the caller that had that
-  job passed a plain `0.0` and made out-of-cage time equal chair time. `wlx
+  instants and does the subtraction inside `welfare.py`, because the caller that had that
+  job passed a plain `0.0` and made out-of-cage time equal chair time. **Since P4d-2a
+  (spec §10, 2026-09-26) every welfare duration is on the wall**: the session clock is
+  passed to `welfare` nowhere, and the departure is `Welfare.left_cage_wall_at`. `wlx
   run --out-of-cage-at` is required with no default for the same reason `--as WHO` is.
   The cost, which the PI weighed: a 1.7e9 *instant* is just now, so the ceiling no longer
   doubles as a wall-clock catch, and `08:45` for `18:45` is nine hours inside a
@@ -268,10 +269,10 @@ before it was thoroughly tested and thoroughly wrong. See trap 22.
   ~~The session clock stops when the frames do, so a return marked long after the loop ended
   carries the loop's last reading.~~ **Closed by that ruling**, and it was a real gap rather
   than a footnote: the release, the unchairing and the walk back fell outside the limit every
-  time. `returned_to_cage(at, wall_now, confirmed=False)` maps against `left_cage`'s wall
-  anchor (`Welfare.left_cage_wall_at`), **not** against a fresh `now`/`wall_now` pair — those
-  two are the same instant only while the loop is running. Every refusal it had is preserved
-  and two are new: a return in the future, and an unconfirmed far one.
+  time. `returned_to_cage(at, wall_now, confirmed=False)` keeps the return as the wall
+  instant it is (`Welfare.returned_wall_at`); it was mapped onto the frame clock through the
+  departure until P4d-2a (spec §10), which a simulator's fast frames broke. Every refusal it
+  had is preserved and two are new: a return in the future, and an unconfirmed far one.
 - **`chair_time` and `max_trials` are gone as ceilings.** Chair time is still recorded
   (`head_fixed`/`head_released`, codes 4128/4129, required by a `RIG_FIXED` preflight and
   refused by the other two kinds since 2026-09-20) and bounds nothing; there is no
@@ -363,9 +364,14 @@ not here. What is still this package's own is the Parquet derivation above.
 - **A "not yet" comment is a claim nothing can check** (trap 20, pitfall P21). Two
   guardrails sat unwired behind one for a week. If you write one, name what it is
   waiting for so the next reader can grep it.
-- **The session clock is derived from frames, not the wall.** That is what keeps "stops
-  at its out-of-cage ceiling" deterministic. `Session(clock=...)` takes a real one for a
-  rig. Do not quietly swap the default.
+- **The session clock is derived from frames, not the wall, and it times trials only.**
+  Since P4d-2a (spec §10) every welfare duration — the out-of-cage ceiling included — reads
+  `Session.wall_now()`, so a simulated session stops at its ceiling deterministically only
+  if it is given a wall that follows its frames, as `tests/test_taskd.py`'s `_session`
+  does. Against this host's real clock, a simulated session reaches its ceiling only once
+  that much real time has passed, however many frames it counts first.
+  `Session(clock=...)` takes a real frame clock for a rig. Do not quietly swap either
+  default, and never hand `now()` to `welfare`.
 - **A block test that can run past its criterion now runs to the `out_of_cage` ceiling.**
   Under mutation an unbounded one is a 300-second timeout per function.
   `tests/test_taskd.py` sets that ceiling to 800 s — a little over four hundred trials of

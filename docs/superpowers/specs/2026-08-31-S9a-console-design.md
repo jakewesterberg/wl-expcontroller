@@ -311,7 +311,7 @@ defence is structural rather than careful.
 | Pane | Source |
 |---|---|
 | Fluid delivered / floor / supplement | `welfare.session_total`, `total_today`, `shortfall()`, `bounds.minima`. **These two are welfare-load-bearing and may not be dropped or folded away** — see below |
-| Time out of cage | `welfare.out_of_cage_seconds` — frame-derived, so it matches the ceiling that ends the session. `None`, rendered *cage-side, the animal is home*, for a deployment with no duration bound (S13 §4.0) |
+| Time out of cage | `welfare.out_of_cage_seconds` — read on the wall clock like the ceiling that ends the session, so the two match (P4d-2a spec §10; frame-derived, for the same reason, until then). `None`, rendered *cage-side, the animal is home*, for a deployment with no duration bound (S13 §4.0) |
 | Chair time | `welfare.chair_seconds` — shown beside it, and **not** what ends the session since 2026-09-19. Showing only this one meant an operator would watch a session stop on a clock the console never displayed. **`None` for `RIG_CHAIRED` and `CAGE_SIDE`** (PI, 2026-09-20), rendered as *n/a* with the reason — never `0:00`, which on a chaired animal would report restraint nothing measured |
 | Deployment | `Telemetry.deployment` — which of the three kinds this session declared. On the wire rather than derived, because two kinds share one `None` for chair time and this pane names fields rather than inferring them |
 | Time left out of the cage | `welfare.approaching_limit` as a `WARNING:` line beside the stop reason, once the ceiling is within `warn_within` (PI, 2026-09-20). Silent otherwise, and silent again past the limit, where the stop reason speaks |

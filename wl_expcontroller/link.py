@@ -214,13 +214,14 @@ class Telemetry:
     #: keeps reporting the whole floor as owed, so the supplement figure stays
     #: correct and the animal is topped up afterwards.
     shortfall_ml: float | None
-    #: `welfare.out_of_cage_seconds(now)` -- **the clock the session's one duration
-    #: ceiling is read against** (PI, 2026-09-19), frame-derived rather than a wall
-    #: clock so that the console's number and the ceiling's are the same number.
+    #: `welfare.out_of_cage_seconds(wall_now)` -- **the clock the session's one
+    #: duration ceiling is read against** (PI, 2026-09-19), read on the wall like the
+    #: ceiling (P4d-2a spec §10) so that the console's number and the ceiling's are the
+    #: same number. It was frame-derived for the same reason until then.
     #: `None` for a cage-side session, which declared it has no duration bound
     #: (`welfare.Deployment`); never `0.0`, which would read as a clock not started.
     out_of_cage_seconds: float | None
-    #: `welfare.chair_seconds(now)` -- restraint, **recorded and bounding nothing**
+    #: `welfare.chair_seconds(wall_now)` -- restraint, **recorded and bounding nothing**
     #: since 2026-09-19. Still shown because an operator wants to know how long an
     #: animal has been in the chair; it is simply not what ends the session.
     #:
@@ -236,10 +237,10 @@ class Telemetry:
     #: `None`, because `cli.render` promises to name a field per line and derive
     #: nothing, and because two kinds share one `None`.
     deployment: str
-    #: `welfare.approaching_limit(now)` -- the sentence the session would use as the
-    #: out-of-cage ceiling comes into view (PI, 2026-09-20), or `None` while there is
-    #: nothing to say. Read rather than recomputed, so the console's warning and the
-    #: session's are the same statement and cannot drift.
+    #: `welfare.approaching_limit(wall_now)` -- the sentence the session would use as
+    #: the out-of-cage ceiling comes into view (PI, 2026-09-20), or `None` while there
+    #: is nothing to say. Read rather than recomputed, so the console's warning and
+    #: the session's are the same statement and cannot drift.
     duration_warning: str | None
     #: Keyed by the outcome's wire string (`Outcome.value`), not the enum member --
     #: this dict is what a msgpack-encoded message will carry.
@@ -296,6 +297,7 @@ class Telemetry:
         `refusals_dropped`.
         """
         link = session.link
+        wall_now = session.wall_now()
         refusals = (
             tuple(Refused(name=n, by=b, why=w) for n, b, w in session.refusals)
             + tuple(link.refused)
@@ -329,12 +331,11 @@ class Telemetry:
             fluid_session_ml=session.welfare.session_total(),
             fluid_today_ml=session.welfare.total_today(),
             shortfall_ml=session.welfare.shortfall(),
-            # `welfare_now()`, not `now()`: after the loop the frame clock has
-            # stopped and the wall has not (P4d-2a). Both are `Session`'s to say.
-            out_of_cage_seconds=session.welfare.out_of_cage_seconds(
-                session.welfare_now()
-            ),
-            chair_seconds=session.welfare.chair_seconds(session.welfare_now()),
+            # Both on the wall, read once so the two are one instant (P4d-2a spec
+            # §10). Never `session.now()`: that is the frame clock, which times
+            # trials and which `welfare` is given nowhere.
+            out_of_cage_seconds=session.welfare.out_of_cage_seconds(wall_now),
+            chair_seconds=session.welfare.chair_seconds(wall_now),
             deployment=session.spec.deployment.value,
             duration_warning=session.duration_warning(),
             outcomes={k.value: v for k, v in tally.outcomes.items()},

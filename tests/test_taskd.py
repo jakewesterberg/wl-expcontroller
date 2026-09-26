@@ -97,10 +97,10 @@ def _spec(tmp_path, seed: int = 1, trials: int = 50, **kwargs) -> SessionSpec:
     return spec
 
 
-#: A fixed wall-clock instant, in POSIX seconds, injected as every session's wall
-#: clock here. The out-of-cage mark became a clock time on 2026-09-20 (PI), and a
-#: test that read the real one would make "stops at its ceiling" depend on when the
-#: suite ran. Only the differences from it matter.
+#: A fixed wall-clock instant, in POSIX seconds, from which every session's wall
+#: clock here is read. The out-of-cage mark became a clock time on 2026-09-20 (PI),
+#: and a test that read the real one would make "stops at its ceiling" depend on
+#: when the suite ran. Only the differences from it matter.
 WALL_NOW = 1_700_000_000.0
 
 
@@ -111,27 +111,35 @@ def _session(spec, link=None, left_cage_ago: float = 0.0) -> Session:
     falls back to its own default, `link.Absent()`, exactly as a session with no
     console attached does outside a test.
 
+    **Its wall clock advances with its simulated frames**: `WALL_NOW` plus
+    `session.now()`. Every welfare duration is read on the wall since P4d-2a (spec
+    §10), so a session whose wall stood still would never reach its out-of-cage
+    ceiling -- and that ceiling is both what several tests below are about and the
+    backstop that ends a broken scheduler's session on simulated seconds rather than
+    at a 300-second mutation timeout (`_bounds`). A wall that follows the frames is
+    what a rig has anyway, where frames are real time. Tests about the two clocks
+    *disagreeing* inject a wall of their own (`_Wall`).
+
     **The marks this deployment kind needs** (`welfare.preflight`): the out-of-cage
     one starts the clock that bounds the session, and head-fixation is the restraint
     record -- required by `RIG_FIXED`, which `_spec` declares, and *refused* by the
-    other two kinds since 2026-09-20.
+    other two kinds since 2026-09-20. Both are wall instants.
     `test_a_session_refuses_to_run_before_the_animal_is_out_of_its_cage` is the
     fixture's own counter-example, built without this helper.
 
     `left_cage_ago` stays expressed as an interval because that is what a test about
-    the *interval* means; it is turned into a clock time against the injected
-    `WALL_NOW` here, which is the one place a test has to know that the parameter
-    changed base. It defaults to zero, which is the truth for a simulated session --
-    nothing was transported and nothing was chaired. See
+    the *interval* means; it is turned into a clock time against `WALL_NOW` here,
+    which is the one place a test has to know that the parameter changed base. It
+    defaults to zero, which is the truth for a simulated session -- nothing was
+    transported and nothing was chaired. See
     `test_transport_and_chairing_count_toward_the_sessions_limit`.
     """
     kwargs = {"link": link} if link is not None else {}
-    session = Session(
-        spec, card=Card(), pump=Pump(), wall_clock=lambda: WALL_NOW, **kwargs
-    )
+    session = Session(spec, card=Card(), pump=Pump(), **kwargs)
+    session.wall_clock = lambda: WALL_NOW + session.now()
     session.left_cage(at=WALL_NOW - left_cage_ago)
     if spec.deployment is Deployment.RIG_FIXED:
-        session.head_fixed(at=0.0)
+        session.head_fixed(at=session.wall_now())
     return session
 
 
@@ -318,7 +326,7 @@ def test_a_session_refuses_to_run_before_the_animal_is_out_of_its_cage(tmp_path)
     by deciding. `welfare.preflight` is what `run()` asks, so the rule has one
     home; `test_welfare.py` covers the refusal's own shape."""
     session = Session(_spec(tmp_path, trials=5), card=Card(), pump=Pump())
-    session.head_fixed(at=0.0)
+    session.head_fixed(at=session.wall_now())
 
     with pytest.raises(Exceeded, match="out of its cage"):
         session.run()
@@ -360,7 +368,7 @@ def test_a_chaired_session_runs_and_strobes_no_restraint_codes(tmp_path):
 
     assert 4128 not in session.card.codes
     assert 4129 not in session.card.codes
-    assert session.welfare.chair_seconds(session.now()) is None, (
+    assert session.welfare.chair_seconds(session.wall_now()) is None, (
         "restrained and unmarked is ABSENT, never 0.00"
     )
 
@@ -402,23 +410,23 @@ def test_putting_the_animal_back_in_its_cage_closes_the_sessions_clock(tmp_path)
     `test_the_console_cannot_freeze_the_clock_by_marking_the_animal_home_mid_session`)."""
     session = _session(_spec(tmp_path, trials=3))
     session.run()
-    on_the_frame_clock = session.welfare.out_of_cage_seconds(session.now())
-    assert on_the_frame_clock > 0.0, "a session that took no time cannot test a clock"
+    when_the_loop_ended = session.welfare.out_of_cage_seconds(session.wall_now())
+    assert when_the_loop_ended > 0.0, "a session that took no time cannot test a clock"
 
     # **The walk back, which ruling 4 is about** (PI, 2026-09-20). The frames have
-    # stopped, so `session.now()` is frozen; the animal is released, unchaired and
-    # walked back over the next ten minutes of *wall* time, and the return is marked
-    # when it is actually home. Both ends of the interval are read from the wall, so
-    # the frame clock stopping no longer truncates it.
+    # stopped, and so has this helper's wall, which follows them; the animal is
+    # released, unchaired and walked back over the next ten minutes of *wall* time,
+    # and the return is marked when it is actually home. Both ends of the interval
+    # are wall instants, so the frames stopping no longer truncates it.
     wall = WALL_NOW + 600.0
     session.wall_clock = lambda: wall
     session.returned_to_cage(at=wall)
 
-    closed = session.welfare.out_of_cage_seconds(now=99_999.0)
+    closed = session.welfare.out_of_cage_seconds(WALL_NOW + 99_999.0)
     assert closed == pytest.approx(600.0), (
         "the clock did not close, so it would have run to the end of time"
     )
-    assert closed > on_the_frame_clock, (
+    assert closed > when_the_loop_ended, (
         "the release, the unchairing and the walk back are inside the twelve hours, "
         "and marking the return on the frozen frame clock left every one of them out"
     )
@@ -446,11 +454,12 @@ def test_the_console_cannot_freeze_the_clock_by_marking_the_animal_home_mid_sess
 def test_transport_and_chairing_count_toward_the_sessions_limit(tmp_path):
     """**The whole of Ruling 2, end to end through the session's own clock.**
 
-    `Session.now()` reads zero at the start, so a mark taken "0 seconds ago" makes
-    out-of-cage time identical to chair time -- which is exactly the under-count the
-    clock replaced chair time to remove, and which `wlx run` did until a review
-    caught it. Twenty minutes of transport and chairing here, and the limit counts
-    every one of them while the restraint record counts none.
+    A departure marked at the moment the session starts makes out-of-cage time
+    identical to chair time -- which is exactly the under-count the clock replaced
+    chair time to remove, and which `wlx run` did, at the frame clock's zero, until a
+    review caught it. Twenty minutes of transport and chairing here, and the limit
+    counts every one of them while the restraint record counts none. Both are read
+    on the wall since P4d-2a (spec §10).
 
     The twelve-hour ceiling rather than `_bounds`' deliberately small backstop,
     because twenty minutes of transport is past an 800-second one -- which is
@@ -462,11 +471,11 @@ def test_transport_and_chairing_count_toward_the_sessions_limit(tmp_path):
 
     session.run()
 
-    out_of_cage = session.welfare.out_of_cage_seconds(session.now())
-    chair = session.welfare.chair_seconds(session.now())
+    out_of_cage = session.welfare.out_of_cage_seconds(session.wall_now())
+    chair = session.welfare.chair_seconds(session.wall_now())
     assert out_of_cage == pytest.approx(chair + 1_200.0)
-    assert session.welfare.left_cage_at == pytest.approx(-1_200.0), (
-        "the mark must sit before session zero, or transport is free"
+    assert session.welfare.left_cage_wall_at == WALL_NOW - 1_200.0, (
+        "the mark must sit before the session started, or transport is free"
     )
 
 
@@ -505,7 +514,7 @@ def test_a_release_with_no_fixation_never_reaches_the_card(tmp_path):
     session.left_cage(at=WALL_NOW)
 
     with pytest.raises(Exceeded, match="nothing to release"):
-        session.head_released(at=10.0)
+        session.head_released(at=WALL_NOW + 10.0)
 
     assert 4129 not in session.card.codes, "the code must not reach the card"
 
@@ -1013,7 +1022,7 @@ def test_a_pump_fault_publishes_a_final_frame_before_it_propagates(tmp_path):
         spec, card=Card(), pump=Broken(), link=link, wall_clock=lambda: WALL_NOW
     )
     session.left_cage(at=WALL_NOW)
-    session.head_fixed(at=0.0)
+    session.head_fixed(at=WALL_NOW)
 
     with pytest.raises(RuntimeError, match="solenoid"):
         session.run()
@@ -1051,9 +1060,10 @@ def test_a_refused_welfare_bounded_set_reaches_the_session_record(tmp_path):
 def test_a_recorded_refusal_says_where_in_the_session_it_happened(tmp_path):
     """A row whose whole reason for existing is "this is asked months later" has to
     say *when* within the session, or a reader has only an ordering. `trial_index`
-    is the trial about to run and `session_seconds` is `Session.now()` -- the same
-    frame-derived clock the out-of-cage ceiling uses, never a wall clock, because a
-    wall clock here would invite someone to align a refusal to the neural recording.
+    is the trial about to run and `session_seconds` is `Session.now()` -- the
+    frame-derived clock the trials are timed on, never a wall clock, because a wall
+    clock here would invite someone to align a refusal to the neural recording. (The
+    out-of-cage ceiling read the same clock until P4d-2a moved it to the wall.)
 
     The second refusal is queued from `observe`, after trial 0, so it drains on a
     later pass: a row that hardcoded zeros, or read the wrong index, passes on the
@@ -1248,7 +1258,7 @@ def test_a_session_ended_by_a_fault_says_fault(tmp_path):
         wall_clock=lambda: WALL_NOW,
     )
     session.left_cage(at=WALL_NOW)
-    session.head_fixed(at=0.0)
+    session.head_fixed(at=WALL_NOW)
 
     with pytest.raises(RuntimeError, match="solenoid"):
         session.run()
@@ -1446,10 +1456,20 @@ def _awaiting(session: Session, **kwargs) -> tuple[threading.Thread, threading.E
     return thread, give_up
 
 
-def _chaired_and_run(tmp_path, link, wall) -> Session:
-    spec = _spec(tmp_path, trials=3, deployment=Deployment.RIG_CHAIRED)
+def _fixed_and_run(tmp_path, link, wall) -> Session:
+    """A head-fixed session, run to the end of its loop against `wall`.
+
+    `RIG_FIXED`, this file's default kind and `wlx run`'s, and the one with a
+    restraint cross-check to fail. This was `_chaired_and_run`, `RIG_CHAIRED`, until
+    P4d-2a moved every welfare duration to the wall (spec §10): none of its callers
+    is about chairing, and chaired sessions mark no head-fixation, so the
+    frame-against-wall mismatch that refused a head-fixed session's post-loop frames
+    never ran here.
+    """
+    spec = _spec(tmp_path, trials=3)
     session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=wall)
     session.left_cage(at=WALL_NOW)
+    session.head_fixed(at=wall())
     session.run()
     return session
 
@@ -1457,7 +1477,7 @@ def _chaired_and_run(tmp_path, link, wall) -> Session:
 def test_after_the_loop_the_out_of_cage_clock_keeps_running_on_the_wall(tmp_path):
     """P4d-2a spec §1 item 4: the clock went dark when the loop ended."""
     link, wall = Simulated(), _Wall(WALL_NOW)
-    session = _chaired_and_run(tmp_path, link, wall)
+    session = _fixed_and_run(tmp_path, link, wall)
     wall.at = WALL_NOW + 600.0
 
     thread, give_up = _awaiting(session)
@@ -1475,7 +1495,7 @@ def test_after_the_loop_the_out_of_cage_clock_keeps_running_on_the_wall(tmp_path
 
 def test_past_the_limit_after_the_loop_the_warning_says_so(tmp_path):
     link, wall = Simulated(), _Wall(WALL_NOW)
-    session = _chaired_and_run(tmp_path, link, wall)
+    session = _fixed_and_run(tmp_path, link, wall)
     wall.at = WALL_NOW + 900.0  # `_bounds()`' ceiling is 800 s
 
     thread, give_up = _awaiting(session)
@@ -1487,9 +1507,52 @@ def test_past_the_limit_after_the_loop_the_warning_says_so(tmp_path):
         thread.join(timeout=2)
 
 
+def test_a_head_fixed_session_whose_frames_outran_the_wall_publishes_after_the_loop(
+    tmp_path,
+):
+    """**The simulator finding, at the session** (P4d-2a spec §10). The frame clock is
+    counted, not waited for, so a simulated session's frames run far ahead of the
+    wall. Two hundred trials here carry at least a hundred frame-clock seconds of
+    inter-trial interval alone while the injected wall moves two seconds in all.
+
+    While the welfare clocks read the frame base, this `RIG_FIXED` session's release
+    landed at its frame-clock end, hundreds of seconds after its fixation, and the
+    first post-loop frame read out-of-cage through the wall: the minute before the
+    session plus the wall's two seconds, beside hundreds of seconds of restraint,
+    which `out_of_cage_seconds` refuses as impossible. On the wall alone, both
+    intervals are the wall's, and the frame is the wall's too.
+    """
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    spec = _spec(tmp_path, trials=200)
+    # Twelve hours: the ceiling is not what this is about, and must not end the loop.
+    spec.bounds = _bounds(out_of_cage=43_200.0)
+    session = Session(spec, card=Card(), pump=Pump(), link=link, wall_clock=wall)
+    session.left_cage(at=WALL_NOW - 60.0)
+    session.head_fixed(at=WALL_NOW)
+    # The wall creeps a hundredth of a second per trial and stops at two seconds.
+    session.observe = lambda condition, values, result: setattr(
+        wall, "at", min(wall.at + 0.01, WALL_NOW + 2.0)
+    )
+
+    session.run()
+    assert session.now() >= 100.0, "the frames must outrun the wall, or this is idle"
+    assert wall.at == pytest.approx(WALL_NOW + 2.0)
+
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: link.published[-1].phase == "awaiting_return")
+        frame = link.published[-1]
+        assert frame.out_of_cage_seconds == pytest.approx(wall.at - (WALL_NOW - 60.0))
+        assert frame.chair_seconds == pytest.approx(2.0), "restraint is the wall's too"
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+    assert not thread.is_alive(), "the post-loop phase did not end when given up"
+
+
 def test_a_console_return_after_the_loop_closes_the_interval(tmp_path):
     link, wall = Simulated(), _Wall(WALL_NOW)
-    session = _chaired_and_run(tmp_path, link, wall)
+    session = _fixed_and_run(tmp_path, link, wall)
     wall.at = WALL_NOW + 120.0
     link.queue(ReturnedToCage(at=WALL_NOW + 60.0, by="jake", confirmed=False))
 
@@ -1504,7 +1567,7 @@ def test_a_console_return_after_the_loop_closes_the_interval(tmp_path):
 def test_after_the_loop_a_parameter_or_a_stop_is_refused_not_applied(tmp_path):
     """Review Focus 5."""
     link, wall = Simulated(), _Wall(WALL_NOW)
-    session = _chaired_and_run(tmp_path, link, wall)
+    session = _fixed_and_run(tmp_path, link, wall)
     link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
     link.queue(Stop(by="sam"))
 
@@ -1535,16 +1598,16 @@ def test_a_fault_skipped_the_release_and_the_return_can_still_land(tmp_path):
         wall_clock=lambda: WALL_NOW,
     )
     session.left_cage(at=WALL_NOW)
-    session.head_fixed(at=0.0)
+    session.head_fixed(at=WALL_NOW)
     with pytest.raises(RuntimeError, match="solenoid"):
         session.run()
-    assert session.welfare.released_at is None, "the gap this test closes"
+    assert session.welfare.released_wall_at is None, "the gap this test closes"
     link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
 
     session.await_return(threading.Event(), heartbeat=0.01)
 
-    assert session.welfare.released_at is not None
-    assert session.welfare.returned_at is not None
+    assert session.welfare.released_wall_at is not None
+    assert session.welfare.returned_wall_at is not None
     assert link.published[-1].phase == "closed"
     assert link.published[-1].stop_kind == "fault"
 
@@ -1585,7 +1648,7 @@ def test_await_return_before_the_loop_is_refused(tmp_path):
 
 def test_a_fault_after_the_loop_is_published_then_raised(tmp_path, monkeypatch):
     """Fix round 1: `_note`'s row write can fail (OSError) after `welfare` has
-    already accepted the return -- `returned_at` is set, but the write that follows
+    already accepted the return -- `returned_wall_at` is set, but the write that follows
     it can still fail, disk full or otherwise. `await_return` must mirror `run()`'s
     one-frame-then-propagate rule rather than leaving `phase` stuck at
     `awaiting_return` forever with no fault frame, which is what a background thread
@@ -1595,7 +1658,7 @@ def test_a_fault_after_the_loop_is_published_then_raised(tmp_path, monkeypatch):
         raise OSError("disk full")
 
     link, wall = Simulated(), _Wall(WALL_NOW)
-    session = _chaired_and_run(tmp_path, link, wall)
+    session = _fixed_and_run(tmp_path, link, wall)
     monkeypatch.setattr("wl_expcontroller.taskd.welfare_note", _boom)
     link.queue(ReturnedToCage(at=WALL_NOW, by="jake", confirmed=False))
 

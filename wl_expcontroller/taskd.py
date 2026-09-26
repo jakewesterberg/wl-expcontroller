@@ -115,8 +115,10 @@ class SessionSpec:
     engagement: float = 0.85
     #: Per second, so a trial of a few seconds lapses occasionally.
     lapse: float = 0.15
-    #: The gap between trials, in seconds. Both clocks count it, because the animal
-    #: is out of its cage and in the chair for it.
+    #: The gap between trials, in seconds, added to the frame clock (`Session.now()`)
+    #: after each trial. The animal is out of its cage and in the chair for it, and
+    #: the welfare clocks count it as they count everything: on the wall (P4d-2a
+    #: spec §10), for however long it actually takes.
     iti: float = 0.5
 
 
@@ -134,16 +136,26 @@ class Session:
     spec: SessionSpec
     card: object = field(default_factory=NoCard)
     pump: object = field(default_factory=NoPump)
-    #: Session time in seconds. Defaults to a clock derived from frames, which is
-    #: what makes a simulated session's two clocks deterministic: a wall clock would
-    #: make "stops at its out-of-cage ceiling" depend on how fast the machine ran. On
-    #: a rig, frames *are* the clock, so the same choice is the honest one there.
+    #: Session time in seconds, **for timing trials and nothing else**. Defaults to a
+    #: clock derived from frames, which is what makes a simulated session's trials
+    #: deterministic; on a rig, frames *are* the clock. It is also where a recorded
+    #: refusal is placed within the session (`record.SessionRecord.refusal`).
+    #:
+    #: **It is passed to `welfare` nowhere** (P4d-2a spec §10, 2026-09-26). It was
+    #: every welfare duration's base until then, and a simulator counts frames
+    #: without waiting for them, so it outran the wall the marks were taken on and
+    #: the two disagreed -- the restraint cross-check refused a simulated rig
+    #: session's first post-loop frame, and its return typed "now".
     clock: object = None
     #: The **wall** clock, in POSIX seconds, and a different base from `clock`.
-    #: `time.time` by default. It exists for exactly one thing -- the out-of-cage
-    #: mark, which an operator gives as a clock time (PI, 2026-09-20) and which
-    #: `welfare.left_cage` maps onto the frame clock -- and it is injectable so that
-    #: no test of that mapping reads a real clock.
+    #: `time.time` by default. **Every welfare duration is read from it** (P4d-2a spec
+    #: §10): the marks an operator gives as clock times (PI, 2026-09-20), the
+    #: head-fixation marks beside them, and the readings `out_of_cage_seconds`,
+    #: `chair_seconds`, `must_stop` and `approaching_limit` are asked at. Injectable so
+    #: that no test reads a real clock -- and so a simulated session that must stop at
+    #: its out-of-cage ceiling deterministically is given a wall that advances with
+    #: its frames, as `tests/test_taskd.py` does, rather than one that waits on this
+    #: host.
     wall_clock: object = None
     #: Optional. `(trial, values, index) -> World`, called once per trial. Default:
     #: the behaviour agent. **This is the seam hardware plugs into** (S6 §6) -- until
@@ -231,33 +243,24 @@ class Session:
     def wall_now(self) -> float:
         """The wall clock, in POSIX seconds -- a different base from `now()`.
 
-        Read in exactly one place, `left_cage`, because that is the one mark an
-        operator states in clock time. See `wall_clock`.
+        **The one clock every welfare call is given** (P4d-2a spec §10), during the
+        loop and after it alike: there is no mapping between bases to switch on
+        `phase`, because nothing welfare reads is on the frame clock. See
+        `wall_clock`.
         """
         if self.wall_clock is not None:
             return self.wall_clock()
         return time.time()
-
-    def welfare_now(self) -> float:
-        """The session-base instant the welfare clocks are read at.
-
-        `now()` while the loop runs. **After it, the wall mapped through the
-        departure** (P4d-2a): the frame clock stopped with the last trial and the
-        interval did not, and `welfare.now_from_wall` is the one place that mapping
-        is made.
-        """
-        if self.phase == "awaiting_return":
-            return self.welfare.now_from_wall(self.wall_now())
-        return self.now()
 
     def duration_warning(self) -> str | None:
         """What an operator must be told about the time left out of the cage.
 
         `approaching_limit`'s sentence, as during the loop. **After the loop, past the
         limit, `must_stop`'s** (P4d-2a spec §4): there is no loop left to stop, and
-        the warning is what tells someone the animal is still out.
+        the warning is what tells someone the animal is still out. Read on the wall,
+        as every welfare duration is.
         """
-        at = self.welfare_now()
+        at = self.wall_now()
         warning = self.welfare.approaching_limit(at)
         if warning is None and self.phase == "awaiting_return":
             warning = self.welfare.must_stop(at)
@@ -303,12 +306,12 @@ class Session:
         """The console action that starts the clock bounding this session.
 
         **`at` is a wall-clock instant, in POSIX seconds** (PI, 2026-09-20): a clock
-        time is what an operator reads. This hands `welfare.left_cage` both clocks --
-        the wall reading and `now()`, which is frame-derived and zero at the start --
-        and the mapping between them happens there, in the welfare-critical file,
-        rather than in this one. A caller that did its own subtraction would be a
-        second place for the two bases to meet, and the first one passed a plain
-        zero, which made out-of-cage time equal chair time.
+        time is what an operator reads. This hands `welfare.left_cage` the wall
+        reading beside it, and `welfare` keeps the departure as the wall instant it
+        is (P4d-2a spec §10). It also handed over `now()`, the frame clock, until
+        then, for a mapping between the two bases that `welfare` no longer makes; a
+        caller doing its own arithmetic between them was how a plain zero once made
+        out-of-cage time equal chair time.
 
         **Deliberately not event-coded** (PI, 2026-09-20, closing S8 open item 8):
         the marks are operator-entered rather than measured, so a hardware timestamp
@@ -319,9 +322,7 @@ class Session:
         **It writes the `departure` row itself** (P4d-2a spec §3), once `welfare` has
         accepted the mark, so a refused departure leaves no row.
         """
-        self.welfare.left_cage(
-            at, wall_now=self.wall_now(), now=self.now(), confirmed=confirmed
-        )
+        self.welfare.left_cage(at, wall_now=self.wall_now(), confirmed=confirmed)
         self._note("departure", at, by, how)
 
     def departure_needs_confirmation(self, at: float) -> str | None:
@@ -412,11 +413,17 @@ class Session:
         2026-09-20), which is what keeps `4128`/`4129` out of a stream that has no
         head-fixation to record -- the refusal is there rather than here so the one
         rule has one home.
+
+        **`at` is a wall instant, in POSIX seconds** (P4d-2a spec §10), the base the
+        out-of-cage marks are in, so chair time and out-of-cage time are two
+        intervals on one clock. `wall_now()` is the reading for a mark taken as it
+        happens.
         """
         self.welfare.head_fixed(at)
         self.card.emit(self.allocation.code_for("HEAD_FIXED"))
 
     def head_released(self, at: float) -> None:
+        """The closing restraint mark; `at` is a wall instant, as `head_fixed`'s is."""
         self.welfare.head_released(at)
         self.card.emit(self.allocation.code_for("HEAD_RELEASED"))
 
@@ -702,7 +709,7 @@ class Session:
                 "task refused, session not started:\n"
                 + "\n".join(f"  {f.code}: {f.detail}" for f in blocking)
             )
-        self.welfare.preflight(self.now())
+        self.welfare.preflight(self.wall_now())
 
         scheduler = Scheduler(blocks=self._plan(), seed=self.spec.seed)
         make_world = self.world if self.world is not None else self._agent()
@@ -765,7 +772,9 @@ class Session:
                 publish()
                 if self.stopped_because:
                     break
-                stop = self.welfare.must_stop(self.now())
+                # The wall, not `now()` (P4d-2a spec §10): one clock read replacing
+                # another at the same trial boundary, never per frame.
+                stop = self.welfare.must_stop(self.wall_now())
                 if stop:
                     self.stopped_because = stop
                     self.stop_kind = "limit"
@@ -780,10 +789,12 @@ class Session:
                     # **A plan can be advanced through only as many times as it has
                     # blocks.** This `continue` runs no trial, draws no condition
                     # and moves no clock, so a scheduler that reported `finished`
-                    # and then did not leave the block would spin here forever: no
-                    # telemetry would change, `must_stop` would never fire because
-                    # `self._elapsed` never moves, and a rig would look like it was
-                    # running with an animal in the chair and nothing happening.
+                    # and then did not leave the block would spin here: no telemetry
+                    # would change, `must_stop` would not fire until the wall itself
+                    # reached the ceiling -- hours on a rig, and never under a test
+                    # whose wall follows the frames, since `self._elapsed` does not
+                    # move -- and a rig would look like it was running with an
+                    # animal in the chair and nothing happening.
                     #
                     # `Scheduler.advance` raises on the last block, so no path
                     # reaches this today. It is counted here anyway, and **counted
@@ -845,9 +856,10 @@ class Session:
             # `self.card.emit` would then put a `HEAD_RELEASED` in the stream of a
             # session that had no `HEAD_FIXED` -- a restraint record for restraint
             # nothing marked, which is the zero-where-an-absence-belongs failure
-            # `chair_seconds` refuses on the other surface.
+            # `chair_seconds` refuses on the other surface. On the wall, like the
+            # fixation (P4d-2a spec §10).
             if self.spec.deployment is Deployment.RIG_FIXED:
-                self.head_released(self.now())
+                self.head_released(self.wall_now())
             return tally.census()
         except Exception as fault:
             # **One frame naming the fault, then it propagates unchanged** (PI,
@@ -887,8 +899,8 @@ class Session:
         This publishes a frame every `heartbeat` seconds -- **a display cadence for a
         console, not a measurement of this system**, and well inside `ZmqConsole`'s
         5 s receive timeout so a waiting console never times out between frames -- with
-        the clock read through
-        `welfare_now()`, and drains the link, where the return may arrive.
+        the clock read from the wall, as every welfare duration is (P4d-2a spec §10),
+        and drains the link, where the return may arrive.
 
         **It ends when the return is recorded**, by a console through `_command` or by
         the terminal through `returned_to_cage` from another thread, and then
@@ -903,8 +915,8 @@ class Session:
 
         **One frame naming the fault, then it propagates unchanged** -- the same rule
         `run()`'s own `except Exception as fault:` follows (fix round 1). `welfare`
-        accepts a return -- setting `returned_at` -- *before* `_note` writes its row,
-        so the row write (`record.welfare_note`, disk full or otherwise) can still
+        accepts a return -- setting `returned_wall_at` -- *before* `_note` writes its
+        row, so the row write (`record.welfare_note`, disk full or otherwise) can still
         fail with the mark already recorded in memory. Left unguarded, that exception
         would escape with `phase` stuck at `awaiting_return` forever, no `closed`
         frame, and -- on Task 6's background thread -- a traceback nobody joins. This
@@ -926,18 +938,21 @@ class Session:
                 "await_return before run() opened the record: there is no session "
                 "whose clock could be published"
             )
-        if self.welfare.fixed_at is not None and self.welfare.released_at is None:
-            self.head_released(self.now())
+        if (
+            self.welfare.fixed_wall_at is not None
+            and self.welfare.released_wall_at is None
+        ):
+            self.head_released(self.wall_now())
         self.phase = "awaiting_return"
         try:
-            while self.welfare.returned_at is None and not give_up.is_set():
+            while self.welfare.returned_wall_at is None and not give_up.is_set():
                 for command in self.link.drain():
                     self._command(command, self._index)
-                if self.welfare.returned_at is not None:
+                if self.welfare.returned_wall_at is not None:
                     break
                 self._publish()
                 give_up.wait(heartbeat)
-            if self.welfare.returned_at is not None:
+            if self.welfare.returned_wall_at is not None:
                 self.phase = "closed"
                 self._publish()
         except Exception as fault:

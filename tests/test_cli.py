@@ -383,28 +383,11 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     console's `Stop` through a real `wlx run`, the one path the `--stop` tests stub.
     `--trials` now only bounds how long a *broken* run takes to finish on its own.
 
-    **`--deployment rig-chaired`, found by Task 6's own TDD, not carried over from
-    an earlier draft.** `RIG_FIXED` -- this command's own default -- releases the
-    head at `run()`'s end with `self.now()`, the *frame* clock; a ~300-trial run
-    accumulates several hundred simulated seconds on it, since the simulator does
-    not run in real time. Once the session reaches `awaiting_return`,
-    `welfare.out_of_cage_seconds` reads its *duration* through the *wall* clock
-    instead (P4d-2a ruling 4, `taskd.Session.welfare_now`) -- a handful of real
-    seconds, here, since the console acts within moments of the `Stop`. The two
-    bases disagree by two orders of magnitude, and `out_of_cage_seconds` compares
-    them directly against the chair-time restraint it also carries (`welfare.py`,
-    "it can never be shorter than the restraint it contains"), so every heartbeat
-    publish after the loop raises `Exceeded` and kills `await_return`'s thread --
-    confirmed by running this test three times, each with a different chair-time
-    reading in the message, always past the wall-clock duration. `RIG_CHAIRED`
-    takes no head-fixation mark at all, so `fixed_at` stays `None` and the
-    cross-check never runs; every `await_return` test in `test_taskd.py` that
-    accumulates real trial time already uses `RIG_CHAIRED` for exactly this
-    reason (`_chaired_and_run`), which is why this gap was not caught earlier.
-    **This is a pre-existing mismatch in `welfare.out_of_cage_seconds`, not
-    something Task 6 introduced or is scoped to fix** (it touches welfare-critical
-    code outside `cli.py`/`test_cli.py`, CLAUDE.md's human-review rule) -- flagged
-    in Task 6's report for a human to route.
+    **The return is sent once an `awaiting_return` frame has arrived**, not on the
+    stop frame. `run()` releases a `RIG_FIXED` head -- this command's default -- at
+    the wall instant the loop ends, which is after the stop frame is published, and
+    `welfare` refuses a return before the release. A return timed off the stop frame
+    would race that release; the first `awaiting_return` frame is published after it.
     """
     probe = zmq_cleanup(
         ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
@@ -425,7 +408,6 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
                 "--session-id", "2027-01-14_04",
                 "--subject", "REFERENCE",
                 "--out-of-cage-at", _hhmm(),
-                "--deployment", "rig-chaired",
                 "--delivered-today", "0",
                 "--trials", "5000",
                 *_TASK_SETS,
@@ -465,9 +447,15 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
             assert stopped == "stopped by jake", stopped
 
             # P4d-2a: a rig session now waits, publishing its clock, until the
-            # return is marked -- here by the console, which is the only one there is.
-            console.send(ReturnedToCage(at=time.time(), by="jake", confirmed=False))
+            # return is marked -- here by the console, which is the only one there
+            # is, once the loop has ended and the head is released (see above).
             phase = None
+            for _ in range(2000):
+                phase = console.receive().phase
+                if phase == "awaiting_return":
+                    break
+            assert phase == "awaiting_return", phase
+            console.send(ReturnedToCage(at=time.time(), by="jake", confirmed=False))
             for _ in range(2000):
                 phase = console.receive().phase
                 if phase == "closed":
@@ -517,13 +505,6 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
 
     monkeypatch.setattr("wl_expcontroller.link.ZmqLink", _SpyLink)
 
-    # Fix round 1: found flaking here by this round's own three-times-over rule.
-    # `--await-return-for 0` races the background thread's first heartbeat publish
-    # against `give_up.set()`; when the publish wins, a real `RIG_FIXED` post-loop
-    # read hits the same pre-existing, out-of-scope frame/wall mismatch documented
-    # at the top of the "P4d-2a: the return to the cage" section -- `--deployment
-    # rig-chaired` avoids it here too, and this test asserts nothing deployment-
-    # specific.
     exit_code = main(
         [
             "run", GOOD,
@@ -533,7 +514,6 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
             "--session-id", "2027-01-14_06",
             "--subject", "REFERENCE",
             "--out-of-cage-at", _hhmm(),
-            "--deployment", "rig-chaired",
             "--delivered-today", "0",
             "--trials", "5",
             *_TASK_SETS,
@@ -1546,19 +1526,7 @@ def test_an_interactive_run_can_amend_the_time_with_a_reason_and_a_name(
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
-    # P4d-2a: `--deployment rig-chaired` -- see the note at the top of this
-    # section's return tests. A `returned` row still needs the return to actually
-    # be accepted, and `RIG_FIXED`'s (this command's default) post-loop head
-    # release, on the frame clock, is incommensurable with the wall-clock return a
-    # fast test takes moments later; that mismatch is pre-existing and out of
-    # scope here.
-    exit_code = main(
-        _run_args(
-            tmp_path,
-            "--out-of-cage-at", _hours_ago(9),
-            "--deployment", "rig-chaired",
-        )
-    )
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
 
     assert exit_code == 0
     rows = _notes(tmp_path)
@@ -1823,31 +1791,6 @@ def test_the_twelve_hour_reference_config_runs_a_session_when_confirmed(
 # ---------------------------------------------------------------------------
 # P4d-2a: the return to the cage
 # ---------------------------------------------------------------------------
-#
-# **Every test below that needs `returned_to_cage` to actually SUCCEED passes
-# `--deployment rig-chaired`, found by this task's own TDD.** `RIG_FIXED` --
-# `_run_args`' own default -- releases the head at `run()`'s end with `self.now()`,
-# the *frame* clock; even `_run_args`' 2 trials accumulate a couple of simulated
-# seconds on it, because the simulator does not run in real time. Once a return is
-# taken, `welfare.returned_to_cage`/`out_of_cage_seconds` read the interval through
-# the *wall* clock instead (P4d-2a ruling 4, `taskd.Session.welfare_now`/
-# `now_from_wall`) -- real elapsed seconds, and a fast test's "now" is milliseconds
-# after the departure was marked, however long ago the departure *itself* claims to
-# be (`now_from_wall` cancels that out; see `welfare.left_cage`'s own derivation).
-# The two bases disagree by orders of magnitude, and both `out_of_cage_seconds`
-# ("it can never be shorter than the restraint it contains") and
-# `returned_to_cage` ("cannot be back in its cage before it was released") compare
-# them directly -- so a return recorded through the terminal moments after a
-# RIG_FIXED run, in a test this fast, is refused as impossible before it was even
-# released. `RIG_CHAIRED` takes no head-fixation mark, so `fixed_at` stays `None`
-# and neither cross-check ever runs; every `await_return` test in `test_taskd.py`
-# that lets real trials run already uses `RIG_CHAIRED` for exactly this reason
-# (`_chaired_and_run`), which is why this was not caught before Task 6 drove a real
-# multi-trial `RIG_FIXED` session through the return path end to end.
-# **This is a pre-existing mismatch in `welfare.py`, not something Task 6
-# introduced or is scoped to fix** -- it is welfare-critical code outside
-# `cli.py`/`test_cli.py`, so CLAUDE.md's human-review rule applies, and it is
-# flagged prominently in Task 6's report for a human to route.
 
 
 def _kinds(tmp_path) -> list[str]:
@@ -1866,18 +1809,45 @@ def test_a_run_at_a_terminal_takes_the_return(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "now")
 
-    exit_code = main(
-        _run_args(
-            tmp_path, "--out-of-cage-at", _hhmm(), "--deployment", "rig-chaired",
-        )
-    )
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 0
     assert _kinds(tmp_path) == ["departure", "returned"]
     assert _notes(tmp_path)[-1]["how"] == "terminal"
 
 
+def test_a_head_fixed_run_whose_frames_outran_the_wall_takes_the_return(
+    tmp_path, monkeypatch
+):
+    """**The slice's main path with default flags** (P4d-2a spec §10, found by Task
+    6's implementer). `wlx run` defaults to `rig-fixed`, and the simulator does not
+    wait for the frames it counts: two hundred trials put at least a hundred seconds
+    of inter-trial interval alone (`iti` = 0.5 s) on the frame clock, however little
+    wall time they took. While welfare counted in the frame base, that lead refused
+    the first post-loop frame -- chair time longer than out-of-cage -- and refused the
+    return typed `now` as before the head release, so this run faulted after its loop.
+    Every welfare duration is on the wall clock since, and the frames' lead is
+    nothing welfare can see."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "now")
+
+    exit_code = main(
+        _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--trials", "200")
+    )
+
+    assert exit_code == 0
+    assert _kinds(tmp_path) == ["departure", "returned"]
+    trials = tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+    assert len(trials.read_text().splitlines()) == 200, "the loop ran every trial"
+
+
 def test_a_far_return_is_confirmed_at_the_terminal(tmp_path, monkeypatch):
+    """**`rig-chaired`, because a far return is only possible without a release
+    after it.** `wlx run` releases a `rig-fixed` head at the loop's end, a moment
+    ago, and a return an hour ago would put the animal home while still in the
+    chair -- `welfare` refuses that before any confirmation is asked, and rightly.
+    A chaired session has no head-fixation marks, so the confirmation is what this
+    reaches."""
     answers = iter([_hours_ago(1), "confirm"])
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -1908,7 +1878,6 @@ def test_a_return_before_the_departure_is_refused_and_asked_again(tmp_path, monk
             tmp_path,
             "--out-of-cage-at", _hours_ago(2),
             "--confirm-out-of-cage",
-            "--deployment", "rig-chaired",
         )
     )
 
@@ -1988,15 +1957,8 @@ def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monk
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "now")
 
-    # P4d-2a: `--deployment rig-chaired` -- see the note at the top of this
-    # section's return tests; a `returned` row needs the return itself accepted,
-    # which the default `RIG_FIXED` cannot do this soon after a real trial loop.
     with pytest.raises(RuntimeError, match="publish failed"):
-        main(
-            _run_args(
-                tmp_path, "--out-of-cage-at", _hhmm(), "--deployment", "rig-chaired",
-            )
-        )
+        main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert _kinds(tmp_path)[-1] == "returned"
 
@@ -2004,15 +1966,6 @@ def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monk
 # ---------------------------------------------------------------------------
 # Task 6 review, fix round 1
 # ---------------------------------------------------------------------------
-#
-# **Both `--link` tests below pass `--deployment rig-chaired`**, for the reason
-# given at the top of the "P4d-2a: the return to the cage" section above: `run()`
-# releases a `RIG_FIXED` head at `self.now()`, the frame clock, and a real
-# `await_return` heartbeat reads the interval through the wall clock instead, so a
-# real (non-monkeypatched) post-loop publish with even a few completed trials can
-# raise `Exceeded` from the pre-existing, out-of-scope mismatch rather than from
-# whatever this test means to exercise. `RIG_CHAIRED` marks no head-fixation, so
-# the cross-check never runs.
 
 
 def test_a_background_fault_during_a_timed_wait_names_the_fault_not_a_timeout(
@@ -2042,7 +1995,6 @@ def test_a_background_fault_during_a_timed_wait_names_the_fault_not_a_timeout(
                 "--session-id", "2027-01-14_01",
                 "--subject", "REFERENCE",
                 "--out-of-cage-at", _hhmm(),
-                "--deployment", "rig-chaired",
                 "--delivered-today", "0",
                 "--trials", "5",
                 *_TASK_SETS,
@@ -2070,7 +2022,6 @@ def test_await_return_for_names_the_seconds_when_nobody_marks_the_return(tmp_pat
             "--session-id", "2027-01-14_01",
             "--subject", "REFERENCE",
             "--out-of-cage-at", _hhmm(),
-            "--deployment", "rig-chaired",
             "--delivered-today", "0",
             "--trials", "5",
             *_TASK_SETS,

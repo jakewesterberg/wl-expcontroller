@@ -14,7 +14,11 @@ refusal messages an operator actually reads.
   2026-09-19). Chair time is recorded and bounds nothing; there is no trial cap.
   **Both ends of that interval are wall-clock times** (PI, 2026-09-20): the frame clock
   stops when the frames do, so a return read from it left the unchairing and the walk
-  back outside the limit. **The session warns as the limit approaches** (PI,
+  back outside the limit. **And every duration here is read on the wall** (P4d-2a
+  spec §10, 2026-09-26): the marks are kept as the wall instants they are, restraint
+  included, and the frame clock -- which a simulator counts without waiting for, so
+  it outran the wall -- never enters this file. **The session warns as the limit
+  approaches** (PI,
   2026-09-20) so a block can be finished deliberately rather than cut mid-sequence --
   `approaching_limit`, at `WARN_WITHIN_DEFAULT`, which he accepted the same day as a
   starting value.
@@ -233,22 +237,27 @@ class Welfare:
     #: arrives; S8 open item 2 is whether that is continuous or only at close.
     delivered: float | None = None
     deliveries: int = 0
-    #: The clock that bounds the session. **Set through `left_cage` and
-    #: `returned_to_cage`, never by constructing a `Welfare` around them** -- the
-    #: guards live on those methods. `out_of_cage_seconds` still catches a
-    #: non-finite or backwards result, so a direct construction can hide only a
-    #: wrong-but-ordered instant.
-    left_cage_at: float | None = None
-    #: The **wall-clock** instant of the same departure, kept as the anchor the
-    #: return is mapped against (PI, 2026-09-20, ruling 4). Set by `left_cage` and by
-    #: nothing else; `returned_to_cage` refuses when it is absent, because a
-    #: clock-time return has no interval to close without it.
+    #: The clock that bounds the session opens here: **the departure, as the wall
+    #: instant it is**, in POSIX seconds. **Set through `left_cage`, never by
+    #: constructing a `Welfare` around it** -- the guards live on that method.
+    #: `out_of_cage_seconds` still catches a non-finite or backwards result, so a
+    #: direct construction can hide only a wrong-but-ordered instant.
+    #:
+    #: **One field since P4d-2a (spec §10, 2026-09-26), where there were two**: the
+    #: departure mapped onto the frame clock (`left_cage_at`), and its wall instant
+    #: kept as the anchor a clock-time return was mapped through (this name, ruling
+    #: 4). With every duration on the wall there is nothing to map. Every field below
+    #: says its base in its name, so no reader of an old name silently gets the new
+    #: base.
     left_cage_wall_at: float | None = None
-    returned_at: float | None = None
-    #: The restraint clock. Recorded, and it bounds nothing (PI, 2026-09-19). Only
-    #: `Deployment.RIG_FIXED` can carry these at all.
-    fixed_at: float | None = None
-    released_at: float | None = None
+    #: The return, as a wall instant (PI, 2026-09-20, ruling 4). `returned_at` until
+    #: P4d-2a, when it held the return mapped onto the frame clock.
+    returned_wall_at: float | None = None
+    #: The restraint clock, as wall instants since P4d-2a -- `fixed_at` and
+    #: `released_at`, in the frame base, before. Recorded, and it bounds nothing (PI,
+    #: 2026-09-19). Only `Deployment.RIG_FIXED` can carry these at all.
+    fixed_wall_at: float | None = None
+    released_wall_at: float | None = None
     #: How close to the `out_of_cage` ceiling `approaching_limit` starts saying so,
     #: in seconds. See `WARN_WITHIN_DEFAULT` -- including why a warning threshold may
     #: have a default where the limit itself may not. Zero means never warn.
@@ -368,19 +377,21 @@ class Welfare:
 
     # --- out of cage, and back in -----------------------------------------
 
-    def left_cage(
-        self, at: float, wall_now: float, now: float, confirmed: bool = False
-    ) -> None:
+    def left_cage(self, at: float, wall_now: float, confirmed: bool = False) -> None:
         """Start the clock the session is bounded by (PI, 2026-09-19).
 
-        **At what time, and the mapping between the two clocks lives here** (PI,
-        2026-09-20). `at` and `wall_now` are wall-clock instants in POSIX seconds --
-        a clock time is what an operator reads, and 9,143 seconds ago is not. `now`
-        is the frame-derived session clock, which reads zero at the start, so the
-        departure lands at a *negative* instant in that base and transport and
-        chairing are inside the interval. Doing that arithmetic here rather than in a
-        caller is the point: a caller that computed `seconds_ago` itself is a second
-        place for the two bases to meet, and the first one passed a plain zero.
+        **At what time** (PI, 2026-09-20). `at` and `wall_now` are wall-clock instants
+        in POSIX seconds -- a clock time is what an operator reads, and 9,143 seconds
+        ago is not. `wall_now` is the clock the session is reading, taken beside the
+        mark so the refusals below have a present to measure against.
+
+        **Kept as the wall instant it is** (P4d-2a spec §10, 2026-09-26). Until then
+        this also took the frame-derived session clock and mapped the departure onto
+        it, at a *negative* instant, so that transport and chairing fell inside the
+        interval. They still do -- by subtraction on the wall -- and there is no second
+        base for anything to be mapped into: a simulator counts frames without waiting
+        for them, and the mapping between the two bases is what broke. When the
+        wl-works ELN records the departure, it will be a wall instant too.
 
         **This parameter was `seconds_ago` until 2026-09-20, and the change cost a
         guard the PI was shown and accepted.** S8 §5.2 item 4 has that account: what
@@ -388,9 +399,9 @@ class Welfare:
         same way, and why the computed interval is therefore printed in front of the
         operator at session start (`cli.main`) rather than only bounded.
 
-        Refused: a cage-side deployment (it never left); any of the three readings
-        not being a real number, and the interval computed from two of them likewise
-        (S8 §5.2c); a departure in the future; one **at or past** the ceiling, which
+        Refused: a cage-side deployment (it never left); either reading not being a
+        real number, and the interval computed from them likewise (S8 §5.2c); a
+        departure in the future; one **at or past** the ceiling, which
         is *at* because an animal out for exactly the limit has no room for a trial;
         and one more than `CONFIRM_MARK_WITHIN` ago that `confirmed` does not
         say a person acted on.
@@ -407,17 +418,16 @@ class Welfare:
                 f"so it cannot also be recorded as leaving its cage; the declaration "
                 f"and the mark disagree and neither is safe to prefer"
             )
-        if self.left_cage_at is not None:
+        if self.left_cage_wall_at is not None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is already recorded as out of its "
-                f"cage at {self.left_cage_at}; a second mark would run two clocks and "
-                f"the shorter one would silently win. A closed interval is not "
+                f"cage at {self.left_cage_wall_at}; a second mark would run two clocks "
+                f"and the shorter one would silently win. A closed interval is not "
                 f"re-armed either (PI, 2026-09-20): out and back is one session, so "
                 f"an animal brought out again starts a new one"
             )
         _finite("the time this subject left its cage", at)
         _finite("the wall clock this session is reading", wall_now)
-        _finite("the session clock", now)
         # The interval is a third value computed from two checked ones, which S8
         # §5.2c names as a door no enumeration of parameters can close.
         seconds_ago = wall_now - at
@@ -446,13 +456,6 @@ class Welfare:
         self._refuse_unconfirmed(
             self.departure_needs_confirmation(at, wall_now), confirmed
         )
-        self.left_cage_at = now - seconds_ago
-        # **The wall instant of the departure, kept so the return can be a clock
-        # time too** (PI, 2026-09-20, ruling 4). `returned_to_cage` maps its own
-        # wall reading against *this* anchor rather than against a fresh
-        # `now`/`wall_now` pair, because the session clock stops when the frames do
-        # and the two bases stop being the same instant the moment the loop ends --
-        # which is precisely the interval that ruling exists to start counting.
         self.left_cage_wall_at = at
 
     def _far_from_now(self, what: str, at: float, wall_now: float) -> str | None:
@@ -524,39 +527,6 @@ class Welfare:
         if self.deployment is Deployment.CAGE_SIDE:
             return None
         return self._far_from_now("return", at, wall_now)
-
-    def now_from_wall(self, wall_now: float) -> float:
-        """The session-base instant `wall_now` corresponds to, through the departure.
-
-        **The mapping `returned_to_cage` has made since ruling 4 (PI, 2026-09-20),
-        lifted so the clock can be read after the loop as well** (P4d-2a). While the
-        loop runs, `now()` and the wall are the same instant and either will do. Once
-        it ends the frame clock stops and the wall does not, and only this mapping
-        keeps counting the minutes between the last trial and the return -- the ones
-        that ruling exists to count.
-
-        **Through `left_cage`'s anchor, never a fresh `now`/`wall_now` pair**, for the
-        reason `returned_to_cage` gives: after the loop those two are no longer the
-        same instant.
-
-        Refused where there is no anchor, as `out_of_cage_seconds` refuses an unmarked
-        rig session: a cage-side session has no interval, and a rig session with no
-        departure has one nobody started.
-        """
-        _finite("the wall clock this session is reading", wall_now)
-        if self.deployment is Deployment.CAGE_SIDE:
-            raise Exceeded(
-                f"this session declares subject {self.bounds.subject!r} is at home, "
-                f"so there is no out-of-cage clock to read against the wall"
-            )
-        if self.left_cage_at is None or self.left_cage_wall_at is None:
-            raise Exceeded(
-                f"subject {self.bounds.subject!r} is not recorded as having left its "
-                f"cage, so the wall clock has no departure to be read through"
-            )
-        mapped = self.left_cage_at + (wall_now - self.left_cage_wall_at)
-        _finite("the session instant the wall clock maps to", mapped)
-        return mapped
 
     def _refuse_unconfirmed(self, sentence: str | None, confirmed: bool) -> None:
         """Turn "a person should see this" into "a person did", or refuse.
@@ -636,11 +606,14 @@ class Welfare:
         animal out of its cage, fell outside the twelve hours. With both ends of the
         interval read from the wall, the frame clock stopping no longer matters.
 
-        **The mapping is against `left_cage`'s anchor, not against a fresh
-        `now`/`wall_now` pair.** Those two are the same instant only while the loop is
-        running; once it ends the session clock is frozen and the wall clock is not,
-        and a mapping built on them would drop exactly the interval this ruling exists
-        to count. `left_cage_wall_at` is that anchor.
+        **Kept as the wall instant it is** (P4d-2a spec §10, 2026-09-26). From ruling
+        4 until then it was mapped onto the frame clock through the departure's wall
+        instant. A simulator counts frames without waiting for them, so the two bases
+        drifted apart, and a return typed "now" landed before a head release taken on
+        the frame clock and was refused. The departure, the return and both restraint
+        marks are all wall instants now, so every comparison below is between two of
+        them and nothing is mapped. The ELN's return, when it exists, will be a wall
+        instant too.
 
         **Every refusal it already had is preserved**, now read against wall instants:
         nothing to close, a second return, an animal still head-fixed, a return before
@@ -659,28 +632,24 @@ class Welfare:
                 f"this session declares subject {self.bounds.subject!r} is at home, "
                 f"so there is no interval for a return to close"
             )
-        # **Both, not just the session-base one.** A `Welfare` constructed around
-        # `left_cage_at` directly has no wall anchor, and there is no interval a
-        # clock-time return could close without one -- so it is the same refusal
-        # rather than a `TypeError` five lines down.
-        if self.left_cage_at is None or self.left_cage_wall_at is None:
+        if self.left_cage_wall_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is not recorded as having left its "
                 f"cage, so a return closes nothing; a session marked only at the end "
                 f"has no interval at all"
             )
-        if self.returned_at is not None:
+        if self.returned_wall_at is not None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is already recorded as back in its "
-                f"cage at {self.returned_at}; a second return would move a closed "
+                f"cage at {self.returned_wall_at}; a second return would move a closed "
                 f"interval, and the shorter one would silently win"
             )
-        if self.fixed_at is not None and self.released_at is None:
+        if self.fixed_wall_at is not None and self.released_wall_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is recorded as head-fixed at "
-                f"{self.fixed_at} and not released, so it cannot also be in its cage; "
-                f"release the head first. A session is stopped with a stop, not by "
-                f"recording the animal somewhere it is not"
+                f"{self.fixed_wall_at} and not released, so it cannot also be in its "
+                f"cage; release the head first. A session is stopped with a stop, not "
+                f"by recording the animal somewhere it is not"
             )
         if at > wall_now:
             raise Exceeded(
@@ -694,30 +663,33 @@ class Welfare:
                 f"having left it at {self.left_cage_wall_at}; a negative duration is "
                 f"not a duration, and an interval that runs backwards bounds nothing"
             )
-        # Mapped through the departure by the one method that does it -- see
-        # now_from_wall.
-        returned_at = self.now_from_wall(at)
-        if self.released_at is not None and returned_at < self.released_at:
+        if self.released_wall_at is not None and at < self.released_wall_at:
             # **The restraint record is a cross-check, not only a record.** Both
             # marks present, both individually legal, the whole thing inside the
             # thirty-minute band so nothing prompts -- and the animal is recorded
             # home before it was let out of the chair. Found by review: a return
             # typed one second after a departure 25 minutes old, on a session fixed
             # at 60 s and released at 1,400 s, gave 1.0 s out of the cage beside
-            # 1,340 s in the chair.
+            # 1,340 s in the chair. Two wall instants since P4d-2a, so the comparison
+            # is direct.
             raise Exceeded(
                 f"subject {self.bounds.subject!r} cannot be back in its cage before "
-                f"it was released from head-fixation at {self.released_at}; the "
-                f"animal was in the chair until then, so a return at {returned_at} "
+                f"it was released from head-fixation at {self.released_wall_at}; the "
+                f"animal was in the chair until then, so a return at {at} "
                 f"records it in two places at once"
             )
         self._refuse_unconfirmed(
             self.return_needs_confirmation(at, wall_now), confirmed
         )
-        self.returned_at = returned_at
+        self.returned_wall_at = at
 
-    def out_of_cage_seconds(self, now: float) -> float | None:
+    def out_of_cage_seconds(self, wall_now: float) -> float | None:
         """How long the animal has been out of its home cage.
+
+        **Read on the wall** (P4d-2a spec §10, 2026-09-26): `wall_now` is a POSIX
+        instant, and so is every mark it is compared with. Until the return, the
+        interval is `wall_now` minus the departure; after it, the return minus the
+        departure, whatever `wall_now` says.
 
         `None` -- never zero -- for a cage-side session: there is no such interval,
         and a zero reads on a console as a clock that has not started.
@@ -748,36 +720,36 @@ class Welfare:
         """
         if self.deployment is Deployment.CAGE_SIDE:
             return None
-        if self.left_cage_at is None:
+        if self.left_cage_wall_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is not recorded as out of its "
                 f"cage, so the session's one duration limit has no start; call "
                 f"left_cage(), or declare Deployment.CAGE_SIDE if the animal "
                 f"never left it. A missing mark is not an absent limit"
             )
-        end = self.returned_at if self.returned_at is not None else now
-        seconds = end - self.left_cage_at
+        end = self.returned_wall_at if self.returned_wall_at is not None else wall_now
+        seconds = end - self.left_cage_wall_at
         # **On the computed duration, not only on the marks**: this is the number
         # every ceiling is read against, and arithmetic on two checked values can
         # still produce an unchecked third (S8 §5.2c).
         _finite("the time out of the cage", seconds)
         if seconds < 0.0:
-            # The marks are guarded, so the only way here is a `now` before the
-            # opening mark -- a `Session(clock=...)` that runs backwards, or one
-            # whose base is not the base the mark was taken in. **A negative
-            # duration is not a duration**, and it is under every ceiling there is,
-            # so answering it would be a limit switched off by arithmetic.
+            # The marks are guarded, so the only way here is a wall reading before
+            # the opening mark -- a `Session(wall_clock=...)` that runs backwards, or
+            # a host clock set back past the departure. **A negative duration is not
+            # a duration**, and it is under every ceiling there is, so answering it
+            # would be a limit switched off by arithmetic.
             raise Exceeded(
                 f"the clock for subject {self.bounds.subject!r} reads {seconds:.0f} "
                 f"{self.bounds.ceilings[OUT_OF_CAGE].unit}: {end} is before the "
-                f"animal left its cage at {self.left_cage_at}. A duration that runs "
-                f"backwards is under every ceiling and bounds nothing"
+                f"animal left its cage at {self.left_cage_wall_at}. A duration that "
+                f"runs backwards is under every ceiling and bounds nothing"
             )
-        if self.fixed_at is not None:
+        if self.fixed_wall_at is not None:
             end_of_restraint = (
-                self.released_at if self.released_at is not None else now
+                self.released_wall_at if self.released_wall_at is not None else wall_now
             )
-            restraint = end_of_restraint - self.fixed_at
+            restraint = end_of_restraint - self.fixed_wall_at
             if restraint > seconds:
                 raise Exceeded(
                     f"the clock for subject {self.bounds.subject!r} reads "
@@ -789,7 +761,7 @@ class Welfare:
                 )
         return seconds
 
-    def preflight(self, now: float) -> None:
+    def preflight(self, wall_now: float) -> None:
         """What must be true before a session runs (S8 §5.2). Raises `Exceeded`.
 
         Called by `taskd.Session.run` before its first frame, so a missing mark is
@@ -809,18 +781,19 @@ class Welfare:
 
         **It does not check the ceiling**, and claimed to until a review read it:
         `left_cage` refuses a mark at or past the limit and `must_stop` refuses
-        during the loop. `now` is passed rather than assumed zero, which hardcoded
-        the base into a second place.
+        during the loop. `wall_now` is passed rather than read here, so this file
+        keeps no clock of its own -- it was `now`, on the frame clock, until P4d-2a
+        (spec §10), and was passed rather than assumed zero then too.
         """
-        self.out_of_cage_seconds(now)  # for the refusal; the number is not wanted
-        if self.returned_at is not None:
+        self.out_of_cage_seconds(wall_now)  # for the refusal; the number is not wanted
+        if self.returned_wall_at is not None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is already recorded as back in its "
-                f"cage at {self.returned_at}, so this session's interval is closed "
-                f"and no trial can be inside it; a session cannot start with the "
-                f"animal at home"
+                f"cage at {self.returned_wall_at}, so this session's interval is "
+                f"closed and no trial can be inside it; a session cannot start with "
+                f"the animal at home"
             )
-        if self.deployment is Deployment.RIG_FIXED and self.fixed_at is None:
+        if self.deployment is Deployment.RIG_FIXED and self.fixed_wall_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is not recorded as head-fixed, so "
                 f"the session would carry no record of restraint; call head_fixed() "
@@ -834,6 +807,12 @@ class Welfare:
 
         Recorded rather than bounding since 2026-09-19; `HEAD_FIXED`/`HEAD_RELEASED`
         (4128/4129) remain the durable record of restraint (S8 §5.2).
+
+        **`at` is a wall instant in POSIX seconds** (P4d-2a spec §10, 2026-09-26),
+        like the out-of-cage marks, so the restraint cross-check in
+        `out_of_cage_seconds` and `returned_to_cage` compares two wall intervals. It
+        was a frame-clock instant until then, and in a simulator, whose frames outrun
+        the wall, that made chair time longer than out-of-cage time.
 
         **Refused unless the deployment says these marks exist** (PI, 2026-09-20).
         The declaration binds in both directions, as it already does for the
@@ -850,14 +829,14 @@ class Welfare:
                 f"the animal cannot be recorded as fixed; the declaration and the "
                 f"mark disagree and neither is safe to prefer"
             )
-        if self.fixed_at is not None and self.released_at is None:
+        if self.fixed_wall_at is not None and self.released_wall_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is already recorded as head-fixed "
-                f"at {self.fixed_at}; a second start would run two restraint clocks "
-                f"and the shorter one would silently win"
+                f"at {self.fixed_wall_at}; a second start would run two restraint "
+                f"clocks and the shorter one would silently win"
             )
-        self.fixed_at = at
-        self.released_at = None
+        self.fixed_wall_at = at
+        self.released_wall_at = None
 
     def head_released(self, at: float) -> None:
         """Stop the restraint clock. **Refused where `head_fixed` is** (PI,
@@ -871,7 +850,7 @@ class Welfare:
         4129-with-no-4128 by a second route and additionally made `chair_seconds`
         answer `0.00` for it. *Which* deployment this is, *whether* there is anything
         to release, and *when* relative to the fixation: the closing mark gets what
-        `returned_to_cage` already had.
+        `returned_to_cage` already had. `at` is a wall instant, as `head_fixed`'s is.
         """
         _finite("the time the animal was released", at)
         if self.deployment is not Deployment.RIG_FIXED:
@@ -882,23 +861,23 @@ class Welfare:
                 f"HEAD_FIXED before it is a restraint record for restraint nothing "
                 f"marked"
             )
-        if self.fixed_at is None:
+        if self.fixed_wall_at is None:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} is not recorded as head-fixed, so "
                 f"there is nothing to release; a release on its own strobes a "
                 f"HEAD_RELEASED into a stream with no HEAD_FIXED in it, and leaves "
                 f"the restraint clock reading zero rather than absent"
             )
-        if at < self.fixed_at:
+        if at < self.fixed_wall_at:
             raise Exceeded(
                 f"subject {self.bounds.subject!r} cannot have been released at {at} "
-                f"having been head-fixed at {self.fixed_at}; a negative duration is "
-                f"not a duration, and a restraint record that runs backwards records "
-                f"no restraint"
+                f"having been head-fixed at {self.fixed_wall_at}; a negative duration "
+                f"is not a duration, and a restraint record that runs backwards "
+                f"records no restraint"
             )
-        self.released_at = at
+        self.released_wall_at = at
 
-    def chair_seconds(self, now: float) -> float | None:
+    def chair_seconds(self, wall_now: float) -> float | None:
         """Head-fixation time so far, or `None` where nothing measures it.
 
         **`None` for `RIG_CHAIRED` and `CAGE_SIDE`, never `0.00`** (PI, 2026-09-20).
@@ -914,39 +893,43 @@ class Welfare:
         kind takes the marks, and none has been taken, so no restraint has happened
         yet. `preflight` refuses to start such a session anyway.
 
-        **Guarded on the computed interval, not only on `now`** -- `out_of_cage_
-        seconds`' rule, which this did not have until 2026-09-20. It checked `now`,
-        which is not the quantity: `head_fixed(500)` then `head_released(100)` were
-        both finite, both accepted, and this returned `-400.0`, which reached the
-        wire and rendered `chair: -1:53:20`. It is also the whole basis on which
-        `tests/test_welfare.py` exempts `fixed_at` and `released_at` from its
-        entry-point enumeration, and that exemption named `now` while the guard was
-        looking at it.
+        **Read on the wall** (P4d-2a spec §10, 2026-09-26): `wall_now` and both
+        restraint marks are POSIX instants, the base `out_of_cage_seconds` reads, so
+        the two numbers a console shows side by side are two intervals on one clock.
+
+        **Guarded on the computed interval, not only on the reading** --
+        `out_of_cage_seconds`' rule, which this did not have until 2026-09-20. It
+        checked `now` (the frame clock, then), which is not the quantity:
+        `head_fixed(500)` then `head_released(100)` were both finite, both accepted,
+        and this returned `-400.0`, which reached the wire and rendered
+        `chair: -1:53:20`. It is also the whole basis on which `tests/test_welfare.py`
+        exempts `fixed_wall_at` and `released_wall_at` from its entry-point
+        enumeration, and that exemption named `now` while the guard was looking at it.
         """
-        _finite("the session clock", now)
+        _finite("the wall clock this session is reading", wall_now)
         if self.deployment is not Deployment.RIG_FIXED:
             return None
-        if self.fixed_at is None:
+        if self.fixed_wall_at is None:
             return 0.0
-        end = self.released_at if self.released_at is not None else now
-        seconds = end - self.fixed_at
+        end = self.released_wall_at if self.released_wall_at is not None else wall_now
+        seconds = end - self.fixed_wall_at
         _finite("the time in the chair", seconds)
         if seconds < 0.0:
             # The marks are guarded, so the only way here is a field assigned
-            # directly or a `now` in a base the mark was not taken in -- the same
-            # two routes `out_of_cage_seconds` names, and the reason both check
-            # their own result as well as their inputs (S8 §5.2c).
+            # directly or a wall reading before the fixation -- the same two routes
+            # `out_of_cage_seconds` names, and the reason both check their own
+            # result as well as their inputs (S8 §5.2c).
             raise Exceeded(
                 f"the restraint clock for subject {self.bounds.subject!r} reads "
                 f"{seconds:.0f} s: {end} is before the animal was head-fixed at "
-                f"{self.fixed_at}. A duration that runs backwards is not a shorter "
-                f"restraint, and it is reported as one"
+                f"{self.fixed_wall_at}. A duration that runs backwards is not a "
+                f"shorter restraint, and it is reported as one"
             )
         return seconds
 
     # --- the session's own limit ------------------------------------------
 
-    def must_stop(self, now: float) -> str | None:
+    def must_stop(self, wall_now: float) -> str | None:
         """Why this session must end, or `None`. **Never about fluid.**
 
         Returned rather than raised: a session ending on its ceiling is the design
@@ -960,14 +943,17 @@ class Welfare:
 
         **A closed interval is a stop, not a frozen clock** -- and a stop rather
         than a refusal, because a session that must end has a record to close.
+
+        `wall_now` is a POSIX instant (P4d-2a spec §10): the trial loop reads the
+        wall once per trial boundary for this, where it read the frame clock.
         """
-        if self.returned_at is not None:
+        if self.returned_wall_at is not None:
             return (
                 f"{OUT_OF_CAGE}: subject {self.bounds.subject!r} is recorded as back "
-                f"in its cage at {self.returned_at}, so no further trial can be "
+                f"in its cage at {self.returned_wall_at}, so no further trial can be "
                 f"inside the interval this session is bounded by"
             )
-        seconds = self.out_of_cage_seconds(now)
+        seconds = self.out_of_cage_seconds(wall_now)
         if seconds is None:
             return None
         ceiling = self.bounds.ceilings[OUT_OF_CAGE]
@@ -979,7 +965,7 @@ class Welfare:
             )
         return None
 
-    def approaching_limit(self, now: float) -> str | None:
+    def approaching_limit(self, wall_now: float) -> str | None:
         """How little of the out-of-cage interval is left, once it is worth saying.
 
         **PI, 2026-09-20: warn as the twelve-hour limit approaches**, so an operator
@@ -996,9 +982,9 @@ class Welfare:
 
         **This bounds nothing**, which is why `warn_within` may have a default at all
         (`WARN_WITHIN_DEFAULT`): whatever it is set to, the session ends at the same
-        instant.
+        instant. `wall_now` is a POSIX instant, as `must_stop`'s is.
         """
-        seconds = self.out_of_cage_seconds(now)
+        seconds = self.out_of_cage_seconds(wall_now)
         if seconds is None:
             return None
         ceiling = self.bounds.ceilings[OUT_OF_CAGE]
