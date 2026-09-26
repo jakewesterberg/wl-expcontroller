@@ -202,10 +202,6 @@ class Session:
     _tally: Tally | None = field(init=False, default=None, repr=False)
     _scheduler: Scheduler | None = field(init=False, default=None, repr=False)
     _index: int = field(init=False, default=0, repr=False)
-    #: One mark at a time: the terminal and a console can both offer the return.
-    _mark_lock: threading.Lock = field(
-        init=False, default_factory=threading.Lock, repr=False
-    )
     #: `(time.time(), time.monotonic())`, read together once, when the session is
     #: created, and never again. What `wall_now` carries forward when no
     #: `wall_clock` is injected.
@@ -408,21 +404,24 @@ class Session:
         animal is still recorded as head-fixed, so it cannot be used to freeze the
         clock mid-session -- release the head, or send a `Stop`.
 
-        **Under `_mark_lock`** (P4d-2a): the terminal and a console can both offer the
-        return, and `welfare`'s check-then-set must not interleave. The first accepted
-        mark wins; the second is refused by `welfare`'s own sentence.
+        **No lock around this any more** (P4d-2a spec §10, Task 8). It ran under
+        `_mark_lock` while a console could offer the return from the trial loop's own
+        thread and race the terminal for it; the PI ruled the wl-works ELN owns the
+        return, not a console, so `link.py` carries no such command any more and
+        `cli._settle_return` -- the terminal, and only the terminal -- is this
+        method's one caller in production, one attempt at a time. `_mark_lock` is
+        removed along with it rather than kept for a race that can no longer happen.
         """
-        with self._mark_lock:
-            wall_now = self.wall_now()
-            # Asked before the mark, deliberately, so there is an answer to decide
-            # afterwards whether a `return confirmed` row is owed; `welfare` asks the
-            # same question again inside `returned_to_cage`, to refuse an unconfirmed
-            # far return.
-            far = self.welfare.return_needs_confirmation(at, wall_now)
-            self.welfare.returned_to_cage(at, wall_now=wall_now, confirmed=confirmed)
-            self._note("returned", at, by, how)
-            if far is not None:
-                self._note("return confirmed", at, by, how)
+        wall_now = self.wall_now()
+        # Asked before the mark, deliberately, so there is an answer to decide
+        # afterwards whether a `return confirmed` row is owed; `welfare` asks the
+        # same question again inside `returned_to_cage`, to refuse an unconfirmed
+        # far return.
+        far = self.welfare.return_needs_confirmation(at, wall_now)
+        self.welfare.returned_to_cage(at, wall_now=wall_now, confirmed=confirmed)
+        self._note("returned", at, by, how)
+        if far is not None:
+            self._note("return confirmed", at, by, how)
 
     def return_not_recorded(self, why: str) -> None:
         """Say in the record why the interval was left open (P4d-2a spec §3).
@@ -586,19 +585,15 @@ class Session:
         sends, as fast as it can send them. This list is driven by exactly the same
         peer and was the third one, unbounded.
 
-        **The return is accepted in any phase; nothing else is, once the loop has
-        ended** (P4d-2a). A parameter staged after the last trial could never be
+        **Nothing arriving here is accepted once the loop has ended** (P4d-2a spec
+        §10, Task 8). A parameter staged after the last trial could never be
         applied, and a stop has nothing left to stop -- both are refused with the
-        reason rather than silently kept.
+        reason rather than silently kept. **The return used to be the one
+        exception** -- a console's `ReturnedToCage` was accepted in any phase -- but
+        the PI ruled the wl-works ELN owns the return, not a console, so `link.py`
+        has no such command any more and this method has nothing left to route in
+        the post-loop phase but a refusal.
         """
-        if isinstance(command, _link.ReturnedToCage):
-            try:
-                self.returned_to_cage(
-                    command.at, confirmed=command.confirmed, by=command.by, how="console"
-                )
-            except Exceeded as refused:
-                self._refuse("returned_to_cage", command.by, str(refused))
-            return
         if self.phase != "running":
             self._refuse(
                 "stop" if isinstance(command, _link.Stop) else command.name,
@@ -931,14 +926,24 @@ class Session:
         This publishes a frame every `heartbeat` seconds -- **a display cadence for a
         console, not a measurement of this system**, and well inside `ZmqConsole`'s
         5 s receive timeout so a waiting console never times out between frames -- with
-        the clock read from the wall, as every welfare duration is (P4d-2a spec §10),
-        and drains the link, where the return may arrive.
+        the clock read from the wall, as every welfare duration is (P4d-2a spec §10).
 
-        **It ends when the return is recorded**, by a console through `_command` or by
-        the terminal through `returned_to_cage` from another thread, and then
-        publishes one `closed` frame. **It never ends on its own otherwise**: `give_up`
-        is its owner's to set, and then it publishes nothing further and the owner
-        writes `return_not_recorded`.
+        **Draining the link is for post-loop refusals now, never for the return
+        itself** (P4d-2a spec §10, Task 8). It used to be where the return could
+        arrive too, drained here and routed by `_command` to `returned_to_cage`; the
+        PI ruled the wl-works ELN owns the return, not a console, so `link.py` carries
+        no such command any more. What still arrives here is a late `SetParameter` or
+        `Stop`, and `_command` still refuses both with the session's one sentence for
+        the post-loop phase (see its own docstring) and puts the refusal on the wire
+        for whoever is watching.
+
+        **It ends when the return is recorded, by the terminal alone, from another
+        thread** (`cli._close_interval` runs this method on a background thread while
+        `_settle_return` holds the terminal prompt on its own) -- this loop notices
+        through `welfare.returned_wall_at`, never by being told, and then publishes
+        one `closed` frame. **It never ends on its own otherwise**: `give_up` is its
+        owner's to set, and then it publishes nothing further and the owner writes
+        `return_not_recorded`.
 
         **A head a fault left fixed is released first.** `run()` releases it at a
         normal end, but a fault re-raises past that, and `welfare` refuses a return
@@ -946,20 +951,20 @@ class Session:
         2026-09-19, restated 2026-09-26), so it is marked here rather than asked for.
 
         **One frame naming the fault, then it propagates unchanged** -- the same rule
-        `run()`'s own `except Exception as fault:` follows (fix round 1). `welfare`
-        accepts a return -- setting `returned_wall_at` -- *before* `_note` writes its
-        row, so the row write (`record.welfare_note`, disk full or otherwise) can still
-        fail with the mark already recorded in memory. Left unguarded, that exception
-        would escape with `phase` stuck at `awaiting_return` forever, no `closed`
-        frame, and -- on Task 6's background thread -- a traceback nobody joins. This
-        publishes one `fault` frame, unguarded as `run()`'s is (a second failure here
-        chains onto the first rather than hiding it), and then re-raises. **Surfacing
-        that exception is the thread's owner's job, never this method's**: Task 6
-        re-raises it in the main thread rather than swallowing or retrying it, for the
-        same reason `_note`'s own docstring gives -- a retry would call
-        `welfare.returned_to_cage` a second time and be refused by that mark's own
-        sentence, leaving memory certain and the file still empty with no path back to
-        matching them.
+        `run()`'s own `except Exception as fault:` follows (fix round 1), covering
+        whatever this loop's own work can still raise (`link.drain()`, `_command`,
+        `_publish()`) now that `returned_to_cage` is never one of them. Left
+        unguarded, such an exception would escape with `phase` stuck at
+        `awaiting_return` forever, no `closed` frame, and -- on the background thread
+        `cli._close_interval` runs this on -- a traceback nobody joins. This publishes
+        one `fault` frame, unguarded as `run()`'s is (a second failure here chains
+        onto the first rather than hiding it), and then re-raises. **Surfacing that
+        exception is the thread's owner's job, never this method's**:
+        `cli._close_interval` re-raises it on the main thread rather than swallowing
+        or retrying it. A write failure recording the return itself is no longer this
+        method's to guard at all -- `returned_to_cage` runs only on the terminal's own
+        thread now, and `test_a_failed_row_write_is_never_swallowed`
+        (`tests/test_taskd.py`) pins that it is not swallowed there.
 
         A cage-side session has no interval, and this returns at once.
         """

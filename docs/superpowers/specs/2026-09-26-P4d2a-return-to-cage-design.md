@@ -80,15 +80,18 @@ whatever the stop reason. **Cage-side sessions skip it**: there is no interval t
 - **The duration warning keeps running.** Before the limit it is `approaching_limit`'s
   sentence, as during the loop. Past the limit it is `must_stop`'s sentence, because there
   is no loop left to stop and the warning is what tells someone to act.
-- **Drains the link** for `ReturnedToCage` and applies it through `returned_to_cage`, under
-  one lock shared with the terminal path.
+- **Drains the link, but only for a late `SetParameter`/`Stop` to refuse.** **Superseded by
+  §10 (Task 8):** this used to also drain `ReturnedToCage` and apply it through
+  `returned_to_cage`, under one lock shared with the terminal path. The PI's ruling that the
+  wl-works ELN owns the return removed the command; the lock went with it, since the
+  terminal is the one caller of `returned_to_cage` left.
 - **Ends when the return is recorded**: one final frame with `phase = closed`, then it
   returns. It never ends on its own otherwise. It takes a `threading.Event` its owner sets
   to give up — `wlx run` sets it when the operator interrupts the prompt — and then it
   publishes nothing further and the owner writes `return not recorded` (§3).
 
 `wlx run` runs `await_return` on a background thread while its main thread holds the
-terminal prompt (§5). The two meet only at the lock around the mark.
+terminal prompt (§5), and notices what that thread recorded rather than being told.
 
 > **Superseded by §10 (built, then removed in Task 7).** The method below no longer exists:
 > every welfare duration is read on the wall, so there is nothing to map. What follows is
@@ -177,11 +180,14 @@ Then:
 
 - Post-loop frames advance against an injected wall clock, carry `awaiting_return`, and turn
   the warning into `must_stop`'s sentence once the limit passes.
-- A `ReturnedToCage` sent by `wlx console` over a real loopback link closes the interval,
-  writes the `returned` row with `how = console`, and produces a final `closed` frame.
+- **Superseded by §10 (Task 8): no `ReturnedToCage`, sent by a console or otherwise, exists
+  to test.** The terminal calling `returned_to_cage` from its own thread while `await_return`
+  polls on another closes the interval, writes the `returned` row with `how = terminal`, and
+  produces a final `closed` frame.
 - The terminal path, through `_ask`, including a far return confirmed and one amended.
-- A second return is refused, from either side, and the first stands.
-- Headless with no link writes `return not recorded` and exits 0.
+- A second return is refused: `welfare`'s own sentence, on the one caller left.
+- Headless, or linked with no terminal, writes `return not recorded (no terminal)` and exits 0
+  without ever starting `await_return` (§10).
 - A cage-side session publishes no post-loop frame.
 - `stop_kind` at each of the four stop sites.
 - `tools/mutate.py` over `welfare`, `taskd`, `link`, `cli` and `record`, read line by line.

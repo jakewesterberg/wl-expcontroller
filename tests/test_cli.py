@@ -26,7 +26,6 @@ from wl_expcontroller.bounds import Exceeded
 from wl_expcontroller.cli import _hours_minutes, _wall_clock_time, main, render
 from wl_expcontroller.link import (
     Refused,
-    ReturnedToCage,
     SetParameter,
     Staged,
     Stop,
@@ -384,11 +383,15 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     console's `Stop` through a real `wlx run`, the one path the `--stop` tests stub.
     `--trials` now only bounds how long a *broken* run takes to finish on its own.
 
-    **The return is sent once an `awaiting_return` frame has arrived**, not on the
-    stop frame. `run()` releases a `RIG_FIXED` head -- this command's default -- at
-    the wall instant the loop ends, which is after the stop frame is published, and
-    `welfare` refuses a return before the release. A return timed off the stop frame
-    would race that release; the first `awaiting_return` frame is published after it.
+    **This run ends with no terminal, and never reaches `await_return`** (P4d-2a
+    spec §10, Task 8). It used to wait for an `awaiting_return` frame and send the
+    console a `ReturnedToCage` to close it -- the PI ruled the wl-works ELN owns the
+    return, not a console, so `link.py` carries no such command any more, and
+    `wlx run` with no terminal attached (this test's own process, under pytest)
+    never starts the post-loop phase at all: `cli._close_interval` records
+    `return not recorded (no terminal)` and returns as soon as the stop frame is
+    seen. This test keeps its actual point -- a real console attaches, and a real
+    write reaches the record -- and stops there.
     """
     probe = zmq_cleanup(
         ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
@@ -446,22 +449,6 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
                 if stopped:
                     break
             assert stopped == "stopped by jake", stopped
-
-            # P4d-2a: a rig session now waits, publishing its clock, until the
-            # return is marked -- here by the console, which is the only one there
-            # is, once the loop has ended and the head is released (see above).
-            phase = None
-            for _ in range(2000):
-                phase = console.receive().phase
-                if phase == "awaiting_return":
-                    break
-            assert phase == "awaiting_return", phase
-            console.send(ReturnedToCage(at=time.time(), by="jake", confirmed=False))
-            for _ in range(2000):
-                phase = console.receive().phase
-                if phase == "closed":
-                    break
-            assert phase == "closed", phase
     finally:
         runner_thread.join(timeout=15)
     assert not runner_thread.is_alive(), "wlx run did not finish on its own"
@@ -482,6 +469,13 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     assert fix_hold_changes, "the console's SetParameter never reached the record"
     assert fix_hold_changes[0]["by"] == "jake"
     assert fix_hold_changes[0]["now"] == 0.4
+
+    # P4d-2a spec §10, Task 8: no terminal, so the interval closes at once rather
+    # than waiting on `await_return` for a return nothing here can ever send.
+    notes_path = tmp_path / "2027-01-14_04" / "expcontroller" / "welfare_notes.jsonl"
+    notes = [json.loads(line) for line in notes_path.read_text().splitlines()]
+    assert notes[-1]["kind"] == "return not recorded"
+    assert notes[-1]["reason"] == "no terminal"
 
 
 def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch):
@@ -519,7 +513,6 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
             "--trials", "5",
             *_TASK_SETS,
             "--link", "tcp://127.0.0.1:0,tcp://127.0.0.1:0",
-            "--await-return-for", "0",
         ]
     )
 
@@ -1398,17 +1391,6 @@ def _far_bounds(tmp_path) -> str:
     return str(path)
 
 
-def _load_bounds_for_test(tmp_path):
-    from pathlib import Path
-
-    from wl_expcontroller.cli import _load_bounds
-
-    # `_load_bounds` reads a `Path` (`.stem`, in `cli.py`); `_far_bounds` returns
-    # `str` for the CLI's own `--bounds` flag (also `type=Path`, argparse's to
-    # convert). This helper is the one caller that skips argparse, so it converts.
-    return _load_bounds(Path(_far_bounds(tmp_path)))
-
-
 def _hours_ago(hours: float) -> str:
     """A clock time `hours` in the past, with its date, as an operator would type it
     for an overnight or early-morning departure."""
@@ -1799,11 +1781,51 @@ def _kinds(tmp_path) -> list[str]:
 
 
 def test_a_headless_run_records_that_nobody_could_mark_the_return(tmp_path):
+    """P4d-2a spec §10, Task 8: the reason is `no terminal` now, whether or not a
+    link is attached -- there is no console route left for it to distinguish."""
     exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 0
     assert _kinds(tmp_path) == ["departure", "return not recorded"]
-    assert _notes(tmp_path)[-1]["reason"] == "no terminal and no console attached"
+    assert _notes(tmp_path)[-1]["reason"] == "no terminal"
+
+
+def test_a_linked_headless_run_never_calls_await_return(tmp_path, monkeypatch):
+    """P4d-2a spec §10, Task 8: a linked run with no terminal has nobody who could
+    ever answer for the return -- the wl-works ELN's return does not reach this box
+    through `link.py`, and the browser console this slice once planned to build for
+    the purpose was ruled out with it. `cli._close_interval` must not even start the
+    post-loop phase in that case, not merely fail to be told about a return once it
+    has: `Session.await_return` is monkeypatched to record every call, and none is
+    made."""
+    calls: list = []
+
+    def _tracked(self, give_up, heartbeat=1.0):
+        calls.append(True)
+
+    monkeypatch.setattr("wl_expcontroller.taskd.Session.await_return", _tracked)
+
+    exit_code = main(
+        [
+            "run", GOOD,
+            "--allocation", ALLOCATION,
+            "--bounds", BOUNDS,
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_01",
+            "--subject", "REFERENCE",
+            "--out-of-cage-at", _hhmm(),
+            "--delivered-today", "0",
+            "--trials", "5",
+            *_TASK_SETS,
+            "--link", "tcp://127.0.0.1:0,tcp://127.0.0.1:0",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls == [], "await_return must not run at all with no terminal"
+    rows = _notes(tmp_path)
+    assert rows[-1]["kind"] == "return not recorded"
+    assert rows[-1]["reason"] == "no terminal"
 
 
 def test_a_run_at_a_terminal_takes_the_return(tmp_path, monkeypatch):
@@ -1952,35 +1974,6 @@ def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkey
     assert _notes(tmp_path)[-1]["reason"] == "interrupted at the terminal"
 
 
-def test_a_console_can_record_the_return_while_the_terminal_waits(tmp_path, monkeypatch):
-    """Review Focus 2. The prompt is blocked in `input()` when the console's mark
-    lands; the next answer is told so, and there is one `returned` row, not two."""
-    from wl_expcontroller.cli import _settle_return
-    from wl_expcontroller.dio import Simulated as Card
-    from wl_expcontroller.taskd import Session, SessionSpec
-    from wl_expcontroller.welfare import Deployment, Simulated as Pump
-
-    spec = SessionSpec(
-        task=GOOD, allocation=ALLOCATION, root=tmp_path, session_id="2027-01-14_01",
-        subject="REFERENCE", trials=3, frame_period=1 / 240, seed=1, values={},
-        bounds=_load_bounds_for_test(tmp_path), already_delivered_today=0.0,
-        deployment=Deployment.RIG_CHAIRED,
-    )
-    session = Session(spec, card=Card(), pump=Pump())
-    session.left_cage(at=session.wall_now() - 60.0)
-
-    def answer(_prompt=""):
-        session.returned_to_cage(session.wall_now(), by="sam", how="console")
-        return "now"
-
-    monkeypatch.setattr("builtins.input", answer)
-
-    assert _settle_return(session, "jake") is None
-    kinds = _kinds(tmp_path)
-    assert kinds.count("returned") == 1
-    assert _notes(tmp_path)[-1]["how"] == "console"
-
-
 def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monkeypatch):
     """Ruling B (Task 6 review). `_close_interval`'s background thread runs
     `await_return` wrapped in a helper that catches whatever it raises instead of
@@ -2003,77 +1996,25 @@ def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monk
     assert _kinds(tmp_path)[-1] == "returned"
 
 
+def test_wlx_run_rejects_await_return_for(tmp_path):
+    """P4d-2a spec §10, Task 8: `--await-return-for` existed only for a linked run
+    with no terminal to wait on a console's mark -- the PI ruled the wl-works ELN
+    owns the return, not a console, so there is nothing left for the flag to do and
+    it is removed outright. Argparse refuses the unrecognized flag itself (exit 2),
+    the same as any other unknown option."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            _run_args(
+                tmp_path, "--out-of-cage-at", _hhmm(), "--await-return-for", "5"
+            )
+        )
+
+    assert excinfo.value.code == 2
+
+
 # ---------------------------------------------------------------------------
 # Task 6 review, fix round 1
 # ---------------------------------------------------------------------------
-
-
-def test_a_background_fault_during_a_timed_wait_names_the_fault_not_a_timeout(
-    tmp_path, monkeypatch
-):
-    """Important 1. `waiter.join(timeout=...)` (`cli._close_interval`) returns the
-    instant the background thread dies, which can be long before the timeout it was
-    given -- and the row must not then say "nobody marked it within N s" when N
-    seconds never passed. `--await-return-for 5` here, but the fault fires at once,
-    so a wrong fix would still show `5` in the reason though barely any time passed.
-    The exception itself must still reach `main()` unchanged (Ruling 5, P4d-2a
-    spec §5) -- swallowing it would be the same mistake `_wait`'s own docstring
-    refuses."""
-
-    def _boom(self, give_up, heartbeat=1.0):
-        raise RuntimeError("publish failed")
-
-    monkeypatch.setattr("wl_expcontroller.taskd.Session.await_return", _boom)
-
-    with pytest.raises(RuntimeError, match="publish failed"):
-        main(
-            [
-                "run", GOOD,
-                "--allocation", ALLOCATION,
-                "--bounds", BOUNDS,
-                "--root", str(tmp_path),
-                "--session-id", "2027-01-14_01",
-                "--subject", "REFERENCE",
-                "--out-of-cage-at", _hhmm(),
-                "--delivered-today", "0",
-                "--trials", "5",
-                *_TASK_SETS,
-                "--link", "tcp://127.0.0.1:0,tcp://127.0.0.1:0",
-                "--await-return-for", "5",
-            ]
-        )
-
-    rows = _notes(tmp_path)
-    assert rows[-1]["kind"] == "return not recorded"
-    assert rows[-1]["reason"] == "the post-loop phase failed: RuntimeError"
-
-
-def test_await_return_for_names_the_seconds_when_nobody_marks_the_return(tmp_path):
-    """Important 2. `--await-return-for`'s own lapse -- no terminal, no console,
-    nobody there -- had no test. `0.05` keeps this fast: nothing here waits on a
-    heartbeat (`Session.await_return`'s default is 1 s) longer than the timed wait
-    itself needs."""
-    exit_code = main(
-        [
-            "run", GOOD,
-            "--allocation", ALLOCATION,
-            "--bounds", BOUNDS,
-            "--root", str(tmp_path),
-            "--session-id", "2027-01-14_01",
-            "--subject", "REFERENCE",
-            "--out-of-cage-at", _hhmm(),
-            "--delivered-today", "0",
-            "--trials", "5",
-            *_TASK_SETS,
-            "--link", "tcp://127.0.0.1:0,tcp://127.0.0.1:0",
-            "--await-return-for", "0.05",
-        ]
-    )
-
-    assert exit_code == 0
-    rows = _notes(tmp_path)
-    assert rows[-1]["kind"] == "return not recorded"
-    assert rows[-1]["reason"] == "nobody marked it within 0.05 s"
 
 
 def test_an_empty_answer_at_the_terminal_ends_the_prompt_and_asks_nothing_more(
