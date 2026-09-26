@@ -112,9 +112,15 @@ welfare number is computed anywhere new.
 
 ## 5. Taking the mark from the box
 
-- **Terminal.** After the loop, `wlx run` prompts `returned to cage at (HH:MM, or now):` and
-  applies `welfare.return_needs_confirmation`'s confirm-or-amend flow for a time more than
-  thirty minutes off, exactly as `_settle_departure` does for the departure.
+- **Terminal.** After the loop, `wlx run` prompts `returned to its home cage at (HH:MM, or
+  now):` and applies `welfare.return_needs_confirmation`'s confirm-or-amend flow for a time
+  more than thirty minutes off, exactly as `_settle_departure` does for the departure.
+  *Amended by the final review, 2026-09-26 (I3):* the prompt read `returned to cage at`,
+  which could be answered with the animal still in the chair; it names the home cage now,
+  and its text is one constant (`cli._RETURN_PROMPT`). The session's summary — why it
+  stopped, the fluid, the supplement — prints before the prompt, each attempt shows the
+  out-of-cage clock and the duration warning when there is one, and the closed interval
+  is printed once the return is taken, as the departure's is at the start.
 - **Console.** A new link command, `ReturnedToCage(at: float, by: str, confirmed: bool)`,
   `at` a POSIX wall instant. `wlx console --returned HH:MM --as WHO [--confirm-return]` sends
   it. A far return sent without `--confirm-return` is refused by `welfare` with the sentence

@@ -2170,6 +2170,99 @@ def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
     assert out.index("<<the return prompt>>") < out.index("ended: interrupted")
 
 
+# --- final review I3: what a terminal-only operator sees around the return ----
+
+
+def _prompted(monkeypatch, answers: list) -> list:
+    """A terminal that gives `answers` in turn, printing a marker to stdout at each
+    prompt so a test can see what came before it. Returns the prompts shown."""
+    shown: list = []
+    remaining = iter(answers)
+
+    def answer(prompt=""):
+        shown.append(prompt)
+        print(f"<<prompt {len(shown)}>>")
+        return next(remaining)
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", answer)
+    return shown
+
+
+def test_the_stop_reason_and_the_supplement_come_before_the_return_prompt(
+    tmp_path, monkeypatch, capsys
+):
+    """**Final review I3.** The `ended:`, `fluid:` and `supplement:` lines printed only
+    after the return was typed, so an operator who wanted the supplement had to
+    answer the prompt first -- an invitation to type `now` while the animal was still
+    in the chair. They print as the loop ends, as they did before P4d-2a."""
+    _prompted(monkeypatch, ["now"])
+
+    assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm())) == 0
+
+    out = capsys.readouterr().out
+    for line in ("ended: every block is finished", "fluid:", "supplement:"):
+        assert out.index(line) < out.index("<<prompt 1>>"), line
+
+
+def test_each_attempt_at_the_return_shows_the_clock_and_the_warning(
+    tmp_path, monkeypatch, capsys
+):
+    """**Final review I3.** With no `--link`, `await_return` publishes into nothing, so
+    the post-loop out-of-cage clock and its warning (spec §7 item 2) reached nobody at
+    a terminal-only rig. Each attempt at the prompt now shows both, read from
+    `welfare` through the session. `--warn-within` wider than the ceiling keeps the
+    warning on for the whole session (`welfare.WARN_WITHIN_DEFAULT`'s docstring)."""
+    _prompted(monkeypatch, ["half past", "now"])
+
+    exit_code = main(
+        _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--warn-within", "86400")
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    before_first, _, rest = captured.out.partition("<<prompt 1>>")
+    before_second = rest.partition("<<prompt 2>>")[0]
+    for shown in (before_first, before_second):
+        assert "out of cage: " in shown and " so far" in shown
+    assert captured.err.count("WARNING: out_of_cage: subject 'REFERENCE' has ") == 2
+
+
+def test_the_closed_interval_is_printed_once_the_return_is_taken(
+    tmp_path, monkeypatch, capsys
+):
+    """**Final review I3**, mirroring the departure's line: once the return is
+    recorded the operator reads the interval it closed -- when the animal left, when
+    it came back, and for how long -- so a return typed in the wrong half of the day
+    is as legible as a departure typed there."""
+    departure = _hhmm()
+    _prompted(monkeypatch, ["now"])
+
+    assert main(_run_args(tmp_path, "--out-of-cage-at", departure)) == 0
+
+    after = capsys.readouterr().out.partition("<<prompt 1>>")[2]
+    assert "the animal was out 0 hours 0 minutes" in after
+    assert f" {departure} (" in after, "the departure's clock time"
+    assert "this host's local time" in after
+
+
+def test_the_return_prompt_asks_for_the_home_cage_in_one_constant(
+    tmp_path, monkeypatch
+):
+    """**Final review I3.** The prompt is answered once the animal is in its home
+    cage, and says so; it read "returned to cage at", which a person could answer
+    while the animal was still in the chair beside the rig. The text lives in one
+    constant, and this is the test that holds the terminal to it."""
+    from wl_expcontroller.cli import _RETURN_PROMPT
+
+    shown = _prompted(monkeypatch, ["now"])
+
+    assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm())) == 0
+
+    assert shown == [_RETURN_PROMPT]
+    assert "home cage" in _RETURN_PROMPT
+
+
 def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monkeypatch):
     """Ruling B (Task 6 review). `_close_interval`'s background thread runs
     `await_return` wrapped in a helper that catches whatever it raises instead of

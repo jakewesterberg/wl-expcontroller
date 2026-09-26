@@ -411,6 +411,21 @@ def _settle_departure(session, args) -> tuple:
     )
 
 
+#: The return prompt's words, in one place (final review I3). **It asks for the
+#: *home* cage**, so it is answered once the animal is in it; it read "returned to
+#: cage at", which a person could answer with the animal still in the chair beside
+#: the rig -- and a `now` typed then undercounts the interval.
+_RETURN_PROMPT = "  returned to its home cage at (HH:MM, or now): "
+
+
+def _local(at: float) -> str:
+    """A wall instant as this host's local date, minute and zone -- `YYYY-MM-DD HH:MM
+    (ZONE)`. The zone **at that instant**, not now, for the reason the departure's
+    line gives: across a daylight-saving change the label is the information."""
+    moment = time.localtime(at)
+    return f"{time.strftime('%Y-%m-%d %H:%M', moment)} ({time.strftime('%Z', moment)})"
+
+
 def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     """Ask the person at the terminal when the animal went back into its cage.
 
@@ -435,7 +450,18 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     that one could replace -- a corrected time is simply the time entered.
     """
     for _ in range(attempts):
-        raw = _ask("  returned to cage at (HH:MM, or now): ").strip()
+        # **The clock, and the warning when there is one, above every attempt**
+        # (final review I3). Without `--link`, `await_return` publishes into
+        # nothing, so this is the only place a terminal-only operator reads the
+        # post-loop clock -- or learns it has passed the limit. Both from one wall
+        # reading, through the session and `welfare`, never computed here.
+        wall_now = session.wall_now()
+        so_far = session.welfare.out_of_cage_seconds(wall_now)
+        print(f"  out of cage: {_clock(so_far)} so far, until the return is marked")
+        warning = session.duration_warning(wall_now)
+        if warning is not None:
+            print(f"  WARNING: {warning}", file=sys.stderr)
+        raw = _ask(_RETURN_PROMPT).strip()
         if not raw:
             return "no answer at the terminal"
         try:
@@ -459,6 +485,16 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
         except Exceeded as refused:
             print(f"  refused: {refused}", file=sys.stderr)
             continue
+        # **The interval the return closed, made visible** (final review I3), as
+        # the departure's is at the start: a return typed in the wrong half of the
+        # day is then as legible as a departure typed there. Read from `welfare`.
+        print(
+            f"  out of cage: the animal was out "
+            f"{_hours_minutes(session.welfare.out_of_cage_seconds(session.wall_now()))}"
+            f", having left its cage at {_local(session.welfare.left_cage_wall_at)}"
+            f" and come back to it at {_local(session.welfare.returned_wall_at)}"
+            f", this host's local time"
+        )
         return None
     return "no clock time given at the terminal"
 
@@ -531,6 +567,11 @@ def _close_interval(session, args) -> bool:
     except KeyboardInterrupt:
         why = "interrupted at the terminal"
         interrupted = True
+    except BaseException as failed:
+        # The prompt reads `welfare` above every attempt now (final review I3), and a
+        # refusal there is a fault, not an interrupt: the row says which.
+        why = f"the return prompt failed: {type(failed).__name__}"
+        raise
     finally:
         give_up.set()
         waiter.join()
@@ -1251,8 +1292,14 @@ def main(argv: list[str] | None = None) -> int:
                         _summary(session, None)
                     _interrupted(session)
                     return 130
-                interrupted = _close_interval(session, args)
-                _summary(session, census)
+                # **The summary first, then the return** (final review I3): the stop
+                # reason and the supplement are what an operator needs while the
+                # animal is still out, and the return is typed once it is home. In a
+                # `try`, so a summary that fails to print still reaches the return.
+                try:
+                    _summary(session, census)
+                finally:
+                    interrupted = _close_interval(session, args)
                 if interrupted:
                     _interrupted(session)
                     return 130
