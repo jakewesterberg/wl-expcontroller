@@ -198,6 +198,7 @@ class Session:
     #: to `awaiting_return` and `closed` (P4d-2a). Published as `Telemetry.phase`.
     phase: str = field(init=False, default="")
     #: The kind of `stopped_because`: `completed`, `operator`, `limit` or `fault`.
+    #: `operator` is a console's `Stop` or Ctrl-C at `wlx run`'s terminal.
     stop_kind: str | None = field(init=False, default=None)
     #: The loop's own state, kept so a frame can still be built after it returns.
     _tally: Tally | None = field(init=False, default=None, repr=False)
@@ -979,6 +980,19 @@ class Session:
             if self.spec.deployment is Deployment.RIG_FIXED:
                 self.head_released(self.wall_now())
             return tally.census()
+        except KeyboardInterrupt:
+            # **Ctrl-C at the terminal is an operator's stop** (P4d-2a final review
+            # I4), made at `wlx run`'s own terminal rather than from a console. It is
+            # not an `Exception`, so it went past the handler below with no reason
+            # set, and every frame after it -- the post-loop ones included -- read
+            # `stop_kind` `None`, which means "still running". One frame names it,
+            # as for a console's `Stop`, and the interrupt goes on to the caller,
+            # which still owes the animal its return (`cli.main`). The head is left
+            # as it was, as a fault leaves it: `await_return` releases it on entry.
+            self.stopped_because = "interrupted at the terminal"
+            self.stop_kind = "operator"
+            publish()
+            raise
         except Exception as fault:
             # **One frame naming the fault, then it propagates unchanged** (PI,
             # 2026-09-19). `welfare.deliver` raises when the pump will not answer,

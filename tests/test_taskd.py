@@ -1268,6 +1268,44 @@ def test_a_session_ended_by_a_fault_says_fault(tmp_path):
     assert link.published[-1].stop_kind == "fault"
 
 
+def _interrupted_on(monkeypatch, call: int) -> None:
+    """Make the `call`-th trial of a session raise `KeyboardInterrupt`, as Ctrl-C at
+    the terminal does to whatever the main thread is running."""
+    from wl_expcontroller import taskd
+
+    real, calls = taskd.run_trial, [0]
+
+    def run_trial(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == call:
+            raise KeyboardInterrupt
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+
+
+def test_ctrl_c_in_the_loop_stops_the_session_as_an_operator_would(
+    tmp_path, monkeypatch
+):
+    """**P4d-2a final review I4.** `run()` caught `Exception`, and `KeyboardInterrupt`
+    is not one, so Ctrl-C at the terminal left the session with no stop reason at
+    all: the post-loop frames read `('awaiting_return', None, '')`, breaking the rule
+    that `stop_kind` is `None` only while the loop runs. It is an operator's stop,
+    made at the terminal rather than from a console, and one frame now says so before
+    the interrupt goes on to whoever called `run()`."""
+    link = Simulated()
+    session = _session(_spec(tmp_path, trials=10), link=link)
+    _interrupted_on(monkeypatch, call=3)
+
+    with pytest.raises(KeyboardInterrupt):
+        session.run()
+
+    assert session.stopped_because == "interrupted at the terminal"
+    assert session.stop_kind == "operator"
+    assert link.published[-1].stopped_because == "interrupted at the terminal"
+    assert link.published[-1].stop_kind == "operator"
+
+
 def test_the_sessions_wall_does_not_step_when_the_host_clock_does(
     tmp_path, monkeypatch
 ):

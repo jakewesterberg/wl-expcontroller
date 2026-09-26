@@ -2116,6 +2116,60 @@ def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkey
     assert _notes(tmp_path)[-2]["reason"] == "interrupted at the terminal"
 
 
+def _main_uninterrupted(argv: list) -> int:
+    """`main(argv)`, with an escaping `KeyboardInterrupt` turned into a failure.
+
+    **A `KeyboardInterrupt` that escapes a test ends the whole pytest run**, not the
+    test: pytest treats it as the person at the terminal stopping everything (final
+    review M3). So every test here that drives Ctrl-C through `main` calls it through
+    this, and a regression that lets the interrupt out fails that one test instead of
+    aborting the suite around it."""
+    try:
+        return main(argv)
+    except KeyboardInterrupt:
+        pytest.fail("KeyboardInterrupt escaped main(): Ctrl-C must end the run cleanly")
+
+
+def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
+    tmp_path, monkeypatch, capsys
+):
+    """**P4d-2a final review I4.** Ctrl-C during the trial loop reached the return
+    prompt with no stop reason, and then escaped `main` as a traceback, after the
+    return and with no summary. The animal must still go home -- and a `rig-fixed`
+    head, left fixed by the interrupt, is released as the post-loop phase begins --
+    so the return prompt comes first; then the summary names the stop, and `wlx run`
+    exits 130 as the return prompt's own Ctrl-C does."""
+    from wl_expcontroller import taskd
+
+    real, calls = taskd.run_trial, [0]
+
+    def run_trial(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise KeyboardInterrupt
+        return real(*args, **kwargs)
+
+    def answer(_prompt=""):
+        print("<<the return prompt>>")
+        return "now"
+
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", answer)
+
+    exit_code = _main_uninterrupted(
+        _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--trials", "5")
+    )
+
+    assert exit_code == 130
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "returned", "session ended",
+    ]
+    out = capsys.readouterr().out
+    assert "ended: interrupted at the terminal" in out
+    assert out.index("<<the return prompt>>") < out.index("ended: interrupted")
+
+
 def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monkeypatch):
     """Ruling B (Task 6 review). `_close_interval`'s background thread runs
     `await_return` wrapped in a helper that catches whatever it raises instead of

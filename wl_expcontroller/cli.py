@@ -516,6 +516,14 @@ def _close_interval(session, args) -> bool:
 
     waiter = threading.Thread(target=_wait, daemon=True)
     waiter.start()
+    # **The prompt waits for the post-loop phase to begin, or for its thread to end**
+    # (P4d-2a final review I4). `await_return` releases a head that a fault or Ctrl-C
+    # left fixed, and only then moves `phase` on; a return answered before that
+    # release lands is refused as an animal home while still in the chair. A person
+    # does not type that fast, and a test's answer does. Joined in short steps rather
+    # than polled, and bounded by the thread: one that fails first ends the wait.
+    while session.phase == "running" and waiter.is_alive():
+        waiter.join(0.01)
     why = None
     interrupted = False
     try:
@@ -533,6 +541,47 @@ def _close_interval(session, args) -> bool:
     if failure:
         raise failure[0]
     return interrupted
+
+
+def _summary(session, census) -> None:
+    """What `wlx run` prints about a session whose loop has ended: its outcomes when
+    the loop returned them, why it stopped, and the day's fluid.
+
+    `census` is `None` when the loop did not return one -- Ctrl-C (final review I4)
+    -- and then only the lines that do not need it are printed. Every figure is read
+    from the session and its `welfare`, never recomputed here (`render`'s rule).
+    """
+    if census is not None:
+        total = sum(census.outcomes.values()) or 1
+        for outcome, count in census.outcomes.most_common():
+            print(f"  {outcome.value:18} {count:6}  {100 * count / total:5.1f}%")
+        print(f"  {'hangs':18} {census.hangs:6}")
+    print(f"  ended: {session.stopped_because}")
+    print(
+        f"  fluid: {session.welfare.commanded:.2f} mL commanded over "
+        f"{session.welfare.deliveries} deliveries"
+    )
+    # The number a person acts on: how much of the day's minimum is still owed, to
+    # be supplemented after the session (PI, 2026-09-06). `None` means the day cannot
+    # be counted, which is a louder result than any number.
+    owed = session.welfare.shortfall()
+    print(
+        "  supplement: UNKNOWN -- the day's prior total was not supplied, "
+        "so nothing can say what is still owed"
+        if owed is None
+        else f"  supplement: {owed:.2f} mL to reach the day's floor"
+    )
+
+
+def _interrupted(session) -> None:
+    """The last line of a run Ctrl-C ended, saying whether the return is recorded."""
+    print(
+        "run: interrupted -- the return to the cage was not recorded"
+        if session.welfare.returned_wall_at is None
+        else "run: interrupted -- the session stopped at the terminal, and the return "
+        "to the cage is recorded",
+        file=sys.stderr,
+    )
 
 
 def _value(value: float | None) -> str:
@@ -1176,41 +1225,36 @@ def main(argv: list[str] | None = None) -> int:
                 # **The return to the cage is taken here, or its absence is
                 # recorded** (P4d-2a spec §3, §5, amended by §10: the terminal,
                 # and only the terminal, until the wl-works ELN exists).
-                # `_close_interval` runs in `finally` so a fault out of
-                # `session.run()` still gets a chance at the terminal path -- and,
-                # on a rig, still has a head to release and a clock to stop
-                # publishing -- rather than leaving the interval open with nothing
-                # said about why.
-                interrupted = False
+                # `_close_interval` is reached on every way out of `session.run()`
+                # -- a normal end, Ctrl-C, a fault -- so the interval is never left
+                # open with nothing said about why.
                 try:
                     census = session.run()
-                finally:
-                    interrupted = _close_interval(session, args)
-                total = sum(census.outcomes.values()) or 1
-                for outcome, count in census.outcomes.most_common():
-                    print(f"  {outcome.value:18} {count:6}  {100 * count / total:5.1f}%")
-                print(f"  {'hangs':18} {census.hangs:6}")
-                print(f"  ended: {session.stopped_because}")
-                print(
-                    f"  fluid: {session.welfare.commanded:.2f} mL commanded over "
-                    f"{session.welfare.deliveries} deliveries"
-                )
-                # The number a person acts on: how much of the day's minimum is
-                # still owed, to be supplemented after the session (PI,
-                # 2026-09-06). `None` means the day cannot be counted, which is a
-                # louder result than any number.
-                owed = session.welfare.shortfall()
-                print(
-                    "  supplement: UNKNOWN -- the day's prior total was not supplied, "
-                    "so nothing can say what is still owed"
-                    if owed is None
-                    else f"  supplement: {owed:.2f} mL to reach the day's floor"
-                )
+                except KeyboardInterrupt:
+                    # **Ctrl-C during the loop** (final review I4). `run()` has named
+                    # it an operator's stop and published it; the animal is still out
+                    # of its cage, so the return is taken below like any other ending.
+                    census = None
+                except BaseException:
+                    # A fault, or a refusal before the first trial: the return is
+                    # still taken at the terminal, or its absence recorded, before
+                    # the exception goes on -- on a rig there is still a head to
+                    # release and a clock to publish.
+                    _close_interval(session, args)
+                    raise
+                if census is None:
+                    # The return first, then the summary: Ctrl-C was the operator
+                    # stopping the session, and the animal going home is what is left
+                    # to do. Exit 130, as Ctrl-C at the return prompt exits.
+                    _close_interval(session, args)
+                    if session.phase:
+                        _summary(session, None)
+                    _interrupted(session)
+                    return 130
+                interrupted = _close_interval(session, args)
+                _summary(session, census)
                 if interrupted:
-                    print(
-                        "run: interrupted -- the return to the cage was not recorded",
-                        file=sys.stderr,
-                    )
+                    _interrupted(session)
                     return 130
                 return 1 if census.hangs else 0
             finally:
