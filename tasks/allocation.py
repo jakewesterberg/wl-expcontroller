@@ -2,9 +2,11 @@
 
 **This is `wl-exptasks`' to own** (ADR-0007). It lives here until that repository has
 one, and it is confined to **4096-32767** -- the task-specific range whose ownership
-is not in dispute. `TaskEvent` 256-4095 is not used, because moving it to `wl-exptasks`
-still needs `wl-preproc`'s agreement and allocating there would mean rework if they
-decline.
+is not in dispute. `TaskEvent` 256-4095 is not used here. `wl-preproc` agreed on
+2026-09-01 that it is `wl-exptasks`' to allocate, with its own 256-259 carried over as
+already allocated and never to be renumbered (`wl-preproc` `docs/CHECKPOINT.md`, "ANSWERED
+2026-09-01: we agree", read 2026-09-26). Allocating in that range is therefore
+`wl-exptasks`' job, once it publishes an allocation.
 
 Outcome markers are not here: those are `Marker` values, already allocated and frozen
 by `wl-preproc`, and `codes.PROVISIONAL` carries them.

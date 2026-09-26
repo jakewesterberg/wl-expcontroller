@@ -9,9 +9,12 @@ two repositories disagreeing about who allocates, with nothing able to detect it
 
 So `Allocation` is a *loaded* thing. `PROVISIONAL` below exists only until
 `wl-exptasks` has one to load, and it is deliberately confined to **4096-32767**, the
-one range whose ownership is not in dispute: ADR-0007 moves `TaskEvent` 256-4095 to
-`wl-exptasks`, and `wl-preproc` has not yet agreed. Allocating there instead would mean
-rework if they decline; allocating here does not.
+one range whose ownership was never in dispute. ADR-0007 moves `TaskEvent` 256-4095 to
+`wl-exptasks`. `wl-preproc` agreed on 2026-09-01, with its 256-259 carried over as
+already allocated: ownership moving is not permission to renumber, which would relabel
+every recorded event on disk (`wl-preproc` `docs/CHECKPOINT.md`, read 2026-09-26). The
+confinement stays for a different reason now: that range is `wl-exptasks`' to allocate,
+not this package's.
 """
 
 from __future__ import annotations
