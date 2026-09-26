@@ -544,7 +544,7 @@ made by the PI and conditional on the reporting above.
 
 **"Is this refusal earned?" should be a lookup, not a reading.** §5.2c earns the
 `_finite`/`_magnitude` refusals as a class — two messages every numeric entry point reaches
-— but `welfare.py` has **twenty-nine** `raise` sites and `bounds.py` **five**, and a
+— but `welfare.py` has **thirty-one** `raise` sites and `bounds.py` **five**, and a
 reviewer sitting at `returned_to_cage`'s five would not find them there. Every one is below,
 with the failure it was written against and where the argument lives.
 
@@ -598,9 +598,11 @@ wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
 | `which takes no head-fixation marks, so the animal cannot be recorded as released` | **The closing half of the same record.** `taskd.Session.head_released` strobes `HEAD_RELEASED`, so guarding only the opening mark left a console action able to put a 4129 in a stream that never carried a 4128 — a restraint record for restraint nothing marked. Found by asking what the documented claim *"no stream carries a HEAD_RELEASED with no HEAD_FIXED before it"* actually depended on: `run()`, and nothing else | §5.2 item 4 |
 | `was amended with no reason given, so it is refused rather than recorded blank` | **A blank reason looks like an answer.** The PI asked for a reason on 2026-09-20 precisely so that a departure time somebody changed can be explained months later; a row recording the change and not the cause answers nothing it would be read for, and is worse than the absence of a row because it appears to | §5.2 item 4 |
 | `was amended by nobody, so it is refused` | **An anonymous change to the clock that bounds a session.** `--as WHO` is required for a console write because a forgeable or invented actor is worse than none, and this moves the one quantity `must_stop` reads. It is in `welfare` rather than in `cli` so that the console action P4d-2 adds cannot reach the record around it | §5.2 item 4 |
+| `is at home, so there is no out-of-cage clock to read against the wall` | **P4d-2a.** `now_from_wall` is the one mapping from the wall clock onto the session clock, through the departure; a cage-side session has no departure and therefore no interval for a wall instant to fall inside | §5.2 item 4 |
+| `is not recorded as having left its cage, so the wall clock has no departure to be read through` | **The same method, the rig side.** A session with no `left_cage` anchor has nothing for `wall_now` to be mapped through — the same absence `out_of_cage_seconds` refuses, read where the wall clock is the one asking | §5.2 item 4 |
 
-**Thirty-four refusals. Two rows are the §5.2c guards** — `is not a real number` and
-`cannot be negative`, which every numeric entry point reaches — **and thirty-two are
+**Thirty-six refusals. Two rows are the §5.2c guards** — `is not a real number` and
+`cannot be negative`, which every numeric entry point reaches — **and thirty-four are
 structural.** (This said "nine of them are the two guards"; that figure counted neither rows
 nor `raise` sites and could not be reproduced from either, so it is replaced with two that
 `tests/test_welfare.py` checks.) Every message is kept verbatim in the code — they are what an

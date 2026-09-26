@@ -525,6 +525,39 @@ class Welfare:
             return None
         return self._far_from_now("return", at, wall_now)
 
+    def now_from_wall(self, wall_now: float) -> float:
+        """The session-base instant `wall_now` corresponds to, through the departure.
+
+        **The mapping `returned_to_cage` has made since ruling 4 (PI, 2026-09-20),
+        lifted so the clock can be read after the loop as well** (P4d-2a). While the
+        loop runs, `now()` and the wall are the same instant and either will do. Once
+        it ends the frame clock stops and the wall does not, and only this mapping
+        keeps counting the minutes between the last trial and the return -- the ones
+        that ruling exists to count.
+
+        **Through `left_cage`'s anchor, never a fresh `now`/`wall_now` pair**, for the
+        reason `returned_to_cage` gives: after the loop those two are no longer the
+        same instant.
+
+        Refused where there is no anchor, as `out_of_cage_seconds` refuses an unmarked
+        rig session: a cage-side session has no interval, and a rig session with no
+        departure has one nobody started.
+        """
+        _finite("the wall clock this session is reading", wall_now)
+        if self.deployment is Deployment.CAGE_SIDE:
+            raise Exceeded(
+                f"this session declares subject {self.bounds.subject!r} is at home, "
+                f"so there is no out-of-cage clock to read against the wall"
+            )
+        if self.left_cage_at is None or self.left_cage_wall_at is None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} is not recorded as having left its "
+                f"cage, so the wall clock has no departure to be read through"
+            )
+        mapped = self.left_cage_at + (wall_now - self.left_cage_wall_at)
+        _finite("the session instant the wall clock maps to", mapped)
+        return mapped
+
     def _refuse_unconfirmed(self, sentence: str | None, confirmed: bool) -> None:
         """Turn "a person should see this" into "a person did", or refuse.
 
@@ -661,11 +694,9 @@ class Welfare:
                 f"having left it at {self.left_cage_wall_at}; a negative duration is "
                 f"not a duration, and an interval that runs backwards bounds nothing"
             )
-        # Mapped through the departure, which is the one place the two bases were
-        # read at the same instant -- see this method's docstring. The result is a
-        # third value computed from checked ones, so it is checked (S8 §5.2c).
-        returned_at = self.left_cage_at + (at - self.left_cage_wall_at)
-        _finite("the time the animal went back into its cage", returned_at)
+        # Mapped through the departure by the one method that does it -- see
+        # now_from_wall.
+        returned_at = self.now_from_wall(at)
         if self.released_at is not None and returned_at < self.released_at:
             # **The restraint record is a cross-check, not only a record.** Both
             # marks present, both individually legal, the whole thing inside the
