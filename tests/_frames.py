@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from wl_expcontroller.link import SCHEMA, ParamRow, Telemetry
+from wl_expcontroller.web import View
 
 
 def frame(**overrides) -> Telemetry:
@@ -54,5 +55,19 @@ def frame(**overrides) -> Telemetry:
         wall_at=1_700_000_041.5,
         last_reward_at=1_700_000_000.0,
         recent_outcomes=("correct", "no_fixation", "correct"),
+    )
+    return replace(base, **overrides) if overrides else base
+
+
+def view(**overrides) -> View:
+    """A box viewer, alone, half a second after the frame arrived -- forty-two seconds
+    after `frame()`'s last reward -- with a derived rate of twelve trials a minute."""
+    base = View(
+        frame_age_s=0.5,
+        stale_after_s=30.0,
+        trials_per_min=12.0,
+        on_box=True,
+        lan_viewers=0,
+        rejected=None,
     )
     return replace(base, **overrides) if overrides else base
