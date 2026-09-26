@@ -2197,8 +2197,12 @@ def test_three_answers_that_are_not_a_time_end_the_prompt_and_say_so(tmp_path, m
     )
 
 
-def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkeypatch):
-    """Review Focus 1."""
+def test_an_interrupted_return_prompt_is_recorded_and_exits_130(
+    tmp_path, monkeypatch, capsys
+):
+    """Review Focus 1. **And the last line says the return was not recorded**: the
+    CI mutation gate on the final review's fix round found `cli._interrupted`
+    surviving, since no test read the line an interrupted run ends on."""
 
     def interrupt(_prompt=""):
         raise KeyboardInterrupt
@@ -2213,6 +2217,9 @@ def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkey
         "session opened", "departure", "return not recorded", "session ended",
     ]
     assert _notes(tmp_path)[-2]["reason"] == "interrupted at the terminal"
+    assert capsys.readouterr().err.rstrip().endswith(
+        "run: interrupted -- the return to the cage was not recorded"
+    )
 
 
 def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
@@ -2250,9 +2257,16 @@ def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
     assert _kinds(tmp_path) == [
         "session opened", "departure", "returned", "session ended",
     ]
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
+    out = captured.out
     assert "ended: interrupted at the terminal" in out
     assert out.index("<<the return prompt>>") < out.index("ended: interrupted")
+    # The last line says the return *was* recorded -- the other half of
+    # `cli._interrupted`, which the CI mutation gate found untested.
+    assert captured.err.rstrip().endswith(
+        "run: interrupted -- the session stopped at the terminal, and the return "
+        "to the cage is recorded"
+    )
 
 
 # --- final review M1, M2: after the departure mark and before the loop ---------
@@ -2299,7 +2313,11 @@ def test_ctrl_c_after_the_departure_mark_does_not_say_it_was_not_recorded(
     exit_code = _main_uninterrupted(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
 
     assert exit_code == 130
-    assert "the departure was not recorded" not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "the departure was not recorded" not in err
+    assert err.rstrip().endswith(
+        "run: interrupted -- the return to the cage was not recorded"
+    )
     assert _kinds(tmp_path) == [
         "session opened", "departure", "return not recorded", "session ended",
     ]
