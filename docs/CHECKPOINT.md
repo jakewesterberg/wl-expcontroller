@@ -318,6 +318,56 @@ figure was one low. In order:
 
 ---
 
+## What moved on 2026-09-26, afternoon
+
+**Resume here:**
+- **P4d-2a:** read `.superpowers/sdd/2026-09-26-p4d2a-return-to-cage/progress.md` in the
+  worktree `.claude/worktrees/p4d2a-return-to-cage`. It is git-ignored, so it exists only
+  on the machine that ran it; `git log` on the branch is the fallback.
+- **b1:** then start P4d-2b's b1 from its plan.
+
+### The console was designed by mockup, and the PI ruled as it went
+
+- **The design:** twelve rounds of a clickable mockup settled what the browser console is.
+  - v12 is `docs/superpowers/mockups/2026-09-26-console-mockup-v12.html`.
+  - The review it was checked against is `docs/superpowers/mockups/2026-09-26-console-review.md`, a Fable-model GUI review with sources for every claim about other systems. The PI accepted its top ten and set aside its welfare questions.
+- **The rulings:** every ruling made along the way is in the P4d-2b spec,
+  `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md` §4.0. Among them:
+  - **The ELN owns out-of-cage:** the wl-works ELN records both ends of the interval, and the console takes no return.
+  - **Its own clock:** expcontroller keeps a separate in-session clock, shown and recorded, bounding nothing.
+  - **Runs:** they follow the day's plan, and an unplanned run is explicit and warned.
+  - **The task library:** it is pulled from GitHub (wl-mllib, to be renamed) before a session's first run.
+  - **At the end:** ending a session packages the code it used for wl-nas.
+- **The build order:** P4d-2b is built in six slices, b1 → b6.
+  - **b1 is specified:** its spec is §4 (`d0375b3`), and its plan is `docs/superpowers/plans/2026-09-26-p4d2b-b1-read-only-console.md` (`9cfb94f`). The plan was verified in a scratch copy: 937 tests passed, and every changed function's mutant was caught.
+  - **b1 waits on P4d-2a:** it builds only after P4d-2a merges.
+  - **b1 is welfare-critical:** its Task 2 (`welfare.deliver` records the last reward's instant) needs the PI's review before merge.
+- **ADR-0004 is amended** (PI): unmodified OFL-1.1 fonts may ship as served assets, each
+  family's `OFL.txt` beside its files. The code stays Apache-2.0. The licenses of IBM Plex
+  and Newsreader were verified at their primary sources.
+
+### P4d-2a was re-cut by the ELN ruling, and is on its last task
+
+- **The amendment:** spec `2026-09-26-P4d2a-return-to-cage-design.md` §10 moves every welfare duration onto the wall clock.
+  - The session reads a monotonic clock anchored once to the wall, so a host clock step cannot shrink out-of-cage time.
+  - The return is taken at `wlx run`'s terminal only, as the ELN's stand-in; the link command and `--await-return-for` are gone.
+  - The in-session clock is added.
+  - §7 is the seven-item list the PI approves.
+- **What forced it:** the frame clock outruns the wall in the simulator, so the default `rig-fixed` path could not record its return.
+- **Where it stands:** Tasks 1–9 are built and reviewed on branch `p4d2a-return-to-cage`. That is 739 tests; not on main until it merges.
+- **What is next:** Task 10:
+  - rebase onto main, resolving the P4d-2b spec to main's version (ledger Ruling 9);
+  - the mutation gate, read line by line;
+  - the docs;
+  - push the branch;
+  - hand the PI §7.
+- **It does not merge before his review.**
+
+### CI
+
+The 09-26 nightly (`36230556322`) was clean on tests and the full mutation sweep. The 09-25
+flake did not recur, and the harness now names any failure it sees.
+
 ## What moved on 2026-09-26
 
 ### The 09-25 nightly failed on a test the harness would not name
