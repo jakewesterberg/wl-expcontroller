@@ -1253,3 +1253,81 @@ def test_before_the_loop_a_session_has_no_phase(tmp_path):
 
     assert session.phase == ""
     assert session.stop_kind is None
+
+
+def _welfare_notes(session: Session) -> list[dict]:
+    path = session.directory / "welfare_notes.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line]
+
+
+def _chaired(tmp_path, **kwargs) -> Session:
+    """A rig session with no head-fixation, so a return is refused for nothing but
+    what the test is about."""
+    spec = _spec(tmp_path, trials=3, deployment=Deployment.RIG_CHAIRED, **kwargs)
+    return Session(spec, card=Card(), pump=Pump(), wall_clock=lambda: WALL_NOW)
+
+
+def test_a_departure_is_recorded_whether_or_not_anyone_confirmed_it(tmp_path):
+    """P4d-2a spec §1 item 2: the one number that bounds a session was in the record
+    only when a far mark was confirmed or amended."""
+    session = _session(_spec(tmp_path, trials=3), left_cage_ago=60.0)
+
+    rows = _welfare_notes(session)
+
+    assert [row["kind"] for row in rows] == ["departure"]
+    assert rows[0]["was"] == WALL_NOW - 60.0
+    assert rows[0]["how"] == "terminal"
+
+
+def test_a_return_is_recorded_with_who_and_how(tmp_path):
+    session = _chaired(tmp_path)
+    session.left_cage(at=WALL_NOW - 60.0)
+
+    session.returned_to_cage(at=WALL_NOW, by="jake", how="console")
+
+    rows = _welfare_notes(session)
+    assert [row["kind"] for row in rows] == ["departure", "returned"]
+    assert rows[1]["now"] == WALL_NOW
+    assert rows[1]["by"] == "jake"
+    assert rows[1]["how"] == "console"
+
+
+def test_a_far_return_that_was_confirmed_says_so(tmp_path):
+    session = _chaired(tmp_path, bounds=_bounds(out_of_cage=43_200.0))
+    session.left_cage(at=WALL_NOW - 7_200.0, confirmed=True)
+
+    session.returned_to_cage(at=WALL_NOW - 3_600.0, confirmed=True, by="jake")
+
+    kinds = [row["kind"] for row in _welfare_notes(session)]
+    assert kinds == ["departure", "returned", "return confirmed"]
+
+
+def test_a_refused_return_writes_no_row(tmp_path):
+    session = _chaired(tmp_path)
+    session.left_cage(at=WALL_NOW - 60.0)
+
+    with pytest.raises(Exceeded, match="before|negative"):
+        session.returned_to_cage(at=WALL_NOW - 120.0)
+
+    assert [row["kind"] for row in _welfare_notes(session)] == ["departure"]
+
+
+def test_a_return_nobody_recorded_says_why(tmp_path):
+    session = _chaired(tmp_path)
+    session.left_cage(at=WALL_NOW - 60.0)
+
+    session.return_not_recorded("no terminal and no console attached")
+
+    rows = _welfare_notes(session)
+    assert rows[-1]["kind"] == "return not recorded"
+    assert rows[-1]["reason"] == "no terminal and no console attached"
+
+
+def test_the_session_says_when_a_return_needs_a_person(tmp_path):
+    session = _chaired(tmp_path, bounds=_bounds(out_of_cage=43_200.0))
+    session.left_cage(at=WALL_NOW - 7_200.0, confirmed=True)
+
+    assert session.return_needs_confirmation(WALL_NOW - 60.0) is None
+    assert "Confirm it" in session.return_needs_confirmation(WALL_NOW - 3_600.0)

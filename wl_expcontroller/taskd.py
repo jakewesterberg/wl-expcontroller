@@ -47,7 +47,7 @@ from wl_expcontroller.check import check
 from wl_expcontroller.cli import _load_allocation, _load_trial
 from wl_expcontroller.codes import Allocation
 from wl_expcontroller.dio import Absent as NoCard
-from wl_expcontroller.record import EXPCONTROLLER_DIRNAME, SessionRecord
+from wl_expcontroller.record import EXPCONTROLLER_DIRNAME, SessionRecord, welfare_note
 from wl_expcontroller.scheduler import Block, Condition, Scheduler
 from wl_expcontroller.simulate import Census, Subject, Tally, prepare
 from wl_expcontroller.run import run_trial
@@ -265,7 +265,29 @@ class Session:
 
     # --- out of cage, and restraint ---------------------------------------
 
-    def left_cage(self, at: float, confirmed: bool = False) -> None:
+    def _note(self, kind: str, at: float, by: str, how: str, reason: str = "") -> None:
+        """One mark row in `welfare_notes.jsonl` (P4d-2a spec §3).
+
+        Written by the mark methods themselves, so every caller -- the terminal, a
+        console over the link, P4d-2b's browser -- leaves the same row and none can
+        reach the mark around it. `was` and `now` are both the mark's instant: nothing
+        was amended, so there is one value to record.
+        """
+        welfare_note(
+            self.directory,
+            kind=kind,
+            subject=self.spec.subject,
+            was=at,
+            now=at,
+            reason=reason,
+            by=by,
+            how=how,
+            recorded_at=self.wall_now(),
+        )
+
+    def left_cage(
+        self, at: float, confirmed: bool = False, by: str = "", how: str = "terminal"
+    ) -> None:
         """The console action that starts the clock bounding this session.
 
         **`at` is a wall-clock instant, in POSIX seconds** (PI, 2026-09-20): a clock
@@ -281,10 +303,14 @@ class Session:
         would add precision to a number that never had it, and our own log and the
         session directory already carry them. The consequence he accepted is that a
         restart re-asks a person for the departure time.
+
+        **It writes the `departure` row itself** (P4d-2a spec §3), once `welfare` has
+        accepted the mark, so a refused departure leaves no row.
         """
         self.welfare.left_cage(
             at, wall_now=self.wall_now(), now=self.now(), confirmed=confirmed
         )
+        self._note("departure", at, by, how)
 
     def departure_needs_confirmation(self, at: float) -> str | None:
         """What a person must be shown before `left_cage(at)` is called, or `None`.
@@ -298,6 +324,16 @@ class Session:
         second place the two clock bases meet.
         """
         return self.welfare.departure_needs_confirmation(at, wall_now=self.wall_now())
+
+    def return_needs_confirmation(self, at: float) -> str | None:
+        """What a person must be shown before `returned_to_cage(at)`, or `None`.
+
+        The passthrough `returned_to_cage`'s docstring said would arrive "when
+        P4d-2's console prompts too": `wlx run`'s return prompt is its caller
+        (P4d-2a). `wall_now()` is this object's seam onto the wall, for the reason
+        `departure_needs_confirmation` gives.
+        """
+        return self.welfare.return_needs_confirmation(at, wall_now=self.wall_now())
 
     def amend_mark(
         self, what: str, original: float, amended: float, reason: str, by: str
@@ -314,7 +350,9 @@ class Session:
             what, original=original, amended=amended, reason=reason, by=by
         )
 
-    def returned_to_cage(self, at: float, confirmed: bool = False) -> None:
+    def returned_to_cage(
+        self, at: float, confirmed: bool = False, by: str = "", how: str = "terminal"
+    ) -> None:
         """The animal is home. **`at` is a wall-clock instant** (PI, 2026-09-20).
 
         **Not called by `run()`**, because it is not true when the loop ends: the
@@ -325,18 +363,25 @@ class Session:
         animal is still recorded as head-fixed, so it cannot be used to freeze the
         clock mid-session -- release the head, or send a `Stop`.
 
-        **There is deliberately no `return_needs_confirmation` passthrough beside
-        `departure_needs_confirmation`.** A far return is refused *by the mark*
-        (`welfare.returned_to_cage` with `confirmed=False`), so the rule is enforced
-        whether or not anything asks first; the departure has a passthrough because
-        `wlx run` actually prompts with it, and this one had none until P4d-2's
-        console prompts too. A mutation sweep found the unwired version surviving on
-        the day it was written, which is `bounds.check_delivery`'s failure exactly --
-        a path that reads as present because it exists. The sentence a console will
-        want is `welfare.return_needs_confirmation`, one call away."""
-        self.welfare.returned_to_cage(
-            at, wall_now=self.wall_now(), confirmed=confirmed
-        )
+        **Under `_mark_lock`** (P4d-2a): the terminal and a console can both offer the
+        return, and `welfare`'s check-then-set must not interleave. The first accepted
+        mark wins; the second is refused by `welfare`'s own sentence.
+        """
+        with self._mark_lock:
+            wall_now = self.wall_now()
+            far = self.welfare.return_needs_confirmation(at, wall_now)
+            self.welfare.returned_to_cage(at, wall_now=wall_now, confirmed=confirmed)
+            self._note("returned", at, by, how)
+            if far is not None:
+                self._note("return confirmed", at, by, how)
+
+    def return_not_recorded(self, why: str) -> None:
+        """Say in the record why the interval was left open (P4d-2a spec §3).
+
+        A process killed outright cannot write this, and then the missing `returned`
+        row is the signal; every other way of ending without a return says why.
+        """
+        self._note("return not recorded", self.wall_now(), "", "wlx run", reason=why)
 
     def head_fixed(self, at: float) -> None:
         """The console action S8 §5.2 requires before a `RIG_FIXED` session starts.
