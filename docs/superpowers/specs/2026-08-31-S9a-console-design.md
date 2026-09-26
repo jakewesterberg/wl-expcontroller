@@ -466,5 +466,5 @@ nobody measured, while appearing to work.
 |---|---|
 | 1 | Whether dichoptic trials need a two-panel replica (§2.1) |
 | 2 | Whether the replica renders through the same `DisplayAdapter` as the subject screen, or a second lighter path — the same code is truer, a second one cannot cost the subject a frame |
-| 3 | Task selection: from a directory, from `wl-mllib`, or pushed by wl.works with the session |
+| 3 | Task selection: from a directory, from `wl-exptasks`, or pushed by wl.works with the session |
 | 4 | Whether plots dock inside the console or float, given a second monitor is likely |

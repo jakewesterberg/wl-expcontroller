@@ -110,7 +110,7 @@ ordered on lead time regardless (the Windows side is unambiguously supported and
 it), but commissioning does not proceed on an assumption.
 
 **P12 — Protecting the science, without a bridge.** D1 removed the MonkeyLogic bridge that
-was this risk's mitigation, and `wl-mllib` is empty, so the bridge was never real: switching
+was this risk's mitigation, and `wl-exptasks` is empty, so the bridge was never real: switching
 to it would have meant writing a task library from scratch under pressure. The replacement
 mitigation is staged exposure rather than a fallback system:
 
@@ -137,7 +137,7 @@ experimenter direction (D4), which makes P1 and P8 apply to task code: generated
 syntactically clean, plausibly structured, and confidently wrong in ways that read well.
 The human's role is reviewer, so the mitigation is to make review possible rather than to
 ask for more care: within-trial logic is inspectable data, event codes are allocated in
-`wl-mllib` and refused if unregistered, welfare parameters are unreachable from the task
+`wl-exptasks` and refused if unregistered, welfare parameters are unreachable from the task
 file, every task is drivable in keyboard/mouse demo mode in seconds, and thousands of
 simulated trials assert termination, reachability and outcome coverage before an animal
 sees it. **A task nobody could review from a diagram and a simulation run has failed the

@@ -24,7 +24,7 @@ coupling via the DisplayAdapter seam and decide at release.
 
 **The lean's own escape clause fired.** It said GPL-3 "unless a concrete reuse
 scenario needs permissive licensing", and there is one: **ADR-0007 plans to move
-`tasks/` and the event allocation into `wl-mllib`.** Apache-2.0 code can be taken into
+`tasks/` and the event allocation into `wl-exptasks`.** Apache-2.0 code can be taken into
 a GPL-3 work but not the reverse, so a GPL-3 core would make that move illegal and
 wall this repo off from a stack that is otherwise uniformly Apache-2.0 — `wl-preproc`,
 `wl-sync`, `wl-works`, `wl-orchestrator`, `wl-stack`.

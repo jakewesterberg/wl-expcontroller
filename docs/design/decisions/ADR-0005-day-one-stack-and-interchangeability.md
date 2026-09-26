@@ -8,7 +8,7 @@
 ## Context
 
 ADR-0001 kept MonkeyLogic as a bridge so that "science is never blocked on this project."
-Reading the rest of the lab stack showed the bridge was not real: `wl-mllib` holds no code,
+Reading the rest of the lab stack showed the bridge was not real: `wl-exptasks` holds no code,
 its own manifest states the behavioural stack is unchosen, and no event code is allocated
 anywhere. Falling back to MonkeyLogic would have meant writing a task library from scratch
 under exactly the pressure a fallback exists to relieve.
@@ -26,7 +26,7 @@ it names a controller. The lab opens January 2027 (`wl-preproc/docs/CHECKPOINT.m
 2. **Interchangeability with MonkeyLogic is maintained at the rig-contract and data layer
    only.** The event lines, reward path, analog inputs, photodiode patches, polarity
    conventions and event-code vocabulary are controller-agnostic and owned by `wl-sync` and
-   `wl-mllib`, so either controller can drive the same rig and downstream consumers cannot
+   `wl-exptasks`, so either controller can drive the same rig and downstream consumers cannot
    tell which ran.
 3. **The task PC dual-boots** — a supported Linux for wl-expcontroller, Windows for
    MonkeyLogic and MATLAB — sharing one NI PCIe-6343 and one set of MDR68 cables.
@@ -54,7 +54,7 @@ it names a controller. The lab opens January 2027 (`wl-preproc/docs/CHECKPOINT.m
   insurance. Recorded in `docs/pitfalls.md`.
 - The roadmap's parity gate loses its comparator; M5/M6 gate on operations completeness and
   measured capability instead of on parity with a system that will not be running.
-- The event-code vocabulary becomes a v1 blocker with a cross-repo dependency on `wl-mllib`,
+- The event-code vocabulary becomes a v1 blocker with a cross-repo dependency on `wl-exptasks`,
   since nothing downstream can decode a recording without it.
 - Schedule risk concentrates rather than spreading: there is no second system to fall back
   on, so the measurement gates are the only thing standing between immature software and

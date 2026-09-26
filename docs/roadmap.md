@@ -10,7 +10,7 @@ monocular (D2). Anything not on that path is deferred by default.
 ## M0 — Contracts frozen (research phase exit)
 Architecture reviewed; the S0–S12 spec map agreed; message schemas v0 written as
 code-ready structures; the division of labor with `wl-sync` signed off; **event-code
-vocabulary allocated with `wl-mllib`**; display panel and refresh chosen; **task PC OS
+vocabulary allocated with `wl-exptasks`**; display panel and refresh chosen; **task PC OS
 chosen and `PCIe-6343` + DAQmx bench-verified on it (P10)**; NI cards ordered.
 Gate: PI sign-off on `docs/design/` and the spec map.
 

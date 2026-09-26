@@ -182,7 +182,7 @@ readable in an ordinary IDE with autocomplete and type checking. Tasks are prima
 model-authored under experimenter direction, so the API optimizes for verifiability and
 review rather than authoring ergonomics.
 
-Event codes are **allocated in `wl-mllib`, never invented in a task**; validation refuses
+Event codes are **allocated in `wl-exptasks`, never invented in a task**; validation refuses
 an unregistered code at load time.
 
 A session is a sequence of **blocks** (condition set, parameter overrides, length rule,

@@ -30,7 +30,7 @@ and expose live-editable parameters.
 3. **The representation is Python declarations** (dataclass/pydantic) in plain-text,
    diffable files — not a bespoke text DSL, not YAML/JSON, not a GUI builder, not
    database-stored tasks.
-4. **Event codes are allocated in `wl-mllib`, never invented in a task.** Validation
+4. **Event codes are allocated in `wl-exptasks`, never invented in a task.** Validation
    refuses an unregistered code at load time.
 5. **Welfare-critical parameters are unreachable from a task file.** They live in a
    rig/subject bounded config that a task references and cannot set, and that a human can
@@ -67,7 +67,7 @@ and expose live-editable parameters.
 ## Consequences
 
 - One declaration drives four consumers: validation, the generated console UI, the saved
-  session record, and the downstream contracts (`wl-mllib` decoding, the wl-works summary).
+  session record, and the downstream contracts (`wl-exptasks` decoding, the wl-works summary).
   A generated task gets a working parameter panel and working live plots with no UI code.
 - The framework must carry a vocabulary rich enough that escape hatches stay rare;
   gaze-contingent rendering and neural-threshold gating are core vocabulary, not extensions,

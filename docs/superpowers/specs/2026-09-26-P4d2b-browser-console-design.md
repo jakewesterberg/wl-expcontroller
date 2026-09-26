@@ -131,8 +131,8 @@ builds its part; S9a is amended to match when that slice lands.
   Open: which host pushes it to GitHub.
 - **Nothing runs until the task library is pulled**: "a button next to the task, that must be
   pressed before anything can run in a new session that pulls the task library from github."
-  The pulled commit is recorded with every run. The library is wl-mllib, which is not
-  built out yet and will be renamed. When GitHub cannot be reached, the last version pulled
+  The pulled commit is recorded with every run. The library is wl-exptasks (wl-mllib until 2026-09-26),
+  which is not built out yet. When GitHub cannot be reached, the last version pulled
   runs after a warning and a person's confirmation. The code package goes to wl-nas with
   the session, and pushing it to GitHub is proposed as wl-preproc's job (all PI, 2026-09-26).
 - **Load parameters from an earlier session**: "a feature that can pull task parameters for

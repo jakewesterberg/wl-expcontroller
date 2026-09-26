@@ -487,7 +487,7 @@ button.pill { border: 0; cursor: pointer; }
           <div class="selrow"><span class="mono" id="task-name"></span><span class="sub mono" id="task-ver"></span></div>
           <div class="selrow sub" id="start-from"></div>
           <div class="params" id="params"></div>
-          <div class="open-q">a new session cannot start a run until the task library (wl-mllib, to be renamed) is pulled from GitHub; the commit is recorded with every run and goes into the code package. if GitHub cannot be reached, the last version pulled on this box runs after a warning and a person's confirmation (PI, 2026-09-26); a box that has never pulled has nothing to fall back on.</div>
+          <div class="open-q">a new session cannot start a run until the task library (wl-exptasks) is pulled from GitHub; the commit is recorded with every run and goes into the code package. if GitHub cannot be reached, the last version pulled on this box runs after a warning and a person's confirmation (PI, 2026-09-26); a box that has never pulled has nothing to fall back on.</div>
         </section>
         <div class="cols c2">
           <div class="stack">
@@ -1063,7 +1063,7 @@ button.pill { border: 0; cursor: pointer; }
     setBtn("a-stop", w && ph === "running", !w ? ro : "no run is going");
     var open = !!S.session && ph !== "closed" && ph !== "none";
     setBtn("a-pull", w && open && ph !== "running" && !S.pulling, !w ? ro : !S.session ? "open a session first" : ph === "closed" ? "session ended" : ph === "running" ? "not during a run" : "pulling");
-    var pb = el("a-pull"), pullWhy = S.pulling ? "pulling the task library…" : pulled ? "pull the task library again" : "pull the task library (wl-mllib) from GitHub · required before the first run";
+    var pb = el("a-pull"), pullWhy = S.pulling ? "pulling the task library…" : pulled ? "pull the task library again" : "pull the task library (wl-exptasks) from GitHub · required before the first run";
     pb.classList.toggle("busy", !!S.pulling); pb.classList.toggle("primary", !!S.session && open && !pulled && !S.pulling);
     pb.setAttribute("aria-label", pullWhy); if (!pb.disabled) pb.title = pullWhy;
     var tc = el("task-check");
@@ -1507,7 +1507,7 @@ button.pill { border: 0; cursor: pointer; }
       }
       var prev = S.session.pulled;
       S.session.pulled = { commit: "7e1c0d2", at: S.clock };
-      log("tasks", "run", prev && prev.commit === "7e1c0d2" && !prev.stale ? "already up to date · 7e1c0d2 · " + actor() : "pulled wl-mllib from GitHub · 7e1c0d2 · " + Object.keys(TASKS).length + " tasks · check 0 blocking · " + actor());
+      log("tasks", "run", prev && prev.commit === "7e1c0d2" && !prev.stale ? "already up to date · 7e1c0d2 · " + actor() : "pulled wl-exptasks from GitHub · 7e1c0d2 · " + Object.keys(TASKS).length + " tasks · check 0 blocking · " + actor());
       toast("task library 7e1c0d2"); keys = {}; draw();
     }, 1200);
   }

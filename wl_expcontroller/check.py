@@ -199,7 +199,7 @@ def _unallocated_codes(trial: Trial, allocation: Allocation) -> list[Finding]:
         Finding(
             "unallocated-code",
             f"state {name!r} emits code {action.code}, which is not in the "
-            f"allocation; codes are allocated in wl-mllib, never invented in a task",
+            f"allocation; codes are allocated in wl-exptasks, never invented in a task",
         )
         for name, action in actions_of(trial)
         if isinstance(action, Mark) and action.code not in allocation

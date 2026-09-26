@@ -1,8 +1,8 @@
 """The reference event-code allocation.
 
-**This is `wl-mllib`'s to own** (ADR-0007). It lives here until that repository has
+**This is `wl-exptasks`' to own** (ADR-0007). It lives here until that repository has
 one, and it is confined to **4096-32767** -- the task-specific range whose ownership
-is not in dispute. `TaskEvent` 256-4095 is not used, because moving it to `wl-mllib`
+is not in dispute. `TaskEvent` 256-4095 is not used, because moving it to `wl-exptasks`
 still needs `wl-preproc`'s agreement and allocating there would mean rework if they
 decline.
 

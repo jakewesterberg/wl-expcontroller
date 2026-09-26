@@ -98,7 +98,7 @@ figure was one low. In order:
 - `dio.py` — the breakout's pin map: 16 event bits on **P0.8–P0.23**, strobe, reward,
   stim trigger, four inputs. `Absent`, `Simulated` and the real card as peers.
 - `tasks/` — three reference tasks (`fixation_detection`, `adaptive_detection`,
-  `visual_search`) and the reference allocation. `wl-mllib`'s to
+  `visual_search`) and the reference allocation. `wl-exptasks`' to
   own eventually; here until it exists.
 - `encode.py` — the 16-bit strobed word stream. Round-trips through `wl-preproc`'s
   own `decode_stream` and matches their `encode_payload` exactly across the uint32
@@ -333,7 +333,7 @@ the plan against the merged code.
   - **The ELN owns out-of-cage:** the wl-works ELN records both ends of the interval, and the console takes no return.
   - **Its own clock:** expcontroller keeps a separate in-session clock, shown and recorded, bounding nothing.
   - **Runs:** they follow the day's plan, and an unplanned run is explicit and warned.
-  - **The task library:** it is pulled from GitHub (wl-mllib, to be renamed) before a session's first run.
+  - **The task library:** it is pulled from GitHub (wl-exptasks) before a session's first run.
   - **At the end:** ending a session packages the code it used for wl-nas.
 - **The build order:** P4d-2b is built in six slices, b1 → b6.
   - **b1 is specified:** its spec is §4 (`d0375b3`), and its plan is `docs/superpowers/plans/2026-09-26-p4d2b-b1-read-only-console.md` (`9cfb94f`). The plan was verified in a scratch copy: 937 tests passed, and every changed function's mutant was caught.
@@ -1865,7 +1865,7 @@ convincing, and reports a colour nobody measured.
 
 Things that cost something to learn here. Each is a convention in `CLAUDE.md` now.
 
-1. **Read the neighbouring repository's source, not its manifest.** `wl-mllib`'s
+1. **Read the neighbouring repository's source, not its manifest.** `wl-exptasks`'
    manifest said the event vocabulary was unallocated; `wl-preproc` had a frozen
    codec. This project came within one spec of building a second one. Twice more
    since: `expcontroller/` was already reserved for us by name, and the eye

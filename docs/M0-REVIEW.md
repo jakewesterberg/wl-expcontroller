@@ -85,7 +85,7 @@ Six things that changed the design, all found by reading neighbouring repositori
 Listed so they are visible rather than buried. None need an answer; all are reversible.
 
 **Task model:** transitions fire in declared order, with an explicit priority field available for
-the ambiguous case · `Outcome` is `wl-mllib`'s enum directly, not a task-local alias · the review
+the ambiguous case · `Outcome` is `wl-exptasks`' enum directly, not a task-local alias · the review
 artifact has one renderer, callable from the console and from a CLI.
 
 **Platform:** Ubuntu 24.04 LTS on the task PC · PyQtGraph for live plots · `rhxfeatd` and

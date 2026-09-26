@@ -30,7 +30,7 @@ the rest of this document works out their consequences.
 | The breakout PCB is a designed 2U hub between task PC, sync box, recording NI card, and Intan RHS | `wl-sync/hardware/README.md` | The rig I/O contract is fixed in copper; §3 restates it. |
 | Task PC card is **NI PCIe-6343**; recording card is **PXIe-6353**; 12–13 week lead time | `wl-sync` breakout spec §9.3 | Procurement is on the critical path (§13). |
 | Reward reaches `wl-juicer` through the board's OR gate, not from us directly | `wl-juicer/README.md`; breakout spec §3.1 | We command; the board delivers; the sync box records. §7.4. |
-| `wl-mllib` holds no code; the behavioral stack is explicitly unchosen; no event code is allocated | `wl-mllib/wl.yaml` | The MonkeyLogic "bridge" of ADR-0001 does not exist. The event vocabulary is ours to author jointly. |
+| `wl-exptasks` holds no code; the behavioral stack is explicitly unchosen; no event code is allocated | `wl-exptasks/wl.yaml` | The MonkeyLogic "bridge" of ADR-0001 does not exist. The event vocabulary is ours to author jointly. |
 | The lab opens **January 2027**; no rig, no data, no lab before then | `wl-preproc/docs/CHECKPOINT.md` | Everything is built before it can be validated on real hardware. |
 | `wl-works` hosts the ELN; `wl-elab` is `lifecycle: deprecated` | `wl-orchestrator/registry/packages/*.yaml` | ELN integration targets `wl-works`. §12.3. |
 | wl-works binds only to WireGuard; lab machines have no route in, and `wl-preproc` enforces "never initiates a connection" with an AST guardrail | `wl-preproc/docs/pending-wl-works-amendments.md` §11.2 | A rig cannot push to the ELN. Integration is pull-based. §12.3. |
@@ -55,7 +55,7 @@ the rest of this document works out their consequences.
 |---|---|---|
 | D1 | **wl-expcontroller is the day-one stack.** MonkeyLogic is never deployed as the working controller. | ADR-0001's bridge strategy; pitfalls P12's mitigation |
 | D2 | **v1 = the training ladder plus a first recording task**, 2D and monocular. Stereo and the neural closed loop follow, and must not be architecturally precluded. | roadmap M1–M6 sequencing |
-| D3 | **Interchangeability with MonkeyLogic is at the rig-contract and data layer only** — controller-agnostic event lines, reward path, analog inputs, photodiode patches and event vocabulary, owned by `wl-sync` and `wl-mllib`. No shared task language. A dual-boot task PC buys the swap. | ADR-0001 |
+| D3 | **Interchangeability with MonkeyLogic is at the rig-contract and data layer only** — controller-agnostic event lines, reward path, analog inputs, photodiode patches and event vocabulary, owned by `wl-sync` and `wl-exptasks`. No shared task language. A dual-boot task PC buys the swap. | ADR-0001 |
 | D4 | **Tasks are primarily model-authored** under experimenter direction, so the task API optimizes for verifiability, simulatability and review-by-diagram rather than for authoring ergonomics. | — |
 | D5 | **Within-trial logic is declarative data; between-trial logic is ordinary Python.** Representation is Python declarations (dataclass/pydantic), plain-text and IDE-readable. | — |
 | D6 | **Split-screen mirror stereoscope on one panel.** Two viewports on one framebuffer, cyclopean coordinates, disparity as a stimulus property; the monocular v1 task is the zero-disparity case of the stereo path. | architecture.md's display section |
@@ -231,15 +231,15 @@ boundaries *and* a persistent display layer the per-trial scene does not reset. 
 **Corrected 2026-08-31 by S2.** This section originally said nothing was allocated
 anywhere. In fact `wl-preproc/wl_preproc/contracts/events.py` is a **frozen interface**
 carrying the range allocation, the markers, a task-type namespace, four escapes with payload
-framing, an XOR checksum and offset-binary degree encoding. `wl-mllib`'s manifest claimed the
+framing, an XOR checksum and offset-binary degree encoding. `wl-exptasks`' manifest claimed the
 whole vocabulary and was wrong; ADR-0007 splits ownership on **decodability versus meaning**
 — framing, escapes and `Marker` 1–255 are `wl-preproc`'s; `TaskEvent` 256–4095,
-`TaskTypeCode` 100+ and 4096–32767 are `wl-mllib`'s. See
+`TaskTypeCode` 100+ and 4096–32767 are `wl-exptasks`'. See
 `docs/superpowers/specs/2026-08-31-S2-event-vocabulary-design.md`.
 
 Requirements:
 
-1. Codes are **allocated, never invented in a task** — in `wl-mllib` for the ranges it
+1. Codes are **allocated, never invented in a task** — in `wl-exptasks` for the ranges it
    owns, in `wl-preproc` for the frozen protocol layer. Validation refuses an unregistered
    code **at load time**, not at run time. This is the single cheapest guardrail against
    model-authored task files. We write no second decoder: conformance is tested by
@@ -580,7 +580,7 @@ trial — not the engine's own frame-interval accounting.
 ### 11.6 One declaration, four consumers
 
 The trial outcome schema drives the live plots, the saved behavioral tables, the session
-summary wl-works polls, and the event decoding `wl-mllib` publishes for `wl-preproc`.
+summary wl-works polls, and the event decoding `wl-exptasks` publishes for `wl-preproc`.
 Declaring it once and deriving all four is the difference between this being cheap and
 this being four subsystems that drift.
 
@@ -593,7 +593,7 @@ this being four subsystems that drift.
 | Repo | Direction | Contract |
 |---|---|---|
 | `wl-sync` | we consume | session identity, barcode codec, log format, event-code routing |
-| `wl-mllib` | we co-author | task event vocabulary; the task library itself |
+| `wl-exptasks` | we co-author | task event vocabulary; the task library itself |
 | `wl-juicer` | we command | reward, through the board's OR gate |
 | `wl-shook` | we consume | chair motion trigger gating progression |
 | `wl-preproc` | we produce for | session directory, DONE markers, behavioral tables |

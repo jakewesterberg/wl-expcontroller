@@ -65,7 +65,7 @@ needs no change — it reads `PAYLOAD_WORD_COUNTS` and checksums generically.
 
 ## The finding
 
-`wl-mllib/wl.yaml` publishes `task-event-vocabulary` and states *"Nothing is allocated yet"*
+`wl-exptasks/wl.yaml` publishes `task-event-vocabulary` and states *"Nothing is allocated yet"*
 and *"wl-preproc reads event handling from here rather than defining it."* Neither is true:
 `contracts/events.py` defines the range allocation, the markers, the task-type namespace, the
 escapes and the framing, and freezes them.
@@ -77,15 +77,15 @@ one publisher — and it does. It has no way to know the description is false.
 
 Ownership splits on **decodability versus meaning**: if getting it wrong makes the recording
 *undecodable* it is wl-preproc's; if it makes the recording *uninterpretable* it is
-wl-mllib's.
+wl-exptasks'.
 
 | Range / artifact | Owner |
 |---|---|
 | Framing, escapes, checksum, payload word counts, DVA encoding | **wl-preproc** |
 | `Marker` 1–255 | **wl-preproc** |
-| `TaskEvent` 256–4095 | **wl-mllib** |
-| `TaskTypeCode` 100+ | **wl-mllib** |
-| Task-specific / condition 4096–32767 | **wl-mllib** |
+| `TaskEvent` 256–4095 | **wl-exptasks** |
+| `TaskTypeCode` 100+ | **wl-exptasks** |
+| Task-specific / condition 4096–32767 | **wl-exptasks** |
 
 ## The ask
 
@@ -95,7 +95,7 @@ moving is not permission to renumber, and this file's own warning about renumber
 relabelling prior recordings applies with full force.
 
 What is asked is that the split be **stated** in `TaskEvent`'s docstring, so the next person
-to add a code knows which repository allocates it. `wl-mllib`'s manifest is being corrected on
+to add a code knows which repository allocates it. `wl-exptasks`' manifest is being corrected on
 our side in the same change.
 
 If you would rather keep `TaskEvent` 256–4095, say so and we will allocate ours in

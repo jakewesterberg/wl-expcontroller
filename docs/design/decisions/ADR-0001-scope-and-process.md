@@ -18,7 +18,7 @@ is the main risk (docs/pitfalls.md).
 3. ~~Bridge strategy: rigs may run MonkeyLogic + OpenIrisDPI analog out during
    development; tasks migrate on demonstrated parity (roadmap M5).~~ **Superseded by
    ADR-0005.** The bridge assumed a MonkeyLogic task library that does not exist
-   (`wl-mllib` holds no code and its own manifest states the behavioural stack is
+   (`wl-exptasks` holds no code and its own manifest states the behavioural stack is
    unchosen), so switching to it would have meant writing that library from scratch
    under pressure. wl-expcontroller is the day-one stack; see ADR-0005 for the
    replacement commitment and pitfalls P12 for the replacement mitigation.

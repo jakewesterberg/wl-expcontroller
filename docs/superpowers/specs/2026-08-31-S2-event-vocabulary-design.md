@@ -3,14 +3,14 @@
 - **Status:** proposed, for PI review
 - **Date:** 2026-08-31
 - **Parent:** `2026-08-31-controller-architecture-design.md` §6
-- **Amends:** the parent's claim that codes are "allocated in `wl-mllib`"; and
-  `wl-mllib/wl.yaml`, which states nothing is allocated
+- **Amends:** the parent's claim that codes are "allocated in `wl-exptasks`"; and
+  `wl-exptasks/wl.yaml`, which states nothing is allocated
 
 ---
 
 ## 1. The premise this spec was written under was wrong
 
-The spec map scoped S2 as designing an allocation because `wl-mllib/wl.yaml` says
+The spec map scoped S2 as designing an allocation because `wl-exptasks/wl.yaml` says
 *"Nothing is allocated yet"* and *"wl-preproc reads event handling from here rather than
 defining it."*
 
@@ -32,26 +32,26 @@ settling an ownership contradiction between two repositories.**
 ### 2.1 The rule: decodability versus meaning
 
 `wl-preproc` owns everything required to **turn a strobed word stream into structured
-events**. `wl-mllib` owns everything required to **know what those events meant to an
+events**. `wl-exptasks` owns everything required to **know what those events meant to an
 experiment**. Stated as a test: if getting it wrong makes the recording *undecodable*, it is
-`wl-preproc`'s; if it makes the recording *uninterpretable*, it is `wl-mllib`'s.
+`wl-preproc`'s; if it makes the recording *uninterpretable*, it is `wl-exptasks`'.
 
 | Range / artifact | Owner | Contains |
 |---|---|---|
 | Framing, escapes, checksum, payload word counts, DVA encoding | **wl-preproc** | How words become events at all |
 | `Marker` 1–255 | **wl-preproc** | Session, block and trial structure — the skeleton a decoder walks |
-| `TaskEvent` 256–4095 | **wl-mllib** | Lab-wide task-event semantics |
-| `TaskTypeCode` 100+ | **wl-mllib** | Lab-defined task identities |
-| Task-specific / condition 4096–32767 | **wl-mllib** | Per-task and per-condition encoding |
+| `TaskEvent` 256–4095 | **wl-exptasks** | Lab-wide task-event semantics |
+| `TaskTypeCode` 100+ | **wl-exptasks** | Lab-defined task identities |
+| Task-specific / condition 4096–32767 | **wl-exptasks** | Per-task and per-condition encoding |
 
 ### 2.2 The one range this sharpens
 
-Your ruling assigned `wl-preproc` "the markers, the escapes and the framing" and `wl-mllib`
+Your ruling assigned `wl-preproc` "the markers, the escapes and the framing" and `wl-exptasks`
 "TaskTypeCode 100+ and the 4096–32767 range," which leaves **`TaskEvent` 256–4095**
 unassigned — and `wl-preproc` has already allocated 256–259 into it
 (`FIXATION_ACQUIRED`, `FIXATION_END`, `CALIBRATION_START`, `CALIBRATION_END`).
 
-This spec proposes **256–4095 goes to `wl-mllib`**, because those codes are about what an
+This spec proposes **256–4095 goes to `wl-exptasks`**, because those codes are about what an
 experiment did, not about whether the stream parses — a decoder that has never heard of
 `FIXATION_ACQUIRED` still decodes it as a `SimpleEvent` and loses nothing structural. The
 four existing values **transfer as already-allocated and stay frozen at their current
@@ -62,10 +62,10 @@ not simply describing what already exists.
 
 ### 2.3 What has to change elsewhere
 
-- **`wl-mllib/wl.yaml`** stops claiming the whole vocabulary. Its `publishes` entry narrows
+- **`wl-exptasks/wl.yaml`** stops claiming the whole vocabulary. Its `publishes` entry narrows
   to the three ranges above, and it gains a `consumes` entry for `wl-preproc`'s codec.
 - **`wl-preproc`** is asked to record the split on its side, and two other things (§5).
-- **The parent design spec §6** said codes are "allocated in `wl-mllib`." True of the ranges
+- **The parent design spec §6** said codes are "allocated in `wl-exptasks`." True of the ranges
   a task uses, false of the protocol. Corrected there.
 
 ---
@@ -122,10 +122,10 @@ not.
 
 ## 5. What wl-expcontroller needs
 
-### 5.1 In wl-mllib's ranges (ours to allocate, no amendment required)
+### 5.1 In wl-exptasks' ranges (ours to allocate, no amendment required)
 
 Proposed `TaskEvent` additions, grouped. Numbers are deliberately left unassigned here — they
-are allocated once, in `wl-mllib`, in one commit, so no two sessions can pick differently.
+are allocated once, in `wl-exptasks`, in one commit, so no two sessions can pick differently.
 
 | Group | Events | Driven by |
 |---|---|---|
@@ -160,7 +160,7 @@ Drafted at `docs/pending-wl-preproc-amendments.md`.
 
 ## 6. Conformance requirements on wl-expcontroller
 
-1. **Codes are allocated, never invented.** A task naming a code absent from the `wl-mllib`
+1. **Codes are allocated, never invented.** A task naming a code absent from the `wl-exptasks`
    allocation is **refused at load time**, not at run time. This is the cheapest guardrail in
    the design against model-authored task files (P15).
 2. **Golden-file tests against `wl-preproc`'s own decoder.** Our emitted streams are decoded
@@ -199,7 +199,7 @@ on the Intan timebase requires the sync box or NI record plus the barcode. Conse
 
 | # | Item | Blocks |
 |---|---|---|
-| 1 | Confirm `TaskEvent` 256–4095 moves to `wl-mllib` (§2.2) | any allocation |
+| 1 | Confirm `TaskEvent` 256–4095 moves to `wl-exptasks` (§2.2) | any allocation |
 | 2 | `wl-preproc` accepting the `PARAM_CHANGE` escape | P16's guarantee |
 | 3 | `wl-preproc` recording the ownership split on its side | the contradiction persisting |
 | 4 | Whether their DVA comment's MonkeyLogic premise needs restating under ADR-0005 | nothing; it is a reasoning correction |

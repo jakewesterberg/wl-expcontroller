@@ -112,7 +112,7 @@ eccentricity — chosen because it is the case most often claimed to need impera
 ### 5.1 Task A, strict
 
 ```python
-from wl_mllib.codes import EV, Outcome          # allocated, never invented
+from wl_exptasks.codes import EV, Outcome          # allocated, never invented
 
 FIX    = FixPoint(at=(0, 0), size=0.3)
 TARGET = Blob(at=P.target_position, size=1.0, contrast=P.contrast)
@@ -295,7 +295,7 @@ goes on the human-review list beside the welfare-critical modules.
 
 The list is the justification for the whole design. All of it is mechanical:
 
-1. Every event code exists in the `wl-mllib` allocation (S2).
+1. Every event code exists in the `wl-exptasks` allocation (S2).
 2. Every state is reachable from the start state.
 3. Every path reaches a terminal outcome.
 4. Every wait has a timeout, or declares `unbounded=True`.
@@ -318,7 +318,7 @@ does what was asked.
 | # | Item | Blocks |
 |---|---|---|
 | 1 | Transition priority: declared order, or explicit priority field | the checker's rule 10 |
-| 2 | Whether `Outcome` is `wl-mllib`'s enum directly or a task-local alias | S2 allocation |
+| 2 | Whether `Outcome` is `wl-exptasks`' enum directly or a task-local alias | S2 allocation |
 | 3 | How persistent (cross-trial) state is declared and versioned. **Raised from open to blocking a described trial outcome, 2026-09-20**: the PI's reason for allowing a zero-volume reward is that *"some trials will have a reward period, but they may not receive a juice reward. they may get an on-screen token reward that eventually becomes a real reward"* — so a token economy is a designed outcome, not a future nicety. §2.3 lists `Token(+1 / -1)` and `SetPersistent(...)`; **`task.py` implements neither, and no cross-trial state exists anywhere in the package** (read from source, 2026-09-20). Missing: a persistent count, a conversion rule to fluid through `welfare.deliver`, and what the recording sees when a token rather than fluid is paid. **Not designed anywhere yet, deliberately** — S8 §5.3 and §8 item 9 carry the statement of it | token tasks, S8 §5.3 |
 | 4 | Whether the review artifact is rendered by the console or a CLI | S9 |
 | 5 | Frame-accurate `Update` semantics for gaze-anchored stimuli | S4 |

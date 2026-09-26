@@ -8,7 +8,7 @@
 
 Two repositories claim the event vocabulary and their claims contradict.
 
-`wl-mllib/wl.yaml` publishes `task-event-vocabulary`, states *"Nothing is allocated yet,"*
+`wl-exptasks/wl.yaml` publishes `task-event-vocabulary`, states *"Nothing is allocated yet,"*
 and says *"wl-preproc reads event handling from here rather than defining it."*
 
 `wl-preproc/wl_preproc/contracts/events.py` is a **frozen interface** (their design spec
@@ -30,21 +30,21 @@ allocated. It cannot proceed while ownership is ambiguous.
 
 Ownership splits on **decodability versus meaning**. If getting it wrong makes the recording
 *undecodable*, it belongs to `wl-preproc`. If it makes the recording *uninterpretable*, it
-belongs to `wl-mllib`.
+belongs to `wl-exptasks`.
 
 | Range / artifact | Owner |
 |---|---|
 | Framing, escapes, checksum, payload word counts, DVA encoding | `wl-preproc` |
 | `Marker` 1–255 — session, block and trial structure | `wl-preproc` |
-| `TaskEvent` 256–4095 — lab-wide task-event semantics | `wl-mllib` |
-| `TaskTypeCode` 100+ — lab-defined task identities | `wl-mllib` |
-| Task-specific / condition 4096–32767 | `wl-mllib` |
+| `TaskEvent` 256–4095 — lab-wide task-event semantics | `wl-exptasks` |
+| `TaskTypeCode` 100+ — lab-defined task identities | `wl-exptasks` |
+| Task-specific / condition 4096–32767 | `wl-exptasks` |
 
 Consequences of the rule, adopted with it:
 
 1. **No value is ever renumbered.** `TaskEvent`'s existing 256–259 transfer as
    already-allocated. Ownership moving is not permission to renumber.
-2. **wl-expcontroller allocates nothing itself.** Codes come from `wl-mllib`; a task naming
+2. **wl-expcontroller allocates nothing itself.** Codes come from `wl-exptasks`; a task naming
    an unregistered code is refused at load time.
 3. **New escapes are amendments**, because they live in the frozen layer. New task events
    are not. This is why the allocation rule in S2 §4 — codes carry identity and timing, the
@@ -55,7 +55,7 @@ Consequences of the rule, adopted with it:
 
 ## Alternatives considered
 
-- **Move the whole vocabulary to `wl-mllib`, as its manifest already claims**, with
+- **Move the whole vocabulary to `wl-exptasks`, as its manifest already claims**, with
   `wl-preproc` re-exporting it under a CI diff the way it already re-exports `wl-sync`'s log
   header. Cleanest ownership story and it honours the declared contract. Rejected: it means
   relocating a frozen interface out of a repository with 980 tests built on it, while that
@@ -70,7 +70,7 @@ Consequences of the rule, adopted with it:
 
 ## Consequences
 
-- `wl-mllib/wl.yaml`'s published artifact narrows to the three ranges it actually owns and
+- `wl-exptasks/wl.yaml`'s published artifact narrows to the three ranges it actually owns and
   gains a `consumes` edge for the codec. Corrected in the same change as this ADR.
 - Three amendments are opened against `wl-preproc`
   (`docs/pending-wl-preproc-amendments.md`): one new escape, the ownership split recorded in
@@ -80,7 +80,7 @@ Consequences of the rule, adopted with it:
 - **S2's open item 1 remains open until `wl-preproc` agrees**, because `TaskEvent` 256–4095
   is the one range this ADR moves rather than merely describes. If they decline, our
   allocations go to 4096–32767 and nothing else in this decision changes.
-- The parent architecture spec §6's claim that codes are "allocated in `wl-mllib`" is true of
+- The parent architecture spec §6's claim that codes are "allocated in `wl-exptasks`" is true of
   the ranges a task uses and false of the protocol. Corrected there.
 
 ## Accepted 2026-08-31, with one clause pending
@@ -89,7 +89,7 @@ The **rule** — decodability versus meaning — is ours and is accepted. So is 
 that follows from it: no renumbering, allocation never happening here, new escapes
 being amendments while new task events are not, and no second decoder.
 
-**One clause is not ours to accept alone.** Moving `TaskEvent` 256–4095 to `wl-mllib`
+**One clause is not ours to accept alone.** Moving `TaskEvent` 256–4095 to `wl-exptasks`
 needs `wl-preproc`'s agreement, since they allocated 256–259 into it. Until they
 answer, this project allocates in **4096–32767**, whose ownership is undisputed, so a
 decline costs no rework. The code already does this: `wl_expcontroller/codes.py`

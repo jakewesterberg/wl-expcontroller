@@ -39,7 +39,7 @@ These conventions bind every session (human- or AI-driven) working in this repo.
   date, or mark it UNVERIFIED.
 - **Read the neighbouring repository's source before specifying against it.** Not its
   README, not its manifest. This session found the event codec already frozen in
-  `wl-preproc` after `wl-mllib`'s manifest said nothing was allocated, found
+  `wl-preproc` after `wl-exptasks`' manifest said nothing was allocated, found
   `expcontroller/` already reserved for us by name, and found the eye-calibration
   model already fixed — each time while about to design a second one. `wlo validate`
   cannot catch this class of error: it checks that a published name resolves to one

@@ -1,6 +1,6 @@
 # Reference tasks
 
-**The task library belongs to `wl-mllib`** (ADR-0007). These live here until it has
+**The task library belongs to `wl-exptasks`** (ADR-0007). These live here until it has
 one, for the same reason `codes.py` carries a provisional allocation: something has
 to exercise the checker, the runner and the review artifact before the repository
 that will own them is written.
