@@ -1331,3 +1331,33 @@ def test_the_session_says_when_a_return_needs_a_person(tmp_path):
 
     assert session.return_needs_confirmation(WALL_NOW - 60.0) is None
     assert "Confirm it" in session.return_needs_confirmation(WALL_NOW - 3_600.0)
+
+
+def test_a_refused_departure_writes_no_row(tmp_path):
+    """The symmetric case to `test_a_refused_return_writes_no_row`: a mark `welfare`
+    refuses is not in the record either, because `_note` is only ever called after
+    `welfare` has accepted."""
+    session = _chaired(tmp_path)
+
+    with pytest.raises(Exceeded, match="future"):
+        session.left_cage(at=WALL_NOW + 60.0)
+
+    assert _welfare_notes(session) == []
+
+
+def test_a_failed_row_write_is_never_swallowed(tmp_path, monkeypatch):
+    """P4d-2a spec §3: `_note` writes only after `welfare` has already taken the
+    mark, so a failed write cannot be retried -- a second attempt would call
+    `welfare.returned_to_cage` again and be refused by its own sentence, with the
+    file still holding no row. This pins that the failure surfaces rather than
+    being caught and turned into an `Exceeded` (or anything else) in this module."""
+    session = _chaired(tmp_path)
+    session.left_cage(at=WALL_NOW - 60.0)
+
+    def _disk_full(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("wl_expcontroller.taskd.welfare_note", _disk_full)
+
+    with pytest.raises(OSError, match="disk full"):
+        session.returned_to_cage(at=WALL_NOW)
