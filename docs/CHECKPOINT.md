@@ -1,6 +1,6 @@
 # Where this build actually is
 
-**Last updated 2026-09-20**, at the commit this file was committed in. Check
+**Last updated 2026-09-26**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
@@ -68,8 +68,8 @@ figure was one low. In order:
 
 | | |
 |---|---|
-| Tests | **674, green — with `.[dev,contract,console]` installed** (610 before the PI's round-3 rulings of 2026-09-20 and the review of them; 560 before round 2) (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below. **Swept a fourth time after the PI's round-2 rulings, 2026-09-20**, over `welfare`, `bounds`, `taskd`, `cli` and `link` at a 602 baseline — **72 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE** (`welfare.emit`, a `Protocol` stub whose body is `...`), every baseline and restore at 602, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **And a fifth time after the review of those rulings**, over the three modules that changed (`welfare`, `bounds`, `cli`) at a 609 baseline — **38 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE**, plus `taskd.head_released` at 610 once the console-path test landed (**3 failed**, up from 2). That run is also where `_hours_minutes` went from **1 failure to 4**: the review found its only test asserted `0 hours 0 minutes`, which is the one value a function that had stopped working would also produce. **Swept a sixth time after the PI's round-3 rulings, 2026-09-20**, over `welfare`, `bounds`, `cli`, `record` and `taskd` at a 664 baseline — **77 target names, 0 survivors on the final pass, 0 timeouts, 1 SKIPPED** (`welfare.emit`, the documented `Protocol` stub), every line a real `N failed`. **That run found something**: `taskd.Session.return_needs_confirmation` **survived**, a passthrough nothing called, written for symmetry with the departure's. Deleted rather than tested — the rule is enforced by the mark itself — and `welfare._refuse_unconfirmed`'s 2 failures were checked by name to be two *behavioural* tests rather than the §5.2d bookkeeping one. **Re-swept after the review of those rulings at a 674 baseline**, all five modules — **78 target names, 0 survivors, 0 timeouts, 1 SKIPPED**. Three of the five were first read through a `tail` that truncated them, which hides a survivor by construction, and were re-run with complete output rather than trusted |
-| CI | **`main` is at `08adfa2` since 2026-09-20**, the fast-forward of `p4d1-console-link`. Its three pytest legs are green. Its `mutation` job escalated to the **full** sweep, and the reason is worth knowing before reading a push's gate output: a push's gate base is the *previous* `main`, so the whole 55-commit range was in its changed set, `tasks/` included, and it re-ran the sweep that had already passed on `31a3283`. **That re-run had not finished when this was written** (run `35515487242`, ~2h) — check it before treating `main` as verified past the test legs. **And do not read `main`'s tip run as that check**: `f3ccfe5` is docs-only, so its gate selected **0 modules** (`mutation gate: 0 module(s)`, `selected: (none)`) and passed in three minutes. It is green and it swept nothing, which is the whole reason this row says to read the output. Before that: **green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which **now contains both P4b and P4d-1**, so from 2026-09-21 its greens describe them — until the merge they did not, and this sentence sat here saying so for six days. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
+| Tests | **682, green — with `.[dev,contract,console]` installed** (674 before `tools/mutate.py` learned to name what failed, 2026-09-26; 610 before the PI's round-3 rulings of 2026-09-20 and the review of them; 560 before round 2) (`p4d1-console-link`; `p4b-session-management` alone is 383). **The extras qualifier is not decoration.** P4d-1 added the `console` extra (pyzmq, msgpack) and, until 2026-09-19, neither CI job installed it: measured with both imports blocked, **9 tests fail** — `tests/test_link.py` ×7 and `tests/test_cli.py::test_wlx_run_with_link_{lets_a_real_console_attach,closes_it_when_the_session_ends}` — so the count was a statement about a developer machine and not about CI. `.github/workflows/ci.yml` now installs `console` on both jobs. `bounds` and `welfare` are mutation-clean under the *fixed* harness; see trap 7's sixth and seventh entries for why that qualifier keeps needing to be re-earned. `link.py`/`taskd.py`/`cli.py` (P4d-1) re-swept after the whole-branch review's fixes, 2026-09-19 — **38 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at 438 passed, read from the harness's output and not its exit code. **Re-swept again after the PI's decisions and the review round that followed, 2026-09-19**, over `bounds`, `taskd`, `link`, `cli` and `record` — **52 target names, 0 survivors, 0 skips, 0 NOT MUTABLE**, every baseline and restore at the then-current count, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **Swept a third time after the welfare-clock rulings**, over `welfare`, `bounds`, `taskd` and `scheduler` at a 467 baseline — **54 target names, 0 survivors, 0 skips, 0 NOT MUTABLE, 0 timeouts**. That run *found* two things rather than confirming them (an uncalled `Session.returned_to_cage`, and two `timed out` lines that were real gaps); both are fixed and both are written up below. **Swept a fourth time after the PI's round-2 rulings, 2026-09-20**, over `welfare`, `bounds`, `taskd`, `cli` and `link` at a 602 baseline — **72 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE** (`welfare.emit`, a `Protocol` stub whose body is `...`), every baseline and restore at 602, and every line a real `N failed` rather than an `N errors in 0.Ns` (trap 7). **And a fifth time after the review of those rulings**, over the three modules that changed (`welfare`, `bounds`, `cli`) at a 609 baseline — **38 target names, 0 survivors, 0 skips, 0 timeouts, 1 NOT MUTABLE**, plus `taskd.head_released` at 610 once the console-path test landed (**3 failed**, up from 2). That run is also where `_hours_minutes` went from **1 failure to 4**: the review found its only test asserted `0 hours 0 minutes`, which is the one value a function that had stopped working would also produce. **Swept a sixth time after the PI's round-3 rulings, 2026-09-20**, over `welfare`, `bounds`, `cli`, `record` and `taskd` at a 664 baseline — **77 target names, 0 survivors on the final pass, 0 timeouts, 1 SKIPPED** (`welfare.emit`, the documented `Protocol` stub), every line a real `N failed`. **That run found something**: `taskd.Session.return_needs_confirmation` **survived**, a passthrough nothing called, written for symmetry with the departure's. Deleted rather than tested — the rule is enforced by the mark itself — and `welfare._refuse_unconfirmed`'s 2 failures were checked by name to be two *behavioural* tests rather than the §5.2d bookkeeping one. **Re-swept after the review of those rulings at a 674 baseline**, all five modules — **78 target names, 0 survivors, 0 timeouts, 1 SKIPPED**. Three of the five were first read through a `tail` that truncated them, which hides a survivor by construction, and were re-run with complete output rather than trusted |
+| CI | **The nightly of 2026-09-25 failed with nothing changed** (run `36115579357`) — on a flaky test, not a survivor, and the harness could not say which; see "What moved on 2026-09-26". The four nightlies before it (09-21 to 09-24) are green. **`main` took the fast-forward of `p4d1-console-link` on 2026-09-20 (`08adfa2`).** Its three pytest legs are green. Its `mutation` job escalated to the **full** sweep, and the reason is worth knowing before reading a push's gate output: a push's gate base is the *previous* `main`, so the whole 55-commit range was in its changed set, `tasks/` included, and it re-ran the sweep that had already passed on `31a3283`. **It finished green (run `35515487242`, 1h55m), read rather than trusted on 2026-09-26**: 22 modules, 264 caught, **0 survivors, 0 skips**, all 44 baselines and restores at `674 passed` — and the five catches that are not a real `N failed` are the four `geometry` imports and `simulate.signal`'s timeout written up under 2026-09-20. **And do not read `main`'s tip run as that check**: `f3ccfe5` is docs-only, so its gate selected **0 modules** (`mutation gate: 0 module(s)`, `selected: (none)`) and passed in three minutes. It is green and it swept nothing, which is the whole reason this row says to read the output. Before that: **green on `main` through `300d7d1`**, verified 2026-09-06 by reading the runs rather than the workflow: six consecutive successes, the `wl-preproc` checkout syncing, `307 passed` with no skips and `WLX_REQUIRE_PREPROC=1` in force. **P4b failed in CI on 2026-09-13 and is green as of 2026-09-19.** The 09-13 run (`34769913502`) escalated to a full sweep as predicted, took 1h46m, and reported `MUTATION GATE FAILED: calibration, saccade` — two functions the harness could not find rather than two survivors (trap 7, seventh entry). Run `35433303094` on `afc7d04` is the fix, **verified by reading its log rather than its exit code**: 21 modules, 215 caught, **0 survivors and 0 skips**, `383 passed` at every baseline, and the four functions the commit was about each reporting a real failure — `recenter 5 failed`, `detect 7 failed`, `_XYZ 4 failed`, `FixPoint 4 failed`. The nightly schedule runs on `main`, which **now contains both P4b and P4d-1**, so from 2026-09-21 its greens describe them — until the merge they did not, and this sentence sat here saying so for six days. pytest on 3.11, 3.12 and 3.13, plus a **mutation gate**. Selective since 2026-09-05: `tools/mutation_gate.py` runs the modules a change can have affected and escalates to all of them on anything structural, with the **full sweep nightly** — the per-push gate cannot see a test deleted from one file that was the only cover for a function in another. It refuses to run at all if a module is in neither its gated nor its exempt list. Functions that already return immediately are reported `NOT MUTABLE` rather than counted as survivors (trap 7) |
 | Welfare-critical modules | **two: `bounds.py` and `welfare.py`**, and they are the only two. `bounds` is pure limits — ceilings, and a daily **floor**; `welfare` holds the day's total, the two clocks (out-of-cage, which bounds the session; restraint, which is recorded), the pump, and `Rig` — the object a task's `Reward` action actually reaches. **Both require human review before merge** (CLAUDE.md, S8 §7), and **both have moved on this branch** |
 | Fluid | **A floor, not a ceiling** (PI, 2026-09-06). The daily figure is a minimum the animal must reach, topped up by hand after the session; **no delivery is ever refused on volume**. Only the per-delivery magnitude is a ceiling. S8 §4–§5 were written the other way round and now carry the correction |
 | Session duration | **One limit: out of the cage to back in the cage, twelve hours** (PI, 2026-09-19). Chair time and a trial cap were the two ceilings until then; neither is a limit now — chair time is recorded by `HEAD_FIXED`/`HEAD_RELEASED` and there is no session-length maximum at all. A rig session is **refused** without its out-of-cage mark; a cage-side one declares `welfare.Deployment.CAGE_SIDE` and has no duration bound. Twelve hours is documented (S8 §5.2 item 4, `welfare.py`) and carried by no constant. **Since 2026-09-20 (PI)** **both marks** are **clock times** (`--out-of-cage-at`, and `returned_to_cage(at, wall_now)`, mapped onto the frame clock inside `welfare` against `left_cage`'s own wall anchor — so the unchairing and the walk back, which the frozen frame clock used to drop, are inside the limit), a mark **more than thirty minutes from now is confirmed by a person or amended with a reason and a name** (`welfare.CONFIRM_MARK_WITHIN`; `wlx run` refuses rather than proceeding when no terminal is attached), there are **three deployment kinds** — `RIG_FIXED`, `RIG_CHAIRED`, `CAGE_SIDE` — with restraint reported **absent rather than zero** where nothing marks it, and the session **warns** at `welfare.WARN_WITHIN_DEFAULT` (1,800 s, **accepted by the PI on 2026-09-20 as a starting value** and still derived from no measurement of this system) before the limit |
@@ -317,6 +317,90 @@ figure was one low. In order:
   a path outside the workspace, and no credentials for it.
 
 ---
+
+## What moved on 2026-09-26
+
+### The 09-25 nightly failed on a test the harness would not name
+
+Run `36115579357`, full sweep, on `2ac9bea` — the same commit, the same resolved
+packages and the same `wl-preproc` (`87e7318`) as the green nightly the day before:
+
+```
+MUTATION GATE FAILED: bounds, check, cli, encode, gaze, run, taskd
+```
+
+**Not survivors.** The *unmutated* suite went `1 failed, 673 passed` on 7 of its 41
+baselines and restores, spread across 80 minutes, and seven modules failed wherever
+it happened to land. `_run_suite` kept pytest's last line and discarded the rest, so
+the log says a test failed and never which.
+
+It also landed on mutant runs, and that is the part that matters. Diffing every
+mutant's failure count against 09-24's: **24 read exactly one higher, and none read
+lower.** A mutant nothing really covers reads `1 failed` in such a run and is
+reported `caught`. So a flake does not only turn a build red; it can turn a survivor
+green, which is trap 7's shape arriving from a direction the harness had no defense
+against.
+
+What is established, each from a run rather than an argument:
+
+- **It predates 09-25.** 09-22 has one `+1` (`simulate.new_trial`, 10 failed against
+  9). 09-21, 09-23 and 09-24 have none.
+- **It depends on the machine.** 09-25 ran in centralus and was the fastest nightly
+  by far (baseline 16.05 s against 19.4–25.2 s on the other four). The runner image
+  is not it: 09-23 ran on the same new image (`20260920.314.1`) and was clean.
+- **It fails fast.** The failing baselines took 16.18–16.34 s, inside the passing
+  range, so it is not a 5 s `RCVTIMEO` or a 15 s thread join.
+- **It does not reproduce under control: 0 failures in 313 runs.** 73 on macOS (64
+  of them under 8× concurrency), 40 in a Linux / Python 3.13 container with CI's exact
+  package versions, and 200 on GitHub's own runners — ten shards across four CPU
+  models and six regions, including centralus on an AMD EPYC 9V45 at 14–15 s a run,
+  all through the harness's own argv and cache clearing (throwaway branch
+  `probe/flake-2026-09-26`, run `36223269006`; branch deleted).
+
+**So the test is still unnamed.** What changed is that the next occurrence will name
+it.
+
+### The harness names what failed
+
+`tools/mutate.py` now runs pytest with `-rfE` and keeps its short-summary lines:
+
+- a red baseline or restore prints **every** `FAILED`/`ERROR` line, message included —
+  pytest trims that message to the terminal width *except* under `CI`, which GitHub
+  sets (pytest 9.1.1, `_pytest/terminal.py:_get_line_with_reprcrash_message` and
+  `_pytest/compat.py:running_on_ci`, read 2026-09-26);
+- every `caught`/`SURVIVED` line ends `<- node ids`, three named and the rest counted.
+  **A `caught` whose only `<-` is a test unrelated to that function is a survivor.**
+
+Proved against itself, and it found something doing so: all five changed functions are
+caught by a real `N failed`, but **`_run_suite` survived the first pass** — the argv and
+the parser each had a test and the function joining them had none (CLAUDE.md: test the
+path, not the piece). It now takes a `cwd` so a test drives it end to end on a
+three-test suite.
+
+### A race found on the way, not shown to be the flake
+
+`tests/test_cli.py::test_wlx_run_with_link_lets_a_real_console_attach` says its session
+has "roughly 1,500" trials of margin. That was measured under the chair-time ceiling the
+2026-09-19 rulings removed; the session now ends at `tasks/reference_bounds.py`'s 600 s
+out-of-cage placeholder, and `_hhmm()` starts each run 0–59 s into it. Measured **on this
+machine, in this session's scratchpad, not committed under `docs/measurements/`, and not
+a claim about this system**: about 300 trials in about 0.3 s of wall time, inside which
+the console must attach, send, and see two frames. A probe replicating the test with only
+the departure varied:
+
+| Out-of-cage budget left | pass | fails fast | fails on a 5 s timeout |
+|---|---|---|---|
+| ~600 s (the test as written) | 20 | 0 | 0 |
+| ~300 s | 10 | 3 | 7 |
+| ~120 s | 3 | 0 | 17 |
+| ~60 s | 0 | 3 | 17 |
+
+A real race with a margin five times smaller than its docstring says — and **probably not
+09-25's culprit**, since here it mostly fails slow and CI's failures were all fast. Not
+fixed here, because fixing it would be fixing a guess. The likely fix, if a decision
+wants it: give the test `_far_bounds`, so the session's length is set by `--trials`
+rather than by a wall-clock-dependent ceiling. The docstring's 1,500 is exactly what
+CLAUDE.md means by a dated claim nothing can check.
 
 ## What moved on 2026-09-20
 
@@ -1717,7 +1801,16 @@ Things that cost something to learn here. Each is a convention in `CLAUDE.md` no
    its next run, and the rule stands that **nothing is committed without a green
    suite in the same breath**. `git add -A` after a long-running command is the shape
    of the mistake.
-7. **The mutation harness has now been wrong seven times, and the seventh had been
+7. **An eighth, 2026-09-26, and this one threw the answer away rather than getting it
+    wrong.** `_run_suite` kept pytest's last line. When a flaky test went red on 7 of 41
+    unmutated runs in the 09-25 nightly, the log said `1 failed, 673 passed` seven times
+    and never which test; and when the same flake landed on 24 mutant runs it added one
+    failure to each, which is exactly enough to report a real survivor as `caught`. Now
+    every red suite prints its failure lines and every mutant's line ends `<- node ids`.
+    **Read the `<-`**: a function caught only by a test that has nothing to do with it
+    was not caught. Original entry follows.
+
+    **The mutation harness has now been wrong seven times, and the seventh had been
     lying for as long as the function existed.** `calibration.recenter` and
     `saccade.detect` both take a default argument containing a `)` --
     `left: tuple[float, float] = (0.0, 0.0)`, `params: Params = Params()` -- and the

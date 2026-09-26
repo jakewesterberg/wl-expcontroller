@@ -1,6 +1,6 @@
 # Next session — wl-expcontroller
 
-**State at handoff:** **674 tests passing** (with `.[dev,contract,console]` installed —
+**State at handoff (2026-09-26):** **682 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, and **the work is on `main`.** `p4d1-console-link` was approved by the PI on
 2026-09-20 and fast-forwarded onto `main` (`300d7d1` → `08adfa2`), so P4b and P4d-1 are
@@ -48,6 +48,16 @@ seventh entry). Fixed 2026-09-19.
 
 ## 0b. The first thing to do
 
+**First, the 2026-09-25 nightly failed and the test responsible is still unnamed.** Run
+`36115579357`: one flaky test went red on 7 of 41 *unmutated* suite runs and added a
+failure to 24 mutant runs, and the harness kept only pytest's last line. 0 failures in
+313 controlled runs since, across macOS, a Linux container and ten GitHub runners —
+full account in the checkpoint's "What moved on 2026-09-26". `tools/mutate.py` now
+prints every failure line when the unmutated suite is red, and ends every mutant's line
+with `<- node ids`, so **the next time it fires it names itself: read those lines on
+every nightly until it has.** Then fix that test, and check whether it is the race the
+same entry describes in `test_wlx_run_with_link_lets_a_real_console_attach`.
+
 **Read `main`'s own CI run before anything else** — `gh run list --branch main`, then
 `gh run view <id> --log-failed` and *read it*, because the last two things this gate
 reported were a skip dressed as a failure and a syntax error dressed as coverage, and a
@@ -55,22 +65,24 @@ third thing on 2026-09-20 that no exit code could have shown — four `geometry`
 entries that say `caught` and are caught by an *import*, written up in full under
 `docs/CHECKPOINT.md`'s "What moved on 2026-09-20".
 
-**The merge run is `35515487242`, on `08adfa2`.** Its three pytest legs went green; its
-`mutation` job was **still running when this was written**, so read it before treating
-`main` as verified past the suite. It escalated to a full sweep for a reason that is not
+**The merge run is `35515487242`, on `08adfa2`, and it is green** — read on 2026-09-26
+rather than trusted: 22 modules, 264 caught, 0 survivors, 0 skips, 674 at every baseline
+and restore. It escalated to a full sweep for a reason that is not
 obvious from the output: a push's gate base is the *previous* `main`, so a fast-forward of
-55 commits puts the whole range in its changed set, `tasks/` included. It is therefore
-re-running the sweep that already passed on the branch tip `31a3283` — 22 modules, 674
-passed at baseline, 0 survivors, 0 skips.
+55 commits puts the whole range in its changed set (its log names
+`.github/workflows/ci.yml` as the trigger). It therefore re-ran the sweep that had
+already passed on the branch tip `31a3283`, and agreed with it.
 
 `tools/mutate.py` changing escalates to a **full sweep** by rule, and a full sweep now
-costs **about 1h40m** (1h46m on 2026-09-13, 1h39m on 2026-09-19, read off GitHub's own
-durations). The 47–61 minute figure from 2026-09-05 is stale. And if a sweep ever comes
+costs **about two hours** — 1h55m to 2h24m for the nightlies of 09-21 to 09-24,
+read off GitHub's own durations, and it varies that much by runner. The 1h40m of
+2026-09-19 and the 47–61 minutes of 2026-09-05 are stale. And if a sweep ever comes
 back *much* faster than the modules it names, that is a reason to read the output rather
 than to celebrate.
 
-CI itself is green and needs nothing from anyone — the `WL_PREPROC_TOKEN` ask this file
-carried is closed, verified 2026-09-06 by reading the runs.
+CI needs nothing from anyone but a reader — the red nightly above is a flake to be
+named, not a setting to change, and the `WL_PREPROC_TOKEN` ask this file carried is
+closed, verified 2026-09-06 by reading the runs.
 
 ---
 
