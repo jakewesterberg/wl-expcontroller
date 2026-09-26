@@ -761,3 +761,121 @@ def test_a_return_to_the_cage_crosses_a_real_socket(zmq_cleanup):
     assert _drain_until(link) == [
         ReturnedToCage(at=1_700_000_123.5, by="jake", confirmed=True)
     ]
+
+
+def test_a_returned_to_cage_with_a_non_numeric_at_is_refused_at_construction():
+    """Fix round 1: reproduced by queuing `ReturnedToCage(at="banana", ...)` and
+    running a session -- `bounds._finite` calls `math.isfinite("banana")`, which
+    raises `TypeError`, not `Exceeded`, and `taskd.Session._command` catches only
+    `Exceeded`. The `TypeError` then escaped into `run()`'s fault handler and ended
+    the session, which is exactly what `_command`'s own docstring rules out
+    ("Refusals do not end the session"). Checked here, at construction, so a
+    malformed value can never reach that path at all."""
+    try:
+        ReturnedToCage(at="banana", by="jake", confirmed=False)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("a non-numeric `at` was accepted")
+
+
+def test_a_returned_to_cage_refuses_a_bool_at_though_bool_is_an_int():
+    """`bool` is an `int` subclass, so `isinstance(True, (int, float))` alone would
+    silently accept it as a wall instant of `1`."""
+    try:
+        ReturnedToCage(at=True, by="jake", confirmed=False)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("a bool `at` was accepted as a real number")
+
+
+def test_a_returned_to_cage_refuses_a_non_bool_confirmed():
+    """Fix round 1: `welfare._refuse_unconfirmed` tests `if sentence is None or
+    confirmed:`, so any truthy non-bool -- the string `"no"` included -- satisfies it
+    as though a person had confirmed a far mark, silently defeating the one guard
+    `confirmed` exists for."""
+    try:
+        ReturnedToCage(at=1.0, by="jake", confirmed="no")
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("a non-bool `confirmed` was accepted")
+
+
+def test_a_returned_to_cage_refuses_a_non_string_by():
+    try:
+        ReturnedToCage(at=1.0, by=7, confirmed=False)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("a non-string `by` was accepted")
+
+
+def test_a_well_typed_returned_to_cage_is_accepted():
+    command = ReturnedToCage(at=1, by="jake", confirmed=True)
+
+    assert command.at == 1
+    assert command.by == "jake"
+    assert command.confirmed is True
+
+
+def test_a_returned_to_cage_with_a_non_numeric_at_is_refused_not_raised_over_the_wire(
+    zmq_cleanup,
+):
+    """The other half of fix round 1: a packet built by a corrupted or mismatched
+    console, rather than by this codebase's own (now type-checking) constructor,
+    must still fail safe. Mirrors `test_an_undecodable_command_is_refused_not_raised`
+    exactly -- same raw-send technique, same `_awaiting_reply` bookkeeping -- because
+    `_decode_command` builds `ReturnedToCage` too, and `ZmqLink.drain`'s existing
+    broad `except` around that call is where this is caught, never `_command`."""
+    import msgpack
+
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    console._req.send(
+        msgpack.packb(
+            {"kind": "returned", "at": "banana", "by": "jake", "confirmed": False},
+            use_bin_type=True,
+        )
+    )
+    console._awaiting_reply = True
+
+    commands = _drain_until(link)
+
+    assert commands == [], "nothing decodable arrived, so nothing is returned"
+    assert len(link.refused) == 1
+
+    # The channel must still work afterwards, same as the sibling test.
+    console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+    commands = _drain_until(link)
+    assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+
+
+def test_a_returned_to_cage_with_a_non_bool_confirmed_is_refused_not_raised_over_the_wire(
+    zmq_cleanup,
+):
+    """Same shape as the sibling test above, for the `confirmed` guard rather than
+    `at`."""
+    import msgpack
+
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    console._req.send(
+        msgpack.packb(
+            {"kind": "returned", "at": 1.0, "by": "jake", "confirmed": "no"},
+            use_bin_type=True,
+        )
+    )
+    console._awaiting_reply = True
+
+    commands = _drain_until(link)
+
+    assert commands == [], "nothing decodable arrived, so nothing is returned"
+    assert len(link.refused) == 1
+
+    console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+    commands = _drain_until(link)
+    assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]

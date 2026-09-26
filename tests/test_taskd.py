@@ -19,6 +19,7 @@ there is no trial cap at all.
 from __future__ import annotations
 
 import json
+import math
 
 import pytest
 
@@ -1396,3 +1397,20 @@ def test_a_console_return_while_the_head_is_fixed_is_refused_and_the_session_run
     names = [name for name, _by, _why in session.refusals]
     assert names == ["returned_to_cage"]
     assert "head-fixed" in session.refusals[0][2]
+
+
+def test_a_console_return_with_a_nan_at_is_refused_not_fatal(tmp_path):
+    """Fix round 1: `ReturnedToCage`'s `__post_init__` checks type, not finiteness --
+    `nan` is a real number by that check, so this must still reach `welfare`'s own
+    `_finite` refusal (via `return_needs_confirmation`) and come back as an ordinary,
+    non-fatal `returned_to_cage` refusal, the same shape as a head-fixed refusal.
+    Pins that finiteness stays welfare's to refuse, not `link.ReturnedToCage`'s."""
+    link = Simulated()
+    link.queue(ReturnedToCage(at=math.nan, by="jake", confirmed=False))
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    names = [name for name, _by, _why in session.refusals]
+    assert names == ["returned_to_cage"]

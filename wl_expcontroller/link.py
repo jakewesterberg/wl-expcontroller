@@ -479,11 +479,53 @@ class ReturnedToCage:
     what an operator reads (PI, 2026-09-20, ruling 4). `confirmed` says a person
     acted on a time more than thirty minutes off; `welfare.returned_to_cage` refuses
     a far one without it, and that refusal comes back as a `Refused` with the
-    sentence a person needs. Carries the request, never a second validator."""
+    sentence a person needs. Carries the request, never a second validator.
+
+    **`__post_init__` checks types, not finiteness -- fix round 1, measured.**
+    `ReturnedToCage(at="banana", by="jake", confirmed=False)` reached
+    `bounds._finite` (via `welfare._far_from_now`, via `return_needs_confirmation`),
+    and `math.isfinite("banana")` raises `TypeError`, not `Exceeded`.
+    `taskd.Session._command` catches only `Exceeded` -- "Refusals do not end the
+    session" is its own rule -- so the `TypeError` escaped into `run()`'s fault
+    handler and ended the session outright, which is the one outcome a malformed
+    command must never cause. **`confirmed` has the same shape of problem on a
+    different guard**: `welfare._refuse_unconfirmed` tests `if sentence is None or
+    confirmed:`, so any truthy non-bool -- the string `"no"` included -- satisfies it
+    as though a person had confirmed a far mark, silently defeating the one guard
+    `confirmed` exists for. Both are checked here, at the one place every
+    `ReturnedToCage` is built, whether directly or through `_decode_command` -- a
+    packet that fails this check then fails inside `ZmqLink.drain`'s existing broad
+    `except` around decode and becomes a `Refused`, never reaching `_command` at
+    all. **Finiteness is deliberately not checked here**: `nan`/`inf` are real
+    numbers by this check and stay welfare's to refuse, via `_finite`, exactly as
+    they already are -- this class carries the request, never a second validator,
+    and `_finite`'s job is not being duplicated, only guarded against a type it was
+    never written to accept.
+    """
 
     at: float
     by: str
     confirmed: bool
+
+    def __post_init__(self) -> None:
+        # `bool` is an `int` subclass, so `isinstance(True, (int, float))` alone
+        # would silently accept a wall instant of `1` where a person meant "yes".
+        if isinstance(self.at, bool) or not isinstance(self.at, (int, float)):
+            raise TypeError(
+                f"a return's `at` must be a real number (a POSIX wall instant), "
+                f"not {self.at!r}"
+            )
+        if not isinstance(self.by, str):
+            raise TypeError(
+                f"a return's `by` must be a string naming who sent it, not "
+                f"{self.by!r}"
+            )
+        if not isinstance(self.confirmed, bool):
+            raise TypeError(
+                f"a return's `confirmed` must be exactly a bool, not "
+                f"{self.confirmed!r} -- a truthy non-bool would silently satisfy "
+                f"the confirmation check it exists to gate"
+            )
 
 
 Command = SetParameter | Stop | ReturnedToCage
