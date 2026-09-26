@@ -314,7 +314,10 @@ defence is structural rather than careful.
 | Time out of cage | `welfare.out_of_cage_seconds` — read on the wall clock like the ceiling that ends the session, so the two match (P4d-2a spec §10; frame-derived, for the same reason, until then). `None`, rendered *cage-side, the animal is home*, for a deployment with no duration bound (S13 §4.0) |
 | Chair time | `welfare.chair_seconds` — shown beside it, and **not** what ends the session since 2026-09-19. Showing only this one meant an operator would watch a session stop on a clock the console never displayed. **`None` for `RIG_CHAIRED` and `CAGE_SIDE`** (PI, 2026-09-20), rendered as *n/a* with the reason — never `0:00`, which on a chaired animal would report restraint nothing measured |
 | Deployment | `Telemetry.deployment` — which of the three kinds this session declared. On the wire rather than derived, because two kinds share one `None` for chair time and this pane names fields rather than inferring them |
-| Time left out of the cage | `welfare.approaching_limit` as a `WARNING:` line beside the stop reason, once the ceiling is within `warn_within` (PI, 2026-09-20). Silent otherwise, and silent again past the limit, where the stop reason speaks |
+| Time left out of the cage | `welfare.approaching_limit` as a `WARNING:` line beside the stop reason, once the ceiling is within `warn_within` (PI, 2026-09-20). Silent otherwise, and silent again past the limit, where the stop reason speaks. **After the loop, past the limit, it carries `welfare.must_stop`'s sentence** (P4d-2a, `taskd.Session.duration_warning`): there is no loop left to stop, and the warning is what says the animal is still out |
+| Phase | `Telemetry.phase` (schema 6, P4d-2a): `running` while the loop runs, including the frame that announces its stop; `awaiting_return` while a rig session's out-of-cage clock stays open after the loop (`taskd.Session.await_return`); `closed` once the return is recorded. A cage-side session never leaves `running` on the wire. Set by `taskd`, never inferred by the console |
+| Why it stopped | `Telemetry.stop_kind` (schema 6, P4d-2a): `completed`, `operator`, `limit` or `fault`, and `None` while running, set at each of `taskd`'s four stop sites, and to `fault` by a fault in `await_return` after the loop. `stopped_because` keeps the sentence; this is the kind, so nothing parses the sentence to tell a pump fault from a clean finish |
+| In session | `Telemetry.in_session_seconds` (schema 6, P4d-2a spec §10 item 3): the session opened to the session ended, on the wall, from `taskd.Session.opened_wall_at`/`ended_wall_at`. `None` before the session opens, never `0.0`. **It bounds nothing** (PI, 2026-09-26: *"only shown and recorded"*): `welfare` never sees it, and it has no warning line |
 | Trials, outcomes, aborts by reason | `simulate.Tally`, already shared with `taskd` |
 | Still needed, by condition | `scheduler` quotas |
 | Parameter row | The task's own `Param` declarations; writes return through `Session.set` |
@@ -375,18 +378,28 @@ unattended and cage-side, saw the stream simply stop. The loop boundary now sets
 is the behaviour that matters; the frame only means a stranger can read what happened off
 the screen, which is this spec's own rule for an abort reason.
 
-Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is 4
-as of 2026-09-19**, and both bumps that day are the same case — a field that still decodes
-and no longer means what it did. At 3, `Staged.bounded` stopped meaning "already live" and
-became "checked against a welfare ceiling", so a console built against 2 would render a
-lowered reward volume as already in effect. At 5, `chair_seconds` became `float | None` and
-`deployment`/`duration_warning` arrived — a console built against 4 renders a `None` chair
-clock, and one that coerced would tell an operator a restrained animal had been restrained for
-no time at all. At 4, `chair_seconds` stopped being the number
-that ends the session: `out_of_cage_seconds` is what the ceiling is read against, and a
-console built against 3 would show chair time as *the* clock and then watch a session stop
-on a limit it never displayed. Trial-rate telemetry on one topic; the replica's
-display-rate stream, if V11 permits one, on a separate droppable topic.
+Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is 6
+as of 2026-09-26** (P4d-2a), and every bump since 2 is the same case: a field that still
+decodes and no longer means what it did, or a new one whose absence a console built against
+the old number would misread. `link.SCHEMA`'s comment carries the same history.
+
+- **3 (2026-09-19):** `Staged.bounded` stopped meaning "already live" and became "checked
+  against a welfare ceiling", so a console built against 2 would render a lowered reward
+  volume as already in effect.
+- **4 (2026-09-19):** `chair_seconds` stopped being the number that ends the session;
+  `out_of_cage_seconds` is what the ceiling is read against. A console built against 3 would
+  show chair time as *the* clock and then watch a session stop on a limit it never displayed.
+- **5 (2026-09-20):** `chair_seconds` became `float | None`, and `deployment` and
+  `duration_warning` arrived. A console built against 4 renders a `None` chair clock, and one
+  that coerced would tell an operator a restrained animal had been restrained for no time at
+  all.
+- **6 (2026-09-26, P4d-2a):** `phase`, `stop_kind` and `in_session_seconds` arrived. A console
+  built against 5 renders an `awaiting_return` frame's advancing out-of-cage clock as a
+  running session, can tell a pump fault from a clean finish only by parsing
+  `stopped_because`, and has no field for the in-session clock.
+
+Trial-rate telemetry on one topic; the replica's display-rate stream, if V11 permits one, on
+a separate droppable topic.
 
 **A frame is bounded, and the one list that was not is the refusal feed.** Added
 2026-09-19, schema 2. Every other field in `Telemetry` is fixed-width or bounded by the
