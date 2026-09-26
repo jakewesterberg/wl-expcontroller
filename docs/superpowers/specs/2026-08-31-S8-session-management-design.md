@@ -393,6 +393,21 @@ supplement afterwards — is then computed against a figure that describes half 
    in the direction that makes a session look shorter than it was — and the amendment path is
    the same `welfare.amend_mark`, with the same required reason and actor.
 
+   **Where the return is taken, and what records both ends — P4d-2a (spec §10,
+   2026-09-26).** Both ends of the interval are wall instants, as above. The return is taken
+   by `wlx run`'s own terminal prompt, with the refusals and the thirty-minute confirmation
+   above, **as the stand-in until the wl-works ELN records it** (PI: *"the ELN handles
+   return to cage"*, and the terminal is its *"stand-in"*). No console or link command
+   carries it, and a run with no terminal, linked or not, records `return not recorded (no
+   terminal)` and exits rather than waiting. Both ends are rows in the session's
+   `welfare_notes.jsonl`: `departure` and `returned`, written by the mark methods themselves
+   for every rig session whether or not anyone confirmed them. After the loop,
+   `taskd.Session.await_return` keeps publishing the out-of-cage clock and the warning until
+   the return, and past the limit the warning is `must_stop`'s sentence. The **in-session
+   clock** (the session opened to the session ended, on the wall, published as
+   `Telemetry.in_session_seconds` and recorded as `session opened`/`session ended` rows) is
+   kept apart from it and **bounds nothing** (PI: *"only shown and recorded"*).
+
    **The consequence the PI weighed and accepted:** an animal returned mid-day produces **two
    session directories and two records**, not one record with a gap in it. He judged that the
    more honest account — a single record spanning a period the animal was not in the rig would
@@ -438,7 +453,9 @@ supplement afterwards — is then computed against a figure that describes half 
    Nothing tells `taskd` when the animal was fixed: `wl-shook`'s resting pedestal proves the
    chair device is present, not that an animal is in it. So the console gains an explicit
    **"animal fixed" / "animal released"** action — and, since 2026-09-19, an **"out of cage" /
-   "back in cage"** action beside it, which is what preflight now requires.
+   "back in cage"** action beside it, which is what preflight now requires. (**Not a console
+   action since P4d-2a spec §10, 2026-09-26:** the wl-works ELN records both ends, and `wlx
+   run`'s terminal takes them until it exists — see "Where the return is taken" above.)
 
    ~~**Open, and asked of the PI: the out-of-cage marks have no event code.**~~
    **Answered 2026-09-20 (PI): they do not get one, and this is closed** (open item 8).

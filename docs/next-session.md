@@ -13,6 +13,13 @@ fix rounds before it was removed rather than corrected a fourth time. Run `git l
 --oneline` instead. The welfare-critical review that held both branches back (§1) is
 **done**: the PI reviewed the surface on 2026-09-20 and approved it. No hardware exists.
 
+> **Since then, 2026-09-26 (P4d-2a):** branch `p4d2a-return-to-cage` closes the out-of-cage
+> interval on the wall clock, takes the return at `wlx run`'s terminal as the stand-in until
+> the wl-works ELN records it, and adds a separate in-session clock. It has **739 tests**, is
+> rebased on `main` and pushed. **It changes `welfare.py`, so the welfare review is pending
+> again (§1)**, and it does not merge before the PI approves. The paragraph above describes
+> `main`.
+
 > **Read `docs/CHECKPOINT.md` first, then this.** The checkpoint says where the build
 > is; this says what to do. There are 19 specs and 8 ADRs (ADR-0008 is the newest and
 > settles the console), and **you should read the
@@ -88,7 +95,48 @@ closed, verified 2026-09-06 by reading the runs.
 
 ---
 
-## 1. ~~The thing that needs a person, not a session~~ — done 2026-09-20, and what it binds next time
+## 1. The thing that needs a person, not a session — pending again since 2026-09-26 (P4d-2a)
+
+**`welfare.py` has changed again, so the rule below applies again.** Branch
+`p4d2a-return-to-cage` closes the out-of-cage interval (spec
+`docs/superpowers/specs/2026-09-26-P4d2a-return-to-cage-design.md`, as amended by its §10
+after the PI's answers on the wl-works ELN). It is built, reviewed task by task,
+mutation-gated and pushed, and **it does not merge until the PI approves spec §7**. It then
+merges by fast-forward. `git diff origin/main..p4d2a-return-to-cage --
+wl_expcontroller/welfare.py` is the welfare-critical part; `taskd.py`, `cli.py`, `link.py`
+and `record.py` carry the rest.
+
+What he is asked to approve, one line each, with the test that pins it:
+
+1. **Out-of-cage is counted on the wall clock alone**, from the departure to the return.
+   `welfare` keeps the departure, the return and both head-fixation marks as wall instants
+   and reads every duration and cross-check on the wall (`Session.wall_now()`: the wall read
+   once when the session is created, carried forward on a monotonic clock). The frame clock
+   times trials only. `test_welfare.py::test_out_of_cage_is_the_wall_since_the_departure_until_the_return_fixes_it`,
+   `test_welfare.py::test_the_restraint_cross_check_compares_two_wall_intervals`,
+   `test_cli.py::test_a_head_fixed_run_whose_frames_outran_the_wall_takes_the_return`.
+2. **After the loop the duration warning continues**, and past the limit it reads as
+   `must_stop`'s sentence. `test_taskd.py::test_past_the_limit_after_the_loop_the_warning_says_so`.
+3. **The return is taken only at `wlx run`'s terminal**, as the stand-in until the ELN
+   records it, with the same refusals and the same thirty-minute confirmation; no link
+   command carries it. `test_cli.py::test_a_run_at_a_terminal_takes_the_return`,
+   `test_cli.py::test_a_far_return_is_confirmed_at_the_terminal`,
+   `test_link.py::test_a_returned_command_is_refused_through_the_unknown_kind_path`.
+4. **`departure` and `returned` rows are written for every rig session**, not only on
+   confirmation. `test_taskd.py::test_a_departure_is_recorded_whether_or_not_anyone_confirmed_it`,
+   `test_taskd.py::test_a_return_is_recorded_with_who_and_how`.
+5. **With no terminal, linked or not, `wlx run` records `return not recorded (no terminal)`
+   and exits** without waiting. `test_cli.py::test_a_headless_run_records_that_nobody_could_mark_the_return`,
+   `test_cli.py::test_a_linked_headless_run_never_calls_await_return`.
+6. **If a fault skipped the release, `await_return` releases a `RIG_FIXED` head on entry**,
+   so the return is never refused for a head nobody can release.
+   `test_taskd.py::test_a_fault_skipped_the_release_and_the_return_can_still_land`.
+7. **The in-session clock** (session opened to session ended, on the wall) is published as
+   `in_session_seconds` and recorded as two rows, and bounds nothing.
+   `test_taskd.py::test_in_session_seconds_advances_with_the_wall_and_stops_after_end`,
+   `test_taskd.py::test_the_in_session_clock_bounds_nothing`.
+
+### The 2026-09-20 review — done, and what it binds next time
 
 **`bounds.py` and `welfare.py` want human review before they merge** (CLAUDE.md, S8 §7).
 **That review happened on 2026-09-20 and the PI approved the surface**, which is what
@@ -509,7 +557,19 @@ Three things S9a §6–§10 depends on that nobody has built:
 
 ---
 
-## 6. P4d-1 shipped; P4d-2 is the console's HTTP surface
+## 6. P4d-1 shipped; P4d-2a awaits review; P4d-2b is next
+
+**2026-09-26: P4d-2 is two packages now.** **P4d-2a**, closing the out-of-cage interval, is
+built on branch `p4d2a-return-to-cage` and waits on the PI's review of its spec §7 (§1 above).
+**P4d-2b, the browser console and `GET /health`, is next once he approves** and P4d-2a has
+fast-forwarded onto `main`. Its spec is
+`docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 are approved, and
+§4 is slice b1, the read-only console, planned in
+`docs/superpowers/plans/2026-09-26-p4d2b-b1-read-only-console.md`. b1 builds on telemetry
+schema 6, which only P4d-2a carries, and its Task 2 (`welfare.deliver` recording the last
+reward's instant) is welfare-critical, so it needs the PI's review too. Slices b2–b6 are
+designed one at a time. What follows is the 2026-09-19 account of P4d-1 and of P4d-2 as one
+package, kept as the record.
 
 **What moved, 2026-09-19 (`p4d1-console-link`, on top of `p4b-session-management`).**
 This section used to describe P4d as "the link between a console process and a
