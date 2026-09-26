@@ -1637,6 +1637,27 @@ def test_an_interactive_run_can_amend_the_time_with_a_reason_and_a_name(
     assert rows[2]["was"] != rows[2]["now"]
 
 
+def test_the_departure_row_says_who_gave_it_and_how(tmp_path, monkeypatch):
+    """**Final review M5.** The `departure` row read `by=""` and `how="terminal"`
+    whatever happened: with `--as jake` and no terminal attached at all, it named
+    nobody and a terminal nobody sat at. It now carries what `_settle_departure`
+    knew -- the flag the time came from and `--as`, or the person who amended it at
+    the terminal and that they did."""
+    assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--as", "jake")) == 0
+    departure = next(row for row in _notes(tmp_path) if row["kind"] == "departure")
+    assert (departure["by"], departure["how"]) == ("jake", "--out-of-cage-at")
+
+    amended = tmp_path / "amended"
+    amended.mkdir()
+    answers = iter(["amend", _hours_ago(0.2), "typed 08:45 for 18:45", "sam", "now"])
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    assert main(_run_args(amended, "--out-of-cage-at", _hours_ago(9))) == 0
+    departure = next(row for row in _notes(amended) if row["kind"] == "departure")
+    assert (departure["by"], departure["how"]) == ("sam", "amended at the terminal")
+
+
 def test_an_amendment_can_be_made_without_a_terminal_too(tmp_path):
     """Same three things, stated as flags. The interactive prompt is a way of
     supplying them, not a second rule about what an amendment is."""

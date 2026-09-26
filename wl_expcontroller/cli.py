@@ -1229,7 +1229,21 @@ def main(argv: list[str] | None = None) -> int:
                     # a reason has done strictly more than click through.
                     # `welfare.left_cage` refuses a far mark without it, so no
                     # caller can reach around this prompt.
-                    session.left_cage(at=departure, confirmed=note is not None)
+                    #
+                    # **The row says who gave the time and how** (final review M5):
+                    # what `_settle_departure` settled it with when it asked or was
+                    # told -- the amendment's person, or the confirmation's flag or
+                    # terminal -- and otherwise `--out-of-cage-at` and `--as`, since
+                    # nothing was asked of a terminal. It read `by=""` and
+                    # `how="terminal"` whatever happened.
+                    by, how = (
+                        (note["by"], note["how"])
+                        if note is not None
+                        else (args.actor, "--out-of-cage-at")
+                    )
+                    session.left_cage(
+                        at=departure, confirmed=note is not None, by=by, how=how
+                    )
                 except Exceeded as refused:
                     raise SystemExit(f"refused: {refused}") from refused
                 except KeyboardInterrupt:

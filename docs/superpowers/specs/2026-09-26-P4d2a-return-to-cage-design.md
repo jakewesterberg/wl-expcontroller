@@ -52,7 +52,7 @@ person confirmed or amended a far mark:
 
 | `kind` | Written when | `how` |
 |---|---|---|
-| `departure` | `left_cage` accepts the mark | `terminal` |
+| `departure` | `left_cage` accepts the mark | how the time was given: `--out-of-cage-at`, or the confirmation's or amendment's own `how` when one was made (final review M5; it read `terminal` whatever happened) |
 | `returned` | `returned_to_cage` accepts the mark | `terminal` or `console` |
 | `return not recorded` | the process ends with no return on a rig session | the reason |
 
