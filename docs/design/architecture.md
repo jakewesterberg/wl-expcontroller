@@ -78,18 +78,24 @@ fluid and session-duration accounting (a fluid **floor**, an out-of-cage **ceili
 token-to-fluid conversion, stimulation bounds and gating, and the bounded-config loader.
 
 **In code, that is `wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`, and
-three functions in `wl_expcontroller/cli.py`.** Both modules are kept small deliberately:
-everything in them can hurt an animal if it is wrong, and a small file is one a person can
-actually read before signing it off. **The three functions are `cli._wall_clock_time`,
-`cli._clock_or_now` and `cli._settle_return`** (P4d-2a final review I5, 2026-09-26). They
-turn what an operator types at `wlx run` into the instants that bound the out-of-cage
-interval: the departure's clock time, the return's clock time or `now`, and whether a
-far return was confirmed by a person. `welfare` refuses what is impossible, but a wrong
-instant that is merely plausible passes every refusal, so the parsing is part of the
-limit. They stay in `cli.py`, which is where the terminal is, until the wl-works ELN
-records both ends of the interval (P4d-2a spec §10) and the return prompt goes. A change
-to either module or to those three functions is a change requiring review; a change
-elsewhere is not.
+four functions in `wl_expcontroller/cli.py`, plus one line inside a fifth.** Both modules
+are kept small deliberately: everything in them can hurt an animal if it is wrong, and a
+small file is one a person can actually read before signing it off. **The four functions
+are `cli._wall_clock_time`, `cli._clock_or_now`, `cli._settle_return` and
+`cli._settle_departure`** (P4d-2a final review I5, 2026-09-26, joined by
+`_settle_departure` in the residual fix round that followed). They turn what an operator
+types at `wlx run` into the instants that bound the out-of-cage interval: the departure's
+clock time or amendment, whether it or a far return was confirmed by a person, and the
+return's clock time or `now`. `welfare` refuses what is impossible, but a wrong instant
+that is merely plausible passes every refusal, so the parsing is part of the limit.
+**`_settle_departure` also supplies the amended instant that opens the interval, and
+decides `confirmed=` for the departure that `welfare._refuse_unconfirmed` trusts its
+caller on** -- which is why `main`'s `session.left_cage(at=departure,
+confirmed=note is not None, ...)` line is on this list too, one line inside a function
+that is otherwise ordinary. They stay in `cli.py`, which is where the terminal is, until
+the wl-works ELN records both ends of the interval (P4d-2a spec §10) and the return
+prompt goes. A change to either module, to those four functions, or to that one line, is
+a change requiring review; a change elsewhere is not.
 
 The split between the two is what keeps each reviewable. `bounds.py` is **pure** — the
 ceilings, the daily *floor*, and the arithmetic of whether a number is past one or short of

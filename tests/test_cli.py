@@ -1556,10 +1556,10 @@ def test_a_far_departure_is_refused_when_nobody_can_be_asked(tmp_path):
     """**The non-interactive path must not proceed in silence.**
 
     `wlx run` is a command line that may have no terminal behind it -- a wrapper, a
-    scheduler, a `labhost` process. A confirmation nobody made is worse than no
-    confirmation, because the record then says a person saw a nine-hour departure
-    and nobody did. So it refuses, and the message names the flag that is the honest
-    way to say it out loud."""
+    scheduler, or `console`'s `labhost` surface (not a process of its own). A
+    confirmation nobody made is worse than no confirmation, because the record then
+    says a person saw a nine-hour departure and nobody did. So it refuses, and the
+    message names the flag that is the honest way to say it out loud."""
     with pytest.raises(SystemExit) as refused:
         main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
 

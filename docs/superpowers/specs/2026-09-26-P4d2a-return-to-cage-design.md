@@ -117,10 +117,18 @@ welfare number is computed anywhere new.
   more than thirty minutes off, exactly as `_settle_departure` does for the departure.
   *Amended by the final review, 2026-09-26 (I3):* the prompt read `returned to cage at`,
   which could be answered with the animal still in the chair; it names the home cage now,
-  and its text is one constant (`cli._RETURN_PROMPT`). The session's summary — why it
-  stopped, the fluid, the supplement — prints before the prompt, each attempt shows the
-  out-of-cage clock and the duration warning when there is one, and the closed interval
-  is printed once the return is taken, as the departure's is at the start.
+  and its text is one constant (`cli._RETURN_PROMPT`). **On the normal path**, the
+  session's summary — why it stopped, the fluid, the supplement — prints before the
+  prompt; each attempt shows the out-of-cage clock and the duration warning when there
+  is one, and the closed interval is printed once the return is taken, as the
+  departure's is at the start. **This holds only on the normal path** (residual fix
+  round, Ruling 13). **On a fault**, only the stop reason prints first, `ended:
+  <session.stopped_because>`, not the fluid or supplement — after a pump fault
+  `welfare.deliver` has already counted the failed delivery as `commanded`, so those
+  figures would count a delivery that never happened. **On Ctrl-C during the loop**
+  (final review I4), the return is taken first and the summary — reason, fluid,
+  supplement, no per-outcome table since the loop returned none — prints after it: the
+  animal going home takes priority over a screen nobody is reading yet.
 - **Console.** A new link command, `ReturnedToCage(at: float, by: str, confirmed: bool)`,
   `at` a POSIX wall instant. `wlx console --returned HH:MM --as WHO [--confirm-return]` sends
   it. A far return sent without `--confirm-return` is refused by `welfare` with the sentence
@@ -148,7 +156,7 @@ welfare number is computed anywhere new.
 | Field | Values | Set by |
 |---|---|---|
 | `phase` | `running`, `awaiting_return`, `closed` | the loop; `await_return` |
-| `stop_kind` | `completed`, `operator`, `limit`, `fault`, or `None` while running | each of `taskd`'s four stop sites |
+| `stop_kind` | `completed`, `operator`, `limit`, `fault`, or `None` while running | each of `taskd`'s four stop sites, **plus a fifth added by the final review (I4): `run()`'s own `KeyboardInterrupt` handler, for Ctrl-C at `wlx run`'s terminal during the loop** (it also sets `operator`, the same as a console's `Stop`) |
 
 `stopped_because` keeps its text. `stop_kind` exists because telling a pump fault from a
 clean finish by parsing that text would be fragile, and P4d-2b's verdict needs the
@@ -199,7 +207,7 @@ Then:
 - Headless, or linked with no terminal, writes `return not recorded (no terminal)` and exits 0
   without ever starting `await_return` (§10).
 - A cage-side session publishes no post-loop frame.
-- `stop_kind` at each of the four stop sites.
+- `stop_kind` at each of the five stop sites (§6).
 - `tools/mutate.py` over `welfare`, `taskd`, `link`, `cli` and `record`, read line by line.
 
 ## 9. Not in this slice

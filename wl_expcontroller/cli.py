@@ -277,6 +277,11 @@ def _ask(prompt: str) -> str:
 def _settle_departure(session, args) -> tuple:
     """Get a person's act on a far-off departure time, before it is marked.
 
+    **Welfare-critical, outside the two welfare modules** (P4d-2a residual fix,
+    `docs/design/architecture.md`): it decides `confirmed=` for the departure and
+    supplies the amended instant that opens the interval, and
+    `welfare._refuse_unconfirmed` trusts its caller.
+
     **PI, 2026-09-20:** *"if a number is input that is more than 30 min from the
     current time, a warning should appear that the experimenter must click through to
     confirm. There should also be an option to update the time if necessary, but a
@@ -302,11 +307,13 @@ def _settle_departure(session, args) -> tuple:
       confirmation stops the session**, end-of-input included. A prompt whose default
       is "proceed" is the silent path wearing a question mark.
     - *Non-interactive*: **it refuses.** `wlx run` may have no terminal behind it -- a
-      wrapper, a scheduler, the `labhost` process P4d-2 adds -- and proceeding there
-      would write a confirmation nobody made, which is worse than no confirmation at
-      all. `--confirm-out-of-cage` is the honest way to say it out loud, and the row
-      records that it came from a flag rather than from a person, because a wrapper
-      with it baked in is how this ruling would otherwise be defeated in silence.
+      wrapper, a scheduler, or `console`'s `labhost` surface that wl-works polls (not
+      a process of its own -- `docs/design/architecture.md`'s `labhost` row; P4d-2b)
+      -- and proceeding there would write a confirmation nobody made, which is worse
+      than no confirmation at all. `--confirm-out-of-cage` is the honest way to say
+      it out loud, and the row records that it came from a flag rather than from a
+      person, because a wrapper with it baked in is how this ruling would otherwise
+      be defeated in silence.
 
     **A confirmation's `by` is `--as` if it was given and empty otherwise, and that is
     not an oversight.** The PI asked for a name on the *amendment*, where
@@ -459,9 +466,18 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
         # nothing, so this is the only place a terminal-only operator reads the
         # post-loop clock -- or learns it has passed the limit. Both from one wall
         # reading, through the session and `welfare`, never computed here.
+        #
+        # **`_hours_minutes`, not `_clock`** (residual fix round): this duration sits
+        # right above a question asking for an `HH:MM` clock time, and `_clock`'s
+        # `9:15` is shaped exactly like one -- a person skimming both lines could
+        # take the duration for the answer already given. `_hours_minutes`'s "9
+        # hours 15 minutes" cannot be mistaken for a clock reading.
         wall_now = session.wall_now()
         so_far = session.welfare.out_of_cage_seconds(wall_now)
-        print(f"  out of cage: {_clock(so_far)} so far, until the return is marked")
+        print(
+            f"  out of cage: {_hours_minutes(so_far)} so far, until the return is "
+            f"marked"
+        )
         warning = session.duration_warning(wall_now)
         if warning is not None:
             print(f"  WARNING: {warning}", file=sys.stderr)
@@ -1246,6 +1262,11 @@ def main(argv: list[str] | None = None) -> int:
                         if note is not None
                         else (args.actor, "--out-of-cage-at")
                     )
+                    # **`confirmed=note is not None` is welfare-critical** (P4d-2a
+                    # residual fix, `docs/design/architecture.md`): it is what
+                    # `welfare._refuse_unconfirmed` trusts when it decides whether a
+                    # far departure was actually confirmed by a person, and it is set
+                    # here from `_settle_departure`'s own decision, never re-derived.
                     session.left_cage(
                         at=departure, confirmed=note is not None, by=by, how=how
                     )

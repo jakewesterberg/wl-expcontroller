@@ -411,7 +411,12 @@ class Session:
     def left_cage(
         self, at: float, confirmed: bool = False, by: str = "", how: str = "terminal"
     ) -> None:
-        """The console action that starts the clock bounding this session.
+        """The terminal's action that starts the clock bounding this session.
+
+        **Not a console's** (residual fix round, correcting a stale docstring): the
+        PI ruled the wl-works ELN owns the interval, not a console, so this is called
+        only from `wlx run`'s own terminal (`cli.main`), which is the stand-in until
+        the ELN exists (P4d-2a spec §10).
 
         **`at` is a wall-clock instant, in POSIX seconds** (PI, 2026-09-20): a clock
         time is what an operator reads. This hands `welfare.left_cage` the wall
@@ -450,9 +455,9 @@ class Session:
     def return_needs_confirmation(self, at: float) -> str | None:
         """What a person must be shown before `returned_to_cage(at)`, or `None`.
 
-        The passthrough `returned_to_cage`'s docstring said would arrive "when
-        P4d-2's console prompts too": `wlx run`'s return prompt is its caller
-        (P4d-2a). `wall_now()` is this object's seam onto the wall, for the reason
+        `wlx run`'s terminal return prompt is this method's one caller (P4d-2a spec
+        §10, Task 8) -- not a console: the PI ruled the wl-works ELN owns the
+        interval. `wall_now()` is this object's seam onto the wall, for the reason
         `departure_needs_confirmation` gives.
         """
         return self.welfare.return_needs_confirmation(at, wall_now=self.wall_now())
@@ -460,7 +465,8 @@ class Session:
     def amend_mark(
         self, what: str, original: float, amended: float, reason: str, by: str
     ) -> None:
-        """The console action that goes with the confirmations above.
+        """The terminal's action that goes with the confirmations above, called from
+        `wlx run` or `cli._settle_departure` -- not a console (see `left_cage`).
 
         Records the amendment and refuses a blank reason or actor; the caller then
         takes the amended value with `left_cage` or `returned_to_cage`, which apply
@@ -513,7 +519,8 @@ class Session:
         self._note("return not recorded", self.wall_now(), "", "wlx run", reason=why)
 
     def head_fixed(self, at: float) -> None:
-        """The console action S8 §5.2 requires before a `RIG_FIXED` session starts.
+        """The action `wlx run` takes, S8 §5.2 requires, before a `RIG_FIXED` session
+        starts -- not a console's: called from `cli.main` itself, never asked for.
 
         Event-coded at both ends, because restraint has no hardware line: the codes
         *are* its durable record, and an offline reader recovers chair time from the
