@@ -147,8 +147,10 @@ class Session:
     #: the two disagreed -- the restraint cross-check refused a simulated rig
     #: session's first post-loop frame, and its return typed "now".
     clock: object = None
-    #: The **wall** clock, in POSIX seconds, and a different base from `clock`.
-    #: `time.time` by default. **Every welfare duration is read from it** (P4d-2a spec
+    #: The **wall** clock, in POSIX seconds, and a different base from `clock`. By
+    #: default, `time.time()` as it read when the session was created, carried forward
+    #: on `time.monotonic()` -- see `wall_now` for why it is anchored rather than read
+    #: afresh. **Every welfare duration is read from it** (P4d-2a spec
     #: §10): the marks an operator gives as clock times (PI, 2026-09-20), the
     #: head-fixation marks beside them, and the readings `out_of_cage_seconds`,
     #: `chair_seconds`, `must_stop` and `approaching_limit` are asked at. Injectable so
@@ -204,8 +206,13 @@ class Session:
     _mark_lock: threading.Lock = field(
         init=False, default_factory=threading.Lock, repr=False
     )
+    #: `(time.time(), time.monotonic())`, read together once, when the session is
+    #: created, and never again. What `wall_now` carries forward when no
+    #: `wall_clock` is injected.
+    _wall_anchor: tuple = field(init=False, default=(0.0, 0.0), repr=False)
 
     def __post_init__(self) -> None:
+        self._wall_anchor = (time.time(), time.monotonic())
         if self.spec.subject != self.spec.bounds.subject:
             # A dose error with a plausible-looking session behind it: every trial
             # row would say one subject while every limit came from another, and
@@ -245,25 +252,49 @@ class Session:
 
         **The one clock every welfare call is given** (P4d-2a spec §10), during the
         loop and after it alike: there is no mapping between bases to switch on
-        `phase`, because nothing welfare reads is on the frame clock. See
-        `wall_clock`.
+        `phase`, because nothing welfare reads is on the frame clock. An injected
+        `wall_clock` is used as it is. See `wall_clock`.
+
+        **Otherwise it is anchored, not read afresh** (Ruling 8, Task 7 fix round 1):
+        `time.time()` as it read when the session was created, carried forward on
+        `time.monotonic()`. `time.time()` can be stepped mid-session, by NTP or by a
+        person setting the host clock, and a backward step would shrink the
+        out-of-cage interval by its size -- the unsafe direction, and one the frame
+        clock this replaced in the loop's limit check never could move in.
+        `time.monotonic()` cannot: on this host, 2026-09-26 (Python 3.12, macOS),
+        `time.get_clock_info` reports `time` as `adjustable=True` and `monotonic` as
+        `adjustable=False`, and `monotonic`'s own docstring says it "cannot go
+        backward". So out-of-cage is departure to return in steady seconds, however
+        the host clock moves in between.
+
+        **The cost, stated:** a session inherits whatever offset the host clock had
+        when the session was created, exactly as `time.time()` would have, and an
+        adjustment made to the host clock mid-session is not seen until the next
+        session. A clock time an operator types is read on the host calendar
+        (`cli._wall_clock_time`), so the two agree at the session's start and differ
+        afterwards only by whatever adjustment the host clock has taken since --
+        which is why `wlx run` reads `now` from here rather than from `time.time()`.
         """
         if self.wall_clock is not None:
             return self.wall_clock()
-        return time.time()
+        wall, steady = self._wall_anchor
+        return wall + (time.monotonic() - steady)
 
-    def duration_warning(self) -> str | None:
+    def duration_warning(self, wall_now: float) -> str | None:
         """What an operator must be told about the time left out of the cage.
 
         `approaching_limit`'s sentence, as during the loop. **After the loop, past the
         limit, `must_stop`'s** (P4d-2a spec §4): there is no loop left to stop, and
-        the warning is what tells someone the animal is still out. Read on the wall,
-        as every welfare duration is.
+        the warning is what tells someone the animal is still out.
+
+        **At `wall_now`, the caller's reading, not one of its own** (Task 7 fix round
+        1): `link.Telemetry.of` reads the wall once per frame and hands the same
+        instant to this and to both durations, so a frame's warning and the clocks
+        printed beside it describe one moment rather than two.
         """
-        at = self.wall_now()
-        warning = self.welfare.approaching_limit(at)
+        warning = self.welfare.approaching_limit(wall_now)
         if warning is None and self.phase == "awaiting_return":
-            warning = self.welfare.must_stop(at)
+            warning = self.welfare.must_stop(wall_now)
         return warning
 
     # --- out of cage, and restraint ---------------------------------------
@@ -333,8 +364,9 @@ class Session:
         has landed. It moves nothing, which is what makes asking first safe.
 
         Here for the reason `left_cage` is: `wall_now()` is this object's seam onto
-        the wall clock, and a caller reading `time.time()` for itself would be a
-        second place the two clock bases meet.
+        the wall clock, and a caller reading `time.time()` for itself would read the
+        host clock rather than the session's anchored wall (Ruling 8) -- the two part
+        by any adjustment of the host clock since the session was created.
         """
         return self.welfare.departure_needs_confirmation(at, wall_now=self.wall_now())
 

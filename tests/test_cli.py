@@ -12,6 +12,7 @@ proved a person could actually run `wlx run --link` and attach `wlx console` to 
 
 from __future__ import annotations
 
+import argparse
 import gc
 import json
 import threading
@@ -1830,15 +1831,54 @@ def test_a_head_fixed_run_whose_frames_outran_the_wall_takes_the_return(
     nothing welfare can see."""
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "now")
+    # **Pinned, not assumed** (Task 7 fix round 1, Minor 3): this test is about the
+    # default kind, so it records what the parser actually gave `--deployment` and
+    # fails if the default ever stops being `rig-fixed`.
+    parsed: list = []
+    real_parse_args = argparse.ArgumentParser.parse_args
+
+    def recording_parse_args(parser, *args, **kwargs):
+        namespace = real_parse_args(parser, *args, **kwargs)
+        parsed.append(namespace)
+        return namespace
+
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", recording_parse_args)
 
     exit_code = main(
         _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--trials", "200")
     )
 
+    assert [namespace.deployment for namespace in parsed] == ["rig-fixed"]
     assert exit_code == 0
     assert _kinds(tmp_path) == ["departure", "returned"]
     trials = tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
     assert len(trials.read_text().splitlines()) == 200, "the loop ran every trial"
+
+
+@pytest.mark.parametrize("step", [120.0, -120.0], ids=["host-ahead", "host-behind"])
+def test_the_return_prompt_reads_now_on_the_sessions_clock(tmp_path, monkeypatch, step):
+    """**Task 7 fix round 1, Important.** `now` at the return prompt is compared with
+    marks taken on the session's anchored wall (`Session.wall_now`, Ruling 8): the
+    loop-end release, and the wall `returned_to_cage` reads. Read from `time.time()`
+    instead, it lands wherever the host clock has been moved to since the session
+    began -- ahead, and it is refused as in the future; behind, and as before the
+    release. The host clock is stepped two minutes either way at the prompt, after
+    the session was created and its anchor taken; `now` is taken either way."""
+    real_time = time.time
+    offset = [0.0]
+    monkeypatch.setattr(time, "time", lambda: real_time() + offset[0])
+
+    def answer(_prompt=""):
+        offset[0] = step
+        return "now"
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", answer)
+
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+
+    assert exit_code == 0
+    assert _kinds(tmp_path) == ["departure", "returned"]
 
 
 def test_a_far_return_is_confirmed_at_the_terminal(tmp_path, monkeypatch):
@@ -1927,10 +1967,10 @@ def test_a_console_can_record_the_return_while_the_terminal_waits(tmp_path, monk
         deployment=Deployment.RIG_CHAIRED,
     )
     session = Session(spec, card=Card(), pump=Pump())
-    session.left_cage(at=time.time() - 60.0)
+    session.left_cage(at=session.wall_now() - 60.0)
 
     def answer(_prompt=""):
-        session.returned_to_cage(time.time(), by="sam", how="console")
+        session.returned_to_cage(session.wall_now(), by="sam", how="console")
         return "now"
 
     monkeypatch.setattr("builtins.input", answer)

@@ -1267,6 +1267,32 @@ def test_a_session_ended_by_a_fault_says_fault(tmp_path):
     assert link.published[-1].stop_kind == "fault"
 
 
+def test_the_sessions_wall_does_not_step_when_the_host_clock_does(
+    tmp_path, monkeypatch
+):
+    """**Ruling 8** (Task 7 fix round 1). With no `wall_clock` injected, the
+    session's wall is `time.time()` as it read when the session was created,
+    carried forward on `time.monotonic()`. A host clock stepped back an hour -- by
+    NTP or by a person -- would otherwise shrink the out-of-cage interval by an hour
+    mid-session, which the frame clock the wall replaced never could; a step forward
+    would lengthen it. Both clocks are stubbed, so the arithmetic is exact."""
+    host, steady = [WALL_NOW], [100.0]
+    monkeypatch.setattr(time, "time", lambda: host[0])
+    monkeypatch.setattr(time, "monotonic", lambda: steady[0])
+    session = Session(_spec(tmp_path), card=Card(), pump=Pump())
+
+    first = session.wall_now()
+    host[0], steady[0] = WALL_NOW - 3_600.0, 105.0
+    second = session.wall_now()
+    host[0], steady[0] = WALL_NOW + 7_200.0, 110.0
+    third = session.wall_now()
+
+    assert first == WALL_NOW
+    assert second >= first, "the host clock stepped back and took the session with it"
+    assert second == WALL_NOW + 5.0, "five steady seconds passed, and only those"
+    assert third == WALL_NOW + 10.0, "a forward step is not taken either"
+
+
 def test_before_the_loop_a_session_has_no_phase(tmp_path):
     session = _session(_spec(tmp_path, trials=3))
 

@@ -220,7 +220,10 @@ simulator with default flags. Task 6's tests passed only by running `rig-chaired
    the restraint cross-check compares two wall intervals. The trial loop's limit check reads
    the wall clock once per trial boundary where it read the frame clock. The frame clock
    times trials and nothing else. When the ELN exists, its departure and return are wall
-   instants already, so this is also the shape it needs.
+   instants already, so this is also the shape it needs. The wall is read through one
+   anchor per session (Ruling 8, Task 7 fix round 1): `Session.wall_now()` is `time.time()`
+   as it read when the session was created, carried forward on `time.monotonic()`, so a
+   host-clock step mid-session cannot move the interval.
 2. **The return is terminal-only, as the ELN's stand-in.**
    - `link.ReturnedToCage` is removed (Task 4 reverted). The browser will not send it, and
      the ELN's return will reach the box through the lab-host protocol, not this link.

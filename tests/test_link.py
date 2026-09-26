@@ -117,13 +117,36 @@ def _session_with(
         # here on purpose: the frame clock is for timing trials, and a
         # `Telemetry.of` that handed it to `welfare` would fail on this stand-in.
         wall_now=lambda: 0.0,
-        duration_warning=lambda: welfare.approaching_limit(0.0),
+        duration_warning=lambda wall_now: welfare.approaching_limit(wall_now),
     )
 
 
 def _scheduler() -> Scheduler:
     block = Block(name="session", conditions=[Condition("only", {}, target=1)])
     return Scheduler(blocks=[block], seed=0)
+
+
+def test_a_frame_reads_the_wall_once_and_is_one_instant():
+    """**Task 7 fix round 1, Minor 2.** `Telemetry.of` used to read the wall for the
+    two durations and let `Session.duration_warning` read it again, so a frame's
+    warning and the clocks beside it could describe two moments. The wall here moves
+    a second on every read: one read, and the warning is given that same instant."""
+    session = _session_with(delivered_ml=1.25, already_today=3.0)
+    reads: list = []
+
+    def wall_now() -> float:
+        reads.append(None)
+        return float(len(reads))
+
+    warned_at: list = []
+    session.wall_now = wall_now
+    session.duration_warning = lambda at: warned_at.append(at)
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
+
+    assert len(reads) == 1, "one frame, one reading of the wall"
+    assert warned_at == [1.0]
+    assert telemetry.out_of_cage_seconds == 1.0
 
 
 def test_telemetry_reads_welfare_rather_than_recomputing_it():

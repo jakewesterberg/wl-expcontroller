@@ -931,7 +931,7 @@ def test_a_restraint_clock_that_runs_backwards_is_refused_when_it_is_read():
     `chair: -1:53:20` on a console.
 
     The marks are guarded now, so the only way here is a field assigned directly or
-    a `now` in a base the mark was not taken in -- which is exactly why
+    a wall reading before the fixation -- which is exactly why
     `out_of_cage_seconds` checks its own result as well, and why the entry-point
     enumeration's exemption for `fixed_wall_at`/`released_wall_at` can only rest on
     *this*.

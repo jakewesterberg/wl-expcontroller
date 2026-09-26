@@ -13,6 +13,7 @@ import importlib.util
 import sys
 import threading
 import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
@@ -151,9 +152,18 @@ def _wall_clock_time(text: str) -> float:
     `23:59` mistyped in the morning into an animal recorded as out for most of a day,
     which is precisely the plausible-typo class this flag's refusals exist for.
 
-    Returning a POSIX float, not a `datetime`: `welfare.left_cage` is the one place
-    the wall clock and the session clock meet, and handing it a rich object would put
+    Returning a POSIX float, not a `datetime`: `welfare` compares it with other wall
+    instants and does nothing else with it, and handing it a rich object would put
     calendar arithmetic inside a welfare-critical file.
+
+    **The departure is read here, by argparse, before the session exists** -- it has
+    no `now` spelling -- and `welfare.left_cage` compares it with
+    `Session.wall_now()`, which is anchored to the host clock when the session is
+    created a moment later (Ruling 8, Task 7 fix round 1). So the host calendar this
+    resolves against and the session's wall are one base at the departure; they
+    could part only by an adjustment of the host clock between parsing the command
+    line and creating the session. The return's `now` is the session's reading, for
+    the reason `_clock_or_now` gives.
     """
     raw = text.strip()
     for fmt in ("%H:%M", "%H:%M:%S"):
@@ -181,11 +191,27 @@ def _wall_clock_time(text: str) -> float:
     return parsed.timestamp()
 
 
-def _clock_or_now(text: str) -> float:
+def _clock_or_now(text: str, now: Callable[[], float]) -> float:
     """`now`, or a clock time as `_wall_clock_time` reads one. For the return, which
-    is usually marked at the moment it happens (P4d-2a)."""
+    is usually marked at the moment it happens (P4d-2a).
+
+    **`now` is read from `now()` -- the session's clock, `Session.wall_now` -- never
+    from `time.time()`** (Task 7 fix round 1). The return is compared with marks taken
+    on that clock: the loop-end head release, and the wall `returned_to_cage` reads.
+    Since Ruling 8 it is the host clock as it read when the session was created,
+    carried forward on the monotonic clock, so a `time.time()` read here would sit on
+    the wrong side of those marks by however far the host clock has been adjusted
+    since, and be refused as in the future or as before the release.
+
+    **A typed clock time is read on the host calendar** (`_wall_clock_time`: today's
+    date, this host's zone), which is `time.time()`'s base. The two bases agree when
+    the session is created and part only by an adjustment of the host clock since.
+    A time typed to the minute names a moment an operator read off a clock, and is
+    not sensitive to that the way "this instant" is; one typed to the current second
+    could be, and `now` is the spelling for this instant.
+    """
     if text.strip().lower() == "now":
-        return time.time()
+        return now()
     return _wall_clock_time(text)
 
 
@@ -289,7 +315,9 @@ def _settle_departure(session, args) -> tuple:
             "reason": reason,
             "by": by,
             "how": how,
-            "recorded_at": time.time(),
+            # The session's clock, as `Session._note` stamps every other row, so
+            # one file's `recorded_at` column has one base (Ruling 8).
+            "recorded_at": session.wall_now(),
         }
 
     if args.amend_out_of_cage_to is not None:
@@ -416,7 +444,7 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
         if not raw:
             return "no answer at the terminal"
         try:
-            at = _clock_or_now(raw)
+            at = _clock_or_now(raw, session.wall_now)
         except argparse.ArgumentTypeError as bad:
             print(f"  {bad}", file=sys.stderr)
             continue
