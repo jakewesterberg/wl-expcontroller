@@ -1775,6 +1775,52 @@ def test_a_fault_skipped_the_release_and_the_return_can_still_land(tmp_path):
     assert link.published[-1].stop_kind == "fault"
 
 
+def test_a_card_fault_releasing_the_head_after_the_loop_is_published_then_raised(
+    tmp_path,
+):
+    """**Final review M7.** The head release `await_return` makes on entry sat outside
+    its fault handler, so a card that failed strobing `HEAD_RELEASED` escaped with no
+    fault frame -- the session's last word stayed whatever the loop said, and a
+    console could not tell the post-loop phase had failed. It is inside now, and gets
+    the one frame naming the fault that everything else there gets.
+
+    `give_up` is set by a timer, as in the test above, so a release that no longer
+    raises ends this with `DID NOT RAISE` rather than polling forever."""
+
+    class Broken:
+        def deliver(self, ml: float) -> None:
+            raise RuntimeError("solenoid did not answer")
+
+    link, card = Simulated(), Card()
+    session = Session(
+        _spec(tmp_path, trials=200), card=card, pump=Broken(), link=link,
+        wall_clock=lambda: WALL_NOW,
+    )
+    session.left_cage(at=WALL_NOW)
+    session.head_fixed(at=WALL_NOW)
+    with pytest.raises(RuntimeError, match="solenoid"):
+        session.run()
+    published = len(link.published)
+
+    def emit(code: int) -> None:
+        raise OSError("the card did not answer")
+
+    card.emit = emit
+    give_up = threading.Event()
+    deadline = threading.Timer(5.0, give_up.set)
+    deadline.start()
+    try:
+        with pytest.raises(OSError, match="did not answer"):
+            session.await_return(give_up, heartbeat=0.01)
+    finally:
+        deadline.cancel()
+
+    assert len(link.published) == published + 1, "one frame naming the fault"
+    assert link.published[-1].stop_kind == "fault"
+    assert "after the loop" in link.published[-1].stopped_because
+    assert "the card did not answer" in link.published[-1].stopped_because
+
+
 def _cage_side_bounds() -> Bounds:
     """A cage-side config (S13, see `test_welfare._home_bounds`): the same fluid
     floor as `_bounds()` but **no `out_of_cage` ceiling** -- `welfare.Welfare`

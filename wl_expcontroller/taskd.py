@@ -1058,8 +1058,9 @@ class Session:
 
         **One frame naming the fault, then it propagates unchanged** -- the same rule
         `run()`'s own `except Exception as fault:` follows (fix round 1), covering
-        whatever this loop's own work can still raise (`link.drain()`, `_command`,
-        `_publish()`) now that `returned_to_cage` is never one of them. Left
+        whatever this method's own work can still raise -- the head release on entry
+        (final review M7), `link.drain()`, `_command`, `_publish()` -- now that
+        `returned_to_cage` is never one of them. Left
         unguarded, such an exception would escape with `phase` stuck at
         `awaiting_return` forever, no `closed` frame, and -- on the background thread
         `cli._close_interval` runs this on -- a traceback nobody joins. This publishes
@@ -1081,13 +1082,16 @@ class Session:
                 "await_return before run() opened the record: there is no session "
                 "whose clock could be published"
             )
-        if (
-            self.welfare.fixed_wall_at is not None
-            and self.welfare.released_wall_at is None
-        ):
-            self.head_released(self.wall_now())
-        self.phase = "awaiting_return"
         try:
+            # Inside the handler (final review M7): a card that fails strobing
+            # `HEAD_RELEASED` is a post-loop fault like any other here, and gets the
+            # frame that names it. It escaped with none until then.
+            if (
+                self.welfare.fixed_wall_at is not None
+                and self.welfare.released_wall_at is None
+            ):
+                self.head_released(self.wall_now())
+            self.phase = "awaiting_return"
             while self.welfare.returned_wall_at is None and not give_up.is_set():
                 for command in self.link.drain():
                     self._command(command, self._index)
