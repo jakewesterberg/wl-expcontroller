@@ -1208,73 +1208,94 @@ def main(argv: list[str] | None = None) -> int:
                 # nowhere to go. The row is written after the mark is accepted, so a
                 # "correction" the ceiling refuses leaves no record of a change that
                 # did not happen.
+                marked_then_interrupted = False
                 try:
                     departure, note = _settle_departure(session, args)
                     # `confirmed` is true exactly when a person acted -- an
                     # amendment is its own confirmation, since a named person giving
                     # a reason has done strictly more than click through.
-                    # `welfare.left_cage` refuses a far mark without it, so the
-                    # console P4d-2 adds cannot reach around this prompt.
+                    # `welfare.left_cage` refuses a far mark without it, so no
+                    # caller can reach around this prompt.
                     session.left_cage(at=departure, confirmed=note is not None)
-                    if note is not None:
-                        _record.welfare_note(session.directory, **note)
-                    if deployment is Deployment.RIG_FIXED:
-                        session.head_fixed(at=session.wall_now())
                 except Exceeded as refused:
                     raise SystemExit(f"refused: {refused}") from refused
                 except KeyboardInterrupt:
                     # **The departure prompt's own Ctrl-C** (Task 9 fix round 1).
                     # `_settle_departure`'s interactive prompts run through `_ask`,
                     # which turns end-of-input into a quiet `""` but leaves
-                    # `KeyboardInterrupt` to propagate -- unlike the return prompt,
-                    # whose `_close_interval` already catches it and reports exit
-                    # 130 (`_settle_return`). Caught here the same way, so Ctrl-C
-                    # at either prompt leaves the terminal the same way, rather
-                    # than one exiting cleanly and the other dumping a traceback.
-                    print(
-                        "run: interrupted -- the departure was not recorded",
-                        file=sys.stderr,
-                    )
-                    return 130
+                    # `KeyboardInterrupt` to propagate. Caught here, so Ctrl-C at
+                    # either prompt leaves the terminal the same way. **Said only if
+                    # it is true** (final review M1): an interrupt that lands inside
+                    # `left_cage` after `welfare` took the mark takes the path below.
+                    if session.welfare.left_cage_wall_at is None:
+                        print(
+                            "run: interrupted -- the departure was not recorded",
+                            file=sys.stderr,
+                        )
+                        return 130
+                    marked_then_interrupted = True
 
-                # **The consequence of a clock time, made visible** (PI, 2026-09-20).
-                # He accepted losing the automatic wall-clock refusal on the
-                # condition that a mistyped hour is legible rather than silent:
-                # `08:45` for `18:45` sits comfortably inside a twelve-hour
-                # ceiling, and nothing else on this path would remark on it. Read
-                # from `welfare`, never recomputed here -- `render`'s rule, on the
-                # headless path.
-                #
-                # **`departure`, not `args.out_of_cage_at`**: an amended time is
-                # what the session is bounded by, so it is what this line must
-                # show. Printing the value the operator first typed would have
-                # this sentence describe a clock nothing is running. Read at the
-                # wall, as every welfare duration is (P4d-2a spec §10).
-                so_far = session.welfare.out_of_cage_seconds(session.wall_now())
-                print(
-                    f"  out of cage: the animal has been out {_hours_minutes(so_far)}"
-                    f", having left its cage at "
-                    f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(departure))}"
-                    # The zone **at the departure**, not at now. A session started
-                    # just after a daylight-saving change would otherwise label a
-                    # departure made before it with the zone that is current now --
-                    # and that is precisely the one hour a year when the label
-                    # carries information.
-                    f" ({time.strftime('%Z', time.localtime(departure))}"
-                    f", this host's local time)"
-                )
-                # **The return to the cage is taken here, or its absence is
-                # recorded** (P4d-2a spec §3, §5, amended by §10: the terminal,
-                # and only the terminal, until the wl-works ELN exists).
+                # **From the departure mark on, every way out reaches
+                # `_close_interval`** (final review M1). A card that failed at
+                # head-fixation, or Ctrl-C there, left `departure` on record and no
+                # return row at all; now a fault or a refusal before the first
+                # trial takes the not-started branch, which says so, and goes on,
+                # and Ctrl-C at any point from here takes the interrupted path.
                 # `_close_interval` is reached on every way out of `session.run()`
-                # -- a normal end, Ctrl-C, a fault -- so the interval is never left
-                # open with nothing said about why.
+                # too -- a normal end, Ctrl-C, a fault -- so the interval is never
+                # left open with nothing said about why (P4d-2a spec §3, §5, amended
+                # by §10: the terminal, and only the terminal, until the wl-works
+                # ELN exists).
+                census = None
                 try:
-                    census = session.run()
+                    if not marked_then_interrupted:
+                        try:
+                            # The row is written after the mark is accepted, so a
+                            # "correction" the ceiling refuses leaves no record of a
+                            # change that did not happen.
+                            if note is not None:
+                                _record.welfare_note(session.directory, **note)
+                            # Head-fixation is marked at the wall instant it is taken,
+                            # and only for the kind that has it, since
+                            # `welfare.head_fixed` refuses the other.
+                            if deployment is Deployment.RIG_FIXED:
+                                session.head_fixed(at=session.wall_now())
+                        except Exceeded as refused:
+                            raise SystemExit(f"refused: {refused}") from refused
+
+                        # **The consequence of a clock time, made visible** (PI,
+                        # 2026-09-20). He accepted losing the automatic wall-clock
+                        # refusal on the condition that a mistyped hour is legible
+                        # rather than silent: `08:45` for `18:45` sits comfortably
+                        # inside a twelve-hour ceiling, and nothing else on this path
+                        # would remark on it. Read from `welfare`, never recomputed
+                        # here -- `render`'s rule, on the headless path.
+                        #
+                        # **`departure`, not `args.out_of_cage_at`**: an amended time
+                        # is what the session is bounded by, so it is what this line
+                        # must show. Read at the wall, as every welfare duration is
+                        # (P4d-2a spec §10).
+                        so_far = session.welfare.out_of_cage_seconds(
+                            session.wall_now()
+                        )
+                        print(
+                            f"  out of cage: the animal has been out "
+                            f"{_hours_minutes(so_far)}, having left its cage at "
+                            f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(departure))}"
+                            # The zone **at the departure**, not at now. A session
+                            # started just after a daylight-saving change would
+                            # otherwise label a departure made before it with the
+                            # zone that is current now -- and that is precisely the
+                            # one hour a year when the label carries information.
+                            f" ({time.strftime('%Z', time.localtime(departure))}"
+                            f", this host's local time)"
+                        )
+                        census = session.run()
                 except KeyboardInterrupt:
-                    # **Ctrl-C during the loop** (final review I4). `run()` has named
-                    # it an operator's stop and published it; the animal is still out
-                    # of its cage, so the return is taken below like any other ending.
+                    # **Ctrl-C after the departure mark** (final review I4, M1).
+                    # During the loop, `run()` has named it an operator's stop and
+                    # published it; before it, nothing ran. Either way the animal is
+                    # out of its cage, so the return is taken below.
                     census = None
                 except BaseException:
                     # A fault, or a refusal before the first trial: the return is

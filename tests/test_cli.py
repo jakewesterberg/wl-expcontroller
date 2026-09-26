@@ -2170,6 +2170,83 @@ def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
     assert out.index("<<the return prompt>>") < out.index("ended: interrupted")
 
 
+# --- final review M1, M2: after the departure mark and before the loop ---------
+
+
+def _card_fails_at_head_fixation(monkeypatch, raising: BaseException) -> None:
+    """The simulated card raises on its first strobe, which in `wlx run` is
+    `HEAD_FIXED`: the departure is already marked, and the loop has not begun."""
+    from wl_expcontroller import dio
+
+    def emit(self, code: int) -> None:
+        raise raising
+
+    monkeypatch.setattr(dio.Simulated, "emit", emit)
+
+
+def test_a_fault_after_the_departure_and_before_the_loop_still_leaves_a_return_row(
+    tmp_path, monkeypatch
+):
+    """**Final review M1.** A card that fails at head-fixation left `session opened`,
+    `departure`, `session ended` -- an interval opened with nothing said about why it
+    was never closed. Everything after the departure mark now reaches
+    `_close_interval`, whose not-started branch says so, before the fault goes on."""
+    _card_fails_at_head_fixation(monkeypatch, OSError("the card did not answer"))
+
+    with pytest.raises(OSError, match="did not answer"):
+        main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "the session did not start"
+
+
+def test_ctrl_c_after_the_departure_mark_does_not_say_it_was_not_recorded(
+    tmp_path, monkeypatch, capsys
+):
+    """**Final review M1**, its second half. Ctrl-C at head-fixation printed "the
+    departure was not recorded" -- after it had been. It now takes the same path as
+    a fault there: the return row says the session did not start, and the run exits
+    130 saying the return was not recorded, which is true."""
+    _card_fails_at_head_fixation(monkeypatch, KeyboardInterrupt())
+
+    exit_code = _main_uninterrupted(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+
+    assert exit_code == 130
+    assert "the departure was not recorded" not in capsys.readouterr().err
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "the session did not start"
+
+
+def test_a_task_refused_by_its_checks_records_that_the_session_did_not_start(
+    tmp_path,
+):
+    """**Final review M2**: `_close_interval`'s not-started branch had no test. A task
+    with a blocking finding is refused by `run()` before its first trial, after the
+    departure is marked, and the return row says why the interval stays open."""
+    bad = tmp_path / "bad_task.py"
+    bad.write_text(
+        "from wl_expcontroller.task import After, On, Outcome, State, Trial\n"
+        "t = Trial(start='a', states=[\n"
+        "    State('a', go=[On(After(1.0), Outcome.CORRECT)]),\n"
+        "    State('orphan', go=[On(After(1.0), Outcome.CORRECT)]),\n"
+        "])\n"
+    )
+    argv = _run_args(tmp_path, "--out-of-cage-at", _hhmm())
+    argv[1] = str(bad)
+
+    with pytest.raises(SystemExit, match="task refused"):
+        main(argv)
+
+    assert _kinds(tmp_path) == [
+        "session opened", "departure", "return not recorded", "session ended",
+    ]
+    assert _notes(tmp_path)[-2]["reason"] == "the session did not start"
+
+
 # --- final review I3: what a terminal-only operator sees around the return ----
 
 
