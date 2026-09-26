@@ -23,9 +23,11 @@ code, not inferred:
    parameter layers and `trials.jsonl` the trials. The departure reaches `welfare_notes.jsonl`
    only when a far mark is confirmed or amended. The one number that bounds a session is
    answered from the record or not at all (S9a §9), and today it is not at all.
-3. **A `RIG_FIXED` session in `wlx run` cannot be closed.** It marks head-fixation at 0 and
-   never the release, and `welfare.returned_to_cage` refuses a return while the head is
-   recorded as fixed.
+3. **A `RIG_FIXED` session that ends on a fault cannot be closed.** `run()` marks the
+   release at the loop's end on every *normal* ending (`taskd.py`, after the loop), but a
+   fault re-raises past it, and `welfare.returned_to_cage` refuses a return while the head
+   is recorded as fixed. *Corrected 2026-09-26 while planning: this item first said every
+   `RIG_FIXED` `wlx run` session was unclosable, which was wrong for the normal path.*
 4. **The clock goes dark when the loop ends.** Since ruling 4 (2026-09-20) the interval is
    counted on the wall until the return, but nothing publishes it after the last trial. A
    console would show a frozen out-of-cage time while the real one runs, and a limit crossed
@@ -34,9 +36,9 @@ code, not inferred:
 ## 2. Rulings this slice rests on
 
 - **Only cage-to-cage time matters** (PI, 2026-09-19, restated 2026-09-26). Head-post
-  release gates nothing and its clock is unchanged. `wlx run` marks the release at the loop's
-  end, the mirror of the fixation it already marks at 0, so that `welfare`'s
-  release-before-return cross-check stops being a dead end rather than being removed.
+  release gates nothing and its clock is unchanged. `run()` already marks the release at a
+  normal loop end; `await_return` marks it on entry if a fault skipped that, so that
+  `welfare`'s release-before-return cross-check is never a dead end and is not removed.
 - **The return mark is its own slice, before the browser** (PI, 2026-09-26).
 - **A rig session that ended on its limit reads `degraded` on `wl-works` until the return is
   recorded** (PI, 2026-09-26). That verdict is P4d-2b's; the state it reads is this slice's.
@@ -53,8 +55,10 @@ person confirmed or amended a far mark:
 | `return not recorded` | the process ends with no return on a rig session | the reason |
 
 The existing `departure confirmed` / `departure amended` rows are unchanged and still written
-beside `departure` when they apply; the return gets `return confirmed` / `return amended` the
-same way. Each row carries the wall instant and its local clock time with zone, as the
+beside `departure` when they apply; a far return that a person confirmed gets a `return
+confirmed` row the same way. **There is no `return amended`**: the return is typed at the
+moment it is taken, so a corrected time is simply the time entered, and nothing was marked
+that an amendment could replace. Each row carries the wall instant and its local clock time with zone, as the
 existing rows do, and `by`.
 
 `return not recorded` is written from a `finally`, so an exception or an interrupted prompt
@@ -66,8 +70,10 @@ is the signal. Rows are never capped: they are one or two per session.
 `taskd.Session.await_return()`, called by the owner of a rig session after `run()` returns,
 whatever the stop reason. **Cage-side sessions skip it**: there is no interval to close.
 
-- **Publishes a frame every `heartbeat` seconds** (default 5 s — a display cadence for the
-  console, not a measurement of this system and not a claim about its timing). Each frame
+- **Publishes a frame every `heartbeat` seconds** (default 1 s — a display cadence for the
+  console, not a measurement of this system and not a claim about its timing; it must sit
+  well inside `ZmqConsole`'s 5 s receive timeout, or a console waiting for the next frame
+  times out between them — found planning, 2026-09-26). Each frame
   reads the out-of-cage time from the **wall**, through the departure anchor.
 - **The duration warning keeps running.** Before the limit it is `approaching_limit`'s
   sentence, as during the loop. Past the limit it is `must_stop`'s sentence, because there
@@ -108,6 +114,12 @@ welfare number is computed anywhere new.
 - **Whichever is accepted first wins.** One lock covers the mark. A second return is refused
   by `welfare`'s existing sentence, and a waiting terminal prompt is told the console
   recorded it.
+- **The terminal prompt ends.** An empty answer, or three answers that are not an accepted
+  mark, end it with `return not recorded` and the reason — a prompt that re-asked forever
+  would hang any script, and any test, that answers with a fixed string.
+- **`--await-return-for SECONDS`** bounds the wait when only a console can deliver the mark,
+  and records `return not recorded (nobody marked it within N s)` when it lapses. Without it,
+  a linked run with no terminal waits until a console marks the return or it is interrupted.
 - **No terminal and no link.** `wlx run` does not wait for a mark nothing can deliver: it
   writes `return not recorded (no terminal and no console attached)` and exits. This keeps
   headless runs and every existing test working, and the record says why the interval is
@@ -137,14 +149,15 @@ render an `awaiting_return` frame's advancing clock as a running session.
    confirmation.
 5. With no terminal and no console, `wlx run` records `return not recorded` and exits
    instead of waiting.
-6. In `wlx run`, a `RIG_FIXED` session's head release is marked at the loop's end.
+6. If a fault skipped the release, `await_return` marks a `RIG_FIXED` session's head
+   release on entry, so the return is never refused for a head nobody can release.
 
 ## 8. Testing (sim first)
 
 Red before green, each against the code as it stands:
 
 - A rig session's directory has no departure row and no return (§1 items 1–2).
-- A `RIG_FIXED` `wlx run` session cannot record a return (§1 item 3).
+- A `RIG_FIXED` session whose loop ended on a fault cannot record a return (§1 item 3).
 
 Then:
 
