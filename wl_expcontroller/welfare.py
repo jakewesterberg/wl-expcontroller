@@ -253,8 +253,8 @@ def steady_seconds() -> float:
 
     **Chosen on every reading rather than once at import**, so a test can stub the
     platform (`tests/test_welfare.py`); the cost is one attribute lookup, and this
-    is read once per trial boundary and once per published frame, never per frame
-    of a trial.
+    is read at trial boundaries, for each published frame and at each mark, never
+    per frame of a trial.
     """
     boottime = getattr(time, "CLOCK_BOOTTIME", None)
     if boottime is not None:
