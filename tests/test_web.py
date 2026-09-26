@@ -141,6 +141,34 @@ def test_the_time_since_the_last_reward_is_the_frames_instant_aged_by_serve():
     )
 
 
+def test_before_the_first_trial_the_strip_says_so_not_zero():
+    """I1 (fix round 1): `_correct`'s early return for `trial_index == 0` is the
+    strip's own guard against a 0/0 percentage -- no test exercised it until this
+    round."""
+    strip = fragments(frame(trial_index=0, outcomes={}), view())["strip"]
+
+    assert (
+        '<span class="lab">Correct / trials</span>'
+        '<span class="val"><span class="nm">no trials yet</span></span>' in strip
+    )
+    assert "0/0" not in strip
+    assert "0%" not in strip
+    assert "NaN" not in strip
+
+
+def test_out_of_cage_time_with_no_published_limit_shows_the_clock_alone():
+    """M2 (fix round 1): `_out_of_cage`'s other guarded branch -- elapsed time
+    published, but no limit -- a rig session whose ceiling was not sent. Shown as
+    the clock alone: no bar, and no limit in the label."""
+    strip = fragments(frame(out_of_cage_limit_s=None), view())["strip"]
+
+    assert (
+        '<div><div class="row"><span class="lab">Out of cage</span>'
+        '<span class="val">1:23:45</span></div></div>' in strip
+    )
+    assert "Out of cage /" not in strip
+
+
 # --- counts, ticks, and the strip's arithmetic ----------------------------------
 
 
