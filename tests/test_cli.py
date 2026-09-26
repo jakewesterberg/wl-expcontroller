@@ -604,6 +604,10 @@ def _telemetry(**overrides) -> Telemetry:
 
     `duration_warning` defaults to `None` -- the quiet case -- so a test that does
     not ask for the warning does not get a line it never checked.
+
+    Schema 7's fields (P4d-2b b1) default to a configured rig session with nothing
+    rewarded and no outcome yet: `last_reward_at` is `None` and `recent_outcomes`
+    empty, so a test that does not ask for either sees their *none yet* lines.
     """
     base = Telemetry(
         schema=1,
@@ -628,6 +632,20 @@ def _telemetry(**overrides) -> Telemetry:
         staged=(),
         refusals=(),
         refusals_dropped=0,
+        task="tasks/fixation_detection.py",
+        allocation="tasks/allocation.py",
+        bounds_config="tasks/reference_bounds.py",
+        params=(),
+        floor_ml=250.0,
+        # Fifteen minutes, chosen so its clock (`15:00`) contains no `0:00`:
+        # `test_console_says_a_session_that_has_not_opened_has_no_in_session_clock`
+        # refuses `0:00` anywhere on the screen, and `render` prints this limit beside
+        # the out-of-cage clock -- `10:00` or `12:00:00` would fail it on a line it is
+        # not about. A test about the limit passes its own.
+        out_of_cage_limit_s=900.0,
+        wall_at=1_700_000_000.0,
+        last_reward_at=None,
+        recent_outcomes=(),
     )
     return replace(base, **overrides) if overrides else base
 

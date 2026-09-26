@@ -42,6 +42,8 @@ import weakref
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from wl_expcontroller.welfare import DAILY_FLUID, OUT_OF_CAGE
+
 #: Bumped whenever a field changes meaning or disappears. ADR-0003: "schema-versioned
 #: messages ... version field from day one". A console reading an older schema than it
 #: knows must say so rather than render a field it has guessed the meaning of.
@@ -81,7 +83,16 @@ from typing import Protocol
 #: PI's second clock, apart from out-of-cage and bounding nothing. A console built
 #: against 5 renders an awaiting-return frame's advancing clock as a running
 #: session, and has no field at all for the in-session one.
-SCHEMA = 6
+#:
+#: 7 (2026-09-26, P4d-2b b1): the configuration a session runs under (`task`,
+#: `allocation`, `bounds_config`, `params`), the two limits its numbers are read
+#: against (`floor_ml`, `out_of_cage_limit_s`), the frame's own instant (`wall_at`,
+#: ledger Ruling 1, 2026-09-27), `last_reward_at` and `recent_outcomes`. Nothing
+#: changed meaning. A reader built against 6 decodes a
+#: schema-7 frame and ignores the additions; a schema-7 reader cannot decode a
+#: schema-6 frame, which lacks them, and `wlx serve` says so on its page rather than
+#: showing a guess (`serve.Server._listen`).
+SCHEMA = 7
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -169,6 +180,25 @@ class Refused:
     name: str
     by: str
     why: str
+
+
+@dataclass(frozen=True, slots=True)
+class ParamRow:
+    """One settable value, as the browser console's parameter pane shows it (P4d-2b
+    spec §3: "the parameter row is generated from it").
+
+    From `taskd.Session.parameters`: a task `Param` with its current value, or a
+    welfare ceiling (`bounded=True`) over `[0, maximum]`. `value` is `None` when the
+    task declares a parameter nobody set -- a console prints *unset*, never `0` --
+    and may be a string for a categorical one.
+    """
+
+    name: str
+    unit: str
+    low: float | None
+    high: float | None
+    value: float | str | None
+    bounded: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,6 +315,41 @@ class Telemetry:
     #: showed fifty refusals and said nothing about the four hundred before them
     #: would be the silent-drop failure this field exists to prevent.
     refusals_dropped: int
+    #: `session.spec.task` -- the task file this session loaded: S9a §3's
+    #: configuration information (P4d-2b spec §3). Also in the config snapshot.
+    task: str
+    #: `session.spec.allocation`. Empty is the provisional allocation (`cli`).
+    allocation: str
+    #: `session.spec.bounds_config`: the bounded config's file. Empty when nobody
+    #: named one, which a console says rather than filling in.
+    bounds_config: str
+    #: `session.parameters`, as `ParamRow`s: the task's declarations, then the welfare
+    #: ceilings a console may stage (P4d-2b spec §3).
+    params: tuple
+    #: The day's fluid floor, `welfare.bounds.minima[DAILY_FLUID].value` -- what
+    #: `fluid_today_ml` is read against. `Welfare` refuses a config without one, so it
+    #: is never `None`.
+    floor_ml: float
+    #: The ceiling the out-of-cage clock runs against, `ceilings[OUT_OF_CAGE].value`
+    #: -- the number `welfare.must_stop` compares with, not the maximum. `None`
+    #: cage-side, where `Welfare` refuses a config that declares one.
+    out_of_cage_limit_s: float | None
+    #: **The frame's own instant**: the one `session.wall_now()` reading this frame
+    #: was built at, POSIX seconds on the session's anchored clock -- the instant
+    #: `out_of_cage_seconds`, `chair_seconds`, `in_session_seconds` and
+    #: `duration_warning` describe (ledger Ruling 1, 2026-09-27). On the wire so a
+    #: console ages a frame by its own steady clock from the frame's arrival, and
+    #: never subtracts its host clock from a session instant, which parts from the
+    #: session's anchor by any step of the host clock since the session began.
+    wall_at: float
+    #: `welfare.last_delivery_wall_at`: when the last reward was charged, POSIX
+    #: seconds on the session's anchored clock, or `None` before the first -- never
+    #: `0.0` (P4d-2b spec §4.1). A console reads it against `wall_at`, the same
+    #: clock, never against its own.
+    last_reward_at: float | None
+    #: `session.recent_outcomes`: the last `RECENT_OUTCOMES` outcome strings, oldest
+    #: first, exactly as `trials.jsonl` records them, `hang` included.
+    recent_outcomes: tuple
 
     @classmethod
     def of(cls, session, tally, scheduler, index: int) -> "Telemetry":
@@ -334,6 +399,9 @@ class Telemetry:
             + len(refusals)
             - len(kept)
         )
+        # Read, never decided: `Welfare` guarantees a rig session has this ceiling
+        # and a cage-side one does not, so its absence is the cage-side case.
+        limit = session.welfare.bounds.ceilings.get(OUT_OF_CAGE)
         return cls(
             schema=SCHEMA,
             session_id=session.spec.session_id,
@@ -395,6 +463,19 @@ class Telemetry:
             # read goes through a `getattr` default any more.
             refusals=kept,
             refusals_dropped=dropped,
+            # P4d-2b b1 (spec §3, §4.1). The configuration is the spec's -- what the
+            # config snapshot records -- and the rest is `welfare`'s and the
+            # session's own, read through their public surface.
+            task=session.spec.task,
+            allocation=session.spec.allocation,
+            bounds_config=session.spec.bounds_config,
+            params=tuple(ParamRow(*row) for row in session.parameters),
+            floor_ml=session.welfare.bounds.minima[DAILY_FLUID].value,
+            out_of_cage_limit_s=None if limit is None else limit.value,
+            # The reading above, the one this whole frame describes (ledger Ruling 1).
+            wall_at=wall_now,
+            last_reward_at=session.welfare.last_delivery_wall_at,
+            recent_outcomes=session.recent_outcomes,
         )
 
 
@@ -443,6 +524,25 @@ def encode(telemetry: Telemetry) -> bytes:
         ],
         "refusals": [{"name": r.name, "by": r.by, "why": r.why} for r in telemetry.refusals],
         "refusals_dropped": telemetry.refusals_dropped,
+        "task": telemetry.task,
+        "allocation": telemetry.allocation,
+        "bounds_config": telemetry.bounds_config,
+        "params": [
+            {
+                "name": p.name,
+                "unit": p.unit,
+                "low": p.low,
+                "high": p.high,
+                "value": p.value,
+                "bounded": p.bounded,
+            }
+            for p in telemetry.params
+        ],
+        "floor_ml": telemetry.floor_ml,
+        "out_of_cage_limit_s": telemetry.out_of_cage_limit_s,
+        "wall_at": telemetry.wall_at,
+        "last_reward_at": telemetry.last_reward_at,
+        "recent_outcomes": list(telemetry.recent_outcomes),
     }
     return msgpack.packb(payload, use_bin_type=True)
 
@@ -493,6 +593,15 @@ def decode(payload: bytes) -> Telemetry:
         staged=tuple(Staged(**s) for s in data["staged"]),
         refusals=tuple(Refused(**r) for r in data["refusals"]),
         refusals_dropped=data["refusals_dropped"],
+        task=data["task"],
+        allocation=data["allocation"],
+        bounds_config=data["bounds_config"],
+        params=tuple(ParamRow(**p) for p in data["params"]),
+        floor_ml=data["floor_ml"],
+        out_of_cage_limit_s=data["out_of_cage_limit_s"],
+        wall_at=data["wall_at"],
+        last_reward_at=data["last_reward_at"],
+        recent_outcomes=tuple(data["recent_outcomes"]),
     )
 
 

@@ -17,8 +17,10 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
     REFUSAL_HISTORY,
     Absent,
+    ParamRow,
     Refused,
     RemoteBindRefused,
+    SCHEMA,
     Simulated,
     SetParameter,
     Staged,
@@ -99,11 +101,21 @@ def _session_with(
             # Read by `Telemetry.of` since 2026-09-20: two of the three kinds
             # answer `None` for chair time and a console has to say which.
             deployment=deployment,
+            task="tasks/fixation_detection.py",
+            allocation="tasks/allocation.py",
+            bounds_config="subjects/A/bounds.py",
         ),
         welfare=welfare,
         stopped_because="",
         staged=(),
         refusals=(),
+        # Stand-ins for `Session.parameters` and `Session.recent_outcomes` (P4d-2b
+        # b1): the shapes `Telemetry.of` reads, as `staged` and `refusals` are.
+        parameters=(
+            ("fix_hold", "s", 0.1, 1.0, 0.3, False),
+            ("reward_correct", "mL", 0.0, 0.4, 0.15, True),
+        ),
+        recent_outcomes=("correct", "hang"),
         # Read as a plain attribute by `Telemetry.of`, exactly like `link.refused`
         # and for the same reason -- `Session.refusals` is capped at
         # `REFUSAL_HISTORY` since 2026-09-19, and its discards have to reach the
@@ -771,7 +783,7 @@ def test_the_phase_and_the_kind_of_stop_survive_the_wire():
     restored = decode(encode(original))
 
     assert restored == original
-    assert restored.schema == 6
+    assert restored.schema == SCHEMA
 
 
 def test_a_running_sessions_stop_kind_is_none_on_the_wire_and_never_empty():
@@ -814,3 +826,121 @@ def test_a_returned_command_is_refused_through_the_unknown_kind_path(zmq_cleanup
     console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
     commands = _drain_until(link)
     assert commands == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+
+
+# ---------------------------------------------------------------------------
+# Schema 7 (P4d-2b b1): what the browser console reads
+# ---------------------------------------------------------------------------
+
+
+def test_schema_7_reads_the_configuration_from_the_session():
+    """Spec §3: which task, which allocation, which bounded config, and the parameter
+    rows -- each from the object the record is written from."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
+
+    assert telemetry.schema == SCHEMA == 7
+    assert telemetry.task == "tasks/fixation_detection.py"
+    assert telemetry.allocation == "tasks/allocation.py"
+    assert telemetry.bounds_config == "subjects/A/bounds.py"
+    assert telemetry.params == (
+        ParamRow("fix_hold", "s", 0.1, 1.0, 0.3, False),
+        ParamRow("reward_correct", "mL", 0.0, 0.4, 0.15, True),
+    )
+    assert telemetry.recent_outcomes == ("correct", "hang")
+
+
+def test_the_limits_are_the_ones_welfare_reads_them_against():
+    """`floor_ml` is the day's floor and `out_of_cage_limit_s` the ceiling's *value*
+    -- the number `welfare.must_stop` compares with -- never its maximum."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    session.welfare.bounds.ceilings["out_of_cage"] = Ceiling(
+        value=3_600.0, maximum=43_200.0, unit="s"
+    )
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
+
+    assert telemetry.floor_ml == 250.0
+    assert telemetry.out_of_cage_limit_s == 3_600.0
+
+
+def test_a_cage_side_session_has_no_limit_to_publish():
+    """`None`, never `0.0`: a cage-side session has no out-of-cage ceiling at all, and
+    a zero would read as a limit already reached."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    session.welfare = Welfare(
+        bounds=Bounds(
+            subject="A",
+            ceilings={},
+            minima={"daily_fluid": Floor(value=250.0, unit="mL")},
+        ),
+        pump=Pump(),
+        already_today=None,
+        deployment=Deployment.CAGE_SIDE,
+    )
+    session.spec.deployment = Deployment.CAGE_SIDE
+    session.duration_warning = lambda wall_now: None
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
+
+    assert telemetry.out_of_cage_limit_s is None
+    assert telemetry.out_of_cage_seconds is None
+
+
+def test_the_last_reward_is_welfares_instant_and_none_before_the_first():
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    assert Telemetry.of(session, Tally(), _scheduler(), index=0).last_reward_at is None
+
+    session.welfare.last_delivery_wall_at = 1_700_000_123.0
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
+    assert telemetry.last_reward_at == 1_700_000_123.0
+
+
+def test_a_frame_carries_the_one_instant_it_was_read_at():
+    """Ledger Ruling 1 (2026-09-27): `wall_at` is the wall reading `Telemetry.of`
+    already takes once per frame -- the instant the frame's durations and warning
+    describe, on the session's anchored clock -- so a console ages the frame from it
+    and never from a host clock of its own. Still one reading: the wall here moves a
+    second on every read, as in `test_a_frame_reads_the_wall_once_and_is_one_instant`."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    reads: list = []
+
+    def wall_now() -> float:
+        reads.append(None)
+        return 100.0 + len(reads)
+
+    session.wall_now = wall_now
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
+
+    assert len(reads) == 1, "one frame, one reading of the wall"
+    assert telemetry.wall_at == 101.0
+    assert telemetry.out_of_cage_seconds == 101.0
+
+
+def test_schema_7_survives_the_wire_with_its_absences_intact():
+    """The golden round trip, with every new field populated and every new `None`
+    present: a missing reward time, a cage-side limit, an unset parameter, and a
+    categorical one whose value is a string."""
+    original = _telemetry(
+        params=(
+            ParamRow("fix_hold", "s", 0.1, 1.0, 0.3, False),
+            ParamRow("target_looks", "", None, None, None, False),
+            ParamRow("shape", "", None, None, "penguin", False),
+        ),
+        recent_outcomes=("correct", "hang", "no_fixation"),
+        last_reward_at=None,
+        out_of_cage_limit_s=None,
+    )
+
+    restored = decode(encode(original))
+
+    assert restored == original
+    assert [type(p) for p in restored.params] == [ParamRow, ParamRow, ParamRow]
+    assert restored.params[1].value is None
+    assert restored.params[2].value == "penguin"
+    assert restored.recent_outcomes == ("correct", "hang", "no_fixation")
+    assert restored.last_reward_at is None
+    assert restored.out_of_cage_limit_s is None
