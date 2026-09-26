@@ -1475,14 +1475,14 @@ return is refused as "before the head release".
 - Modify tests: `tests/test_taskd.py`, `tests/test_link.py`, `tests/test_cli.py`, and the telemetry golden files
 
 **Interfaces (after this task):**
-- `Session.opened_wall_at: float | None` is set when `run()` opens the record, which also writes a `session opened` row through `Session._note`.
-- `Session.end(how: str = "terminal") -> None` sets `ended_wall_at` and writes a `session ended` row. Before `run()` it raises `RuntimeError`, and a second call raises `RuntimeError` too.
-- `Telemetry.in_session_seconds: float | None` reads `(ended_wall_at or wall_now) - opened_wall_at`, and is `None` before the record opens. It is added to schema 6, which has not left this branch; update the golden files and the stand-in fixtures.
+- `Session.open(how: str = "terminal") -> None` sets `opened_wall_at` and writes a `session opened` row through `Session._note`, which needs no open record: it writes to the spec's directory. A second call raises `RuntimeError`. `run()` calls it when nothing has, so a direct API user gets the clock too. `wlx run` calls it right after building the `Session`, before the departure is marked.
+- `Session.end(how: str = "terminal") -> None` sets `ended_wall_at` and writes a `session ended` row. Before `open()` it raises `RuntimeError`, and a second call raises `RuntimeError` too.
+- `Telemetry.in_session_seconds: float | None` reads `(ended_wall_at or wall_now) - opened_wall_at`, and is `None` before `open()`. It is added to schema 6, which has not left this branch; update the golden files and the stand-in fixtures.
 - `wlx run` calls `session.end()` once, in `_close_interval`'s `finally`, after the return is settled or recorded as not recorded. A cage-side session ends right after `run()`.
 - `cli.render` prints two lines: `  in session: H:MM:SS`, and `  phase: running`, `awaiting return` or `closed` (from `Telemetry.phase`).
 
 - [ ] **Step 1: Failing tests first:**
-  1. The rows arrive in order: `session opened` before `departure`, and `session ended` last.
+  1. For `wlx run`, the rows arrive in the order `session opened`, `departure`, (any confirmation rows), `returned` or `return not recorded`, `session ended`. Every test that asserts an exact list of kinds (the six from Ruling 3, among others) gains the two new rows.
   2. `in_session_seconds` advances with an injected wall clock and stops advancing after `end()`.
   3. **It bounds nothing.** Take a session open 13 hours by the wall, whose departure was 1 hour ago: `must_stop` and `approaching_limit` return nothing about it.
   4. `render` prints both lines (golden).
