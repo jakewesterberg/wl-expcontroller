@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import sys
+import threading
 import time
 from contextlib import nullcontext
 from datetime import datetime
@@ -178,6 +179,14 @@ def _wall_clock_time(text: str) -> float:
         # what makes "local" a resolution rather than an assumption.
         parsed = parsed.astimezone()
     return parsed.timestamp()
+
+
+def _clock_or_now(text: str) -> float:
+    """`now`, or a clock time as `_wall_clock_time` reads one. For the return, which
+    is usually marked at the moment it happens (P4d-2a)."""
+    if text.strip().lower() == "now":
+        return time.time()
+    return _wall_clock_time(text)
 
 
 def _hours_minutes(seconds: float) -> str:
@@ -360,6 +369,118 @@ def _settle_departure(session, args) -> tuple:
         "refused: the departure time was not confirmed, so the session did not "
         "start. Nothing has been recorded and nothing was delivered."
     )
+
+
+def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
+    """Ask the person at the terminal when the animal went back into its cage.
+
+    **P4d-2a spec §5.** `None` once the return is recorded -- here, or by a console
+    while this was waiting -- and otherwise the reason it was not, for the row.
+
+    **The prompt ends.** An empty answer ends it at once, and so do `attempts`
+    answers that are not an accepted mark: a prompt that re-asked forever would hang
+    any script, and any test, that answers with a fixed string. A far time gets the
+    departure's confirmation (PI, 2026-09-20); anything but `confirm` there asks for
+    the time again. **There is no amendment**, because nothing has been marked yet
+    that one could replace -- a corrected time is simply the time entered.
+    """
+    for _ in range(attempts):
+        if session.welfare.returned_at is not None:
+            print("  the return was recorded from a console", file=sys.stderr)
+            return None
+        raw = _ask("  returned to cage at (HH:MM, or now): ").strip()
+        if session.welfare.returned_at is not None:
+            print("  the return was recorded from a console", file=sys.stderr)
+            return None
+        if not raw:
+            return "no answer at the terminal"
+        try:
+            at = _clock_or_now(raw)
+        except argparse.ArgumentTypeError as bad:
+            print(f"  {bad}", file=sys.stderr)
+            continue
+        warning = session.return_needs_confirmation(at)
+        confirmed = False
+        if warning is not None:
+            print(f"  WARNING: {warning}", file=sys.stderr)
+            answer = _ask(
+                "  type `confirm` to accept this return time, or anything else to "
+                "give it again: "
+            ).strip().lower()
+            if answer not in ("c", "confirm"):
+                continue
+            confirmed = True
+        try:
+            session.returned_to_cage(at, confirmed=confirmed, by=actor, how="terminal")
+        except Exceeded as refused:
+            if session.welfare.returned_at is not None:
+                print("  the return was recorded from a console", file=sys.stderr)
+                return None
+            print(f"  refused: {refused}", file=sys.stderr)
+            continue
+        return None
+    return "no clock time given at the terminal"
+
+
+def _close_interval(session, args, linked: bool) -> bool:
+    """Take the return, or record why nobody could (P4d-2a spec §3, §5).
+
+    `await_return` runs on a background thread, publishing the clock and draining
+    the link; this thread holds the terminal prompt. **The two meet only at
+    `Session._mark_lock`.** Returns `True` if the operator interrupted, so the caller
+    can exit 130 as `wlx console` does.
+
+    **A fault on that background thread is captured and re-raised on this one, never
+    retried.** `_wait` below catches whatever `await_return` raises so the thread
+    does not simply die with it unseen; this function raises it again, once the
+    terminal side has settled, for the same reason `await_return`'s own docstring
+    refuses to retry it -- `welfare.returned_to_cage` cannot be called a second time
+    without being refused by the mark it already accepted.
+    """
+    if session.spec.deployment is Deployment.CAGE_SIDE:
+        return False
+    if not session.phase:
+        session.return_not_recorded("the session did not start")
+        return False
+    terminal = _at_a_terminal()
+    if not terminal and not linked:
+        session.return_not_recorded("no terminal and no console attached")
+        return False
+    give_up = threading.Event()
+    failure: list[BaseException] = []
+
+    def _wait() -> None:
+        try:
+            session.await_return(give_up)
+        except BaseException as exc:
+            failure.append(exc)
+
+    waiter = threading.Thread(target=_wait, daemon=True)
+    waiter.start()
+    why = None
+    interrupted = False
+    try:
+        if terminal:
+            why = _settle_return(session, args.actor or "")
+        elif args.await_return_for is not None:
+            waiter.join(timeout=args.await_return_for)
+            if session.welfare.returned_at is None:
+                why = f"nobody marked it within {args.await_return_for:g} s"
+        else:
+            waiter.join()
+    except KeyboardInterrupt:
+        why = "interrupted at the terminal"
+        interrupted = True
+    finally:
+        give_up.set()
+        waiter.join()
+        if session.welfare.returned_at is None:
+            if why is None and failure:
+                why = f"the post-loop phase failed: {type(failure[0]).__name__}"
+            session.return_not_recorded(why or "interrupted at the terminal")
+    if failure:
+        raise failure[0]
+    return interrupted
 
 
 def _value(value: float | None) -> str:
@@ -620,6 +741,15 @@ def main(argv: list[str] | None = None) -> int:
         "refused by the ceiling before a confirmation is ever offered -- "
         "tasks/twelve_hour_bounds.py is a second reference config, with the real "
         "institutional figure, that this path can be dry-run against",
+    )
+    runner.add_argument(
+        "--await-return-for",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="with --link and no terminal, how long to wait for a console to mark "
+        "the return to the cage before recording that nobody did (P4d-2a). Without "
+        "it, such a run waits until the return is marked or it is interrupted",
     )
     runner.add_argument(
         "--amend-out-of-cage-to",
@@ -923,7 +1053,19 @@ def main(argv: list[str] | None = None) -> int:
                 f" ({time.strftime('%Z', time.localtime(departure))}"
                 f", this host's local time)"
             )
-            census = session.run()
+            # **The return to the cage is taken here, or its absence is recorded**
+            # (P4d-2a spec §3, §5). `_close_interval` runs in `finally` so a fault
+            # out of `session.run()` still gets a chance at the terminal/console
+            # path -- and, on a rig, still has a head to release and a clock to stop
+            # publishing -- rather than leaving the interval open with nothing said
+            # about why.
+            interrupted = False
+            try:
+                census = session.run()
+            finally:
+                interrupted = _close_interval(
+                    session, args, linked=opened_link is not None
+                )
             total = sum(census.outcomes.values()) or 1
             for outcome, count in census.outcomes.most_common():
                 print(f"  {outcome.value:18} {count:6}  {100 * count / total:5.1f}%")
@@ -944,6 +1086,12 @@ def main(argv: list[str] | None = None) -> int:
                 if owed is None
                 else f"  supplement: {owed:.2f} mL to reach the day's floor"
             )
+            if interrupted:
+                print(
+                    "run: interrupted -- the return to the cage was not recorded",
+                    file=sys.stderr,
+                )
+                return 130
             return 1 if census.hangs else 0
 
     if args.command == "console":

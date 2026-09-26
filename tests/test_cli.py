@@ -25,6 +25,7 @@ from wl_expcontroller.bounds import Exceeded
 from wl_expcontroller.cli import _hours_minutes, _wall_clock_time, main, render
 from wl_expcontroller.link import (
     Refused,
+    ReturnedToCage,
     SetParameter,
     Staged,
     Stop,
@@ -381,6 +382,29 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     with a `Stop` once it has seen the change applied -- which also drives a
     console's `Stop` through a real `wlx run`, the one path the `--stop` tests stub.
     `--trials` now only bounds how long a *broken* run takes to finish on its own.
+
+    **`--deployment rig-chaired`, found by Task 6's own TDD, not carried over from
+    an earlier draft.** `RIG_FIXED` -- this command's own default -- releases the
+    head at `run()`'s end with `self.now()`, the *frame* clock; a ~300-trial run
+    accumulates several hundred simulated seconds on it, since the simulator does
+    not run in real time. Once the session reaches `awaiting_return`,
+    `welfare.out_of_cage_seconds` reads its *duration* through the *wall* clock
+    instead (P4d-2a ruling 4, `taskd.Session.welfare_now`) -- a handful of real
+    seconds, here, since the console acts within moments of the `Stop`. The two
+    bases disagree by two orders of magnitude, and `out_of_cage_seconds` compares
+    them directly against the chair-time restraint it also carries (`welfare.py`,
+    "it can never be shorter than the restraint it contains"), so every heartbeat
+    publish after the loop raises `Exceeded` and kills `await_return`'s thread --
+    confirmed by running this test three times, each with a different chair-time
+    reading in the message, always past the wall-clock duration. `RIG_CHAIRED`
+    takes no head-fixation mark at all, so `fixed_at` stays `None` and the
+    cross-check never runs; every `await_return` test in `test_taskd.py` that
+    accumulates real trial time already uses `RIG_CHAIRED` for exactly this
+    reason (`_chaired_and_run`), which is why this gap was not caught earlier.
+    **This is a pre-existing mismatch in `welfare.out_of_cage_seconds`, not
+    something Task 6 introduced or is scoped to fix** (it touches welfare-critical
+    code outside `cli.py`/`test_cli.py`, CLAUDE.md's human-review rule) -- flagged
+    in Task 6's report for a human to route.
     """
     probe = zmq_cleanup(
         ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
@@ -401,6 +425,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
                 "--session-id", "2027-01-14_04",
                 "--subject", "REFERENCE",
                 "--out-of-cage-at", _hhmm(),
+                "--deployment", "rig-chaired",
                 "--delivered-today", "0",
                 "--trials", "5000",
                 *_TASK_SETS,
@@ -438,6 +463,16 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
                 if stopped:
                     break
             assert stopped == "stopped by jake", stopped
+
+            # P4d-2a: a rig session now waits, publishing its clock, until the
+            # return is marked -- here by the console, which is the only one there is.
+            console.send(ReturnedToCage(at=time.time(), by="jake", confirmed=False))
+            phase = None
+            for _ in range(2000):
+                phase = console.receive().phase
+                if phase == "closed":
+                    break
+            assert phase == "closed", phase
     finally:
         runner_thread.join(timeout=15)
     assert not runner_thread.is_alive(), "wlx run did not finish on its own"
@@ -495,6 +530,7 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
             "--trials", "5",
             *_TASK_SETS,
             "--link", "tcp://127.0.0.1:0,tcp://127.0.0.1:0",
+            "--await-return-for", "0",
         ]
     )
 
@@ -1373,6 +1409,17 @@ def _far_bounds(tmp_path) -> str:
     return str(path)
 
 
+def _load_bounds_for_test(tmp_path):
+    from pathlib import Path
+
+    from wl_expcontroller.cli import _load_bounds
+
+    # `_load_bounds` reads a `Path` (`.stem`, in `cli.py`); `_far_bounds` returns
+    # `str` for the CLI's own `--bounds` flag (also `type=Path`, argparse's to
+    # convert). This helper is the one caller that skips argparse, so it converts.
+    return _load_bounds(Path(_far_bounds(tmp_path)))
+
+
 def _hours_ago(hours: float) -> str:
     """A clock time `hours` in the past, with its date, as an operator would type it
     for an overnight or early-morning departure."""
@@ -1431,15 +1478,20 @@ def test_the_flag_is_the_non_interactive_confirmation_and_says_so(tmp_path):
 
     assert exit_code == 0
     rows = _notes(tmp_path)
-    assert [row["kind"] for row in rows] == ["departure confirmed"]
-    assert rows[0]["how"] == "--confirm-out-of-cage, with no terminal attached"
+    assert [row["kind"] for row in rows] == [
+        "departure", "departure confirmed", "return not recorded",
+    ]
+    assert rows[1]["how"] == "--confirm-out-of-cage, with no terminal attached"
 
 
-def test_a_near_departure_asks_nothing_and_writes_nothing(tmp_path):
-    """The ordinary session is untouched: no prompt, no flag needed, no row. A
-    confirmation that appeared every session would be clicked past every session."""
+def test_a_near_departure_asks_nothing_and_writes_no_confirmation(tmp_path):
+    """The ordinary session is untouched: no prompt, no flag needed, no confirmation
+    or amendment row. A confirmation that appeared every session would be clicked
+    past every session. (P4d-2a: `left_cage` now writes its own `departure` row
+    unconditionally, and nobody is here to take the return either, so the run still
+    ends with a `return not recorded` row -- neither is what this test is about.)"""
     assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm())) == 0
-    assert _notes(tmp_path) == []
+    assert _kinds(tmp_path) == ["departure", "return not recorded"]
 
 
 def test_an_interactive_run_asks_and_a_person_can_confirm(tmp_path, monkeypatch):
@@ -1452,8 +1504,12 @@ def test_an_interactive_run_asks_and_a_person_can_confirm(tmp_path, monkeypatch)
 
     assert exit_code == 0
     rows = _notes(tmp_path)
-    assert [row["kind"] for row in rows] == ["departure confirmed"]
-    assert rows[0]["how"] == "confirmed at the terminal"
+    # P4d-2a: the return prompt asks too, at the terminal this test also fakes --
+    # and its fixed `"confirm"` answer is not a clock time three times running.
+    assert [row["kind"] for row in rows] == [
+        "departure", "departure confirmed", "return not recorded",
+    ]
+    assert rows[1]["how"] == "confirmed at the terminal"
 
 
 def test_an_interactive_run_stops_when_the_person_does_not_confirm(
@@ -1476,18 +1532,36 @@ def test_an_interactive_run_can_amend_the_time_with_a_reason_and_a_name(
 ):
     """**The option the PI asked for beside the confirmation.** The amended time is
     what the session is bounded by, and the row says who changed it and why."""
-    answers = iter(["amend", _hours_ago(0.2), "typed 08:45 for 18:45", "jake"])
+    answers = iter(
+        ["amend", _hours_ago(0.2), "typed 08:45 for 18:45", "jake", "now"]
+    )
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
-    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+    # P4d-2a: `--deployment rig-chaired` -- see the note at the top of this
+    # section's return tests. A `returned` row still needs the return to actually
+    # be accepted, and `RIG_FIXED`'s (this command's default) post-loop head
+    # release, on the frame clock, is incommensurable with the wall-clock return a
+    # fast test takes moments later; that mismatch is pre-existing and out of
+    # scope here.
+    exit_code = main(
+        _run_args(
+            tmp_path,
+            "--out-of-cage-at", _hours_ago(9),
+            "--deployment", "rig-chaired",
+        )
+    )
 
     assert exit_code == 0
     rows = _notes(tmp_path)
-    assert [row["kind"] for row in rows] == ["departure amended"]
-    assert rows[0]["reason"] == "typed 08:45 for 18:45"
-    assert rows[0]["by"] == "jake"
-    assert rows[0]["was"] != rows[0]["now"]
+    # P4d-2a: the return prompt asks too, at the same terminal, and this run's last
+    # answer -- "now" -- takes it.
+    assert [row["kind"] for row in rows] == [
+        "departure", "departure amended", "returned",
+    ]
+    assert rows[1]["reason"] == "typed 08:45 for 18:45"
+    assert rows[1]["by"] == "jake"
+    assert rows[1]["was"] != rows[1]["now"]
 
 
 def test_an_amendment_can_be_made_without_a_terminal_too(tmp_path):
@@ -1505,9 +1579,14 @@ def test_an_amendment_can_be_made_without_a_terminal_too(tmp_path):
 
     assert exit_code == 0
     rows = _notes(tmp_path)
-    assert rows[0]["kind"] == "departure amended"
-    assert rows[0]["how"] == "--amend-out-of-cage-to"
-    assert "local" in rows[0]["now_local"]
+    # P4d-2a: no terminal and no console attached, so nobody can take the return
+    # either -- that is a `return not recorded` row, not a second rule about what an
+    # amendment is.
+    assert [row["kind"] for row in rows] == [
+        "departure", "departure amended", "return not recorded",
+    ]
+    assert rows[1]["how"] == "--amend-out-of-cage-to"
+    assert "local" in rows[1]["now_local"]
 
 
 def test_an_amendment_with_no_reason_is_refused(tmp_path):
@@ -1613,7 +1692,12 @@ def test_a_closed_stdin_is_not_a_terminal_and_the_flag_still_works(
 
     assert exit_code == 0
     rows = _notes(tmp_path)
-    assert rows[0]["how"] == "--confirm-out-of-cage, with no terminal attached"
+    # P4d-2a: with `sys.stdin` `None` there is no terminal for the return either, so
+    # this closed-stdin run still ends with a `return not recorded` row.
+    assert [row["kind"] for row in rows] == [
+        "departure", "departure confirmed", "return not recorded",
+    ]
+    assert rows[1]["how"] == "--confirm-out-of-cage, with no terminal attached"
 
 
 def test_a_closed_stdin_refuses_with_a_sentence_rather_than_a_traceback(
@@ -1726,3 +1810,184 @@ def test_the_twelve_hour_reference_config_runs_a_session_when_confirmed(
 
     assert exit_code == 0
     assert "the animal has been out 9 hours" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# P4d-2a: the return to the cage
+# ---------------------------------------------------------------------------
+#
+# **Every test below that needs `returned_to_cage` to actually SUCCEED passes
+# `--deployment rig-chaired`, found by this task's own TDD.** `RIG_FIXED` --
+# `_run_args`' own default -- releases the head at `run()`'s end with `self.now()`,
+# the *frame* clock; even `_run_args`' 2 trials accumulate a couple of simulated
+# seconds on it, because the simulator does not run in real time. Once a return is
+# taken, `welfare.returned_to_cage`/`out_of_cage_seconds` read the interval through
+# the *wall* clock instead (P4d-2a ruling 4, `taskd.Session.welfare_now`/
+# `now_from_wall`) -- real elapsed seconds, and a fast test's "now" is milliseconds
+# after the departure was marked, however long ago the departure *itself* claims to
+# be (`now_from_wall` cancels that out; see `welfare.left_cage`'s own derivation).
+# The two bases disagree by orders of magnitude, and both `out_of_cage_seconds`
+# ("it can never be shorter than the restraint it contains") and
+# `returned_to_cage` ("cannot be back in its cage before it was released") compare
+# them directly -- so a return recorded through the terminal moments after a
+# RIG_FIXED run, in a test this fast, is refused as impossible before it was even
+# released. `RIG_CHAIRED` takes no head-fixation mark, so `fixed_at` stays `None`
+# and neither cross-check ever runs; every `await_return` test in `test_taskd.py`
+# that lets real trials run already uses `RIG_CHAIRED` for exactly this reason
+# (`_chaired_and_run`), which is why this was not caught before Task 6 drove a real
+# multi-trial `RIG_FIXED` session through the return path end to end.
+# **This is a pre-existing mismatch in `welfare.py`, not something Task 6
+# introduced or is scoped to fix** -- it is welfare-critical code outside
+# `cli.py`/`test_cli.py`, so CLAUDE.md's human-review rule applies, and it is
+# flagged prominently in Task 6's report for a human to route.
+
+
+def _kinds(tmp_path) -> list[str]:
+    return [row["kind"] for row in _notes(tmp_path)]
+
+
+def test_a_headless_run_records_that_nobody_could_mark_the_return(tmp_path):
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+
+    assert exit_code == 0
+    assert _kinds(tmp_path) == ["departure", "return not recorded"]
+    assert _notes(tmp_path)[-1]["reason"] == "no terminal and no console attached"
+
+
+def test_a_run_at_a_terminal_takes_the_return(tmp_path, monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "now")
+
+    exit_code = main(
+        _run_args(
+            tmp_path, "--out-of-cage-at", _hhmm(), "--deployment", "rig-chaired",
+        )
+    )
+
+    assert exit_code == 0
+    assert _kinds(tmp_path) == ["departure", "returned"]
+    assert _notes(tmp_path)[-1]["how"] == "terminal"
+
+
+def test_a_far_return_is_confirmed_at_the_terminal(tmp_path, monkeypatch):
+    answers = iter([_hours_ago(1), "confirm"])
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    exit_code = main(
+        _run_args(
+            tmp_path,
+            "--out-of-cage-at", _hours_ago(2),
+            "--confirm-out-of-cage",
+            "--deployment", "rig-chaired",
+        )
+    )
+
+    assert exit_code == 0
+    assert _kinds(tmp_path) == [
+        "departure", "departure confirmed", "returned", "return confirmed",
+    ]
+
+
+def test_a_return_before_the_departure_is_refused_and_asked_again(tmp_path, monkeypatch):
+    """Review Focus 3: the wrong half of the day, typed at the prompt."""
+    answers = iter([_hours_ago(3), "confirm", "now"])
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    exit_code = main(
+        _run_args(
+            tmp_path,
+            "--out-of-cage-at", _hours_ago(2),
+            "--confirm-out-of-cage",
+            "--deployment", "rig-chaired",
+        )
+    )
+
+    assert exit_code == 0
+    assert _kinds(tmp_path) == ["departure", "departure confirmed", "returned"]
+
+
+def test_three_answers_that_are_not_a_time_end_the_prompt_and_say_so(tmp_path, monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "confirm")
+
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+
+    assert exit_code == 0
+    assert _kinds(tmp_path) == ["departure", "return not recorded"]
+    assert _notes(tmp_path)[-1]["reason"] == "no clock time given at the terminal"
+
+
+def test_an_interrupted_return_prompt_is_recorded_and_exits_130(tmp_path, monkeypatch):
+    """Review Focus 1."""
+
+    def interrupt(_prompt=""):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", interrupt)
+
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+
+    assert exit_code == 130
+    assert _kinds(tmp_path) == ["departure", "return not recorded"]
+    assert _notes(tmp_path)[-1]["reason"] == "interrupted at the terminal"
+
+
+def test_a_console_can_record_the_return_while_the_terminal_waits(tmp_path, monkeypatch):
+    """Review Focus 2. The prompt is blocked in `input()` when the console's mark
+    lands; the next answer is told so, and there is one `returned` row, not two."""
+    from wl_expcontroller.cli import _settle_return
+    from wl_expcontroller.dio import Simulated as Card
+    from wl_expcontroller.taskd import Session, SessionSpec
+    from wl_expcontroller.welfare import Deployment, Simulated as Pump
+
+    spec = SessionSpec(
+        task=GOOD, allocation=ALLOCATION, root=tmp_path, session_id="2027-01-14_01",
+        subject="REFERENCE", trials=3, frame_period=1 / 240, seed=1, values={},
+        bounds=_load_bounds_for_test(tmp_path), already_delivered_today=0.0,
+        deployment=Deployment.RIG_CHAIRED,
+    )
+    session = Session(spec, card=Card(), pump=Pump())
+    session.left_cage(at=time.time() - 60.0)
+
+    def answer(_prompt=""):
+        session.returned_to_cage(time.time(), by="sam", how="console")
+        return "now"
+
+    monkeypatch.setattr("builtins.input", answer)
+
+    assert _settle_return(session, "jake") is None
+    kinds = _kinds(tmp_path)
+    assert kinds.count("returned") == 1
+    assert _notes(tmp_path)[-1]["how"] == "console"
+
+
+def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monkeypatch):
+    """Ruling B (Task 6 review). `_close_interval`'s background thread runs
+    `await_return` wrapped in a helper that catches whatever it raises instead of
+    letting the thread die with it unseen. This proves the exception still reaches
+    the caller -- on the main thread, once the terminal side is done -- rather than
+    being swallowed: the terminal's own `returned` mark must not be lost along with
+    the fault that came after it.
+    """
+
+    def _boom(self, give_up, heartbeat=1.0):
+        raise RuntimeError("publish failed")
+
+    monkeypatch.setattr("wl_expcontroller.taskd.Session.await_return", _boom)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "now")
+
+    # P4d-2a: `--deployment rig-chaired` -- see the note at the top of this
+    # section's return tests; a `returned` row needs the return itself accepted,
+    # which the default `RIG_FIXED` cannot do this soon after a real trial loop.
+    with pytest.raises(RuntimeError, match="publish failed"):
+        main(
+            _run_args(
+                tmp_path, "--out-of-cage-at", _hhmm(), "--deployment", "rig-chaired",
+            )
+        )
+
+    assert _kinds(tmp_path)[-1] == "returned"
