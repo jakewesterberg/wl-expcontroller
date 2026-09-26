@@ -75,7 +75,10 @@ from typing import Protocol
 #: for the warning that now precedes the out-of-cage limit. A console built against 4
 #: renders `chair_seconds` with a `None` in it, and one that coerced would tell an
 #: operator a restrained animal had been restrained for no time at all.
-SCHEMA = 5
+#:
+#: 6 (2026-09-26, P4d-2a): `phase` and `stop_kind`. A console built against 5 renders
+#: an awaiting-return frame's advancing clock as a running session.
+SCHEMA = 6
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -175,6 +178,17 @@ class Telemetry:
     block: str
     #: Empty until the session has stopped (mirrors `taskd.Session.stopped_because`).
     stopped_because: str
+    #: Why the session stopped, as a kind rather than a sentence: `completed`,
+    #: `operator`, `limit` or `fault`, and `None` while it runs. `stopped_because`
+    #: keeps the sentence; this exists because telling a pump fault from a clean
+    #: finish by parsing that sentence would be fragile, and P4d-2b's `/health`
+    #: verdict needs the difference (P4d-2a spec §6).
+    stop_kind: str | None
+    #: `running` while the loop runs -- including the frame that announces its stop
+    #: -- then `awaiting_return` while a rig session's out-of-cage clock is still
+    #: open, then `closed` once the return is recorded. A cage-side session never
+    #: leaves `running` on the wire: its last word is its stop frame.
+    phase: str
     #: `welfare.session_total()` -- this session's reconciled contribution to today.
     #:
     #: **Welfare-load-bearing, and not only informational** (PI, 2026-09-20). A
@@ -310,13 +324,19 @@ class Telemetry:
             # that is always empty is worse than an absent one -- a console renders it
             # and a reader believes it means "no condition" rather than "not yet".
             stopped_because=session.stopped_because,
+            stop_kind=session.stop_kind,
+            phase=session.phase,
             fluid_session_ml=session.welfare.session_total(),
             fluid_today_ml=session.welfare.total_today(),
             shortfall_ml=session.welfare.shortfall(),
-            out_of_cage_seconds=session.welfare.out_of_cage_seconds(session.now()),
-            chair_seconds=session.welfare.chair_seconds(session.now()),
+            # `welfare_now()`, not `now()`: after the loop the frame clock has
+            # stopped and the wall has not (P4d-2a). Both are `Session`'s to say.
+            out_of_cage_seconds=session.welfare.out_of_cage_seconds(
+                session.welfare_now()
+            ),
+            chair_seconds=session.welfare.chair_seconds(session.welfare_now()),
             deployment=session.spec.deployment.value,
-            duration_warning=session.welfare.approaching_limit(session.now()),
+            duration_warning=session.duration_warning(),
             outcomes={k.value: v for k, v in tally.outcomes.items()},
             hangs=tally.hangs,
             owed={c: scheduler.owed(c) for c in scheduler.upcoming()},
@@ -366,6 +386,8 @@ def encode(telemetry: Telemetry) -> bytes:
         "trial_index": telemetry.trial_index,
         "block": telemetry.block,
         "stopped_because": telemetry.stopped_because,
+        "stop_kind": telemetry.stop_kind,
+        "phase": telemetry.phase,
         "fluid_session_ml": telemetry.fluid_session_ml,
         "fluid_today_ml": telemetry.fluid_today_ml,
         "shortfall_ml": telemetry.shortfall_ml,
@@ -414,6 +436,8 @@ def decode(payload: bytes) -> Telemetry:
         trial_index=data["trial_index"],
         block=data["block"],
         stopped_because=data["stopped_because"],
+        stop_kind=data["stop_kind"],
+        phase=data["phase"],
         fluid_session_ml=data["fluid_session_ml"],
         fluid_today_ml=data["fluid_today_ml"],
         shortfall_ml=data["shortfall_ml"],

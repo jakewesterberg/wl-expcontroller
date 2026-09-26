@@ -1190,3 +1190,66 @@ def test_the_sessions_own_refusal_list_is_capped_like_the_other_two(tmp_path):
         "a capped list read as a quiet session, which is the silent drop the count "
         "exists to prevent"
     )
+
+
+def test_a_session_that_finishes_its_blocks_says_it_completed(tmp_path):
+    link = Simulated()
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    assert link.published[-1].stop_kind == "completed"
+    assert link.published[-1].phase == "running"
+
+
+def test_a_session_a_console_stopped_says_an_operator_stopped_it(tmp_path):
+    link = Simulated()
+    link.queue(Stop(by="jake"))
+    session = _session(_spec(tmp_path, trials=50), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "operator"
+    assert link.published[-1].stop_kind == "operator"
+
+
+def test_a_session_ended_by_its_out_of_cage_ceiling_says_limit(tmp_path):
+    link = Simulated()
+    session = _session(_spec(tmp_path, trials=10_000), link=link)
+
+    session.run()
+
+    assert "out_of_cage" in session.stopped_because
+    assert session.stop_kind == "limit"
+    assert link.published[-1].stop_kind == "limit"
+
+
+def test_a_session_ended_by_a_fault_says_fault(tmp_path):
+    class Broken:
+        def deliver(self, ml: float) -> None:
+            raise RuntimeError("solenoid did not answer")
+
+    link = Simulated()
+    session = Session(
+        _spec(tmp_path, trials=200),
+        card=Card(),
+        pump=Broken(),
+        link=link,
+        wall_clock=lambda: WALL_NOW,
+    )
+    session.left_cage(at=WALL_NOW)
+    session.head_fixed(at=0.0)
+
+    with pytest.raises(RuntimeError, match="solenoid"):
+        session.run()
+
+    assert session.stop_kind == "fault"
+    assert link.published[-1].stop_kind == "fault"
+
+
+def test_before_the_loop_a_session_has_no_phase(tmp_path):
+    session = _session(_spec(tmp_path, trials=3))
+
+    assert session.phase == ""
+    assert session.stop_kind is None
