@@ -371,6 +371,23 @@ def _settle_departure(session, args) -> tuple:
     )
 
 
+def _console_recorded_it(session) -> bool:
+    """Whether a console has already taken the return, said once, here.
+
+    **Task 6 review, fix round 1, Important 3.** `_settle_return` reads
+    `welfare.returned_at` at three points around anything that blocks or can be
+    refused -- before the prompt, after it, and after a refused mark -- because a
+    console can win the race at any of them. The three sites used to repeat the
+    same three lines; a fourth (Minor 1, below) would have made it four. One
+    function, so the message and the check can never drift apart the way three
+    copies eventually would.
+    """
+    if session.welfare.returned_at is None:
+        return False
+    print("  the return was recorded from a console", file=sys.stderr)
+    return True
+
+
 def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     """Ask the person at the terminal when the animal went back into its cage.
 
@@ -383,14 +400,18 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     departure's confirmation (PI, 2026-09-20); anything but `confirm` there asks for
     the time again. **There is no amendment**, because nothing has been marked yet
     that one could replace -- a corrected time is simply the time entered.
+
+    **The last check, after the last attempt, is not decorative** (Task 6 review,
+    fix round 1, Minor 1). Without it, a console that records the return during the
+    final rejected answer -- the same race `_console_recorded_it` exists to catch
+    everywhere else -- fell through to "no clock time given at the terminal" even
+    though the return was, by then, recorded.
     """
     for _ in range(attempts):
-        if session.welfare.returned_at is not None:
-            print("  the return was recorded from a console", file=sys.stderr)
+        if _console_recorded_it(session):
             return None
         raw = _ask("  returned to cage at (HH:MM, or now): ").strip()
-        if session.welfare.returned_at is not None:
-            print("  the return was recorded from a console", file=sys.stderr)
+        if _console_recorded_it(session):
             return None
         if not raw:
             return "no answer at the terminal"
@@ -413,11 +434,12 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
         try:
             session.returned_to_cage(at, confirmed=confirmed, by=actor, how="terminal")
         except Exceeded as refused:
-            if session.welfare.returned_at is not None:
-                print("  the return was recorded from a console", file=sys.stderr)
+            if _console_recorded_it(session):
                 return None
             print(f"  refused: {refused}", file=sys.stderr)
             continue
+        return None
+    if _console_recorded_it(session):
         return None
     return "no clock time given at the terminal"
 
@@ -436,6 +458,14 @@ def _close_interval(session, args, linked: bool) -> bool:
     terminal side has settled, for the same reason `await_return`'s own docstring
     refuses to retry it -- `welfare.returned_to_cage` cannot be called a second time
     without being refused by the mark it already accepted.
+
+    **The timed wait's own reason is only true when the timeout is what actually
+    happened** (Task 6 review, fix round 1, Important 1). `waiter.join(timeout=...)`
+    returns the instant the background thread dies, which can be long before the
+    timeout it was given -- and "nobody marked it within N s" would then be false:
+    N seconds never passed. Read together with the shared fallback below, a fault
+    during the timed wait leaves `why` unset here and picks up "the post-loop phase
+    failed: ..." instead, which is what actually happened.
     """
     if session.spec.deployment is Deployment.CAGE_SIDE:
         return False
@@ -464,7 +494,10 @@ def _close_interval(session, args, linked: bool) -> bool:
             why = _settle_return(session, args.actor or "")
         elif args.await_return_for is not None:
             waiter.join(timeout=args.await_return_for)
-            if session.welfare.returned_at is None:
+            # Not `failure`'s to name here: a background fault can end the wait
+            # well before the timeout, and the finally block's own fallback below
+            # is where that fault's name belongs (Important 1).
+            if session.welfare.returned_at is None and not failure:
                 why = f"nobody marked it within {args.await_return_for:g} s"
         else:
             waiter.join()

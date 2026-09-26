@@ -517,6 +517,13 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
 
     monkeypatch.setattr("wl_expcontroller.link.ZmqLink", _SpyLink)
 
+    # Fix round 1: found flaking here by this round's own three-times-over rule.
+    # `--await-return-for 0` races the background thread's first heartbeat publish
+    # against `give_up.set()`; when the publish wins, a real `RIG_FIXED` post-loop
+    # read hits the same pre-existing, out-of-scope frame/wall mismatch documented
+    # at the top of the "P4d-2a: the return to the cage" section -- `--deployment
+    # rig-chaired` avoids it here too, and this test asserts nothing deployment-
+    # specific.
     exit_code = main(
         [
             "run", GOOD,
@@ -526,6 +533,7 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
             "--session-id", "2027-01-14_06",
             "--subject", "REFERENCE",
             "--out-of-cage-at", _hhmm(),
+            "--deployment", "rig-chaired",
             "--delivered-today", "0",
             "--trials", "5",
             *_TASK_SETS,
@@ -1991,3 +1999,110 @@ def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monk
         )
 
     assert _kinds(tmp_path)[-1] == "returned"
+
+
+# ---------------------------------------------------------------------------
+# Task 6 review, fix round 1
+# ---------------------------------------------------------------------------
+#
+# **Both `--link` tests below pass `--deployment rig-chaired`**, for the reason
+# given at the top of the "P4d-2a: the return to the cage" section above: `run()`
+# releases a `RIG_FIXED` head at `self.now()`, the frame clock, and a real
+# `await_return` heartbeat reads the interval through the wall clock instead, so a
+# real (non-monkeypatched) post-loop publish with even a few completed trials can
+# raise `Exceeded` from the pre-existing, out-of-scope mismatch rather than from
+# whatever this test means to exercise. `RIG_CHAIRED` marks no head-fixation, so
+# the cross-check never runs.
+
+
+def test_a_background_fault_during_a_timed_wait_names_the_fault_not_a_timeout(
+    tmp_path, monkeypatch
+):
+    """Important 1. `waiter.join(timeout=...)` (`cli._close_interval`) returns the
+    instant the background thread dies, which can be long before the timeout it was
+    given -- and the row must not then say "nobody marked it within N s" when N
+    seconds never passed. `--await-return-for 5` here, but the fault fires at once,
+    so a wrong fix would still show `5` in the reason though barely any time passed.
+    The exception itself must still reach `main()` unchanged (Ruling 5, P4d-2a
+    spec §5) -- swallowing it would be the same mistake `_wait`'s own docstring
+    refuses."""
+
+    def _boom(self, give_up, heartbeat=1.0):
+        raise RuntimeError("publish failed")
+
+    monkeypatch.setattr("wl_expcontroller.taskd.Session.await_return", _boom)
+
+    with pytest.raises(RuntimeError, match="publish failed"):
+        main(
+            [
+                "run", GOOD,
+                "--allocation", ALLOCATION,
+                "--bounds", BOUNDS,
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", _hhmm(),
+                "--deployment", "rig-chaired",
+                "--delivered-today", "0",
+                "--trials", "5",
+                *_TASK_SETS,
+                "--link", "tcp://127.0.0.1:0,tcp://127.0.0.1:0",
+                "--await-return-for", "5",
+            ]
+        )
+
+    rows = _notes(tmp_path)
+    assert rows[-1]["kind"] == "return not recorded"
+    assert rows[-1]["reason"] == "the post-loop phase failed: RuntimeError"
+
+
+def test_await_return_for_names_the_seconds_when_nobody_marks_the_return(tmp_path):
+    """Important 2. `--await-return-for`'s own lapse -- no terminal, no console,
+    nobody there -- had no test. `0.05` keeps this fast: nothing here waits on a
+    heartbeat (`Session.await_return`'s default is 1 s) longer than the timed wait
+    itself needs."""
+    exit_code = main(
+        [
+            "run", GOOD,
+            "--allocation", ALLOCATION,
+            "--bounds", BOUNDS,
+            "--root", str(tmp_path),
+            "--session-id", "2027-01-14_01",
+            "--subject", "REFERENCE",
+            "--out-of-cage-at", _hhmm(),
+            "--deployment", "rig-chaired",
+            "--delivered-today", "0",
+            "--trials", "5",
+            *_TASK_SETS,
+            "--link", "tcp://127.0.0.1:0,tcp://127.0.0.1:0",
+            "--await-return-for", "0.05",
+        ]
+    )
+
+    assert exit_code == 0
+    rows = _notes(tmp_path)
+    assert rows[-1]["kind"] == "return not recorded"
+    assert rows[-1]["reason"] == "nobody marked it within 0.05 s"
+
+
+def test_an_empty_answer_at_the_terminal_ends_the_prompt_and_asks_nothing_more(
+    tmp_path, monkeypatch
+):
+    """Minor 2. An empty answer -- and end of input, `_ask`'s own path for it --
+    is a quiet non-answer, not a re-ask: a script whose input closes mid-prompt
+    must not be asked a second question it has nothing left to answer."""
+    asked = []
+
+    def answer(prompt=""):
+        asked.append(prompt)
+        return ""
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", answer)
+
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hhmm()))
+
+    assert exit_code == 0
+    assert len(asked) == 1, "no answer at all ends the prompt at once"
+    assert _kinds(tmp_path) == ["departure", "return not recorded"]
+    assert _notes(tmp_path)[-1]["reason"] == "no answer at the terminal"
