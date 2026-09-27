@@ -2038,7 +2038,7 @@ runs out of context before it produces anything.**
 | | → the reward path above the pump | **done 2026-09-06** — a task's `Reward` reaches a ceiling-checked delivery and a `Pump` port; the driver that opens copper needs V10 | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
 | **P9** | The camera system: one headless camera box per rig (`rig/cam`), 2–4 Blackfly S cameras (8 max) at 200 fps, primary-triggered for 3D, recording the whole session, controlled only from expcontroller; camera failure pauses trials with an override | Designed 2026-09-27 (PI, section by section); after P4d-2b b2a, which it needs for the pause | `docs/superpowers/specs/2026-09-27-P9-camera-system-design.md` | b2a; the camera/encoder library ADR; wl-preproc's `bcam` amendment; hardware |
-| P10 | Spike: reimplement OpenIrisDPI as a headless expcontroller service on P9's framework? | A recommendation: P1/P4 at 500 Hz on two cameras on Linux, precision against OpenIrisDPI on the same frames, and the license approach (the PI's call) | P9 spec §8; `docs/research/openiris-dpi.md` | — |
+| P10 | A clean-room DPI eye tracker as a headless expcontroller service on P9's framework | **Spike done 2026-09-27: build it in C++, on conditions** (`docs/research/2026-09-27-p10-dpi-spike.md`). PI: validate on our rig's raw video, match or beat OpenIrisDPI on everything, C++ with an ADR, invalid frames as "no sample", OpenIrisDPI stays live meanwhile | P9 spec §8; the spike report | P9's cameras (the validation video) |
 
 **P1–P4b and P4d-1 needed no hardware and are done. P4c and P4d-2 need none either.**
 The welfare-critical surface is two files, `bounds.py` and `welfare.py`, and on the

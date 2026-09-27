@@ -183,17 +183,30 @@
 
   The terms are checked against their primary sources and put to the PI.
 
-## 8. P10: the eye-tracker spike (decided so far)
+## 8. P10: the eye-tracker spike — done 2026-09-27
 
-The PI chose to go straight to a feasibility spike, rather than first driving OpenIrisDPI
-through its remote interface. The spike answers:
+The spike (`docs/research/2026-09-27-p10-dpi-spike.md`) recommends **building a clean-room
+tracker in C++, on conditions**:
 
-- whether P1 and P4 can be found at 500 Hz on two cameras, on Linux, and in what language
-  for the core;
-- the precision against OpenIrisDPI **on the same recorded frames**;
-- the license approach. OpenIris is AGPL-3.0, OpenIrisDPI GPL-3.0, and this repository
-  Apache-2.0 (`docs/research/openiris-dpi.md`). A clean-room build from the paper versus a
-  port is the PI's call when the spike starts.
+- validation against OpenIrisDPI on the same recorded frames comes first;
+- blink and validity rejection are designed in (the published method reports confident,
+  wrong P4 positions on partial blinks);
+- P4 near the pupil edge needs handling (a pull of 7–9 px at the published 15 px region,
+  on synthetic frames);
+- two cameras at 500 Hz are proven on the rig's Linux.
+
+Its numbers are from a development laptop under load, on synthetic eyes, and are not
+claims about the rig.
+
+**The PI's answers:**
+
+- validate on raw eye video from our own rig, once the cameras arrive;
+- **match or beat OpenIrisDPI on everything** before switching;
+- a C++ core, with its ADR;
+- invalid frames reach expcontroller as "no sample";
+- OpenIrisDPI stays live, and the new tracker is validated offline only.
+
+So P10's build follows P9's hardware: the validation video needs the cameras.
 
 ## 9. Not in this package
 
