@@ -26,8 +26,8 @@ never used; slice b2 moves it to a command thread of its own. Each browser's
 bounded queue from the `Hub`.
 
 **No timing claim is made here.** `DEFAULT_STALE_AFTER_S` is a display choice (spec
-§3); the queue depth, the rate window's sampling, the keepalive and the receive
-timeout are housekeeping. None is a measurement of this system.
+§3); `QUEUE_DEPTH`, `RATE_SAMPLE_S`, `KEEPALIVE_S`, `REQUEST_TIMEOUT_S` and
+`RETRY_MS` are housekeeping, not a measurement of this system.
 """
 
 from __future__ import annotations
@@ -242,10 +242,12 @@ class Hub:
 #: Seconds between comment lines on a stream with no frame to send. Housekeeping: a
 #: browser that went away is found at the next write rather than never.
 KEEPALIVE_S = 15.0
-#: The reconnection delay the page's `EventSource` is told, in milliseconds.
+#: The reconnection delay the page's `EventSource` is told, in milliseconds --
+#: housekeeping, not a measurement of this system.
 RETRY_MS = 3000
 #: Socket timeout for every request -- wl-preproc's `_REQUEST_TIMEOUT_S`, for its
 #: reason: a request that never finishes must not park a thread for good.
+#: Housekeeping, not a measurement of this system.
 REQUEST_TIMEOUT_S = 30.0
 
 #: Each bundled font by the exact path the page asks for it at (`web.FONTS`). A request
@@ -341,6 +343,13 @@ def make_handler(
                 candidate.encode("utf-8"), self._token.encode("utf-8")
             )
 
+        def _security_headers(self, *, cache: str) -> None:
+            """The two headers every response carries, `/events` included -- written
+            here once so a header added later cannot land in `_write`'s responses
+            and stay missing from the streamed one (F3)."""
+            self.send_header("Cache-Control", cache)
+            self.send_header("X-Content-Type-Options", "nosniff")
+
         def _write(
             self,
             status: int,
@@ -352,8 +361,7 @@ def make_handler(
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", cache)
-            self.send_header("X-Content-Type-Options", "nosniff")
+            self._security_headers(cache=cache)
             for name, value in headers:
                 self.send_header(name, value)
             self.end_headers()
@@ -445,21 +453,20 @@ def make_handler(
         def _events(self) -> None:
             """One browser's stream (spec §4.3): a full render on connect, then an
             event per frame it keeps up with, until the hub closes or the browser
-            goes away."""
+            goes away.
+
+            `take` is only ever used as a wake-up and to notice `CLOSED` -- never as
+            the frame that gets rendered (F2, below `_send_frame`)."""
             box = on_box(self.client_address[0])
             subscriber = self._hub.subscribe(on_box=box)
             try:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("X-Content-Type-Options", "nosniff")
+                self._security_headers(cache="no-store")
                 self.end_headers()
                 self.wfile.write(f"retry: {RETRY_MS}\n\n".encode("ascii"))
                 sent: dict[str, str] = {}
-                latest, _ = self._hub.snapshot(
-                    on_box=box, stale_after_s=self._stale_after_s
-                )
-                self._send_frame(latest, box, sent)
+                self._send_frame(box, sent)
                 while True:
                     try:
                         item = self._hub.take(subscriber, timeout=self._keepalive_s)
@@ -468,7 +475,7 @@ def make_handler(
                         continue
                     if item is CLOSED:
                         return
-                    self._send_frame(item, box, sent)
+                    self._send_frame(box, sent)
             except OSError:
                 # A broken pipe, a reset, or a write that timed out: the browser went
                 # away. There is nobody to tell; `finally` forgets it.
@@ -476,11 +483,23 @@ def make_handler(
             finally:
                 self._hub.unsubscribe(subscriber)
 
-        def _send_frame(self, latest, box: bool, sent: dict) -> None:
+        def _send_frame(self, box: bool, sent: dict) -> None:
             """One event: the fragments that differ from what this browser holds --
             all of them on connect -- and whether more frames are due, which is when
-            the page's stale timer runs."""
-            _, view = self._hub.snapshot(on_box=box, stale_after_s=self._stale_after_s)
+            the page's stale timer runs.
+
+            **Frame and view come from the same `snapshot()` call** (F2, security
+            review fix round 1). `_events`'s `take` only wakes this up; rendering the
+            frame `take` handed back beside a `view` read a moment later could pair
+            an older frame with a newer frame's age, understating the time since the
+            last reward by one inter-frame interval -- the direction that hides a
+            working, unpaid animal. Telemetry is latest-wins, so reading both from
+            one snapshot is always safe: whatever is newest when this runs is what
+            is sent, never a stale value carried in from `take`.
+            """
+            latest, view = self._hub.snapshot(
+                on_box=box, stale_after_s=self._stale_after_s
+            )
             parts = _web.fragments(latest, view)
             changed = {key: html for key, html in parts.items() if sent.get(key) != html}
             sent.update(changed)

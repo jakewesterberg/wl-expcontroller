@@ -606,3 +606,139 @@ def test_health_over_http_is_wl_preprocs_health_response():
 
     assert status == 200
     assert HealthResponse.model_validate_json(body).verdict == "ok"
+
+
+# --- fix round 1: the security review's four findings ----------------------------
+
+
+class _StaleTakeHub(Hub):
+    """F2: `take` answers every wake-up with a fixed stale frame, no matter which
+    frame actually woke it or what the hub holds by the time the caller reads it --
+    modeling the race a real telemetry thread and a real HTTP thread can hit: a
+    newer frame lands between `take` returning and the next `snapshot` read. Pins
+    that a streamed event is rendered from one `snapshot()` call, frame and view
+    together, never `take`'s frame paired with a separately read (and by then
+    newer) view."""
+
+    def __init__(self, stale_frame) -> None:
+        super().__init__(steady=_Clock(0.0))
+        self._stale_frame = stale_frame
+
+    def take(self, subscriber, timeout):
+        item = super().take(subscriber, timeout)
+        return item if item is CLOSED else self._stale_frame
+
+
+def test_a_streamed_frame_is_rendered_with_the_view_its_own_snapshot_gives():
+    """F2, the direction that hides an unpaid animal: if the fragments came from the
+    frame `take` woke the stream with, but the age came from a `snapshot()` read
+    after a newer frame had already landed, the newer frame's short age would be
+    stamped onto the older frame's content -- or, as pinned here, the wrong frame's
+    content would reach the page at all. Rendering both from one `snapshot()` call
+    closes it: whatever is newest when `_send_frame` reads the hub is what is sent,
+    never a stale `take` value."""
+    hub = _StaleTakeHub(frame(trial_index=5))
+    with _served(hub) as port, _stream(port) as response:
+        events = _events(response)
+        next(events)  # the full render on connect, before any frame
+
+        hub.offer(frame(trial_index=6))
+        second = next(events)
+
+    assert 'data-trial="6"' in second["frags"]["head-id"], (
+        "the event was rendered from take()'s stale frame (5) instead of the frame "
+        "snapshot() already shows (6)"
+    )
+
+
+def test_the_page_gets_a_fresh_nonce_each_request():
+    """F1: the existing page test only checks that the header and the body agree on
+    one nonce; a handler that hard-coded a constant nonce would still pass it."""
+    hub = _hub()
+    with _served(hub) as port:
+        _, first_headers, _ = _request(port, "GET", "/")
+        _, second_headers, _ = _request(port, "GET", "/")
+
+    def nonce_of(headers):
+        policy = headers["Content-Security-Policy"]
+        return policy.split("'nonce-", 1)[1].split("'", 1)[0]
+
+    assert nonce_of(first_headers) != nonce_of(second_headers)
+
+
+def test_cache_control_matches_what_each_response_promises():
+    hub = _hub()
+    hub.offer(frame())
+    with _served(hub) as port:
+        assert _request(port, "GET", "/")[1]["Cache-Control"] == "no-store"
+        assert (
+            _request(port, "GET", "/health", {"Authorization": f"Bearer {TOKEN}"})[1][
+                "Cache-Control"
+            ]
+            == "no-store"
+        )
+        assert (
+            _request(port, "GET", f"/fonts/{FONTS[0].file}")[1]["Cache-Control"]
+            == "max-age=86400"
+        )
+        with _stream(port) as response:
+            assert response.getheader("Cache-Control") == "no-store"
+
+
+def test_nosniff_is_on_every_kind_of_response():
+    hub = _hub()
+    hub.offer(frame())
+    with _served(hub) as port:
+        status, headers, _ = _request(port, "GET", "/")
+        assert status == 200 and headers["X-Content-Type-Options"] == "nosniff"
+
+        status, headers, _ = _request(port, "GET", "/health")
+        assert status == 401 and headers["X-Content-Type-Options"] == "nosniff"
+
+        status, headers, _ = _request(port, "GET", "/nope")
+        assert status == 404 and headers["X-Content-Type-Options"] == "nosniff"
+
+        with _stream(port) as response:
+            assert response.getheader("X-Content-Type-Options") == "nosniff"
+
+
+def test_the_streams_first_line_states_its_retry_delay():
+    """The `_events` helper skips the `retry:` line along with every comment, so it
+    is asserted here on its own."""
+    hub = _hub()
+    with _served(hub) as port, _stream(port) as response:
+        first_line = response.readline()
+
+    assert first_line == b"retry: 3000\n"
+
+
+def test_401_headers_are_identical_across_every_kind_of_bad_credential():
+    """Not only the same status and body (already pinned): the same headers, once
+    `Date` -- which ticks between two requests -- is set aside."""
+    hub = _hub()
+    with _served(hub) as port:
+        header_sets = []
+        for headers in (
+            {},
+            {"Authorization": "Bearer wrong"},
+            {"Authorization": f"Basic {TOKEN}"},
+        ):
+            _, response_headers, _ = _request(port, "GET", "/health", headers)
+            response_headers.pop("Date", None)
+            header_sets.append(response_headers)
+
+    assert header_sets[0] == header_sets[1] == header_sets[2]
+
+
+def test_a_non_ascii_authorization_header_gets_the_same_401():
+    """A byte no client library would send unasked (Latin-1 `\\xe9`, sent raw on the
+    wire) must not crash the handler or reset the connection: it is one more wrong
+    credential, answered exactly like any other."""
+    hub = _hub()
+    with _served(hub) as port:
+        answer = _raw(
+            port, b"GET /health HTTP/1.0\r\nAuthorization: Bearer t\xe9ken\r\n\r\n"
+        )
+
+    assert answer.startswith(b"HTTP/1.0 401")
+    assert answer.endswith(b'{"error": "unauthorized"}')
