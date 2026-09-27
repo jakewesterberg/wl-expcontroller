@@ -1151,6 +1151,13 @@ def _endpoints(zmq_cleanup) -> tuple[str, str]:
     return pub, rep
 
 
+#: The strip's time since the last reward before any reward (`web._last_reward`).
+_NONE_YET = (
+    '<span class="lab">Since last reward</span>'
+    '<span class="val"><span class="nm">none yet</span></span>'
+)
+
+
 def _advancing(server: Server, count: int = 2) -> list[int]:
     """Trial numbers from `server`'s event stream until `count` increasing ones are
     seen: the trial count advancing, as a person watching would see it. Bounded by
@@ -1219,6 +1226,39 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
         second.start()
         after = _advancing(second)
         assert after[0] > before[-1], "the session did not run on without a console"
+
+        # m5: the strip's time since the last reward, over the real wire -- a real
+        # reward's instant on the session's clock, through a real frame, rendered by
+        # a real `wlx serve` -- stops reading "none yet" once the session has paid.
+        rewarded = None
+        with _stream(second.address[1]) as response:
+            for _, payload in zip(
+                range(20_000), _events(response, deadline_s=20.0)
+            ):
+                strip = payload["frags"].get("strip", "")
+                if "Since last reward" in strip and _NONE_YET not in strip:
+                    rewarded = strip
+                    break
+        assert rewarded is not None, "the strip never left 'none yet' for a reward"
+        assert re.search(
+            r'<span class="lab">Since last reward</span><span class="val">\d+ s</span>',
+            rewarded,
+        ), rewarded
+
+        # m5: `/health` on real telemetry, with the token, is wl-preproc's own
+        # `HealthResponse` -- checked whenever their model is importable, which
+        # `WLX_REQUIRE_PREPROC=1` makes a requirement of this module (as `_contract`
+        # does for the tests it marks), so CI always checks it.
+        status, _, health_body = _request(
+            second.address[1],
+            "GET",
+            "/health",
+            {"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert status == 200
+        assert json.loads(health_body)["verdict"] == "ok"
+        if HealthResponse is not None:
+            assert HealthResponse.model_validate_json(health_body).verdict == "ok"
 
         with zmq_cleanup(ZmqConsole(pub, rep)) as console, _stream(
             second.address[1]
