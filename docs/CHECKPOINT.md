@@ -393,6 +393,14 @@ same handoff. Start b2 next, from the P4d-2b spec §2 and §4.0.
   --link`'s `ZmqLink`, and its `weakref.finalize` safety net deadlocked in `term()`, because
   the collector had already dropped the sockets from the context's `WeakSet`. That
   deadlock is fixed (Ruling 18): the finalizer holds the sockets itself (`link._release`).
+  That fix's review found `close()` disarming the net when a release was interrupted
+  partway, and Ruling 19 had every finding fixed: `close()` now runs `_release` itself
+  and detaches the finalizer only after it returns. **Every socket must be appended to
+  `_sockets`**: one left out brings the collector deadlock back, and `_release`'s
+  docstring says why.
+- **The mutation gate treats `tests/_zmq_release.py` and `tests/_frames.py` as global**,
+  beside `conftest.py`. A change to either escalates to a full sweep, because both are
+  shared test infrastructure whose names match no module.
 
 **Carried forward from b1.** The ledger that recorded these is gitignored, so they are
 here, one line each:

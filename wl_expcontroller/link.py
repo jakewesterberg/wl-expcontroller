@@ -866,10 +866,21 @@ def _release(ctx, sockets) -> None:
     This is how a `ZmqLink` or a `ZmqConsole` lets go of ZeroMQ, and it is the only
     way. Each object registers it with `weakref.finalize` before opening its first
     socket, and passes the context and its own list of sockets, which the constructor
-    appends to as each one opens. Three callers reach it through that finalizer, which
-    runs it at most once: `close()`, a constructor that raised partway, and the cyclic
-    collector freeing an object whose `close()` never ran. Nothing here runs per
-    frame.
+    appends to as each one opens. It is reached four ways:
+
+    - `close()` calls it directly, and detaches the finalizer only once it returns,
+      so a release interrupted partway leaves the net armed (`ZmqLink.close`).
+    - `ZmqLink.__init__` calls `close()` when its binds raise partway. Only
+      `ZmqLink`'s constructor does: `ZmqConsole.__init__` has no `except`, and a
+      half-built console is released by its finalizer when it is freed.
+    - The finalizer runs it, at most once, when an object is freed without `close()`
+      having run: by reference counting, the usual case, or by the cyclic collector,
+      when the object is in a reference cycle.
+    - `weakref.finalize`'s exit hook runs a finalizer still alive at interpreter exit.
+
+    It is idempotent. A closed socket is skipped, and `destroy` returns at once on a
+    closed context, so running it again after a completed or interrupted release does
+    no harm. Nothing here runs per frame.
 
     **Why it holds the sockets itself (Ruling 18, 2026-09-27).** The net used to be
     `weakref.finalize(self, self._ctx.destroy, 0)`, and when the cyclic collector freed
@@ -908,14 +919,25 @@ def _release(ctx, sockets) -> None:
 
     **What changed.** The finalizer's arguments are the context and the list of
     sockets. Never the object, and never a bound method of it: either would keep the
-    object alive forever. The finalizer registry references the list, so the sockets
-    stay reachable, the collector leaves them out of what it frees, and they are
-    closed here from the list instead of looked up through the `WeakSet`. `destroy`
-    then terminates the context. It is `destroy` rather than a bare `term()` for two
-    reasons. On the `close()` path, where the object is alive and the `WeakSet` is
-    whole, it still closes a socket that a later edit opened without adding it to the
-    list. And it returns at once on a context that is already closed, as one is after
-    a test fixture destroyed it first.
+    object alive forever. **The strong reference is the mechanism.** The finalizer
+    registry references the list, so the sockets stay reachable, the collector leaves
+    them out of what it frees, and they stay in the context's `WeakSet` as well. The
+    loop below, which closes them from the list, is belt and braces: with it removed,
+    `destroy` alone would find and close them, for as long as the list is held
+    (checked 2026-09-27, Ruling 19: all of `tests/test_link.py` passed without it).
+    `destroy` then terminates the context, and returns at once on a context that is
+    already closed, as one is after a test fixture destroyed it first.
+
+    **So every socket must be appended to the list the moment it exists. That is
+    required, not tidiness.** A socket missing from the list is held by nothing but
+    its object. When the collector frees that object, the socket is freed with it:
+    its `WeakSet` entry is cleared first, `destroy` cannot see it, and `term()` waits
+    for it forever -- the original deadlock, back for that one socket. `destroy`'s
+    own sweep of the `WeakSet` is a backstop for `close()` only, where the object is
+    alive and the set is whole. This test pins it:
+    `test_an_unclosed_link_in_a_reference_cycle_is_released_by_the_collector`. With
+    the REP socket's `append` removed, it fails at its 10 s bound (checked
+    2026-09-27, Ruling 19).
 
     **Threads.** pyzmq's `destroy` docstring says it must not be called while sockets
     are active in other threads, because `Socket.close` is not threadsafe. Each
@@ -923,12 +945,12 @@ def _release(ctx, sockets) -> None:
 
     - `close()` runs it on the thread that called `close()`, where `destroy` ran
       before.
-    - A failed constructor runs it on the constructing thread, before any caller has a
-      handle.
-    - The collector runs it on whichever thread collected, but only once the object
-      is unreachable. Nothing holds the object, so nothing can be using its sockets.
-      Closing them on that thread is what each socket's own `__del__` would have done,
-      on that same thread.
+    - `ZmqLink`'s failed constructor runs it, through `close()`, on the constructing
+      thread, before any caller has a handle.
+    - Reference counting runs it on the thread that dropped the last reference, and
+      the collector on whichever thread collected. Either way the object is
+      unreachable by then, so nothing can be using its sockets. Closing them on that
+      thread is what each socket's own `__del__` would have done, on that same thread.
     - `weakref.finalize` also runs a still-live finalizer at interpreter exit, on
       the main thread, as it did for the old net.
     """
@@ -1013,11 +1035,13 @@ class ZmqLink:
         self._ctx = zmq.Context()
         #: Every socket this link opens, appended the moment it exists. The finalizer
         #: below holds this list, not `self`, so what it releases stays reachable
-        #: however this object is freed. See `_release`.
+        #: however this object is freed. **The append is required**: a socket left
+        #: out of it brings back the collector deadlock. See `_release`.
         self._sockets: list = []
         # Registered before the first socket, so a constructor that raises partway
-        # is covered too. `close()` calls it, and so does the `except` below. It runs
-        # `_release` at most once, and never needs `close()` to have run.
+        # is covered too. It runs `_release` at most once, if this link is freed
+        # without `close()` having run. `close()` runs `_release` itself and then
+        # detaches it, and the `except` below goes through `close()`.
         self._finalizer = weakref.finalize(self, _release, self._ctx, self._sockets)
 
         # **Everything from here to the end of the binds is inside the `try`, and
@@ -1046,9 +1070,10 @@ class ZmqLink:
             self._rep.bind(rep_endpoint)
             self.rep_endpoint = self._rep.getsockopt_string(zmq.LAST_ENDPOINT)
         except BaseException:
-            # The same release `close()` runs, now, rather than when this half-built
-            # object is freed: it closes whichever sockets got that far.
-            self._finalizer()
+            # `close()`, now, rather than when this half-built object is freed: it
+            # closes whichever sockets got that far, and an interrupted release leaves
+            # the finalizer armed here too.
+            self.close()
             raise
 
         #: Wire packets `drain()` could not turn into a `Command`, as `Refused`
@@ -1150,17 +1175,40 @@ class ZmqLink:
     def close(self) -> None:
         """Release both sockets and this link's own `Context`, promptly.
 
-        Runs this link's finalizer, which runs `_release` once: each socket is
-        closed with `linger=0`, then `Context.destroy(linger=0)` terminates the
-        context. A second call does nothing. **`destroy`, not a bare `.term()`** --
-        fix round 1, measured: `ctx.term()` blocks on ANY socket under that context
-        that is not yet closed (a bare probe script, this session's scratchpad: an
-        unclosed socket makes `term()` hang indefinitely), while `destroy(linger=0)`,
-        called the same way from ordinary application code, force-closes every
-        socket the context still lists and returns immediately (measured: 0.0001 s
-        against the identical unclosed socket) -- so this stays correct even if a
-        future edit adds a third socket here and forgets to append it to
-        `self._sockets`.
+        Runs `_release`: each socket is closed with `linger=0`, then
+        `Context.destroy(linger=0)` terminates the context. Then it detaches this
+        link's finalizer, so the finalizer never runs `_release` again. A second call
+        runs `_release` again, and that does nothing: it skips closed sockets, and
+        `destroy` returns at once on a closed context.
+
+        **`destroy`, not a bare `.term()`** -- fix round 1, measured: `ctx.term()`
+        blocks on ANY socket under that context that is not yet closed (a bare probe
+        script, this session's scratchpad: an unclosed socket makes `term()` hang
+        indefinitely), while `destroy(linger=0)`, called the same way from ordinary
+        application code, force-closes every socket the context still lists and
+        returns immediately (measured: 0.0001 s against the identical unclosed
+        socket). So on this path, where the link is alive and the context's
+        `WeakSet` is whole, `destroy` also closes a socket a future edit opened and
+        forgot to append to `self._sockets`. **That is a backstop for `close()` only,
+        and the append is still required.** When the collector frees a link whose
+        `close()` never ran, a socket missing from the list brings the original
+        deadlock back (`_release` has why), and
+        `test_an_unclosed_link_in_a_reference_cycle_is_released_by_the_collector`
+        fails at its 10 s bound.
+
+        **`_release` first, `detach()` after (Ruling 19, 2026-09-27).**
+        This used to be `self._finalizer()`, and `weakref.finalize.__call__` removes
+        its registry entry *before* it calls `_release`. A release interrupted
+        partway -- a Ctrl-C between the two `sock.close` calls, during `wlx run`'s
+        `with` exit -- therefore disarmed the net: a second `close()` did nothing, and
+        the context was never terminated. A later cyclic collection of that link then
+        hung (reproduced 2026-09-27, in a bare script): pyzmq's own
+        `Context.__del__` calls `destroy`, which finds the `WeakSet` already cleared,
+        and `term()` waits for the socket the release never reached. Now the
+        finalizer stays armed until `_release` has returned, so a second `close()`,
+        or the finalizer when the link is freed, finishes the release. This test
+        pins it:
+        `test_a_close_interrupted_partway_leaves_the_net_armed_and_a_second_close_finishes`.
 
         **The open item this docstring carried until 2026-09-27 is closed (Ruling
         18).** It recorded that neutering `close()` hung the suite past 300 s inside
@@ -1199,7 +1247,8 @@ class ZmqLink:
         `b85d0d7` replaced it with `tests/_zmq_release.py`, and `_release` removed
         the deadlock itself.
         """
-        self._finalizer()
+        _release(self._ctx, self._sockets)
+        self._finalizer.detach()
 
     def __enter__(self) -> "ZmqLink":
         return self
@@ -1335,7 +1384,8 @@ class ZmqConsole:
 
     def close(self) -> None:
         """See `ZmqLink.close` -- same reasoning, same shape."""
-        self._finalizer()
+        _release(self._ctx, self._sockets)
+        self._finalizer.detach()
 
     def __enter__(self) -> "ZmqConsole":
         return self

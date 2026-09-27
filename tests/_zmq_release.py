@@ -40,9 +40,10 @@ measured in scratchpad probes:
 **The deadlock itself was fixed in `link.py` in the commit after this file's (Ruling
 18, 2026-09-27), and the list above is now history.** The finalizer runs
 `link._release` with the sockets held strongly, so a cyclic collection of an unclosed
-link or console closes them, terminates the context, and returns. `tests/test_link.py`'s `*_released_by_the_collector*` tests
-pin that. This fixture stays, for the reason in the next paragraph: it does not
-depend on a collection ever coming.
+link or console closes them, terminates the context, and returns.
+`tests/test_link.py`'s `*_released_by_the_collector*` tests pin that. This fixture
+stays, for the reason in the next paragraph: it does not depend on a collection ever
+coming.
 
 A fixture's teardown does not wait for the collector, and it does not call the
 functions a mutation neuters. Holding each object keeps it reachable, and so out of the
@@ -65,6 +66,18 @@ from wl_expcontroller.link import ZmqConsole, ZmqLink
 #: They are never destroyed from this thread, because pyzmq's `Context.destroy`
 #: docstring says it must not be called while sockets are active in other threads. They
 #: are kept referenced, so the collector cannot reach them either.
+#:
+#: **That only postpones the release.** At interpreter exit, `weakref.finalize`'s exit
+#: hook runs each parked object's still-live finalizer, `link._release`, on the main
+#: thread. Its builder, a daemon thread, may still be alive then, which is the very case
+#: this list exists to avoid. It is accepted because it happens only after a test has
+#: already failed, and at exit.
+#:
+#: **The fixture also assumes an object is used only by the thread that built it.**
+#: `builder.is_alive()` is the only question it asks. An object built on the test's
+#: thread and handed to another thread that is still running would be destroyed here
+#: while that thread uses it. No test in the two importing files did that when this
+#: was written (checked 2026-09-27).
 _STILL_IN_USE: list = []
 
 

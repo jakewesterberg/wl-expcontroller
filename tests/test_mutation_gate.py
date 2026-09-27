@@ -86,7 +86,14 @@ def test_documentation_alone_selects_nothing():
 
 @pytest.mark.parametrize(
     "path",
-    ["tests/conftest.py", "tools/mutate.py", "pyproject.toml", ".github/workflows/ci.yml"],
+    [
+        "tests/conftest.py",
+        "tests/_zmq_release.py",
+        "tests/_frames.py",
+        "tools/mutate.py",
+        "pyproject.toml",
+        ".github/workflows/ci.yml",
+    ],
 )
 def test_a_structural_change_escalates_to_everything(path):
     """These change what every test sees, so reasoning about a subset is not sound.
@@ -94,6 +101,18 @@ def test_a_structural_change_escalates_to_everything(path):
     modules, why = gate.select([path])
     assert modules == sorted(gate.RETURNS)
     assert path in why
+
+
+def test_the_zmq_release_fixture_alone_escalates_though_it_names_no_module():
+    """P4d-2b b1, Ruling 19. `tests/_zmq_release.py` is an autouse fixture that holds
+    every `ZmqLink` and `ZmqConsole` in `test_serve.py` and `test_cli.py` until
+    teardown. Editing it changes object lifetimes in both files, and with them what
+    the `link`, `serve` and `cli` sweeps can catch. Its name is not `test_` plus a
+    module, so the per-file rule selected nothing for it, and a push that changed
+    only that file ran no sweep at all."""
+    modules, why = gate.select(["tests/_zmq_release.py"])
+    assert modules == sorted(gate.RETURNS)
+    assert "tests/_zmq_release.py" in why
 
 
 def test_a_task_change_escalates_because_tasks_are_test_inputs():

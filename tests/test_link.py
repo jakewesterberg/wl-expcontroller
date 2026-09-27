@@ -17,6 +17,8 @@ from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
+
 from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
     REFUSAL_HISTORY,
@@ -526,10 +528,11 @@ def test_which_endpoints_count_as_leaving_this_machine():
 
     `127.0.0.2` is the reason this is a separate test: it is inside 127.0.0.0/8 and
     must classify as local, and a prefix match on the literal `127.0.0.1` would have
-    called it remote. It is *also* not assignable on a stock macOS loopback -- trying
-    to bind it here raised out of `ZmqLink.__init__` and left an abandoned `Context`
-    for pytest's cyclic collector, which is the 300 s hang `ZmqLink.close()`'s
-    docstring is about. Checking the predicate keeps the case and loses the hang."""
+    called it remote. It is *also* not assignable on a stock macOS loopback, while
+    Linux binds it, so binding it here would test something different on each host.
+    Checking the predicate keeps the case on every host. What a bind that fails
+    partway through `ZmqLink.__init__` owes is
+    `test_a_link_that_cannot_bind_does_not_abandon_its_context`'s subject."""
     from wl_expcontroller.link import _binds_beyond_this_machine as beyond
 
     for local in (
@@ -578,34 +581,61 @@ def test_a_loopback_link_binds_and_an_explicit_remote_one_is_allowed(zmq_cleanup
     assert remote.pub_endpoint.startswith("tcp://0.0.0.0:")
 
 
+def _half_built(raised, cls):
+    """The `cls` whose constructor raised, read from that constructor's own frame in
+    the traceback `raised` holds. That frame keeps it alive for as long as the
+    exception is held, which is the situation the test below is about."""
+    tb = raised.tb
+    while tb is not None:
+        candidate = tb.tb_frame.f_locals.get("self")
+        if isinstance(candidate, cls):
+            return candidate
+        tb = tb.tb_next
+    raise AssertionError(f"no {cls.__name__} constructor frame in the traceback")
+
+
 def test_a_link_that_cannot_bind_does_not_abandon_its_context(zmq_cleanup):
     """Found by triggering it: `tcp://127.0.0.2:0` is inside the loopback block, so
     the guard above lets it through, and on a stock macOS loopback it is not an
     assignable address. The `ZMQError` then raised out of `__init__` **after** the
     `Context` and the PUB socket existed and **before** any caller had a handle to
-    register with `zmq_cleanup` -- so the context was abandoned mid-construction, and
-    the suite stopped terminating. That is the failure `ZmqLink.close()`'s docstring
-    describes at length; a constructor that can raise between creating a context and
-    returning it is one of the ways in.
+    call `close()` on. Before `__init__` had its `except`, the context was abandoned
+    mid-construction, left to whatever freed the object, and the old finalizer could
+    deadlock there (`link._release`'s docstring; fixed by Ruling 18).
 
-    An unbindable endpoint is an ordinary operator mistake -- a port already in use
-    is the common one -- and it must cost an error message, not a hung session."""
+    **What the `except` still owes is promptness**, and that is what this checks.
+    Without it, the half-built link lives as long as its exception does, because the
+    constructor's frame in the traceback holds it. Its context stays open and its PUB
+    port stays bound for as long as a caller that logs the error, a debugger, or
+    `pytest.raises` here holds on to it. The operator's retry, with the REP endpoint
+    corrected and the same PUB endpoint, then fails on a port that only the failed
+    attempt's exception is keeping bound.
+
+    A REP port already in use is the failure, not `127.0.0.2`: Linux binds that
+    address, so it failed only on some hosts, and the test returned early on the
+    others. A port in use fails everywhere, and it is the common operator mistake."""
+    import zmq
+
+    taken = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+
+    with pytest.raises(zmq.ZMQError) as raised:
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint=taken.rep_endpoint)
+    # Held from here to the end of the test, as a caller holding the error would.
+    half_built = zmq_cleanup(_half_built(raised, ZmqLink))
+    # The premise: PUB bound a port, and it was REP's bind that failed.
+    assert half_built.pub_endpoint.startswith("tcp://127.0.0.1:")
+    assert not hasattr(half_built, "rep_endpoint")
+
     try:
-        ZmqLink(pub_endpoint="tcp://127.0.0.2:0", rep_endpoint="tcp://127.0.0.1:0")
-    except Exception:  # noqa: BLE001 -- whatever zmq raises for this address
-        pass
-    else:  # pragma: no cover -- this address does bind on some hosts
-        return
-
-    # If the context above had been abandoned rather than destroyed, this test would
-    # not be the thing that fails: the suite would stop terminating, later, in
-    # somebody else's collection. Proving the cleanup happened is therefore the
-    # assertion -- a link built and closed normally afterwards still works, which
-    # cannot be true of a process wedged in `ctx_t::terminate()`.
-    healthy = zmq_cleanup(
-        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    )
-    assert healthy.drain() == []
+        retry = zmq_cleanup(
+            ZmqLink(pub_endpoint=half_built.pub_endpoint, rep_endpoint="tcp://127.0.0.1:0")
+        )
+    except zmq.ZMQError as exc:
+        raise AssertionError(
+            f"the failed constructor still holds its PUB port {half_built.pub_endpoint}: {exc}"
+        ) from exc
+    assert retry.pub_endpoint == half_built.pub_endpoint
+    assert half_built._ctx.closed, "the failed constructor left its context open"
 
 
 def test_a_flood_of_undecodable_packets_cannot_grow_the_link_without_bound(zmq_cleanup):
@@ -800,6 +830,60 @@ def test_close_terminates_the_context_and_a_second_close_is_harmless(zmq_cleanup
 
     assert link._pub.closed and link._rep.closed and link._ctx.closed
     assert console._sub.closed and console._req.closed and console._ctx.closed
+
+
+@contextmanager
+def _interrupted_once(sock):
+    """Inside this block, `sock.close` raises `KeyboardInterrupt` once, before it
+    closes anything, and is the real `close` from then on. That is a Ctrl-C landing
+    between `_release`'s two `sock.close` calls.
+
+    **The block, not the test, owns the stand-in.** If nothing called it -- a
+    neutered `close()` or `_release` -- it is removed on the way out. Left in place,
+    `zmq_cleanup`'s teardown would call it through `Context.destroy`, and a
+    `KeyboardInterrupt` there ends the whole pytest session, not one test: the
+    mutation harness saw `close` "caught" by a suite that stopped at 425 of 1092."""
+
+    def close(*args, **kwargs):
+        del sock.close  # the next call reaches the real method
+        raise KeyboardInterrupt("a Ctrl-C between the two sock.close calls")
+
+    sock.close = close
+    try:
+        yield
+    finally:
+        if "close" in vars(sock):
+            del sock.close
+
+
+def test_a_close_interrupted_partway_leaves_the_net_armed_and_a_second_close_finishes(
+    zmq_cleanup,
+):
+    """Ruling 19 (2026-09-27), from the review of Ruling 18. `close()` used to be
+    `self._finalizer()`, and `weakref.finalize` removes its registry entry *before*
+    it calls `_release`. So a release interrupted partway -- a Ctrl-C between the two
+    `sock.close` calls, during `wlx run`'s `with` exit -- left no net at all: the
+    finalizer was dead, a second `close()` did nothing, and the context was never
+    terminated. `close()` now runs `_release` itself and detaches the finalizer only
+    once it has returned, so the net stays armed and a second `close()` finishes the
+    release. Both ends, because each has its own `close()`."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0))
+
+    for end, second in ((link, link._rep), (console, console._req)):
+        name = type(end).__name__
+
+        with _interrupted_once(second), pytest.raises(KeyboardInterrupt):
+            end.close()
+
+        assert not end._ctx.closed, f"the {name}'s release was not interrupted"
+        assert end._finalizer.alive, f"an interrupted close() disarmed the {name}'s net"
+
+        end.close()
+
+        assert second.closed, f"a second close() left the {name}'s socket open"
+        assert end._ctx.closed, f"a second close() left the {name}'s context unterminated"
+        assert not end._finalizer.alive, f"a completed close() left the {name}'s net armed"
 
 
 @contextmanager

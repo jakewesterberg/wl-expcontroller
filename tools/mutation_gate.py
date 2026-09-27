@@ -19,9 +19,10 @@ a module *and* the tests that cover it. Selecting on changed files catches the t
 common cases -- the module changed, or its own test file changed -- and misses one:
 deleting or weakening a test in `test_a.py` that happened to be the only thing
 covering a function in `b.py`. Nothing in a diff makes that visible, so the nightly
-full sweep is what catches it. Anything structural (`conftest.py`, `mutate.py`,
-`pyproject.toml`, `tasks/`) escalates to a full sweep here rather than being reasoned
-about, because those change what every test sees.
+full sweep is what catches it. Anything structural (`conftest.py` and the shared
+test helpers beside it, `mutate.py`, `pyproject.toml`, `tasks/`) escalates to a full
+sweep here rather than being reasoned about, because those change what every test
+sees.
 """
 
 from __future__ import annotations
@@ -80,6 +81,10 @@ EXEMPT: dict[str, str] = {
 #: sound. Escalate rather than be clever.
 GLOBAL = (
     "tests/conftest.py",
+    # An autouse fixture: it changes object lifetimes in test_serve.py and test_cli.py.
+    "tests/_zmq_release.py",
+    # The one frame test_health.py, test_web.py and test_serve.py build their cases on.
+    "tests/_frames.py",
     "tools/mutate.py",
     "tools/mutation_gate.py",
     "pyproject.toml",
