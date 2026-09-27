@@ -1,8 +1,10 @@
 # P4d-2b — The browser console and `/health`
 
 - **Status:** §1–§3 approved in conversation on 2026-09-26 (PI). §4 covers slice b1, the
-  read-only console, and was approved the same day. Slices b2–b6 get their own sections as
-  each is designed.
+  read-only console, and was approved the same day. §5 covers slice b2, split into b2a
+  (controls from the box) and b2b (remote sign-in through wl-works); b2a's design was
+  approved in conversation on 2026-09-27, section by section, and b2b's decisions so far
+  are recorded in §5.7. Slices b3–b6 get their own sections as each is designed.
 - **Date:** 2026-09-26
 - **Parent:** S9a §6–§9; ADR-0008; `architecture.md`'s `console` and `labhost` rows
 - **Depends on:** P4d-2a (`2026-09-26-P4d2a-return-to-cage-design.md`, as amended in its
@@ -33,15 +35,23 @@
   REQ socket and takes commands from a queue, so each ZMQ socket has one owning thread.
   Each browser gets a bounded queue that drops its oldest frames when it falls behind.
   Restarting `wlx serve` changes nothing in `taskd`.
-- **Reads are open to the LAN; writes only from the box, until P4d-3** (PI, 2026-09-26).
-  `POST /commands` is accepted only when all hold: loopback peer; `Host` names loopback
-  (against DNS rebinding); `Origin` is the box's own page (against a cross-site post from a
-  page open in the rig PC's browser); `Content-Type: application/json` (forces a preflight
-  this server never approves). A refused write says *writes are accepted only from this box
-  until P4d-3*, and the page greys its controls with the same sentence.
-- **Attribution until P4d-3:** the box's page asks for a name once and the console records
+- **Reads are open to the LAN; writes from the box in b2a, and from people signed in to
+  wl-works in b2b** (PI, 2026-09-26; amended 2026-09-27, when the PI asked that "folks that
+  are logged into wl-works" be able to write too — which replaces this bullet's earlier
+  "until P4d-3"; see §5.7). A write from the box — `POST /commands` without a wl-works
+  token — is accepted only when all hold: loopback peer; `Host` names loopback (against
+  DNS rebinding); `Origin` is the box's own page (against a cross-site post from a page
+  open in the rig PC's browser); `Content-Type: application/json` (forces a preflight this
+  server never approves). Until b2b, a refused write says *controls work only at the rig
+  PC until remote sign-in arrives*, and the page greys its controls with the same
+  sentence.
+- **Every request is answered only when its `Host` names this console** (2026-09-27, §5.3):
+  loopback, the box's own host name and addresses, and names given with `--allow-host`.
+  Anything else is refused, which closes DNS rebinding on the LAN-open reads too; b2b needs
+  each rig reached by a known, registered name anyway.
+- **Attribution from the box:** the box's page asks for a name once and the console records
   `NAME (box, unverified)` — S9a §6: a forgeable name is worse than none, because it is
-  believed.
+  believed. b2b adds the verified actor for signed-in people (§5.7).
 - **`/health`**: `Authorization: Bearer` from a token file, never the repository;
   `hmac.compare_digest`; one identical `401` for missing or wrong credentials; `404` for
   unknown paths, `405` for wrong methods, and no stdlib default error page — the rules of
@@ -272,9 +282,200 @@ welfare number and bounds nothing.
 - **The page's JavaScript** only opens the stream, swaps fragments by id, and runs the stale
   timer, so everything worth testing is in Python.
 
-## 5. Not in this slice
+## 5. Slice b2: controls (b2a approved 2026-09-27)
+
+b2 is split in two (PI, 2026-09-27): **b2a**, the controls, sent from the box; then **b2b**,
+the same controls for people signed in to wl-works. b2a ships and is used while wl-works
+registers the rigs and the rigs gain their route to it (§5.7), which b2b cannot do without.
+
+### 5.0 Rulings (PI, 2026-09-27, asked in plain terms)
+
+- **Pause shows a plain background:** the task's background color, nothing drawn on it.
+- **A mark goes to the session record and into the neural recording's event stream**, and
+  **it is stamped in the frame it reaches the rig, not at the next trial boundary.** Asked
+  whether boundary stamping was acceptable, the PI answered that marks must be instant.
+- **A setting is sent when the arrows stop being clicked** (the mockup's debounce), and shows
+  *staged* until the next trial.
+- **No earlier limit warning:** the 30-minute warning stays the only one. The GUI review's
+  item 8 proposed an earlier stage; it is dropped.
+- **People signed in to wl-works may write** (§2), and **they get every b2 control, reward
+  size included**, still capped by its approved ceiling. The rig PC keeps every control.
+  This supersedes the line in wl-expcontroller's 2026-08-31 handover to wl-works
+  (`wl-works/HANDOVER-wl-expcontroller.md`) that reward, stimulation and parameter changes
+  need a person at the console — for signed-in, attributed writes. wl-works is told so
+  with b2b.
+- **Rig machines may connect to wl-works** ("i think its fine if the rig machines can
+  connect to wl-works"). A permission, not a route: see §5.7.
+
+### 5.1 What the rig does
+
+Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loop's
+`link.drain()`), except the mark's own signal (below).
+
+- **Commands on the wire.** Today's closed union, `SetParameter | Stop`, gains `Pause`,
+  `Resume`, `Mark`, `ScheduleStop` and `CancelScheduledStop`, each carrying `by`. Every one
+  is written to the session record with who sent it and when.
+- **M8 closes first.** `SetParameter.value` is a type hint that nothing enforces: a string
+  reaching `bounds._finite` raises `TypeError`, which `Session._command` does not catch, so
+  `run()`'s fault handler ends the whole session. The value is checked where the command is
+  decoded (a finite real number, not a `bool`, or a string for a categorical parameter)
+  and a bad one becomes a refusal with a sentence. `Session._command` also refuses on a
+  type error, as a backstop. The session never ends because a setting was malformed.
+- **Pause.** At the next trial boundary the loop holds: no trial runs, the display shows the
+  task's background color, and nothing is rewarded. While paused the rig still, once per
+  housekeeping interval, drains commands (resume, stop, marks, schedules, settings),
+  publishes telemetry, and **checks the out-of-cage limit with `welfare.must_stop`, ending
+  the session on it exactly as between trials**. The out-of-cage clock keeps running.
+  Settings staged while paused apply when trials resume. Stop while paused ends the
+  session. Pause and resume are recorded, and are strobed as framework events (`pause`,
+  `resume`) so the recording shows the gap.
+- **Mark, stamped instantly.** Draining every command per frame would break the trial loop's
+  rules, so a mark has two parts:
+  - a **signal**: a fixed-size sequence number the loop checks once per frame with no
+    allocation and bounded work, and on seeing it strobes `operator_mark` in that frame.
+    Proposed mechanism, settled by the plan and the measurement: a third loopback socket on
+    the link, read per frame through its `EVENTS` option and `recv_into` a preallocated
+    buffer. The check runs between trials and while paused too;
+  - the **note**, with who sent it, as an ordinary `Mark` command, drained at the next
+    boundary and joined to its stamp by the sequence number.
+
+  The record keeps three instants: when M was pressed (the browser's clock, labeled as
+  such), when `wlx serve` received it, and when the rig stamped it (its session clock and
+  frame). The gap between them is recorded, never hidden.
+- **Scheduled stop**, held by `taskd`, so a closed page cannot lose it. Three kinds:
+  - at a clock time on the rig's session clock — the next occurrence of that time,
+    within 24 hours;
+  - after N more trials, counted from when the schedule is accepted, and shown as the
+    target trial number;
+  - after X mL this session, read from `welfare`'s session fluid.
+
+  Checked at each trial boundary (and while paused), it stops the session like the stop
+  button: `stop_kind` `operator`, the reason *scheduled stop (…) set by NAME*. One at a
+  time: a new schedule replaces the old, and `CancelScheduledStop` removes it.
+- **Settings** keep today's behavior: validated when offered, staged, applied at the next
+  trial boundary, every change recorded.
+- **Telemetry schema 8** adds what the page needs: whether the session is paused and since
+  when, the scheduled stop (kind, target, who), and a bounded list of recent control events
+  (pause, resume, mark with its note, schedule, cancel) for the changes feed. A schema-7
+  reader refuses schema 8, as §3's schema rule already says.
+- **Event codes.** `operator_mark`, `pause` and `resume` are new framework event names in
+  the allocation (`codes.Allocation.code_for`), in the task-specific range while ADR-0007's
+  `TaskEvent` range is being moved; wl-exptasks owns the final numbering.
+
+### 5.2 The page
+
+- **Settings:** each parameter card gets up/down arrows and an input. A change is sent about
+  600 ms after the last click (a debounce, housekeeping and not a measurement). The card
+  shows *staged* until the next trial, then the new value. A refusal shows on the card and
+  in the feed, with its sentence.
+- **Stop:** a button with a confirm step (*stop at the next trial boundary?*).
+- **Pause / resume:** one button, and the **P** key.
+- **Mark:** the **M** key, or a button, sends the signal at once. A note box then opens:
+  Enter attaches the note to that mark and Esc leaves it bare.
+- **Scheduled stop:** a small form (clock time, N trials, or mL this session). While a
+  schedule is active the strip shows it, for example *stop at 14:30 · set by jake*, with a
+  cancel button.
+- **Keys** do nothing while a text box has focus.
+- **The changes feed** lists every setting change, refusal, pause, resume, mark (with its
+  note) and schedule, with who did it, rendered in Python like every other pane.
+- **Name:** the box's browser asks once and remembers it locally; commands carry it and are
+  recorded as `NAME (box, unverified)`.
+- **Everywhere but the box**, the controls are greyed with the §2 sentence.
+- **The script's scope grows** past §4.3's list: it also sends commands, debounces the arrows,
+  handles P and M, and asks for the name. It still renders nothing itself.
+
+### 5.3 Sending
+
+- **`POST /commands`** takes one JSON command. It is accepted only under §2's four checks,
+  and its body is validated before anything is queued. `wlx serve` gets the **command
+  thread** §2 always named: it alone owns the REQ socket and takes commands from a bounded
+  queue.
+- **The page is told the truth about delivery.** *Sent* only when `taskd` has acknowledged
+  receipt. *Not delivered* when the REQ exchange times out, after which the socket is reset
+  (a REQ socket cannot send twice without a reply). *Busy* when the queue is full. Whether
+  the rig accepted or refused a command shows in the feed, from telemetry, as today.
+- **The mark's signal** goes on its own path to the rig's mark socket as soon as it
+  arrives, ahead of the queue.
+- **`Host` is checked on every request** (§2). `--allow-host NAME`, repeatable, adds names;
+  the defaults are loopback and the box's own host names and addresses. A refused request
+  gets a JSON 421 and no page.
+
+### 5.4 Testing, and the measurement
+
+- **Sim first, end to end:** a real `wlx run --link` in the simulator and a real `wlx serve`,
+  on loopback, driven through `POST /commands` the way the page drives it:
+  - a setting goes from staged to applied at the next trial;
+  - a malformed setting (M8) is refused, shown in the feed, and the session runs on;
+  - pause holds `trial_index`, keeps the out-of-cage clock running, and still ends the
+    session when the limit arrives mid-pause; resume continues;
+  - a mark puts `operator_mark` into the recorded event stream in the frame it arrives,
+    and the record holds its three instants and its note;
+  - each kind of scheduled stop ends the session with its reason, and cancel removes it;
+  - a write from a non-loopback peer, or to an unknown `Host`, is refused;
+  - with `taskd` gone, the page is told *not delivered*.
+- **The renderer** stays pure and is tested as in §4.4, with the new controls, feed rows and
+  strip item.
+- **The measurement** (CLAUDE.md: no timing claim without one). A script in `tools/`
+  measures the per-frame mark check's cost in the frame loop, with and without it, and
+  commits its results under `docs/measurements/`. The effect on real frame timing is added
+  to the hardware verification list. **If the check measurably disturbs frames, it goes back
+  to the PI before b2a ships.**
+- **The mutation gate** sweeps every changed module, read line by line (trap 7).
+
+### 5.5 Human review before b2a merges
+
+Welfare-critical by CLAUDE.md, given to the PI as numbered items in plain terms:
+
+1. While paused, nothing is rewarded, and the out-of-cage limit still ends the session.
+2. A scheduled stop, including "after X mL", can end a session.
+3. Reward size can be changed from the console page, still capped by its approved ceiling.
+4. The M8 fix: a malformed setting is refused and never ends the session.
+
+### 5.6 Outside this repository
+
+- The three new event names go into the allocation; wl-exptasks owns the final numbering.
+- With b2b, not before: tell wl-works that its handover's "a person at the console" line
+  is superseded for signed-in writes (§5.0), and ask it to register each rig's client.
+
+### 5.7 b2b, remote sign-in: decided so far (PI, 2026-09-27)
+
+Designed in full as its own section when b2a has shipped. Decided now:
+
+- **Who:** people signed in to wl-works, with every b2 control (§5.0).
+- **How:** **the browser holds the wl-works access token and presents it with each command**,
+  and the rig verifies it. The PI chose this over the rig holding its own sign-in session,
+  knowing that **a deactivated account keeps working until its token expires**.
+- **What wl-works offers** (its source, read 2026-09-27):
+  - a full OAuth2/OIDC provider (better-auth 1.7.1's `mcp()` plugin, with `jwt()`);
+  - an access token that is an RS256 JWT, verifiable offline against `GET /api/auth/jwks`,
+    **only when the client asks for a `resource`** — otherwise it is opaque;
+  - `/oauth2/introspect` for a live check;
+  - a ban or deactivation does not invalidate a JWT already issued.
+- **Needs outside this repo:**
+  - a registered client, with a redirect URI, per rig name (a wl-works ask);
+  - **a network route from each rig to wl-works.** Today wl-works sits behind a rented VPS
+    front door, and the lab LAN has no route to its WireGuard side. The permission is the
+    PI's (§5.0); the route is infrastructure, and his.
+- **Carried from S9a §6:**
+  - the actor is `Verified(person, issuer, token id)` for a signed-in person and stays
+    `NAME (box, unverified)` at the box;
+  - the box path is a permanent peer, never an emergency hatch;
+  - a token expiring mid-session interrupts nothing.
+
+## 6. Not in this slice
 
 - Plots (accuracy over time, RT distribution, accuracy by position) — their own slice, with
   the per-trial RT and bounded history they need (PI, 2026-09-26)
-- OAuth and the `Verified`/`Local` actor — P4d-3
 - The replica pane — gated on V11
+- **The animal camera** — its own package, after b2 (PI, 2026-09-27). Decided:
+  - an IR-only monochrome machine-vision camera, with an IR-pass filter and a separate
+    940 nm illuminator. No day/night switching, so no clicking filter and one consistent
+    picture. It can be hardware-triggered for frame-accurate alignment with the neural
+    data;
+  - it is watched by the people who can control, not the LAN;
+  - it is recorded continuously, stamped on the session clock, and kept with the session.
+
+  Its design must prove at bring-up that its IR does not disturb OpenIrisDPI's P1 and P4
+  reflections and that it emits nothing visible (as S4 verifies darkness to each eye). It
+  must also be checked for electrical noise in a real recording, and run as its own
+  process, never in `taskd`.
