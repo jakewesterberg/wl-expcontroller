@@ -1,0 +1,93 @@
+[
+ {
+  "control": "C++ Tpup 31 (not 30)",
+  "caught": true,
+  "frames": 27,
+  "worst_abs_difference": {
+   "numba_vs_cpp": Infinity,
+   "numba_vs_ref_cr": 0.0,
+   "numba_vs_ref_p4": 0.0,
+   "numba_vs_ref_pupil": 4.263256414560601e-13
+  },
+  "hull_mismatches": 0,
+  "detection_flag_mismatches": 0
+ },
+ {
+  "control": "C++ Rerode 7 (not 8)",
+  "caught": true,
+  "frames": 27,
+  "worst_abs_difference": {
+   "numba_vs_cpp": 2.0109729054217382,
+   "numba_vs_ref_cr": 0.0,
+   "numba_vs_ref_p4": 0.0,
+   "numba_vs_ref_pupil": 4.263256414560601e-13
+  },
+  "hull_mismatches": 0,
+  "detection_flag_mismatches": 0
+ },
+ {
+  "control": "C++ Rerode 7, on non-blink frames only (expected NOT caught)",
+  "caught": false,
+  "frames": 19,
+  "worst_abs_difference": {
+   "numba_vs_cpp": 0.0,
+   "numba_vs_ref_cr": 0.0,
+   "numba_vs_ref_p4": 0.0,
+   "numba_vs_ref_pupil": 5.684341886080802e-14
+  },
+  "hull_mismatches": 0,
+  "detection_flag_mismatches": 0
+ },
+ {
+  "control": "C++ RP4 14 (not 15)",
+  "caught": true,
+  "frames": 27,
+  "worst_abs_difference": {
+   "numba_vs_cpp": 0.5874357231047611,
+   "numba_vs_ref_cr": 0.0,
+   "numba_vs_ref_p4": 0.0,
+   "numba_vs_ref_pupil": 4.263256414560601e-13
+  },
+  "hull_mismatches": 0,
+  "detection_flag_mismatches": 0
+ },
+ {
+  "control": "C++ RP4 14, on non-blink frames only (expected NOT caught)",
+  "caught": false,
+  "frames": 19,
+  "worst_abs_difference": {
+   "numba_vs_cpp": 0.0,
+   "numba_vs_ref_cr": 0.0,
+   "numba_vs_ref_p4": 0.0,
+   "numba_vs_ref_pupil": 5.684341886080802e-14
+  },
+  "hull_mismatches": 0,
+  "detection_flag_mismatches": 0
+ },
+ {
+  "control": "reference with an 8-neighbor Laplacian",
+  "caught": true,
+  "frames": 27,
+  "worst_abs_difference": {
+   "numba_vs_cpp": 0.0,
+   "numba_vs_ref_cr": 0.0,
+   "numba_vs_ref_p4": 0.0,
+   "numba_vs_ref_pupil": 5.696176184936121
+  },
+  "hull_mismatches": 24,
+  "detection_flag_mismatches": 0
+ },
+ {
+  "control": "reference with an 8-neighbor Laplacian, non-blink frames",
+  "caught": true,
+  "frames": 19,
+  "worst_abs_difference": {
+   "numba_vs_cpp": 0.0,
+   "numba_vs_ref_cr": 0.0,
+   "numba_vs_ref_p4": 0.0,
+   "numba_vs_ref_pupil": 0.04870288387837718
+  },
+  "hull_mismatches": 19,
+  "detection_flag_mismatches": 0
+ }
+]

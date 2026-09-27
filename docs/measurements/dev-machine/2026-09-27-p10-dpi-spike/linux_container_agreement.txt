@@ -1,0 +1,21 @@
+Linux portability check, 2026-09-27: docker run python:3.13-slim (Debian, aarch64, OrbStack VM on the dev machine),
+apt g++, pip numpy numba scipy, CXX=g++ ./build.sh, python check_agreement.py. Correctness only; no timing.
+
+Linux 0a1f96b9d566 7.0.14-orbstack-00380-ga7e0a2dc9535 #1 SMP PREEMPT Fri Aug  7 03:48:40 UTC 2026 aarch64 GNU/Linux
+g++ (Debian 14.2.0-19) 14.2.0
+2.5.3 0.67.0
+g++ (Debian 14.2.0-19) 14.2.0
+built build/libdpi.so build/bench_cpp
+{
+ "frames": 27,
+ "worst_abs_difference": {
+  "numba_vs_cpp": 0.0,
+  "numba_vs_ref_cr": 0.0,
+  "numba_vs_ref_p4": 0.0,
+  "numba_vs_ref_pupil": 4.263256414560601e-13
+ },
+ "hull_mismatches": 0,
+ "detection_flag_mismatches": 0
+}
+AGREE
+exit 0
