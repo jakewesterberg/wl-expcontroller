@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass
+from importlib import resources
 
 from wl_expcontroller import health as _health
 from wl_expcontroller.cli import _clock
@@ -580,3 +581,398 @@ def fragments(frame: Telemetry | None, view: View) -> dict[str, str]:
         "setup": _setup(frame),
         "end": _end(frame),
     }
+
+
+# --- the page -------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Font:
+    """One face the page uses: bundled at `wl_expcontroller/fonts/<directory>/<file>`
+    and served by `wlx serve` at `/fonts/<file>`."""
+
+    family: str
+    weight: int
+    style: str
+    directory: str
+    file: str
+
+
+#: **Every face the page's CSS asks for, and no other** (PI, 2026-09-26: "bundle the
+#: fonts", so the page keeps the wl-works look and never reaches the internet). The
+#: unmodified woff2 files their primary sources publish -- the IBM/plex GitHub releases
+#: and productiontype/Newsreader -- fetched 2026-09-26, each family's OFL-1.1 license
+#: beside them as `OFL.txt`; ADR-0004's inventory carries the sources and licenses.
+#: The weights are the ones `_CSS` sets; italics are synthesized, as in the mockup.
+#: Newsreader draws only the logo, from its 72pt optical-size cut.
+FONTS = (
+    Font("IBM Plex Sans", 400, "normal", "ibm-plex-sans", "IBMPlexSans-Regular.woff2"),
+    Font("IBM Plex Sans", 500, "normal", "ibm-plex-sans", "IBMPlexSans-Medium.woff2"),
+    Font("IBM Plex Sans", 600, "normal", "ibm-plex-sans", "IBMPlexSans-SemiBold.woff2"),
+    Font(
+        "IBM Plex Sans Condensed",
+        400,
+        "normal",
+        "ibm-plex-sans-condensed",
+        "IBMPlexSansCondensed-Regular.woff2",
+    ),
+    Font(
+        "IBM Plex Sans Condensed",
+        600,
+        "normal",
+        "ibm-plex-sans-condensed",
+        "IBMPlexSansCondensed-SemiBold.woff2",
+    ),
+    Font(
+        "IBM Plex Sans Condensed",
+        700,
+        "normal",
+        "ibm-plex-sans-condensed",
+        "IBMPlexSansCondensed-Bold.woff2",
+    ),
+    Font("IBM Plex Mono", 400, "normal", "ibm-plex-mono", "IBMPlexMono-Regular.woff2"),
+    Font("IBM Plex Mono", 500, "normal", "ibm-plex-mono", "IBMPlexMono-Medium.woff2"),
+    Font("IBM Plex Mono", 600, "normal", "ibm-plex-mono", "IBMPlexMono-SemiBold.woff2"),
+    Font("Newsreader", 700, "normal", "newsreader", "Newsreader72pt-Bold.woff2"),
+    Font("Newsreader", 700, "italic", "newsreader", "Newsreader72pt-BoldItalic.woff2"),
+)
+
+
+def font_bytes(font: Font) -> bytes:
+    """A bundled font file, read as package data -- the same bytes from a checkout and
+    from an installed wheel (`pyproject.toml`'s `package-data`)."""
+    return (
+        resources.files("wl_expcontroller")
+        .joinpath("fonts")
+        .joinpath(font.directory)
+        .joinpath(font.file)
+        .read_bytes()
+    )
+
+
+#: One `@font-face` per bundled face, each fetched from this box's `/fonts/` route.
+_FONT_FACES = "".join(
+    f'@font-face {{ font-family: "{font.family}"; font-style: {font.style}; '
+    f"font-weight: {font.weight}; font-display: swap; "
+    f'src: url("/fonts/{font.file}") format("woff2"); }}\n'
+    for font in FONTS
+)
+
+#: The mockup's wl-works tokens and layout (`docs/superpowers/mockups/
+#: 2026-09-26-console-mockup-v12.html`), trimmed to what b1 builds. **The fonts are the
+#: box's own** (`FONTS`, `_FONT_FACES`); each stack's system faces are only the fallback
+#: while they load. Tabs are radio inputs styled by `:checked`, so they need no script.
+_CSS = """
+:root {
+  --bg: #faf8f3; --surface: #fffefb; --surface-2: #f2f0e9; --ink: #050c19; --muted: #55606f;
+  --rule: rgb(136 148 166 / 0.45); --edge: rgb(5 12 25 / 0.08);
+  --accent: #0a6e6b; --accent-fg: #faf8f3; --accent-soft: #dfecea;
+  --ok: #2e7a4f; --ok-soft: #deefe4; --warn: #9a5b00; --warn-soft: #f6e7cf;
+  --crit: #b3261e; --crit-soft: #f6dcda;
+  --screen: #081122; --screen-ink: #8ea0bc; --rf: #67b2ea; --mock: #452d81;
+  --wl-muted: #55606f; --distract: #c9187b;
+  --shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -1px 0 rgb(5 12 25 / 0.06), 0 1px 2px rgb(5 12 25 / 0.04), 0 8px 28px -12px rgb(5 12 25 / 0.18);
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #050c19; --surface: #112037; --surface-2: #152743; --ink: #faf8f3; --muted: #8ea0bc;
+    --rule: rgb(136 148 166 / 0.3); --edge: rgb(250 248 243 / 0.1);
+    --accent: #12a5a1; --accent-fg: #050c19; --accent-soft: #0f3a44;
+    --ok: #5cba80; --ok-soft: #133427; --warn: #e6a646; --warn-soft: #382a12;
+    --crit: #f07166; --crit-soft: #3c1b1a;
+    --screen: #02060d; --mock: #b3a2ea; --wl-muted: #8ea0bc; --distract: #d6579c;
+    --shadow: inset 0 1px 0 rgb(250 248 243 / 0.06), inset 0 -1px 0 rgb(0 0 0 / 0.25), 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 28px -12px rgb(0 0 0 / 0.6);
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.4; padding: 12px 16px 28px; }
+.wrap { max-width: 1520px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+h2 { font-family: var(--cond); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+h3 { margin: 0; font-family: var(--cond); font-weight: 600; font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.sub { font-size: 12.5px; color: var(--muted); }
+.nm { color: var(--muted); font-style: italic; }
+.later { font-size: 11px; color: var(--mock); font-family: var(--cond); letter-spacing: 0.05em; text-transform: uppercase; font-weight: 600; }
+.glass { background: var(--surface); border: 1px solid var(--edge); border-radius: 8px; box-shadow: var(--shadow); }
+.head { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; padding: 8px 14px; }
+.logo { display: flex; align-items: center; gap: 10px; color: var(--ink); }
+.logo svg { height: 34px; width: auto; display: block; }
+.logo .app { font-family: var(--cond); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; color: var(--muted); border-left: 1px solid var(--rule); padding-left: 10px; }
+.head .id { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; }
+.head .k { font-family: var(--cond); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.head .v { font-family: var(--mono); font-weight: 500; }
+.head .spacer { flex: 1; }
+.presence { font-size: 12.5px; color: var(--muted); }
+.presence b { color: var(--ink); font-weight: 600; }
+.pill { font-family: var(--cond); font-weight: 700; letter-spacing: 0.08em; font-size: 12px; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.crit { background: var(--crit-soft); color: var(--crit); }
+.pill.neutral { background: var(--surface-2); color: var(--muted); }
+.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); overflow: hidden; }
+.strip > div { padding: 5px 12px; display: grid; gap: 3px; border-left: 1px solid var(--rule); }
+.strip > div:first-child { border-left: 0; }
+.strip .row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 8px; }
+.strip .lab { font-family: var(--cond); font-weight: 700; font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.strip .val { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 14.5px; font-weight: 600; white-space: nowrap; }
+.strip .val .u { font-size: 12px; color: var(--muted); font-family: var(--sans); font-weight: 400; margin-left: 3px; }
+.strip .bar { height: 4px; }
+.banners { display: grid; gap: 6px; }
+.banner { border-radius: 6px; padding: 6px 12px; font-size: 13.5px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.banner.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); }
+.banner.crit { background: var(--crit-soft); border-left: 4px solid var(--crit); }
+.banner.info { background: var(--accent-soft); border-left: 4px solid var(--accent); }
+.banner .tag { font-family: var(--cond); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; }
+.shell { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(260px, 330px); align-items: stretch; }
+@media (max-width: 900px) { .shell { grid-template-columns: minmax(0, 1fr); } }
+.main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.main > input { position: absolute; opacity: 0; pointer-events: none; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--rule); }
+.tab { border: 1px solid transparent; border-bottom: 0; padding: 7px 12px 6px; cursor: pointer; font-family: var(--cond); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 12.5px; color: var(--muted); border-radius: 6px 6px 0 0; margin-bottom: -1px; }
+#t-runtime:checked ~ .tabs [for="t-runtime"], #t-task:checked ~ .tabs [for="t-task"], #t-setup:checked ~ .tabs [for="t-setup"], #t-end:checked ~ .tabs [for="t-end"] { background: var(--surface); border-color: var(--edge); color: var(--ink); }
+#t-runtime:focus-visible ~ .tabs [for="t-runtime"], #t-task:focus-visible ~ .tabs [for="t-task"], #t-setup:focus-visible ~ .tabs [for="t-setup"], #t-end:focus-visible ~ .tabs [for="t-end"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabpanel { display: none; flex-direction: column; gap: 10px; }
+#t-runtime:checked ~ .panels #tp-runtime, #t-task:checked ~ .panels #tp-task, #t-setup:checked ~ .panels #tp-setup, #t-end:checked ~ .panels #tp-end { display: flex; }
+.cols { display: grid; gap: 10px; align-items: stretch; }
+.cols.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .cols.c3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .cols.c3 { grid-template-columns: minmax(0, 1fr); } }
+.stack, .aside { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel { padding: 9px 12px; display: grid; gap: 7px; align-content: start; min-width: 0; }
+.panel .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; font-size: 13px; margin: 0; }
+.dl dt { color: var(--muted); }
+.dl dd { margin: 0; font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.big { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; line-height: 1.1; }
+.unit { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 3px; font-family: var(--sans); }
+.selrow { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.bar { height: 8px; background: var(--surface-2); border-radius: 3px; position: relative; overflow: hidden; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.bar .fill.ok { background: var(--ok); } .bar .fill.warn { background: var(--warn); } .bar .fill.crit { background: var(--crit); }
+.counts { display: grid; gap: 6px 14px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.fam { display: grid; gap: 1px; align-content: start; }
+.kv { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.kv > span { min-width: 0; overflow-wrap: anywhere; }
+.owe { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; background: var(--accent-soft); border-radius: 6px; padding: 8px 10px; }
+.params { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.param { border: 1px solid var(--rule); border-radius: 5px; padding: 6px 8px; display: grid; gap: 2px; background: var(--surface-2); }
+.param .pn { font-family: var(--mono); font-size: 12.5px; font-weight: 500; display: flex; justify-content: space-between; gap: 6px; overflow-wrap: anywhere; }
+.param .ceil { font-family: var(--cond); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--warn); font-weight: 700; }
+.param .pv { font-family: var(--mono); font-size: 13px; }
+.param .range, .param .stg { font-size: 11.5px; color: var(--muted); }
+.param.staged { border-color: var(--accent); }
+.param.staged .stg { color: var(--accent); }
+.feed { display: grid; align-content: start; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+.ev { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 6px; padding: 4px 0; border-top: 1px solid var(--rule); font-size: 12.5px; }
+.ev:first-child { border-top: 0; }
+.ev > span { min-width: 0; overflow-wrap: anywhere; }
+.ev .kind { font-family: var(--cond); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; font-size: 11px; }
+.ev.staged .kind { color: var(--accent); } .ev.refused .kind { color: var(--crit); }
+.health .r { display: grid; grid-template-columns: 1em minmax(0, 7.5em) minmax(0, 1fr); gap: 6px; font-size: 12.5px; }
+.health .r .f { color: var(--accent); } .health .r .l { color: var(--muted); }
+.health .r .v { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.ticks { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 2px; }
+.tk { display: block; height: 12px; border-radius: 2px; background: var(--surface-2); }
+.tk.f-target { background: var(--accent); } .tk.f-distractor { background: var(--crit); } .tk.f-withhold { background: var(--rf); }
+.tk.f-no_engagement { background: color-mix(in srgb, var(--muted) 60%, transparent); } .tk.f-breaks { background: var(--warn); } .tk.f-rig { background: var(--mock); }
+.tk.f-hang { background: var(--ink); } .tk.f-other { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 11.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.screen { border-radius: 5px; background: var(--screen); color: var(--screen-ink); aspect-ratio: 16 / 9; display: grid; place-items: center; font-family: var(--mono); font-size: 12px; }
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.xbtn { width: 30px; height: 30px; display: grid; place-items: center; border: 1.5px solid var(--distract); color: var(--distract); background: transparent; border-radius: 6px; cursor: pointer; padding: 0; flex: none; }
+.xbtn:hover { background: var(--distract); color: var(--bg); }
+.xbtn svg { width: 12px; height: 12px; }
+.btn { border: 1px solid var(--rule); background: var(--surface); color: inherit; border-radius: 5px; padding: 5px 12px; cursor: pointer; font-family: var(--cond); font-weight: 600; font-size: 14px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.scrim { position: fixed; inset: 0; background: var(--bg); display: grid; place-items: center; padding: 16px; z-index: 30; }
+.dialog { padding: 16px; width: min(520px, 100%); display: grid; gap: 12px; }
+.dialog h2 { font-size: 14px; color: var(--ink); }
+.dialog .actions { display: flex; justify-content: flex-end; }
+body.stale .strip, body.stale .panels { filter: grayscale(1); opacity: 0.55; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+"""
+
+#: The wl.works mark, as the mockup draws it. No `xmlns`: an inline SVG in an HTML
+#: document needs none, and the page names no other host, not even as a namespace.
+_LOGO = (
+    '<svg viewBox="0 0 395.67 147.54" role="img" aria-label="wl.works">'
+    '<circle cx="130.40" cy="34.98" r="11" fill="currentColor"/>'
+    '<circle cx="97.40" cy="11.00" r="11" fill="currentColor"/>'
+    '<circle cx="56.60" cy="11.00" r="11" fill="currentColor"/>'
+    '<circle cx="23.60" cy="34.98" r="11" fill="#C9187B"/>'
+    '<circle cx="11.00" cy="73.77" r="11" fill="currentColor"/>'
+    '<circle cx="23.60" cy="112.56" r="11" fill="currentColor"/>'
+    '<rect x="45.6" y="125.54" width="22" height="22" fill="currentColor"/>'
+    '<circle cx="97.40" cy="136.54" r="11" fill="currentColor"/>'
+    '<text x="71" y="112.77" font-family="Newsreader, Georgia, serif" font-size="72" '
+    'font-weight="700" letter-spacing="-1.44" fill="currentColor">w'
+    '<tspan font-style="italic">l</tspan>'
+    '<tspan style="fill: var(--wl-muted)">.works</tspan></text></svg>'
+)
+
+#: **The page's whole script, and all it does** (spec §4.3, §4.4): open the event
+#: stream, swap each fragment into the element with its id, run the stale timer while
+#: more frames are due, close the stream on the ✕, and reconnect. `EventSource`
+#: reconnects on its own after a dropped connection, and `wlx serve` sends a full
+#: render first on every new stream, so a reconnect re-renders in full. Everything
+#: worth testing is in Python; this is small enough to read.
+_SCRIPT = """
+(function () {
+  "use strict";
+  var body = document.body;
+  var staleMs = Number(body.getAttribute("data-stale-after")) * 1000;
+  var source = null;
+  var last = Date.now();
+  var live = false;
+  var lost = false;
+  var closed = false;
+  function el(id) { return document.getElementById(id); }
+  function say(text, tone) {
+    var banner = el("stream");
+    banner.textContent = text || "";
+    banner.className = "banner " + (tone || "");
+    banner.hidden = !text;
+  }
+  function onFrame(event) {
+    var payload = JSON.parse(event.data);
+    Object.keys(payload.frags).forEach(function (id) {
+      var node = el(id);
+      if (node) { node.innerHTML = payload.frags[id]; }
+    });
+    live = payload.live;
+    last = Date.now();
+    lost = false;
+    body.classList.remove("stale");
+    say("");
+  }
+  function open() {
+    closed = false;
+    lost = false;
+    el("gone").hidden = true;
+    source = new EventSource("/events");
+    source.addEventListener("frame", onFrame);
+    source.onerror = function () {
+      if (closed) { return; }
+      lost = true;
+      say("stream lost", "crit");
+      if (source.readyState === EventSource.CLOSED) {
+        setTimeout(function () { if (!closed && lost) { open(); } }, 3000);
+      }
+    };
+  }
+  setInterval(function () {
+    if (closed || lost || !live) { return; }
+    var age = Math.floor((Date.now() - last) / 1000);
+    if (age * 1000 >= staleMs) {
+      body.classList.add("stale");
+      say("stream stale · last frame " + age + " s ago", "warn");
+    }
+  }, 1000);
+  el("close").addEventListener("click", function () {
+    closed = true;
+    if (source) { source.close(); }
+    say("");
+    el("gone").hidden = false;
+  });
+  el("reconnect").addEventListener("click", function () {
+    if (source) { source.close(); }
+    open();
+  });
+  open();
+})();
+"""
+
+
+def page(parts: dict[str, str], *, stale_after_s: float, nonce: str) -> str:
+    """The whole document, every pane already rendered into it, so it reads before
+    its stream has opened (spec §4.3).
+
+    `parts` is `fragments(...)`; each fills the element whose id is its key, the id
+    the stream's events swap by. A missing key raises `KeyError`: a page with a pane
+    left blank is a bug to see, not a page to serve. `nonce` is the one in the
+    Content-Security-Policy `wlx serve` sends with this response; the one script
+    carries it. `stale_after_s` goes to the script as `data-stale-after`.
+
+    **Nothing here writes** (spec §4.2): two buttons -- close this page's stream, and
+    reconnect it -- and four radio inputs that choose a tab.
+    """
+    p = {key: parts[key] for key in FRAGMENT_IDS}
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>expcontroller console</title>
+<style>{_FONT_FACES}{_CSS}</style>
+</head>
+<body data-stale-after="{stale_after_s:g}">
+<div class="wrap">
+  <header class="head glass">
+    <span class="logo">{_LOGO}<span class="app">expcontroller</span></span>
+    <span id="state">{p['state']}</span>
+    <div class="id" id="head-id">{p['head-id']}</div>
+    <span class="spacer"></span>
+    <span class="presence" id="presence">{p['presence']}</span>
+    <button class="xbtn" id="close" type="button" aria-label="close this page's stream" title="close this page's stream · the session keeps running on the box"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+  </header>
+  <div class="strip glass" role="region" aria-label="animal" id="strip">{p['strip']}</div>
+  <div class="banner" id="stream" role="status" hidden></div>
+  <div class="banners" id="banners">{p['banners']}</div>
+  <div class="shell">
+    <div class="main">
+      <input type="radio" name="tab" id="t-runtime" checked>
+      <input type="radio" name="tab" id="t-task">
+      <input type="radio" name="tab" id="t-setup">
+      <input type="radio" name="tab" id="t-end">
+      <div class="tabs" aria-label="console sections">
+        <label class="tab" for="t-runtime">Runtime</label>
+        <label class="tab" for="t-task">Task parameters</label>
+        <label class="tab" for="t-setup">Setup</label>
+        <label class="tab" for="t-end">End of session</label>
+      </div>
+      <div class="panels">
+        <div class="tabpanel" id="tp-runtime">
+          <section class="panel glass"><div class="top"><h2>Trials</h2></div><div id="rt-trials">{p['rt-trials']}</div></section>
+          <section class="panel glass"><div class="top"><h2>This run</h2></div><div id="rt-work">{p['rt-work']}</div></section>
+          <div class="cols c3">
+            <div class="stack">
+              <section class="panel glass"><div class="top"><h2>Still needed</h2></div><div id="rt-need">{p['rt-need']}</div></section>
+              <section class="panel glass"><div class="top"><h2>Wrong?</h2></div><div id="rt-wrong">{p['rt-wrong']}</div></section>
+            </div>
+            <div class="stack"><section class="panel glass health"><div class="top"><h2>wl-works sees</h2></div><div id="rt-health">{p['rt-health']}</div></section></div>
+            <div class="stack"><section class="panel glass"><div class="top"><h2>Changes</h2></div><div class="feed" id="rt-changes">{p['rt-changes']}</div></section></div>
+          </div>
+        </div>
+        <div class="tabpanel" id="tp-task"><section class="panel glass"><div class="top"><h2>Task parameters</h2><span class="sub">read-only</span></div><div class="params" id="params">{p['params']}</div></section></div>
+        <div class="tabpanel" id="tp-setup"><section class="panel glass"><div class="top"><h2>Setup</h2><span class="sub">read-only</span></div><div id="setup">{p['setup']}</div></section></div>
+        <div class="tabpanel" id="tp-end"><section class="panel glass"><div class="top"><h2>End of session</h2><span class="sub">read-only</span></div><div id="end">{p['end']}</div></section></div>
+      </div>
+    </div>
+    <aside class="aside" aria-label="always shown">
+      <section class="panel glass"><div class="top"><h2>Replica</h2><span class="later">V11</span></div><div class="screen">replica · V11</div></section>
+      <section class="panel glass"><div class="top"><h2>Subject display</h2></div><div class="screen">subject display · no source yet</div></section>
+      <div class="duo">
+        <section class="panel glass"><h2>Sound</h2><span class="nm">sound · not measured</span></section>
+        <section class="panel glass"><h2>Display</h2><span class="nm">display · not measured</span></section>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="scrim" id="gone" role="dialog" aria-modal="true" aria-labelledby="gone-h" hidden>
+  <div class="dialog glass">
+    <h2 id="gone-h">Disconnected</h2>
+    <p>disconnected · the session keeps running on the box</p>
+    <div class="actions"><button class="btn primary" id="reconnect" type="button">reconnect</button></div>
+  </div>
+</div>
+<script nonce="{_e(nonce)}">{_SCRIPT}</script>
+</body>
+</html>
+"""

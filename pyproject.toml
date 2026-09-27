@@ -46,6 +46,12 @@ console = ["pyzmq>=26", "msgpack>=1"]
 [tool.setuptools.packages.find]
 include = ["wl_expcontroller*"]
 
+[tool.setuptools.package-data]
+# The console page's fonts (P4d-2b b1), served by `wlx serve` so the page never reaches
+# the internet. Each family's license ships beside its files as OFL.txt, which OFL-1.1's
+# condition 2 requires (ADR-0004's inventory).
+wl_expcontroller = ["fonts/*/*.woff2", "fonts/*/OFL.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # `tasks/` is reference material, not part of the installed package

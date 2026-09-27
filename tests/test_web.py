@@ -9,14 +9,18 @@ reaching the page as markup.
 
 from __future__ import annotations
 
+import fnmatch
 import html
 import re
+import tomllib
+from importlib import resources
+from pathlib import Path
 
 import pytest
 
 from _frames import frame, view
 from wl_expcontroller.link import ParamRow, Refused, Staged
-from wl_expcontroller.web import FRAGMENT_IDS, LEGEND, fragments
+from wl_expcontroller.web import FONTS, FRAGMENT_IDS, LEGEND, font_bytes, fragments, page
 
 LIMIT = "out_of_cage: subject 'A' has been out of its cage 43201 s against a ceiling of 43200"
 
@@ -404,3 +408,147 @@ def test_every_telemetry_string_is_escaped():
     assert "<script" not in text
     assert EVIL not in text
     assert html.escape(EVIL, quote=True) in text
+
+
+# --- the page (Task 8) --------------------------------------------------------------
+
+
+def _document(**frame_overrides) -> str:
+    return page(
+        fragments(frame(**frame_overrides), view()), stale_after_s=30.0, nonce="n0nce"
+    )
+
+
+def test_the_page_holds_every_pane_in_the_element_its_stream_swaps():
+    """On connect the page is already rendered (spec §4.3): each fragment sits in the
+    element whose id the stream's events name, and each id is on the page once."""
+    parts = fragments(frame(), view())
+    document = page(parts, stale_after_s=30.0, nonce="n0nce")
+
+    for key in FRAGMENT_IDS:
+        assert document.count(f'id="{key}"') == 1, key
+        assert re.search(
+            rf'id="{re.escape(key)}"[^>]*>{re.escape(parts[key])}<', document
+        ), key
+
+
+def test_a_page_missing_a_pane_is_refused_not_rendered_blank():
+    parts = fragments(frame(), view())
+    del parts["strip"]
+
+    with pytest.raises(KeyError):
+        page(parts, stale_after_s=30.0, nonce="n0nce")
+
+
+def test_the_one_script_carries_the_nonce_and_nothing_loads_from_elsewhere():
+    """A lab host renders with no internet: the fonts are the box's own (PI,
+    2026-09-26), and the page names no other host at all."""
+    document = _document()
+
+    assert document.count("<script") == 1
+    assert '<script nonce="n0nce">' in document
+    assert "<link" not in document
+    assert "http://" not in document and "https://" not in document
+    assert not re.search(r'(?:src|href|url)\s*[=(]\s*"?//', document)
+
+
+def test_the_page_declares_each_bundled_font_and_no_other():
+    document = _document()
+
+    assert document.count("@font-face") == len(FONTS)
+    for font in FONTS:
+        assert f'url("/fonts/{font.file}") format("woff2")' in document, font.file
+    for family in (
+        "IBM Plex Sans",
+        "IBM Plex Sans Condensed",
+        "IBM Plex Mono",
+        "Newsreader",
+    ):
+        assert any(font.family == family for font in FONTS), family
+
+
+def test_every_font_the_page_uses_is_bundled_with_its_license():
+    """OFL-1.1 condition 2: each copy carries the copyright notice and the license --
+    here, beside the files, as `OFL.txt`. And each file is the woff2 it claims to be."""
+    fonts = resources.files("wl_expcontroller").joinpath("fonts")
+
+    for font in FONTS:
+        assert font_bytes(font)[:4] == b"wOF2", font.file
+    for directory in {font.directory for font in FONTS}:
+        text = fonts.joinpath(directory).joinpath("OFL.txt").read_text(encoding="utf-8")
+        assert "SIL Open Font License, Version 1.1" in text, directory
+
+
+def test_the_fonts_ship_with_the_package():
+    """`pyproject.toml`'s package data carries every font and its license, so an
+    installed `wlx serve` serves what a checkout does."""
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    table = tomllib.loads(pyproject.read_text(encoding="utf-8"))["tool"]["setuptools"]
+    globs = table["package-data"]["wl_expcontroller"]
+
+    for font in FONTS:
+        for rel in (f"fonts/{font.directory}/{font.file}", f"fonts/{font.directory}/OFL.txt"):
+            assert any(fnmatch.fnmatch(rel, pattern) for pattern in globs), rel
+
+
+def test_the_nonce_is_escaped_into_its_attribute():
+    document = page(fragments(frame(), view()), stale_after_s=30.0, nonce='x"><b>')
+
+    assert '<script nonce="x&quot;&gt;&lt;b&gt;">' in document
+
+
+def test_the_page_tells_its_script_when_a_stream_is_stale():
+    document = page(fragments(frame(), view()), stale_after_s=45.0, nonce="n0nce")
+
+    assert '<body data-stale-after="45">' in document
+
+
+def test_the_right_column_is_honest_placeholders():
+    """So the layout never shifts and nothing pretends to be live (PI, 2026-09-26)."""
+    document = _document()
+
+    for text in (
+        "replica · V11",
+        "subject display · no source yet",
+        "sound · not measured",
+        "display · not measured",
+    ):
+        assert text in document, text
+
+
+def test_nothing_on_the_page_writes():
+    """Spec §4.2: every write control is absent until its slice. The page's buttons
+    close and reopen its own stream; its inputs only choose a tab."""
+    document = _document()
+
+    assert document.count("<button") == 2
+    assert 'id="close"' in document and 'id="reconnect"' in document
+    for absent in ("<form", "<textarea", "<select", "POST", "fetch("):
+        assert absent not in document, absent
+    inputs = re.findall(r"<input[^>]*>", document)
+    assert len(inputs) == 4
+    assert all('type="radio"' in field for field in inputs)
+
+
+def test_the_script_does_only_what_spec_4_3_asks():
+    document = _document()
+
+    for needle in (
+        'new EventSource("/events")',
+        'addEventListener("frame"',
+        "innerHTML",
+        "stream stale · last frame ",
+        "stream lost",
+        'el("close")',
+        'el("reconnect")',
+        "source.close()",
+    ):
+        assert needle in document, needle
+    assert "disconnected · the session keeps running on the box" in document
+
+
+def test_the_stream_banner_and_the_disconnect_dialog_start_hidden():
+    document = _document()
+
+    assert '<div class="banner" id="stream" role="status" hidden></div>' in document
+    assert re.search(r'<div class="scrim" id="gone"[^>]*hidden>', document)
