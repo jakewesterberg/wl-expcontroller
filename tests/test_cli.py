@@ -1630,6 +1630,14 @@ def test_console_prints_the_last_rewards_clock_time():
     ).splitlines()
 
 
+@pytest.mark.parametrize("at", [float("nan"), float("inf"), float("-inf")])
+def test_console_says_a_reward_instant_that_is_not_a_number_is_unknown(at):
+    """m1: `welfare.deliver` stores a `wall_now` that is not a number rather than
+    refusing it, since it bounds nothing (its docstring), so a frame can carry one.
+    `time.localtime` raised on it, and the whole screen went with it."""
+    assert "  last reward: unknown" in render(_telemetry(last_reward_at=at)).splitlines()
+
+
 def test_console_lists_every_parameter_with_its_range_or_its_ceiling():
     rendered = render(
         _telemetry(

@@ -552,6 +552,35 @@ def test_ages_read_as_a_person_reads_them():
     assert ago(-3.0) == "0 s"
 
 
+@pytest.mark.parametrize(
+    "value", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "-inf"]
+)
+def test_an_age_that_is_not_a_number_reads_unknown(value):
+    """m1: `ago` raised `ValueError` on NaN and `OverflowError` on an infinity."""
+    assert ago(value) == "unknown"
+
+
+@pytest.mark.parametrize(
+    "value", [float("nan"), float("inf")], ids=["nan", "inf"]
+)
+def test_readings_survive_a_non_finite_reward_instant_and_frame_age(value):
+    """m1 through `readings`: a frame whose `last_reward_at` is not a number, aged by
+    a number that is not one either, still gives every reading, the age as a word."""
+    values = {
+        r["key"]: r["value"]
+        for r in readings(
+            frame(last_reward_at=value),
+            frame_age_s=value,
+            stale_after_s=30.0,
+            rejected=None,
+            endpoint=ENDPOINT,
+        )
+    }
+
+    assert values["last_frame"] == "unknown"
+    assert values["session"] == "2027-01-14_01 · A · tasks/fixation_detection.py"
+
+
 def test_plain_text_spells_out_the_three_characters():
     assert plain_text("A&B<C>") == "A(amp)B(lt)C(gt)"
 

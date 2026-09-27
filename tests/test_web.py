@@ -153,6 +153,23 @@ def test_the_time_since_the_last_reward_is_the_frames_instant_aged_by_serve():
     )
 
 
+@pytest.mark.parametrize(
+    "at", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "-inf"]
+)
+def test_a_reward_instant_that_is_not_a_number_reads_unknown_not_a_crash(at):
+    """m1: `welfare.deliver` stores a non-finite `wall_now` rather than refusing it
+    (its docstring: it bounds nothing), so a frame can carry one. `health.ago` raised
+    on it, so every stream died and reconnected in a loop and `GET /` failed, while
+    `/health` said `ok`. Every other pane still renders."""
+    parts = fragments(frame(last_reward_at=at), view())
+
+    assert (
+        '<span class="lab">Since last reward</span>'
+        '<span class="val"><span class="nm">unknown</span></span>' in parts["strip"]
+    )
+    assert tuple(parts) == FRAGMENT_IDS
+
+
 def test_before_the_first_trial_the_strip_says_so_not_zero():
     """I1 (fix round 1): `_correct`'s early return for `trial_index == 0` is the
     strip's own guard against a 0/0 percentage -- no test exercised it until this

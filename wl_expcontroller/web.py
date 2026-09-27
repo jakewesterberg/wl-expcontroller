@@ -33,6 +33,7 @@ their being visible.
 from __future__ import annotations
 
 import html
+import math
 from dataclasses import dataclass
 from importlib import resources
 
@@ -264,10 +265,12 @@ def _last_reward(frame: Telemetry, view: View) -> str:
     # frame, on its steady clock. `frame_age_s` is `None` only before any frame, and
     # a render with a frame and no age is the age as of the frame.
     held = view.frame_age_s or 0.0
-    return _cell(
-        "Since last reward",
-        _health.ago(frame.wall_at - frame.last_reward_at + held),
-    )
+    since = frame.wall_at - frame.last_reward_at + held
+    # m1: a reward instant that is not a number is stored, not refused (it bounds
+    # nothing), so it can arrive here; it is a word, never a crash of every pane.
+    if not math.isfinite(since):
+        return _cell("Since last reward", '<span class="nm">unknown</span>')
+    return _cell("Since last reward", _health.ago(since))
 
 
 def _strip(frame: Telemetry | None, view: View) -> str:

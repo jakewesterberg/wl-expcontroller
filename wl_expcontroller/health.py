@@ -30,6 +30,8 @@ rollup.
 
 from __future__ import annotations
 
+import math
+
 from wl_expcontroller.cli import _clock
 from wl_expcontroller.link import Telemetry
 from wl_expcontroller.task import Family, Outcome
@@ -58,7 +60,14 @@ def plain_text(text: str) -> str:
 
 def ago(seconds: float) -> str:
     """An age as a person reads it: seconds under a minute and a half, minutes under
-    an hour and a half, then a clock. Formatting only; a negative age is `0 s`."""
+    an hour and a half, then a clock. Formatting only; a negative age is `0 s`.
+
+    **An age that is not a number is `unknown`** (m1). `welfare.deliver` stores a
+    reward instant that is not a number rather than refusing it -- it bounds nothing,
+    and a refusal would end a completed trial -- so an age built from one reaches
+    here, and `int()` raised on it, taking every pane of the page with it."""
+    if not math.isfinite(seconds):
+        return "unknown"
     whole = max(0, int(seconds))
     if whole < 90:
         return f"{whole} s"
@@ -180,7 +189,11 @@ def _supplement_text(frame: Telemetry) -> str:
 
 
 def _age_text(frame_age_s: float | None) -> str:
-    return "none received" if frame_age_s is None else f"{ago(frame_age_s)} ago"
+    if frame_age_s is None:
+        return "none received"
+    if not math.isfinite(frame_age_s):
+        return "unknown"
+    return f"{ago(frame_age_s)} ago"
 
 
 def _featured(

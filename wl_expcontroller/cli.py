@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import math
 import sys
 import threading
 import time
@@ -877,14 +878,19 @@ def render(frame: _link.Telemetry) -> str:
     by_outcome = ", ".join(f"{name} {count}" for name, count in frame.outcomes.items())
     lines.append(f"  trials: {by_outcome or 'none yet'}, hangs {frame.hangs}")
 
-    # When the last reward was charged, as a clock time on this host (P4d-2b spec
-    # §4.1). None yet is said, never printed as a time.
-    lines.append(
-        "  last reward: none yet"
-        if frame.last_reward_at is None
-        else f"  last reward: at "
-        f"{time.strftime('%H:%M:%S', time.localtime(frame.last_reward_at))}"
-    )
+    # When the last reward was commanded, kept once the pump returned, as a clock time
+    # on this host (P4d-2b spec §4.1). None yet is said, never printed as a time; an
+    # instant that is not a number -- `welfare.deliver` stores one rather than refusing
+    # it, since it bounds nothing -- is `unknown`, where `time.localtime` raised (m1).
+    if frame.last_reward_at is None:
+        lines.append("  last reward: none yet")
+    elif not math.isfinite(frame.last_reward_at):
+        lines.append("  last reward: unknown")
+    else:
+        lines.append(
+            f"  last reward: at "
+            f"{time.strftime('%H:%M:%S', time.localtime(frame.last_reward_at))}"
+        )
     for row in frame.params:
         if row.bounded:
             limit = f"(welfare ceiling {_with_unit(_shown(row.high), row.unit)})"
