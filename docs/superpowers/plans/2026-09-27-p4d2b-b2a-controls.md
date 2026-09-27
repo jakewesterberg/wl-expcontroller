@@ -4,9 +4,11 @@
 
 > **Built on b1** (`p4d2b-b1-read-only-console`, approved by the PI on 2026-09-27 to fast-forward onto `main` once its gate and CI are clean) **plus the spec commit** (`e426de2`, "Design slice b2: controls from the box (b2a), and remote sign-in's decisions (b2b)"). Branch `p4d2b-b2a-controls` rebases onto `main` cleanly once b1 lands: nothing b1's last commits touch is edited here in a way that conflicts.
 >
-> **Every task's code was built and run before this plan was written**, in a scratch copy of `e426de2` (`git archive HEAD`, with the `wl-preproc` checkout linked beside it), task by task, each task's tests red first and then green, the whole suite after each task. The code in every step below is that code, and the steps are exact replacements: each "replace" block's old text is unique in its file at the moment the step is applied, in the order given, and is whole lines — except a one-line block in Task 14 that sits inside a longer line of a document (a table row), where only that text is replaced. An "Append to" block goes at the end of the file as it stands. A script then re-applied every step of this plan, as written, to a fresh copy of `e426de2`, ran the suite after each task and checked the counts stated here. **1092 passed** at `e426de2`; **1329 passed** after Task 13.
+> **Every task's code was built and run before this plan was written**, in a scratch copy of `e426de2` (`git archive HEAD`, with the `wl-preproc` checkout linked beside it), task by task, each task's tests red first and then green, the whole suite after each task. The code in every step below is that code, and the steps are exact replacements: each "replace" block's old text is unique in its file at the moment the step is applied, in the order given, and is whole lines — except a one-line block in Task 14 that sits inside a longer line of a document (a table row), where only that text is replaced. An "Append to" block goes at the end of the file as it stands. A script then re-applied every step of this plan, as written, to a fresh copy of `e426de2`, ran the suite after each task and checked the counts stated here. **1092 passed** at `e426de2`; **1330 passed** after Task 13.
 >
 > **Also looked at in a real browser, in the scratch copy** (Playwright, 2026-09-27): a simulated `wlx run --link PUB,REP,MARK` and `wlx serve`, the page on `127.0.0.1`. A refused and a cleared name prompt sent nothing and said why; a name was kept in `localStorage`; **P** paused (pill *paused · since HH:MM:SS*, button *resume (P)*); **M** signalled a mark while paused, the note box opened with focus, an **M** typed into it stayed text, and Enter attached the note (feed: *mark 1 stamped while paused, before trial 3511* and *mark 1: "reward line bubble" · jake (box, unverified)*); three clicks on an arrow sent one change, 0.30 → 0.45, staged and then applied on resume; a scheduled stop after N trials showed on the strip and its cancel removed it; `25:00` was refused with its sentence; the stop's confirm step opened and closed; stop ended the session. `controls.jsonl` held every row, the note's with its three instants and two gaps. That look came before four small amendments the suite covers and the browser has not seen — the note box no longer shows the mark's random number, a schedule that fired is spent, a console's stop is a record row, and one test was made deterministic — so Task 15 Step 4 repeats it on the branch, in full.
+>
+> **Swept in the scratch copy** (`tools/mutate.py --all --returns None`, 2026-09-27), every module this plan changes — `link`, `taskd`, `serve`, `web`, `cli`, `record`, `run`, `health` and `tools/measure_mark_check.py`: 241 functions, each read by its line. 235 were `N failed` naming tests; `run`'s `display` is inert, as it was before this slice; one `SURVIVED` and five `timed out`. Four defects in this plan's tests were found by that sweep and the round before it, each fixed in its owning task and re-run to `N failed`: `measure_mark_check.main` `SURVIVED` (Task 13 now tests it), and three missing bounds that printed `caught … timed out` — `taskd.Session._command` (Task 12's `CONTROL_TRIAL_BUDGET`; now 68 failed), `serve.Outbox._answer` (Task 11's `_submitted`; 20 failed) and `taskd.Session._hold` (Task 5's `PASS_BUDGET`; 12 failed). The other four `timed out` lines — `link.mark_signal`, `taskd.Session.controls`, `serve.parse_command` and `web._wrong` — all ran in the same five minutes, while the machine's load average stood above 300 from other work; each, re-run alone, was `N failed` in about a minute (15, 165, 45 and 7). Task 15 Step 2 sweeps again, through the gate, on the executed branch.
 
 **Goal:** A person at the rig PC works a running session from the browser console: sets parameters with arrows and inputs, pauses and resumes, marks a moment that is stamped in the frame it reaches the rig, schedules a stop by clock time, trials or fluid, and stops — every control recorded with who did it and when, every write refused anywhere but the box, and the page told the truth about whether the rig got it.
 
@@ -63,7 +65,7 @@ Spec §5 left these to the plan. Each is taken here, with its reason; the code i
 - **Writes come from the box alone** (spec §2): a loopback peer, a `Host` naming loopback, the page's own `Origin`, and `Content-Type: application/json`. **Every request is answered only when its `Host` names this console** (spec §5.3). The actor is `NAME (box, unverified)`.
 - **Every telemetry string reaches the page through `web._e`**, in elements and attributes alike; the page's script writes only rendered fragments (`innerHTML`) and its own words (`textContent`).
 - **Tests that open a socket set a client timeout and bind loopback only**, register every `ZmqLink`/`ZmqConsole`/`ZmqCommands`/`ZmqMarks` they build with `zmq_cleanup`, and rely on `tests/_zmq_release.py`'s autouse fixture (extended in Tasks 3 and 4) for those built inside `main()` or a server thread.
-- **Tests that start a `wlx run` follow P4d-2a's two rules**: a trial budget (Ruling 10) — `_trial_budget` in `test_serve.py`, sized to the session it bounds (`CONTROL_TRIAL_BUDGET` for Task 12's, which have a mark socket and so run fewer trials a second than b1's), and for a paused session `_Scripted`'s wait budget in `test_taskd.py` — and `_main_uninterrupted` for every `main(...)` call on a thread (M3). **A mutation that prints `caught … timed out` is a missing bound, not a catch** (`docs/next-session.md`: *the fix is a bound, not a shrug*): fix the bound in the owning task.
+- **Tests that start a `wlx run` follow P4d-2a's two rules**: a trial budget (Ruling 10) — `_trial_budget` in `test_serve.py`, sized to the session it bounds (`CONTROL_TRIAL_BUDGET` for Task 12's, which have a mark socket and so run fewer trials a second than b1's), and for a paused session `_Scripted`'s wait and drain budgets in `test_taskd.py` — and `_main_uninterrupted` for every `main(...)` call on a thread (M3). **A mutation that prints `caught … timed out` is a missing bound, not a catch** (`docs/next-session.md`: *the fix is a bound, not a shrug*): fix the bound in the owning task.
 - **Do not edit `tests/conftest.py`.** Shared frames live in `tests/_frames.py`.
 - **Prove each new test can fail** (CLAUDE.md): Task 15 runs the mutation gate and reads it line by line — `N failed` is a test noticing; `N errors in 0.8s` is not.
 - **Never run the suite, edit a test, or `git add` while a mutation sweep is in flight.**
@@ -2879,7 +2881,9 @@ git commit -m "Add a command sender that waits for the rig's acknowledgment and 
   - `Session._control(kind, by, said, index, **detail) -> float` (Task 6 adds `at=`; Task 7 renames `said` to `feed`); `Session._code(name) -> int | None`; `Session._pause(by, index)`, `_resume(by, index)`, `_ends() -> bool` (Task 7 gives it `index`), `_hold(index, publish)`.
   - `link.CONTROL_HISTORY = 50`; `record.CONTROLS = "controls.jsonl"`; `SessionRecord.control(kind, by, at, trial_index, **detail)`.
   - The allocation's `PAUSE` (4131), `RESUME` (4132), `OPERATOR_MARK` (4133).
-  - Test helpers Tasks 6 and 7 use: `_Scripted` (a `Simulated` whose `idle` runs a script and fails after a budget — Ruling 10 for a paused loop), `_walled`, `_controls_rows`, and `PAUSE_CODE`, `RESUME_CODE`, `MARK_CODE`.
+  - Test helpers Tasks 6 and 7 use: `_Scripted` (a `Simulated` whose `idle` runs a script and fails after a budget of waits, and whose `drain` fails after `PASS_BUDGET` passes — Ruling 10 for a paused loop, and for one that stops waiting), `PASS_BUDGET`, `_walled`, `_controls_rows`, and `PAUSE_CODE`, `RESUME_CODE`, `MARK_CODE`.
+
+**Why `_Scripted` counts drains as well as waits:** in the plan's pre-flight, `Session._hold` neutered sent the paused loop round the boundary with no trial and no `idle` — draining and publishing as fast as it could — so the wait budget never moved, and the suite hung until the mutation harness printed `caught … timed out`. Every pass drains, so a drain budget bounds it: the same mutant is `9 failed` in `tests/test_taskd.py`, in seconds.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2940,6 +2944,11 @@ Append to `tests/test_taskd.py`:
 #: The three framework codes b2a allocates (`tasks/allocation.py`).
 PAUSE_CODE, RESUME_CODE, MARK_CODE = 4131, 4132, 4133
 
+#: How many times a `_Scripted` session may drain its commands. The loop drains once
+#: at each trial boundary and once in each paused wait, so these sessions -- a few
+#: trials, at most a few hundred waits -- stay far below it.
+PASS_BUDGET = 2_000
+
 
 class _Scripted(Simulated):
     """A link whose `idle` -- the paused loop's one wait -- runs a script: on its Nth
@@ -2948,7 +2957,10 @@ class _Scripted(Simulated):
     **Ruling 10, for a paused loop**: a session still paused after `budget` waits
     fails -- `idle` raises, the session faults -- rather than holding the suite until
     the mutation harness kills it, which is what a neutered `Resume` would otherwise
-    do here."""
+    do here. **And for a paused loop that never waits**: with `Session._hold`
+    neutered, the loop goes round the boundary draining and publishing with no trial
+    and no `idle`, so neither budget moves and the suite hung until the harness's
+    300 s; a session that drains more than `PASS_BUDGET` times fails the same way."""
 
     def __init__(self, script=None, wall=None, step=0.0, budget=200, each=None):
         super().__init__()
@@ -2958,6 +2970,16 @@ class _Scripted(Simulated):
         self.budget = budget
         self.each = each
         self.waits: list = []
+        self.drains = 0
+
+    def drain(self) -> list:
+        self.drains += 1
+        if self.drains > PASS_BUDGET:
+            raise RuntimeError(
+                f"drained {PASS_BUDGET} times: the loop is going round with no trial "
+                f"and no wait (tests/test_taskd.py, Ruling 10)"
+            )
+        return super().drain()
 
     def idle(self, timeout: float) -> int:
         self.waits.append(timeout)
@@ -10195,7 +10217,9 @@ git commit -m "Drive a simulated session through the page's own commands, end to
 
 **Interfaces:**
 - Consumes: Task 3's `ZmqLink(..., mark_endpoint=...)` and `mark_signal`; Task 6's `run_trial(..., each_frame=...)` and the session's check shape.
-- Produces: `tools/measure_mark_check.py` with `measure(frames, trials, calls) -> dict` and `report(found) -> str`; V12.
+- Produces: `tools/measure_mark_check.py` with `measure(frames, trials, calls) -> dict`, `report(found) -> str` and `main(argv) -> int`; V12.
+
+**`main` has its own test** because it is how Step 5 commits the number: in the plan's pre-flight sweep, `main` neutered was the one `SURVIVED` line, every test having called `measure` and `report` directly.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -10269,6 +10293,22 @@ def test_a_small_measurement_reports_both_loops_the_check_and_its_allocation():
     assert "Median added per frame by the check:" in text
     assert "V12 (`docs/validation.md`)" in text
     assert "--frames 50 --trials 5" in text
+
+
+def test_the_command_line_writes_the_report_where_it_is_told(tmp_path, capsys):
+    """`main` is how Task 13 commits the number, so the file `--out` names gets the
+    report the options asked for, and the terminal says where it went."""
+    out = tmp_path / "measurements" / "mark-check.md"
+
+    code = tool.main(
+        ["--frames", "20", "--trials", "3", "--calls", "500", "--out", str(out)]
+    )
+
+    assert code == 0
+    text = out.read_text(encoding="utf-8")
+    assert "Median added per frame by the check:" in text
+    assert "--frames 20 --trials 3" in text
+    assert capsys.readouterr().out == f"wrote {out}\n"
 ```
 
 - [ ] **Step 2: Run it to see it fail**
@@ -10567,9 +10607,9 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run the test, then the suite**
 
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_measure_mark_check.py`
-Expected: 3 passed.
+Expected: 4 passed.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1329 passed**.
+Expected: **1330 passed**.
 
 - [ ] **Step 5: Measure, read it, and commit it with the script**
 
@@ -10929,14 +10969,16 @@ sign-in through wl-works, designed in full from the P4d-2b spec §5.7 once b2a h
   rig exists; a note typed after the session ended is refused with the post-loop sentence,
   so it is lost from the record (the stamp is kept); the page's script is checked by
   `node --check` and by eye (Task 15 Step 4), never by pytest.
-- **Two bounds a test here needs, found by the plan's pre-flight sweep printing `timed
+- **Three bounds a test here needs, found by the plan's pre-flight sweep printing `timed
   out`:** a simulated session with a mark socket runs fewer trials a second than one
   without (every frame pays for the check), so a trial budget sized for b1's session held
   each of b2a's end to end tests past 50 s under a broken command path —
   `tests/test_serve.py`'s `CONTROL_TRIAL_BUDGET` is theirs, and `_Session.frame` stops
-  waiting once `wlx run` has ended; and `Outbox.submit` waits as long as its thread lives,
+  waiting once `wlx run` has ended; `Outbox.submit` waits as long as its thread lives,
   so a test calling it on its own thread hangs rather than fails when a job goes
-  unanswered — call it through `_submitted`.
+  unanswered — call it through `_submitted`; and a paused loop that stops waiting runs no
+  trial and calls no `idle`, so neither the trial budget nor `_Scripted`'s wait budget
+  moves — `_Scripted` also counts drains (`PASS_BUDGET`).
 
 The gate's result and the test count are added here in the plan's Task 15 Step 3.
 
@@ -11041,7 +11083,7 @@ git commit -m "Record the controls from the box, and what the PI is asked to app
 - [ ] **Step 1: The whole suite, three times**
 
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider -rs` three times in a row.
-Expected: all pass each time, and the `-rs` summary lists no skip from `test_health.py` or `test_serve.py`. **1329 passed** if nothing was added after Task 13 (Task 14 adds no test).
+Expected: all pass each time, and the `-rs` summary lists no skip from `test_health.py` or `test_serve.py`. **1330 passed** if nothing was added after Task 13 (Task 14 adds no test).
 
 - [ ] **Step 2: The mutation gate, read line by line**
 
