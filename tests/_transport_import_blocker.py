@@ -88,6 +88,12 @@ import wl_expcontroller.taskd as _taskd  # noqa: E402
 # would first drag `zmq`/`msgpack` in behind it, and this check would miss that
 # regression entirely if `cli` were never added here.
 import wl_expcontroller.cli as _cli  # noqa: E402
+# P4d-2b b1: the browser console's three modules. `serve` reaches `zmq` only through
+# `link.ZmqConsole`, inside its telemetry thread, so importing it -- or `web` and
+# `health`, which it renders with -- must acquire no transport.
+import wl_expcontroller.health as _health  # noqa: E402
+import wl_expcontroller.serve as _serve  # noqa: E402
+import wl_expcontroller.web as _web  # noqa: E402
 
 # Not just "it imported" -- imported from THIS worktree, not a stale editable-install
 # target (R9 again). A path from outside _REPO_ROOT would mean this whole script
@@ -95,7 +101,14 @@ import wl_expcontroller.cli as _cli  # noqa: E402
 # `str.startswith` -- fix round 1, minor: a sibling checkout named e.g.
 # "p4d1-console-link-old" would satisfy a bare string prefix match without
 # actually being inside this worktree.
-for _name, _mod in (("link", _link), ("taskd", _taskd), ("cli", _cli)):
+for _name, _mod in (
+    ("link", _link),
+    ("taskd", _taskd),
+    ("cli", _cli),
+    ("health", _health),
+    ("serve", _serve),
+    ("web", _web),
+):
     _resolved = Path(_mod.__file__).resolve()
     if not _resolved.is_relative_to(_REPO_ROOT):
         print(f"ABORT: wl_expcontroller.{_name} imported from outside this worktree: {_resolved}")
@@ -104,3 +117,6 @@ for _name, _mod in (("link", _link), ("taskd", _taskd), ("cli", _cli)):
 print(f"PASS: wl_expcontroller.link imported ({_link.__file__})")
 print(f"PASS: wl_expcontroller.taskd imported ({_taskd.__file__})")
 print(f"PASS: wl_expcontroller.cli imported ({_cli.__file__})")
+print(f"PASS: wl_expcontroller.health imported ({_health.__file__})")
+print(f"PASS: wl_expcontroller.serve imported ({_serve.__file__})")
+print(f"PASS: wl_expcontroller.web imported ({_web.__file__})")

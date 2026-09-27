@@ -8,20 +8,27 @@ seconds rather than hanging the suite (and the mutation sweep) for 300.
 
 from __future__ import annotations
 
+import gc
 import http.client
 import json
 import os
 import queue
+import re
 import socket
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import replace
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
 from _frames import frame
-from wl_expcontroller.serve import CLOSED, QUEUE_DEPTH, Hub, make_handler, on_box
+from wl_expcontroller import serve
+from wl_expcontroller.cli import main
+from wl_expcontroller.link import Stop, ZmqConsole, ZmqLink
+from wl_expcontroller.serve import CLOSED, QUEUE_DEPTH, Hub, Server, make_handler, on_box
 from wl_expcontroller.web import FONTS, FRAGMENT_IDS, font_bytes
 
 _REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
@@ -742,3 +749,379 @@ def test_a_non_ascii_authorization_header_gets_the_same_401():
 
     assert answer.startswith(b"HTTP/1.0 401")
     assert answer.endswith(b'{"error": "unauthorized"}')
+
+
+# --- the process (Task 11) --------------------------------------------------------
+
+GOOD = "tasks/fixation_detection.py"
+ALLOCATION = "tasks/allocation.py"
+#: The twelve-hour reference config: a session under it runs until it is stopped.
+TWELVE_HOURS = "tasks/twelve_hour_bounds.py"
+#: What the fixation task needs set to run headless (as in `test_cli.py`).
+_TASK_SETS = [
+    "--set", "fix_timeout=4.0",
+    "--set", "fix_hold=0.3",
+    "--set", "response_window=0.6",
+    "--set", "target_hold=0.2",
+    "--set", "fix_window=2.0",
+    "--set", "target_window=3.0",
+    "--set", "target_position=10.0",
+]
+
+#: **Ruling 10** (P4d-2a final review), as `tests/test_cli.py`'s autouse fixture has it:
+#: a `wlx run` here that cannot finish fails rather than running on until the mutation
+#: harness kills the suite. The end-to-end session below declares 100,000 trials and
+#: is ended by a console's `Stop` after about 900 (898 to 916 over five runs of this
+#: test in the plan's pre-flight, 2026-09-26: a scratch count, not a claim about this
+#: system). A mutant that breaks the `Stop` path would otherwise leave that session
+#: running on its daemon thread past the test, into the rest of the suite and
+#: interpreter shutdown. Flat rather than scaled to the declared trials, which are
+#: deliberately unreachable here.
+E2E_TRIAL_BUDGET = 20_000
+
+
+def _trial_budget(monkeypatch, allowed: int) -> None:
+    """Fail the session a test starts once it has run `allowed` trials: `taskd`'s
+    `run_trial` raises past that, so the session faults, publishes that it did, and
+    `wlx run` ends -- `tests/test_cli.py`'s budget, for the one test here that runs a
+    session. The session's own clocks stay under test."""
+    from wl_expcontroller import taskd
+
+    real, left = taskd.run_trial, [allowed]
+
+    def run_trial(*args, **kwargs):
+        left[0] -= 1
+        if left[0] < 0:
+            raise RuntimeError(
+                "this session has run more trials than its budget "
+                "(tests/test_serve.py, Ruling 10): nothing ended it"
+            )
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+
+
+def _main_uninterrupted(argv: list) -> int:
+    """`main(argv)`, with an escaping `KeyboardInterrupt` turned into a failure --
+    `tests/test_cli.py`'s helper of the same name, for its reason (P4d-2a final review
+    M3): a `KeyboardInterrupt` that escapes a test ends the whole pytest run, not the
+    test. Copied rather than imported, since importing `test_cli` would collect its
+    tests a second time."""
+    try:
+        return main(argv)
+    except KeyboardInterrupt:
+        pytest.fail("KeyboardInterrupt escaped main(): Ctrl-C must end wlx serve cleanly")
+
+
+@pytest.fixture
+def server_cleanup():
+    """Registers each `Server` a test builds, and stops it at teardown **without
+    calling `Server.close`** -- `zmq_cleanup`'s reasoning, for this module's object.
+
+    The mutation harness blanks every function named `close` in `serve.py` at once,
+    `Hub.close` and `Server.close` alike. A `Server` left running then holds its
+    telemetry thread in a ZMQ receive into interpreter shutdown, and the suite hung for
+    the harness's full 300 s (found while this plan was checked, 2026-09-26) -- the
+    harness noticing, not a test. With this teardown, the test that checks `close`
+    fails in seconds instead.
+    """
+    started: list = []
+
+    def _register(server):
+        started.append(server)
+        return server
+
+    yield _register
+    for server in started:
+        server._stop.set()
+        if server._started:
+            server._telemetry.join(timeout=5)
+            server._http.shutdown()
+        server._http.server_close()
+
+
+def _endpoints(zmq_cleanup) -> tuple[str, str]:
+    """A free PUB/REP pair on loopback, bound by a throwaway link and released."""
+    probe = zmq_cleanup(
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    )
+    pub, rep = probe.pub_endpoint, probe.rep_endpoint
+    probe.close()
+    return pub, rep
+
+
+def _advancing(server: Server, count: int = 2) -> list[int]:
+    """Trial numbers from `server`'s event stream until `count` increasing ones are
+    seen: the trial count advancing, as a person watching would see it. Bounded by
+    the stream's 10 s read timeout and by a count of events, never by hope."""
+    seen: list[int] = []
+    with _stream(server.address[1]) as response:
+        for _, payload in zip(range(20_000), _events(response)):
+            found = re.search(
+                r'data-trial="(\d+)"', payload["frags"].get("head-id", "")
+            )
+            if found and (not seen or int(found.group(1)) > seen[-1]):
+                seen.append(int(found.group(1)))
+            if len(seen) >= count:
+                return seen
+    raise AssertionError(f"the trial count never advanced: {seen}")
+
+
+def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    """Spec §4.4's end to end, and spec §2's "restarting `wlx serve` changes nothing
+    in `taskd`" (Review Focus 5): a real `wlx run --link` in the simulator, a real
+    `wlx serve` on loopback, and the event stream read as a browser reads it.
+
+    The session is ended by a console's `Stop` -- what slice b2's page will send --
+    because under the twelve-hour reference config nothing else would end it soon,
+    and `E2E_TRIAL_BUDGET` fails it if the `Stop` never lands (Ruling 10). With no
+    terminal attached -- pytest's stdin is not one -- `wlx run` records `return not
+    recorded (no terminal)` and publishes nothing after the loop (P4d-2a Task 8), so
+    the stop frame, `phase` still `running`, is the last one the console sees.
+    """
+    _trial_budget(monkeypatch, E2E_TRIAL_BUDGET)
+    pub, rep = _endpoints(zmq_cleanup)
+    first = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
+    first.start()
+    second = None
+    result: dict = {}
+
+    def _run() -> None:
+        result["exit_code"] = main(
+            [
+                "run", GOOD,
+                "--allocation", ALLOCATION,
+                "--bounds", TWELVE_HOURS,
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_08",
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", time.strftime("%H:%M"),
+                "--delivered-today", "0",
+                "--trials", "100000",
+                *_TASK_SETS,
+                "--link", f"{pub},{rep}",
+            ]
+        )
+
+    # A daemon, so a run that a broken `Stop` never ends cannot hold the suite open.
+    runner = threading.Thread(target=_run, daemon=True)
+    runner.start()
+    try:
+        before = _advancing(first)
+        first.close()
+
+        second = server_cleanup(
+            Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN)
+        )
+        second.start()
+        after = _advancing(second)
+        assert after[0] > before[-1], "the session did not run on without a console"
+
+        with zmq_cleanup(ZmqConsole(pub, rep)) as console, _stream(
+            second.address[1]
+        ) as response:
+            events = _events(response)
+            next(events)
+            console.send(Stop(by="e2e"))
+            ended = None
+            for _, payload in zip(range(20_000), events):
+                if 'data-state="ended"' in payload["frags"].get("state", ""):
+                    ended = payload
+                    break
+
+        assert ended is not None, "the console never showed the session ending"
+        assert "stopped by e2e" in ended["frags"]["banners"]
+        assert ended["live"] is False
+    finally:
+        runner.join(timeout=30)
+        first.close()
+        if second is not None:
+            second.close()
+    assert not runner.is_alive(), "wlx run did not finish once it was stopped"
+    # Both servers' `ZmqConsole`s and `main()`'s own `ZmqLink` were built inside
+    # threads this test cannot register with `zmq_cleanup`; collected here, under the
+    # test's control (`ZmqLink.close`'s docstring).
+    gc.collect()
+    assert result["exit_code"] == 0
+
+
+def _until_refused(server: Server, publish, expect: str) -> str:
+    """Publish until the hub says it refused a frame for `expect`'s reason: a PUB
+    socket drops what it sends before a subscription lands, so one send proves
+    nothing."""
+    for _ in range(250):
+        publish()
+        rejected = server.hub.snapshot(on_box=True, stale_after_s=30.0)[1].rejected
+        if rejected and expect in rejected:
+            return rejected
+        time.sleep(0.02)
+    raise AssertionError(f"the server never said it refused a frame ({expect!r})")
+
+
+def test_a_frame_this_console_cannot_read_is_shown_as_refused_not_guessed(
+    zmq_cleanup, server_cleanup
+):
+    """Review Focus 1: a frame of another schema -- a schema-6 `wlx run` beside this
+    `wlx serve`, which this slice's own upgrade makes likely -- and a packet that is
+    no frame at all. Each is said, neither is shown, and serving goes on."""
+    import msgpack
+
+    link = zmq_cleanup(
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    )
+    server = server_cleanup(
+        Server(
+            sub=link.pub_endpoint,
+            req=link.rep_endpoint,
+            http=("127.0.0.1", 0),
+            token=TOKEN,
+        )
+    )
+    server.start()
+    try:
+        why = _until_refused(
+            server, lambda: link.publish(replace(frame(), schema=6)), "schema 6"
+        )
+        assert "this console reads schema 7" in why
+        assert server.hub.snapshot(on_box=True, stale_after_s=30.0)[0] is None
+
+        why = _until_refused(
+            server,
+            lambda: link._pub.send(msgpack.packb({"schema": 7}, use_bin_type=True)),
+            "could not be decoded",
+        )
+        assert "KeyError" in why
+
+        for _ in range(250):
+            link.publish(frame())
+            shown, seen = server.hub.snapshot(on_box=True, stale_after_s=30.0)
+            if shown is not None:
+                break
+            time.sleep(0.02)
+        assert shown is not None and seen.rejected is None
+        assert _request(server.address[1], "GET", "/")[0] == 200
+    finally:
+        server.close()
+        gc.collect()
+
+
+def test_closing_the_server_stops_serving(zmq_cleanup, server_cleanup):
+    pub, rep = _endpoints(zmq_cleanup)
+    server = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
+    server.start()
+    port = server.address[1]
+    assert _request(port, "GET", "/")[0] == 200
+
+    server.close()
+    server.close()
+
+    with pytest.raises(OSError):
+        _request(port, "GET", "/")
+    gc.collect()
+
+
+def _token_file(tmp_path, text: str = f"{TOKEN}\n") -> Path:
+    path = tmp_path / "health.token"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _serve_args(
+    tmp_path,
+    *,
+    token: Path | None = None,
+    link: str = "tcp://127.0.0.1:5571,tcp://127.0.0.1:5572",
+    http: str = "127.0.0.1:0",
+    extra: tuple = (),
+) -> list:
+    return [
+        "serve",
+        "--link", link,
+        "--http", http,
+        "--health-token-file", str(token if token is not None else _token_file(tmp_path)),
+        *extra,
+    ]
+
+
+def test_wlx_serve_serves_until_interrupted_then_closes(
+    tmp_path, monkeypatch, capsys, zmq_cleanup, server_cleanup
+):
+    pub, rep = _endpoints(zmq_cleanup)
+    seen: dict = {}
+
+    def interrupted(server: Server) -> None:
+        server_cleanup(server)
+        seen["port"] = server.address[1]
+        seen["page"] = _request(seen["port"], "GET", "/")[0]
+        seen["health"] = _request(
+            seen["port"], "GET", "/health", {"Authorization": f"Bearer {TOKEN}"}
+        )[0]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(serve, "_wait", interrupted)
+
+    assert _main_uninterrupted(_serve_args(tmp_path, link=f"{pub},{rep}")) == 130
+    assert seen["page"] == 200 and seen["health"] == 200
+    captured = capsys.readouterr()
+    assert f"http://127.0.0.1:{seen['port']}/" in captured.out
+    assert "the session keeps running on the box" in captured.err
+    with pytest.raises(OSError):
+        _request(seen["port"], "GET", "/")
+    gc.collect()
+
+
+def test_serving_waits_for_the_operator():
+    """A `_wait` that returned would end the console the moment it started."""
+    waiter = threading.Thread(target=serve._wait, args=(None,), daemon=True)
+    waiter.start()
+    waiter.join(timeout=0.2)
+
+    assert waiter.is_alive()
+
+
+@pytest.mark.parametrize(
+    ("text", "why"),
+    [("", "is empty"), ("   \n", "is empty"), ("tök\n", "non-ASCII")],
+)
+def test_wlx_serve_refuses_a_token_it_cannot_use(tmp_path, text, why):
+    with pytest.raises(SystemExit, match=why):
+        main(_serve_args(tmp_path, token=_token_file(tmp_path, text)))
+
+
+def test_wlx_serve_refuses_a_token_file_inside_the_repository(tmp_path):
+    """Spec §2: a token file, never the repository. `pyproject.toml` stands in for a
+    token someone saved into the checkout."""
+    inside = Path(serve.__file__).resolve().parents[1] / "pyproject.toml"
+
+    with pytest.raises(SystemExit, match="inside this repository"):
+        main(_serve_args(tmp_path, token=inside))
+
+
+def test_wlx_serve_refuses_a_token_file_it_cannot_read(tmp_path):
+    with pytest.raises(SystemExit, match="cannot read"):
+        main(_serve_args(tmp_path, token=tmp_path / "missing.token"))
+
+
+@pytest.mark.parametrize(
+    "link",
+    ["tcp://127.0.0.1:5571", "a,b,c", ",tcp://127.0.0.1:5572", "5571,5572"],
+)
+def test_wlx_serve_refuses_a_link_that_is_not_two_endpoints(tmp_path, link):
+    with pytest.raises(SystemExit, match="exactly two"):
+        main(_serve_args(tmp_path, link=link))
+
+
+@pytest.mark.parametrize(
+    "http", ["8080", "localhost:", "127.0.0.1:99999", "[::1]:8080", "::1:8080"]
+)
+def test_wlx_serve_refuses_an_address_it_cannot_serve_on(tmp_path, http):
+    with pytest.raises(SystemExit, match="HOST:PORT"):
+        main(_serve_args(tmp_path, http=http))
+
+
+@pytest.mark.parametrize("stale", ["0", "-5", "nan", "inf"])
+def test_wlx_serve_refuses_a_stale_after_that_is_not_a_positive_time(tmp_path, stale):
+    with pytest.raises(SystemExit, match="--stale-after"):
+        main(_serve_args(tmp_path, extra=("--stale-after", stale)))

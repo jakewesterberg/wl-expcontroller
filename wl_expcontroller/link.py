@@ -1098,7 +1098,13 @@ class ZmqConsole:
     jitter or throughput).
     """
 
-    def __init__(self, pub_endpoint: str, req_endpoint: str, settle_s: float = 0.05):
+    def __init__(
+        self,
+        pub_endpoint: str,
+        req_endpoint: str,
+        settle_s: float = 0.05,
+        receive_timeout_s: float = 5.0,
+    ):
         import zmq
 
         self._ctx = zmq.Context()
@@ -1107,11 +1113,11 @@ class ZmqConsole:
         self._sub = self._ctx.socket(zmq.SUB)
         self._sub.setsockopt(zmq.LINGER, 0)  # see ZmqLink.__init__ -- same reasoning
         self._sub.setsockopt(zmq.SUBSCRIBE, b"")
-        # Bounded, not infinite: a console that lost its session should raise
-        # rather than hang a UI thread forever. Not a latency claim about this
-        # system -- a ceiling above which something is already wrong, not a
-        # measured number.
-        self._sub.setsockopt(zmq.RCVTIMEO, 5000)
+        # `receive_timeout_s` is 5 s by default, the ceiling `wlx console` has always
+        # had. `wlx serve`'s telemetry thread passes a short one so it can look between
+        # receives at whether to stop, and `Server.close` returns promptly (P4d-2b b1).
+        # A responsiveness choice either way, not a measurement.
+        self._sub.setsockopt(zmq.RCVTIMEO, int(receive_timeout_s * 1000))
         self._sub.connect(pub_endpoint)
 
         self._req = self._ctx.socket(zmq.REQ)

@@ -61,6 +61,10 @@ def test_link_taskd_and_cli_import_with_zmq_and_msgpack_unavailable():
     assert "PASS: wl_expcontroller.link imported" in result.stdout, result.stdout
     assert "PASS: wl_expcontroller.taskd imported" in result.stdout, result.stdout
     assert "PASS: wl_expcontroller.cli imported" in result.stdout, result.stdout
+    # P4d-2b b1: the browser console imports no transport either.
+    assert "PASS: wl_expcontroller.health imported" in result.stdout, result.stdout
+    assert "PASS: wl_expcontroller.serve imported" in result.stdout, result.stdout
+    assert "PASS: wl_expcontroller.web imported" in result.stdout, result.stdout
     assert str(_REPO_ROOT) in result.stdout, (
         f"expected all three imports to resolve under {_REPO_ROOT}:\n{result.stdout}"
     )

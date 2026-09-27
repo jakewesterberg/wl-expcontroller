@@ -1139,7 +1139,53 @@ def main(argv: list[str] | None = None) -> int:
         help="end the session at its next trial boundary",
     )
 
+    server_parser = sub.add_parser(
+        "serve",
+        help="serve a running session's read-only browser console, and /health",
+    )
+    server_parser.add_argument(
+        "--link",
+        required=True,
+        metavar="PUB,REP",
+        help="the session's two endpoints, exactly as given to `wlx run --link "
+        "PUB,REP`. Telemetry is read from the first; the second is connected and, in "
+        "this slice (P4d-2b b1), never sent to -- nothing on the page writes",
+    )
+    server_parser.add_argument(
+        "--http",
+        required=True,
+        metavar="HOST:PORT",
+        help="where to serve the page and /health: 127.0.0.1:8080 for this box only, "
+        "or 0.0.0.0:8080 to let the lab network read it (P4d-2b spec §2: reads are "
+        "open to the LAN). An IPv4 address or a name",
+    )
+    server_parser.add_argument(
+        "--health-token-file",
+        required=True,
+        type=Path,
+        metavar="PATH",
+        help="a file holding the bearer token wl-works sends to GET /health, on one "
+        "line. Refused if it is inside this repository: a token there is one `git "
+        "add` from public",
+    )
+    server_parser.add_argument(
+        "--stale-after",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="how long without a frame, while one is due, before the page greys and "
+        "/health says degraded. Omitted uses 30, a display choice (P4d-2b spec §3), "
+        "not a measurement",
+    )
+
     args = parser.parse_args(argv)
+
+    if args.command == "serve":
+        # Imported here, the way `--link` builds its `ZmqLink` inside `run`: no other
+        # subcommand loads a web server.
+        from wl_expcontroller import serve as _serve
+
+        return _serve.run(args)
 
     if args.command == "run":
         from wl_expcontroller.dio import Simulated as SimulatedCard

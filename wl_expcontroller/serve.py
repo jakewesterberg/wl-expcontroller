@@ -35,13 +35,16 @@ from __future__ import annotations
 import hmac
 import ipaddress
 import json
+import math
 import queue
 import secrets
+import sys
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from http.server import BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from wl_expcontroller import health as _health
 from wl_expcontroller import link as _link
@@ -508,3 +511,237 @@ def make_handler(
             )
 
     return ConsoleHandler
+
+
+#: How long the telemetry thread's receive waits before it looks again at whether to
+#: stop, so `Server.close` returns promptly. A responsiveness choice, not a
+#: measurement; `wlx console` keeps `ZmqConsole`'s 5 s.
+RECEIVE_TIMEOUT_S = 0.5
+
+#: The checkout this module runs from. A token file inside it is refused (spec §2).
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+class Server:
+    """`wlx serve`'s whole process, as an object a test can start and stop.
+
+    Binds the HTTP port on construction -- so `address` is known, and a port in use
+    is refused before anything else happens -- and starts two threads in `start`: the
+    telemetry thread (`_listen`) and the HTTP server's loop.
+    """
+
+    def __init__(
+        self,
+        *,
+        sub: str,
+        req: str,
+        http: tuple[str, int],
+        token: str,
+        stale_after_s: float = DEFAULT_STALE_AFTER_S,
+        keepalive_s: float = KEEPALIVE_S,
+        receive_timeout_s: float = RECEIVE_TIMEOUT_S,
+    ) -> None:
+        self.hub = Hub()
+        self._sub = sub
+        self._req = req
+        self._receive_timeout_s = receive_timeout_s
+        self._stop = threading.Event()
+        self._http = ThreadingHTTPServer(
+            http,
+            make_handler(
+                self.hub,
+                token=token,
+                stale_after_s=stale_after_s,
+                keepalive_s=keepalive_s,
+            ),
+        )
+        self._web = threading.Thread(
+            target=self._http.serve_forever, name="wlx-serve-http", daemon=True
+        )
+        self._telemetry = threading.Thread(
+            target=self._listen, name="wlx-serve-telemetry", daemon=True
+        )
+        self._started = False
+        self._closed = False
+
+    @property
+    def address(self) -> tuple[str, int]:
+        """`(host, port)` as bound: the port the OS chose when `http` asked for 0."""
+        host, port = self._http.server_address[:2]
+        return host, port
+
+    def start(self) -> None:
+        self._started = True
+        self._telemetry.start()
+        self._web.start()
+
+    def _listen(self) -> None:
+        """The telemetry thread: the one `ZmqConsole`, created, read and closed here,
+        so its sockets have one owning thread (spec §2).
+
+        **A frame this console cannot use is said, never shown and never fatal**
+        (Review Focus 1): one that does not decode, and one of another schema -- which
+        may decode perfectly well and mean something else (`link.SCHEMA`'s own rule).
+        Either goes to `Hub.reject`, the page says why, and the last good frame stays.
+        """
+        with _link.ZmqConsole(
+            self._sub, self._req, receive_timeout_s=self._receive_timeout_s
+        ) as console:
+            while not self._stop.is_set():
+                try:
+                    frame = console.receive()
+                except TimeoutError:
+                    continue
+                except Exception as exc:  # noqa: BLE001 -- said on the page, never fatal
+                    self.hub.reject(
+                        f"a telemetry frame could not be decoded, so it is not shown: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    continue
+                if frame.schema != _link.SCHEMA:
+                    self.hub.reject(
+                        f"a telemetry frame carried schema {frame.schema!r} and this "
+                        f"console reads schema {_link.SCHEMA}, so it is not shown "
+                        f"rather than guessed at"
+                    )
+                    continue
+                self.hub.offer(frame)
+
+    def close(self) -> None:
+        """Stop serving, end every open stream, and close the `ZmqConsole`. Safe to
+        call twice, and before `start`."""
+        if self._closed:
+            return
+        self._closed = True
+        self._stop.set()
+        self.hub.close()
+        if self._started:
+            self._http.shutdown()
+        self._http.server_close()
+        if self._started:
+            self._web.join(timeout=5)
+            self._telemetry.join(timeout=5)
+
+
+def read_token(path: Path) -> str:
+    """The `/health` bearer token: from a file, never from the repository (spec §2).
+
+    Refused, each with a sentence and before anything binds: a file inside this
+    checkout -- one `git add` from public -- a file that cannot be read, an empty one
+    (there is no default token), and one holding a non-ASCII character, which
+    `hmac.compare_digest` cannot compare, so every request would fail, the correct
+    one included (wl-preproc refuses the same). The whitespace around it -- the
+    newline an editor leaves -- is not part of the token.
+    """
+    resolved = path.expanduser().resolve()
+    if resolved.is_relative_to(_REPO_ROOT):
+        raise SystemExit(
+            f"refused: the /health token file {str(path)!r} is inside this repository, "
+            f"one `git add` from being published; keep it outside the checkout "
+            f"(P4d-2b spec §2: a token file, never the repository)"
+        )
+    try:
+        token = resolved.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise SystemExit(
+            f"refused: cannot read the /health token file {str(path)!r}: {exc}"
+        ) from exc
+    if not token:
+        raise SystemExit(
+            f"refused: the /health token file {str(path)!r} is empty; there is no "
+            f"default token, so wl-works could never authenticate -- write one token "
+            f"on one line"
+        )
+    if not token.isascii():
+        raise SystemExit(
+            "refused: the /health token contains a non-ASCII character; "
+            "hmac.compare_digest cannot compare it, which would make every request "
+            "fail authentication, the correct one included"
+        )
+    return token
+
+
+def parse_link(text: str) -> tuple[str, str]:
+    """`PUB,REP`, exactly as `wlx run --link` takes it. This process reads the first
+    and, in b1, never sends to the second.
+
+    Each must at least name a transport (`tcp://...`): ZeroMQ refuses one that does
+    not only when the telemetry thread connects, where the refusal would be a
+    traceback on a thread rather than a sentence before anything binds."""
+    parts = text.split(",")
+    if len(parts) != 2 or not all("://" in part for part in parts):
+        raise SystemExit(
+            f"refused: --link expects PUB,REP -- exactly two comma-separated endpoints "
+            f"such as tcp://127.0.0.1:5571, as given to `wlx run --link` -- got {text!r}"
+        )
+    return parts[0], parts[1]
+
+
+def parse_http(text: str) -> tuple[str, int]:
+    """`HOST:PORT`, IPv4 or a name: the stdlib server here binds IPv4 only."""
+    host, sep, port = text.rpartition(":")
+    if (
+        not sep
+        or not host
+        or ":" in host
+        or host.startswith("[")
+        or not port.isdigit()
+        or int(port) > 65535
+    ):
+        raise SystemExit(
+            f"refused: --http expects HOST:PORT with an IPv4 address or a name -- "
+            f"127.0.0.1:8080 for this box only, 0.0.0.0:8080 to let the lab network "
+            f"read the page -- got {text!r}"
+        )
+    return host, int(port)
+
+
+def _wait(server: Server) -> None:
+    """Block until the operator interrupts. Its own function so a test can stand in
+    for the person pressing Ctrl-C; `time.sleep` is interrupted by it everywhere."""
+    while True:
+        time.sleep(3600)
+
+
+def run(args) -> int:
+    """`wlx serve`: check everything, bind, serve until interrupted (spec §2).
+
+    Every refusal is a sentence, and all of them happen before anything binds.
+    Ctrl-C ends it with 130, as `wlx console` does, and says what it did not stop.
+    """
+    token = read_token(args.health_token_file)
+    sub, req = parse_link(args.link)
+    host, port = parse_http(args.http)
+    stale_after = (
+        DEFAULT_STALE_AFTER_S if args.stale_after is None else args.stale_after
+    )
+    if not math.isfinite(stale_after) or stale_after <= 0:
+        raise SystemExit(
+            f"refused: --stale-after must be a positive number of seconds, got "
+            f"{args.stale_after!r}"
+        )
+    try:
+        server = Server(
+            sub=sub, req=req, http=(host, port), token=token, stale_after_s=stale_after
+        )
+    except OSError as exc:
+        raise SystemExit(f"refused: cannot serve on {host}:{port}: {exc}") from exc
+    server.start()
+    bound_host, bound_port = server.address
+    print(
+        f"wlx serve: the console is at http://{bound_host}:{bound_port}/, reading "
+        f"{sub}; GET /health needs the bearer token",
+        flush=True,
+    )
+    try:
+        _wait(server)
+    except KeyboardInterrupt:
+        print(
+            "serve: interrupted -- the session keeps running on the box; nothing here "
+            "stops it",
+            file=sys.stderr,
+        )
+        return 130
+    finally:
+        server.close()
+    return 0

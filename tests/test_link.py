@@ -944,3 +944,26 @@ def test_schema_7_survives_the_wire_with_its_absences_intact():
     assert restored.recent_outcomes == ("correct", "hang", "no_fixation")
     assert restored.last_reward_at is None
     assert restored.out_of_cage_limit_s is None
+
+
+def test_a_console_can_be_given_a_shorter_receive_timeout(zmq_cleanup):
+    """P4d-2b b1: `wlx serve`'s telemetry thread looks between receives at whether it
+    should stop, so its wait is short. `wlx console` keeps the 5 s it always had."""
+    import zmq
+
+    link = zmq_cleanup(
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    )
+    short = zmq_cleanup(
+        ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0, receive_timeout_s=0.05)
+    )
+    default = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0))
+
+    assert short._sub.getsockopt(zmq.RCVTIMEO) == 50
+    assert default._sub.getsockopt(zmq.RCVTIMEO) == 5000
+    try:
+        short.receive()
+    except TimeoutError:
+        pass
+    else:
+        raise AssertionError("a console received a frame nobody published")
