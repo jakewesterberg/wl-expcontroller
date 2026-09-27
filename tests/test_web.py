@@ -171,9 +171,9 @@ def test_a_reward_instant_that_is_not_a_number_reads_unknown_not_a_crash(at):
 
 
 def test_before_the_first_trial_the_strip_says_so_not_zero():
-    """I1 (fix round 1): `_correct`'s early return for `trial_index == 0` is the
-    strip's own guard against a 0/0 percentage -- no test exercised it until this
-    round."""
+    """Before the first trial the strip's correct cell says *no trials yet*: its
+    percentage would be 0/0, and neither `0%` nor `NaN` may stand in for a count
+    nobody has made."""
     strip = fragments(frame(trial_index=0, outcomes={}), view())["strip"]
 
     assert (
@@ -186,9 +186,9 @@ def test_before_the_first_trial_the_strip_says_so_not_zero():
 
 
 def test_out_of_cage_time_with_no_published_limit_shows_the_clock_alone():
-    """M2 (fix round 1): `_out_of_cage`'s other guarded branch -- elapsed time
-    published, but no limit -- a rig session whose ceiling was not sent. Shown as
-    the clock alone: no bar, and no limit in the label."""
+    """A rig session whose frame carries its out-of-cage time but no limit shows the
+    clock alone: no bar, and no limit in the label, since a bar needs something to
+    be a fraction of."""
     strip = fragments(frame(out_of_cage_limit_s=None), view())["strip"]
 
     assert (
