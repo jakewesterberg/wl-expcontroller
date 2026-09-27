@@ -72,10 +72,10 @@
   - **Lenses:** each lens carries an 850 ± 25 nm band-pass filter, threaded straight on
     (S0 §7.2).
 - **Synchronized exposure, for 3D.** One **primary** camera free-runs at 200 fps. Its output
-  line drives every other camera's trigger input through an off-the-shelf **fan-out box**
-  (PI, 2026-09-27; S0 §7.4), since one output line does not drive seven inputs. The same box
-  strobes the behavior lamps. All cameras expose at the same instant, so frame *N* of every
-  camera is one moment.
+  line drives every other camera's trigger input through a custom **fan-out board** (PI,
+  2026-09-27, reversing the off-the-shelf call; S0 §7.4), since one output line does not
+  drive seven inputs. It needs a design check. The same board strobes the behavior lamps.
+  All cameras expose at the same instant, so frame *N* of every camera is one moment.
 - **Alignment with the neural data, by the lab's existing design, unchanged** (S3 §8,
   wl-sync since 2026-08-16):
   - the sync box does not trigger cameras;
@@ -98,7 +98,7 @@
     no shared clock to keep out of each other's images, which the interference check below
     confirms.
   - **The lamps flash only during behavior exposures.** The primary's exposure output drives
-    the lamp drivers' strobe inputs through the fan-out box. At 200 fps an exposure is at
+    the lamp drivers' strobe inputs through the fan-out board. At 200 fps an exposure is at
     most 5 ms, and the lamps' duty cycle is the exposure's. That means less light, heat and
     glow, and the lamps stay locked to the frames.
   - **Visibility, kept as a check.** An 850 nm lamp's faint red glow could be a stimulus in a

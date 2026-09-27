@@ -350,6 +350,11 @@ The eye tracker's and the behavior cameras' parts lists are in §7.
 
 A reasoned list for the PI, who owns procurement. It is not an order.
 
+**Edmund Optics first** (PI, 2026-09-27): every optics, lighting and mounting line is checked
+at Edmund first, and Edmund is preferred where it meets the requirement. Each row notes when
+Edmund had nothing suitable. So far only rows 5b–5c and §7.10 have had that check; the other
+rows get a later pass.
+
 **Revised after the PI went through the first version row by row** (2026-09-27, 38 rows).
 The rows keep the walkthrough's numbers: 7.1-1 to 7.1-16 and C1 to C22. **The PI's
 decisions bind.** What is still open says what it waits on.
@@ -385,14 +390,14 @@ decisions bind.** What is still open says what it waits on.
 - **The behavior cameras (P9).**
   - 1–2 on the face and 1–2 on the body: 2–4 typical, 8 at most.
   - 200 fps, recorded the whole session, encoded on a consumer GPU.
-  - The primary triggers the rest through an **off-the-shelf fan-out box**, which ideally
-    also strobes the lamps.
+  - The primary triggers the rest through a **custom fan-out board**, which also strobes the
+    lamps (PI, 2026-09-27, reversing the off-the-shelf call; §7.4). It needs a design check.
   - **Fixed lenses now**, at ASSUMED distances. There are no filter adapters.
   - The mounts are 3D-printed brackets on the existing frame.
   - **The cameras do not go into regular use until wl-nas exists.**
 - **The camera box** is AMD and rack-mounted. Its target is about $4,000 for the computer,
   GPU, storage and USB cards, not counting the cameras. The PI accepted about $4,690 with two
-  drives.
+  drives, and later **a modest overrun** of that (PI, 2026-09-27; §7.6).
 
 ### 7.1 The eye tracker: changes from the OpenIrisDPI reference build
 
@@ -408,7 +413,8 @@ the list touches P10's method, which stays clean-room
 | 3 | Spacer and ring | Put the C-mount lens on the CS body, and focus closer than the lens's minimum | Teledyne **ACC-01-5004** CS-to-C 5 mm spacer. It is needed: the C-mount flange distance is 17.526 mm and CS is 12.526 mm (Edmund). Plus a C-mount extension ring where the eye is inside the lens's minimum working distance (§7.1.1): Edmund **#54-628** (5 mm), or the **#54-261** kit (0.5, 1, 2 × 5, 10, 15 and 40 mm) to fit it on the bench | 2 + 0–2 | [spacer](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/); [Edmund, lens mounts](https://www.edmundoptics.com/knowledge-center/application-notes/imaging/lens-mounts/); [#54-628](https://www.edmundoptics.com/p/5mm-length-c-mount-extension-tube/11303/); [#54-261](https://www.edmundoptics.com/p/c-mount-extension-tube-kit/11115/) | 11.80 each; 33.25; 133.00 (kit, "contact us") | **The spacer is needed**; the EF adapter is gone. The ring *waits on* the working distance |
 | 4 | IR filter | 940 ± 25 nm band-pass, threaded straight onto the lens, no adapter | MidOpt **BN940**: useful range 928–955 nm, FWHM 55 nm, peak transmission 85% or more. **BN940-43** (M43 × 0.75) on #74-054; **BN940-46** (M46 × 0.75) on #27-555 | 2 | [MidOpt BN940](https://midopt.com/filters/bn940/); [MidOpt threads](https://midopt.com/mounting-solutions/threaded-mount/); Machine Vision Direct [BN940-43](https://machinevisiondirect.com/products/midopt-bn940-43), [BN940-46](https://machinevisiondirect.com/products/midopt-bn940-46) | 231.00 / 252.00 each (built to order, 15 business days) | **Changed** from the long-pass sheet. *Decided*; the size follows row 2. MidOpt's 55 nm FWHM is slightly wider than ±25 nm, and its useful range sits inside ±25 nm |
 | 5 | Light, per eye | One compact collimated 940 nm source per eye, riding on the IPD carriage. It sits 10° shallower than its camera (the paper's rule), with its current capped for eye safety (§7.1.2) | Thorlabs **M940L3** (940 nm; 800 mW minimum at 1000 mA; FWHM 37 nm) with a **SM1U25-B** adjustable collimation adapter, which has a Ø1" asphere, AR-coated 650–1050 nm. It replaces the reference's Ø2" SM2F + ACL50832U. Alternative: Mightex **LCS-0940-02-22**, an integrated collimator: 200 mW typical at 1000 mA, 22 mm aperture, 3.4° half-divergence | 2 | [Thorlabs mounted LEDs](https://www.thorlabs.com/mounted-leds?pn=M940L3); [SM1U25-B](https://www.thorlabs.com/item/SM1U25-B); [Mightex](https://www.mightexsystems.com/product/high-power-led-collimator-sources-22-mm-clear-aperture/) | 274.55 (lead time) + 338.29 = **612.84 per eye**; Mightex's price is not published | **Changed** (PI): one light per eye, on the IPD system. Edmund has no compact collimated 940 nm source (§7.1.2). Thorlabs or Mightex is the *PI's call* |
-| 5b | Light driver | Constant current, a modulation input (so the lights can later strobe with the exposures), and a current cap the operator cannot turn past | Thorlabs **LEDD1B** T-Cube: up to 1200 mA; modulation to 5 kHz; trigger mode to 1 kHz; a current limit adjustable from **0.2 to 1.2 A** by a trim pot. With a **KPS201** supply. One per eye | 2 + 2 | [LEDD1B family page](https://www.thorlabs.com/t-cube-tm-led-driver?pn=LEDD1B); [LEDD1B](https://www.thorlabs.com/item/LEDD1B); [KPS201](https://www.thorlabs.com/item/KPS201) | 380.04 + 43.15 each | **Two single-channel drivers, one per eye.** No two-channel driver with a modulation input was sensible (§7.1.2). **The LEDD1B's limit does not go below 200 mA** (§7.1.2) |
+| 5b | Light driver | Constant current, a modulation input (so the lights can later strobe with the exposures), and a current cap the operator cannot turn past | Thorlabs **LEDD1B** T-Cube: up to 1200 mA; modulation to 5 kHz; trigger mode to 1 kHz; a current limit adjustable from **0.2 to 1.2 A** by a trim pot. With a **KPS201** supply. One per eye | 2 + 2 | [LEDD1B family page](https://www.thorlabs.com/t-cube-tm-led-driver?pn=LEDD1B); [LEDD1B](https://www.thorlabs.com/item/LEDD1B); [KPS201](https://www.thorlabs.com/item/KPS201) | 380.04 + 43.15 each | **Two single-channel drivers, one per eye.** No two-channel driver with a modulation input was sensible (§7.1.2). **The LEDD1B's limit does not go below 200 mA**; the alternatives are compared in §7.10, and it stays the recommendation there with row 5c behind it. *PI's call*. Edmund has no constant-current driver for this LED (§7.10) |
+| 5c | Fixed attenuator, per eye | A physical cap on the light at the eye, whatever the driver does: sized at bring-up so the eye stays under the limit at the highest current the driver can deliver (§7.10) | Edmund Optics **TECHSPEC NIR ND**, Ø25 mm, reflective (metallic on fused silica), flat 700–1100 nm, OD tolerance ±10%, 3.00 mm thick; **#47-530** is OD 1.0, and the OD is chosen at bring-up. Held in the collimator's output by a Thorlabs **SM1A38** (external M34 × 0.5, internal SM1) and an Edmund **#35-763** SM1 retainer ring | 2 + 2 + 2 | [Edmund NIR ND family](https://www.edmundoptics.com/f/near-ir-nir-neutral-density-nd-filters/13025/); [#47-530](https://www.edmundoptics.com/p/10-od-25mm-dia-nir-nd-filter-/7611/); [SM1A38](https://www.thorlabs.com/item/SM1A38); [#35-763 (listed as an accessory)](https://www.edmundoptics.com/p/5mm-id1-lens-tube/33305/) | 126.00 (OD 1.0; other ODs not read) + 31.62 + 5.25 | **New.** *PI's call* (§7.10). Whether the SM1A38 is deep enough for a 3 mm filter and a ring is **UNVERIFIED** |
 | 6 | Lens clamps | — | Thorlabs VG100/M | — | — | — | **Dropped** (PI). A C-mount lens is held by the camera |
 | 7 | IPD adjustment system | Per-animal eye spacing. It carries both cameras and both lights, on the rig's existing frame, with 3D-printed brackets | Requirements are in §7.1.3. An off-the-shelf slide: Thorlabs **DTS25/M** dovetail stage (25 mm travel, 1 mm per turn, a locking screw, ±250 µrad angular deviation, 68 × 99 × 20 mm), one per side | 2 | [Thorlabs DTS25](https://www.thorlabs.com/1-inch-25-mm-travel-dovetail-translation-stages?pn=DTS25/M); [DTS25/M](https://www.thorlabs.com/item/DTS25_M) | 233.88 each | **Changed** (PI) from 80/20 framing. Its design *waits on* rig geometry. Symmetric or independent carriages is the *PI's call* (§7.1.3) |
 | 8 | Direct-view camera mount (primary) | The cameras and lights sit on the head-post frame, **independent of the monitor**, below the screen at about 30–35° (panel comparison §4.2) | The IPD system (row 7) on a 3D-printed bracket from the frame | 1 | panel comparison | — | **Changed** (PI). At the paper's 57 cm and 35°, the camera is 46.7 cm forward of the eyes and 32.7 cm below them (panel comparison §4.2). *Waits on* the direct-view working distance |
@@ -502,7 +508,8 @@ about a smaller LED with a collimator):
   the LEDD1B, and its price is published. Mightex is the alternative if its housing proves
   smaller.
 
-**The driver.** It is two single-channel LEDD1Bs, one per eye.
+**The driver.** It is two single-channel LEDD1Bs, one per eye. The alternatives, and how each
+enforces a cap, are compared in §7.10.
 
 - Thorlabs' only multi-channel driver with modulation is the
   [DC4100](https://www.thorlabs.com/item/DC4100): four channels with **one** modulation
@@ -543,10 +550,10 @@ about a smaller LED with a collimator):
   - The LEDD1B's trim-pot limit goes down to 200 mA and no lower (Thorlabs).
   - If the safe current is below 200 mA, that limit does not protect the eye. The fix is
     then one of:
-    - a fixed attenuator in the light (a neutral-density filter or an aperture), sized so the
-      eye stays under the limit at 200 mA; or
-    - a driver whose limit reaches the value. Mightex's is a software setting, not a
-      hardware stop.
+    - a fixed attenuator in the light (a neutral-density filter or an aperture); or
+    - a driver whose hardware limit reaches the value.
+  - §7.10 compares the drivers and recommends the attenuator, sized for the driver's highest
+    possible current, behind the LEDD1B's trim-pot limit.
 
 #### 7.1.3 The IPD adjustment system: requirements
 
@@ -613,9 +620,9 @@ about a smaller LED with a collimator):
 | C6 | CS-to-C spacer | A C-mount lens on the CS body | Teledyne **ACC-01-5004** | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/) | 11.80 | **Kept.** *Decided* |
 | C7 | USB host card | One controller per camera (P9 §2). Four cameras are 1.24 GB/s through one PCIe 2.0 x4 card (arithmetic) | Teledyne **ACC-01-1205** (§7.1 row 14) | 1 (2 for 8 cameras) | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis) | 148.00 | **Kept.** *Decided.* Whether one card sustains four cameras is P9 bring-up check 2 |
 | C8 | USB cables | Passive runs of 5 m or less (Teledyne); active beyond that | Teledyne **ACC-01-2300** (3 m) or **ACC-01-2301** (5 m), locking. Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16** | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 24.60 / 37.50; Newnex's price is not published | **Waits** (PI) on the layout and a possible passthrough panel (§7.8) |
-| C9 | GPIO cables | Camera GPIO to the fan-out box and the sync box | Teledyne **ACC-01-3009** (1 m) or **ACC-01-3010** (4.5 m) | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 37.50 / 43.90 | **Waits** (PI), as C8 |
-| C10 | Trigger fan-out | The primary's exposure drives up to 7 secondaries' opto inputs (3.5–7 mA at 2.6 V or more), plus the lamps' strobe inputs | Pulse Research Lab **PRL-4110**, a 1:10 TTL fanout and 50 Ω line driver. Its TTL input switches between 50 Ω and 10 kΩ (VIH 2.0 V minimum, VIL 0.5 V maximum). Its back-terminated outputs give 5.0 V into high impedance and 2.5 V into 50 Ω, with 9 ns delay and 500 ps skew typical, on BNC | 1 | [PRL-4110](https://www.pulseresearchlab.com/products/prl-4110) | 1,850.00 with its supply | **Off the shelf** (PI). The electrical check against FLIR's figures is in §7.4. *Waits on* measuring the primary's Line 2 low level |
-| C11 | Behavior-group sync wiring | The primary samples the barcode every frame. The group's ExposureActive goes to GPIO27 (P9 §2; S3 §8) | Barcode from wl-sync's `CAM_SYNC_BEH1` BNC into the primary's Line 0. The primary's Line 1 (opto output) goes to wl-sync J6B, which is GPIO27. The primary's Line 2 goes to the fan-out input, pulled up to 5 V at the box (§7.4) | wiring | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm) | — | **Kept.** *Decided.* **Line 3 must not take the barcode**: its input high is 3.6 V at most, and the barcode is 5 V logic. Driving ExposureActive on Lines 1 and 2 at once is **UNVERIFIED** in Spinnaker |
+| C9 | GPIO cables | Camera GPIO to the fan-out board and the sync box | Teledyne **ACC-01-3009** (1 m) or **ACC-01-3010** (4.5 m) | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 37.50 / 43.90 | **Waits** (PI), as C8 |
+| C10 | Trigger fan-out board | The primary's exposure drives up to 7 secondaries' opto inputs (3.5–7 mA at 2.6 V or more), plus the two lamps' strobe inputs | **Custom** (§7.4): wl-sync's comparator front end, then one SN74AHCT541 channel and one 47 Ω series resistor per secondary, plus a lamp-strobe stage per lamp, checked against the LM75-850-W's strobe input | 1 | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm); wl-sync at `92714ce`; [TI SN74AHCT541, SCLS269Q](https://www.ti.com/lit/ds/symlink/sn74ahct541.pdf); [SVL LM75 datasheet](https://smartvisionlights.com/wp-content/uploads/LM75_Datasheet.pdf) | parts only, not priced | **Custom board after all** (PI, 2026-09-27), not the PRL-4110 ($1,850 with its supply). **Needs a design check** (§7.4). *Waits on* measuring the primary's Line 2 low level |
+| C11 | Behavior-group sync wiring | The primary samples the barcode every frame. The group's ExposureActive goes to GPIO27 (P9 §2; S3 §8) | Barcode from wl-sync's `CAM_SYNC_BEH1` BNC into the primary's Line 0. The primary's Line 1 (opto output) goes to wl-sync J6B, which is GPIO27. The primary's Line 2 goes to the fan-out board's input, pulled up to 5 V on the board (§7.4) | wiring | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm) | — | **Kept.** *Decided.* **Line 3 must not take the barcode**: its input high is 3.6 V at most, and the barcode is 5 V logic. Driving ExposureActive on Lines 1 and 2 at once is **UNVERIFIED** in Spinnaker |
 | C12 | Camera box: CPU | Acquisition and file writing for 4–8 streams | AMD **Ryzen 7 9700X**: 8 cores and 16 threads; 3.8 GHz base, 5.5 GHz boost; 65 W; AM5; PCIe 5.0, 28 lanes (24 usable); DDR5 to DDR5-5600 (2 × 1R); no cooler in the box, and AMD recommends a premium air cooler | 1 | [AMD](https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-7-9700x.html); [Newegg](https://www.newegg.com/amd-ryzen-7-9000-series-ryzen-7-9700x-granite-ridge-socket-am5-desktop-cpu-processor/p/N82E16819113843) | 339.00 (Newegg, new) | **AMD** (PI). *Decided* |
 | C13 | Motherboard | The GPU, two x4 USB cards and two NVMe drives, with no slot disabling another. ATX, for a rack case | ASUS **ProArt X870E-Creator WiFi**. From the CPU: 2 × PCIe 5.0 x16 slots (x16, x8/x8, or x8/x4/x4 with M.2_2) and M.2_1 and M.2_2 (PCIe 5.0 x4). From the chipset: a PCIe 4.0 x16 slot running at x4, and M.2_3 and M.2_4 (PCIe 4.0 x4). ATX, 30.5 × 24.4 cm; 10 GbE and 2.5 GbE | 1 | [ASUS spec](https://www.asus.com/motherboards-components/motherboards/proart/proart-x870e-creator-wifi/techspec/); [ASUS US](https://www.asus.com/us/motherboards-components/motherboards/proart/proart-x870e-creator-wifi/) | 549.99 (ASUS Store, showing "Notify me") | *Decided* for the list. The slot map is in §7.6. The 10 GbE is for the copy to wl-nas |
 | C14 | RAM | Acquisition buffers; no swapping; runs on AM5 | Corsair **Vengeance 32 GB (2 × 16 GB) DDR5-4800 CL40**, CMK32GX5M2A4800C40 | 1 kit | [Corsair DDR5 page](https://www.corsair.com/us/en/c/memory/ddr5-ram) | 399.99 (sale; list 505.99) | **Kept** (PI). It is a DDR5-4800 kit, under the 9700X's listed DDR5-5600. Whether it is on the board's qualified list is **UNVERIFIED** |
@@ -673,7 +680,11 @@ about a smaller LED with a collimator):
   BN850 page makes no such claim. This is checked at bring-up.
 - **Rerun when the geometry is set.** Change u and the field, and recompute f.
 
-### 7.4 The trigger fan-out, off the shelf
+### 7.4 The trigger fan-out board (custom; needs a design check)
+
+**A custom board after all** (PI, 2026-09-27), not the PRL-4110 ($1,850 with its supply). Its
+design is the first version's (§7.4 at `a898480`), with lamp-strobe outputs added. It **needs
+a design check**. The wiring findings of the off-the-shelf pass are kept below.
 
 **FLIR's figures for the BFS-U3-16S2** come from its
 [Input/Output Control](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm)
@@ -699,40 +710,68 @@ pages. They were measured with the opto I/O at 5 V / 1 kΩ and the non-isolated 
   joined.
 - FLIR says any hardware trigger giving a 3.3 or 5 V square wave can stand in for the primary.
 
-A **5 V** box must not drive Line 3, because Line 3's high is 3.6 V at most. It drives each
-secondary's **Line 0**, the opto input, which also keeps each secondary isolated.
+**The wiring findings** (kept from the off-the-shelf pass):
 
-**The pick: Pulse Research Lab PRL-4110** (C10). It has 10 outputs: 7 secondaries, 2 lamps
-(§7.7), and 1 spare or monitor. The electrical check follows, as arithmetic against the
-makers' figures.
+- **Secondaries on Line 0.** A 5 V board must not drive Line 3, because Line 3's high is
+  3.6 V at most. It drives each secondary's **Line 0**, the opto input, which also keeps each
+  secondary isolated.
+- **The primary feeds the board from Line 2** (open drain), pulled up to 5 V on the board.
+  - Line 1 stays wl-sync's (GPIO27). Its front end supplies its own pull-up, and a second
+    pull-up on the same output would move FLIR's operating point.
+  - **Line 2's low level is unpublished, so it is measured at bring-up** before the board is
+    trusted. It must sit well under the comparator's 2.50 V threshold.
 
-- **Output into a secondary's Line 0.**
-  - The output is 5.0 V into high impedance, behind a 50 Ω back-termination.
-  - At Line 0's 7 mA maximum, the 50 Ω drops 0.35 V, leaving about 4.65 V, well above 2.6 V.
-  - PRL does not publish its output current limit, so seven loads at once are **UNVERIFIED**
-    until bring-up.
-- **Output into a lamp's PNP input.** SVL gives 2.8 mA at 4 V and "> +4 VDC" to activate. At
-  about 3 mA (ASSUMED from the datasheet's trend), 5.0 V less 50 Ω × 3 mA is about 4.85 V.
-  That activates it, with under 1 V of margin.
-- **Input from the primary.**
-  - Line 1's published low (0.86–0.92 V at 5 V / 1 kΩ) is above the PRL's VIL maximum of
-    0.5 V. **Line 1 cannot feed the box directly**, and it is wl-sync's anyway.
-  - The input is Line 2 (open drain), pulled up to 5 V at the box. **Its low level is
-    unpublished, so it is measured at bring-up** before the box is trusted.
-  - If it fails, the first version's comparator stage (wl-sync's frame-time front end; §7.4
-    at `a898480`) goes in front of the box.
-- **Timing.**
-  - The box adds 9 ns (PRL).
-  - The secondaries' own trigger latency is not published by FLIR. So the primary-to-secondary
-    exposure skew is measured, with every camera imaging one LED pulse.
+**The circuit**, built from stages wl-sync already uses (wl-sync at `92714ce`):
 
-**The alternative: ESPER TriggerBox**
-([ESPER](https://www.esperhq.com/product/multiple-camera-trigger-triggerbox/)).
+1. **Input.** Line 2 into a copy of wl-sync's frame-time front end
+   (`hardware/breakout/frame-time-inputs.md`): 100 Ω, a BAT54S clamp, and an LM339 on +12 V
+   with a 2.50 V threshold and about 33 mV of hysteresis. It is a comparator because Line 2's
+   low level is unpublished; a TTL input's margin would be a coincidence.
+2. **Secondaries.** One SN74AHCT541: one channel and one 47 Ω series resistor per secondary,
+   as wl-sync drives its camera BNCs (its finding F4). Seven secondaries and a monitor output
+   fill its eight channels. Checked against TI's figures (SCLS269Q, rev. August 2024, read
+   2026-09-27) as arithmetic:
+   - **Output high.** TI guarantees VOH ≥ 3.8 V at 8 mA with VCC = 4.5 V, over temperature.
+     Less 47 Ω × 7 mA = 0.33 V, Line 0 sees at least 3.47 V, above its 2.6 V high. This
+     settles the first version's open question.
+   - **Current.** Seven loads at 7 mA are 49 mA: each under the recommended 8 mA per output,
+     and together inside the 75 mA package limit (wl-sync `datasheet-params.toml`,
+     `[sn74ahct541]`).
+3. **Lamp strobes, checked against the LM75-850-W** (SVL datasheet, rev. 09/25/26). Its PNP
+   input activates above +4 V (24 V at most) and draws 2.8 mA at 4 V, 8.8 mA at 12 V and
+   17.6 mA at 24 V. Its NPN input activates below 1 V and sinks 14.4 mA at 0 V. One or the
+   other, not both. **Neither is safely driven by a '541 channel** (arithmetic):
+   - **PNP.** TI guarantees VOH ≥ 4.4 V only at 50 µA, and ≥ 3.8 V at 8 mA (VCC = 4.5 V).
+     Nothing between is guaranteed at about 3 mA, and the 47 Ω takes another 0.13 V. So
+     "above 4 V" is not guaranteed. On a 5.0 V rail it is likely, but unpublished (INFERENCE).
+   - **NPN.** 14.4 mA is over the 8 mA per output. Through 47 Ω it drops 0.68 V before the
+     output's own low (0.44 V at 8 mA), so the input sits above 1 V.
+   - So **each lamp gets its own stage**: a high-side switch driving the PNP input from a
+     supply well above 4 V, or an open-collector or open-drain transistor sinking the NPN
+     input. Which, and its part, is the design check's.
+   - The lamp's trigger returns to its own 24 V supply's ground, so either stage joins that
+     ground to the board's unless it is optically isolated (INFERENCE). The no-added-noise
+     check (P9 §6, check 4) decides whether that matters.
+4. **Power and ground.** +12 V in for the LM339, and +5 V regulated on the board for the
+   pull-up and the buffer. The board's ground is the primary's camera ground (pin 6) and each
+   secondary's opto ground (pin 5).
+5. **Polarity.** Which edge starts a secondary's exposure is set in the camera file (P9 §3)
+   and verified at bring-up.
 
-- It has 6 outputs per unit, each 3.3 or 5 V TTL or a contact closure. Units can be linked,
-  and the delay is 2 µs in its "all trigger" mode. It costs £220 before VAT.
-- Two units would be needed for 7 secondaries and the lamps.
-- Its output current is not published (**UNVERIFIED**), and its 3.5 mm jacks do not lock.
+**The design check must settle:**
+
+- the lamp stage, its part and its grounding;
+- Line 2's measured low level against the 2.50 V threshold;
+- whether Lines 1 and 2 can both carry ExposureActive (C11; **UNVERIFIED** in Spinnaker);
+- the secondaries' trigger latency, which FLIR does not publish. The primary-to-secondary
+  exposure skew is measured with every camera imaging one LED pulse;
+- the connectors and the enclosure.
+
+**Not chosen** (the off-the-shelf pass): the Pulse Research Lab
+[PRL-4110](https://www.pulseresearchlab.com/products/prl-4110), a 1:10 TTL fan-out with
+back-terminated BNC outputs, 9 ns typical delay, $1,850 with its supply; and the
+[ESPER TriggerBox](https://www.esperhq.com/product/multiple-camera-trigger-triggerbox/),
+6 outputs per unit on 3.5 mm jacks that do not lock, £220 before VAT.
 
 **For wl-sync (an ask, not a change here).** Its `[flir_bfs_gpio]` pins the BFS-U3-200S6
 page's 0.87 V low. The 16S2 page gives 0.92 V unloaded and 0.86 V loaded at the same
@@ -902,11 +941,13 @@ The demand, as arithmetic:
 - If the power supply costs what its siblings do, $144–189 is left for a rack case and a
   cooler. That is likely too little: no rack-case price was read, so this is an INFERENCE.
   **Expect the total to pass $4,690.**
+- **The PI accepts a modest overrun** of the camera-box budget (2026-09-27). The rack case
+  and the cooler are still chosen with cost in view; "modest" has no number.
 - **Against the first version** ($4,686.93): the CPU is $65.00 cheaper and the board $60.00
   dearer. The power supply, case and cooler are replaced by rack-fit parts.
 - **Eight cameras** add a second ACC-01-1205 ($148) in the chipset slot, and at 10:1 another
   8 TB.
-- **Outside the budget:** the cameras, lenses, filters, lamps, cables and the fan-out box. So
+- **Outside the budget:** the cameras, lenses, filters, lamps, cables and the fan-out board. So
   is a separate OS drive: the OS shares drive 1 here.
 - **Not sized here:** P10's tracker running on this box later (the spike's §9 item 7).
 
@@ -926,8 +967,9 @@ The demand, as arithmetic:
     wiring** unless exposures are that short.
   - **The trigger** is PNP (above +4 V, 24 V at most) or NPN (below 1 V), not both.
 - **Strobed only during behavior exposures** (PI).
-  - A spare channel of the fan-out box drives each lamp's PNP input. The box's input is the
-    primary's exposure output, so the lamps are on while the primary exposes.
+  - A lamp-strobe stage on the fan-out board drives each lamp's trigger input; a '541
+    channel cannot, and the stage is part of the board's design check (§7.4). The board's
+    input is the primary's exposure output, so the lamps are on while the primary exposes.
   - The secondaries start later by their own trigger latency, which FLIR does not publish.
     The tail of their exposures may go unlit by that much.
   - This is measured in the skew test (§7.4). If it matters, the secondaries' exposure is set
@@ -969,8 +1011,8 @@ the cables cross it, and the layout decides it. This is what it implies:
        3001-15), Newnex (FireNEX-UL-8 and -12) and Alysium (A70-8403);
     3. a USB3 bulkhead coupler, qualified by a 12-hour, 8-camera run with no drops (check 2).
 - **GPIO and trigger lines.**
-  - BNC bulkhead feedthroughs suit the barcode, ExposureActive and trigger lines, since the
-    fan-out box is BNC.
+  - BNC bulkhead feedthroughs suit the barcode, ExposureActive and trigger lines, if the
+    fan-out board's connectors are BNC as wl-sync's are (the design check picks them).
   - The Hirose HR10 camera cables go through a gland. Panel-mount HR10 receptacles were not
     looked up (**UNVERIFIED**).
 - **Grounding.** A metal panel joins the cable shields to whatever the panel is bonded to. It
@@ -993,14 +1035,132 @@ the cables cross it, and the layout decides it. This is what it implies:
   - 12 hours at 200 fps with no drops, on an AMD host, with ASPM off;
   - no added neural noise.
 - **The tracker's light at the eye.** It is measured with a power meter, and the driver
-  current is capped (§7.1.2).
-- **The primary's Line 2 low level** into the fan-out box (§7.4).
+  current is capped (§7.1.2). The attenuator's OD is chosen from that measurement (§7.10).
+- **The primary's Line 2 low level** into the fan-out board, and the board's design check
+  (§7.4).
 - **The ASUS proximity sensor.** It is still open whether the Neo Proximity Sensor and pixel
   cleaning can be turned off (open item 3). How the sensor senses is not published. So
   whether the tracker's 940 nm light affects it is **UNVERIFIED**.
 - **The direct-view design.** It sets the viewing distance (57–65 cm), and with it the camera
   angle, the lens, the mount, and the photodiode shields. The stereoscope drawing's recompute
   for 26.5" sets the secondary mount.
+
+### 7.10 Eye-light drivers and the safety cap
+
+**The question** (PI, 2026-09-27: "can you find alternative drivers first then decide?"). The
+LEDD1B's current limit stops at 200 mA (§7.1.2). If the safe level at the eye is below what
+the M940L3 gives at 200 mA, the driver cannot enforce it. What matters most is a **hard cap**:
+one set in hardware, which neither a knob nor a control signal can exceed. Sources are the
+makers' own pages and manuals, read 2026-09-27 (UTC). Edmund was checked first.
+
+**Does the LEDD1B's MOD input go below 200 mA? Yes, down to zero, but not as a hard cap.**
+
+- In MOD, 0–5 V maps linearly onto 0 mA to the trim-pot limit: "the current limit equals the
+  LED current for maximum input voltage of 5V" (manual, §3.2). At a 200 mA limit, 1 V gives
+  40 mA (arithmetic). The zero-set-point offset is 10–40 mV.
+- In CW and TRIG, the knob likewise spans 0 mA to the limit.
+- **The hard cap is still the trim pot.** Thorlabs says the limit holds "regardless of the
+  other settings or the modulation input voltage". Anything lower is only as firm as its
+  source: a MOD voltage from a DAQ or the task is a software cap, and the knob can be turned
+  up.
+- A MOD voltage fixed in hardware (a divider on a fixed reference) would be a hard cap, but
+  it is a custom circuit (INFERENCE). The manual forbids a negative voltage or more than 5 V
+  at MOD IN.
+- **With nothing connected to MOD IN, the LED is off** (manual, §3.5), so a pulled cable fails
+  dark.
+
+| Driver | Lowest setting (resolution) | Max current | Hard cap? | Modulation input | Ch. | Fits the M940L3 | Power | Price |
+|---|---|---|---|---|---|---|---|---|
+| Thorlabs **LEDD1B** ([page](https://www.thorlabs.com/t-cube-tm-led-driver?pn=LEDD1B), [manual](https://media.thorlabs.com/globalassets/items/l/le/led/ledd1b/20947-d02.pdf)) | 0 mA by knob or MOD; limit 200–1200 mA by trim pot (continuous; resolution not published) | 1200 mA | **Yes, at 200 mA or more** (the trim pot) | MOD 0–5 V, 10 kΩ, 0–5 kHz sine, slew 13.6 mA/µs; TRIG TTL (high ≥ 2 V, low ≤ 0.55 V), 0–1 kHz, rise 51 µs, fall 79 µs | 1 | Yes: M8, listed by Thorlabs | 15 V, KPS201 | 380.04 + 43.15 |
+| Thorlabs **DC40** ([page](https://www.thorlabs.com/4.0-a-led-driver)) | 0 A by knob; limit 0.1–4.0 A, from the LED's EEPROM or the software GUI, accurate to ±(1.0% + 25 mA) | 4.0 A | **No**: firmware, set over USB. MOD is clamped to it | TTL (high 2.6–5.0 V), DC–5 kHz; MOD 0–5 V at 800 mA/V, DC–5 kHz | 1 | Yes: M8, listed | 15 V supply included | 770.40 |
+| Thorlabs **DC2200** ([page](https://www.thorlabs.com/led-driver-for-high-power-and-mounted-leds?pn=DC2200), [manual](https://media.thorlabs.com/globalassets/items/d/dc/dc2/dc2200/mtn005097-d02.pdf)) | 0 A; 0.1 mA resolution; user limit from "1" (the manual gives no unit) to the LED's EEPROM maximum | 2.0 A (M8 terminal) | **No**: firmware, set on the touchscreen or over USB. Past the limit in external modulation a limit indicator trips; clamp or shut-off is **UNVERIFIED** | Analog 0–5 V at 400 mA/V, DC–250 kHz (small signal); TTL, DC to ≥ 18 kHz | 1 | Yes: M8 (LED2), listed | Included | 2,593.01 |
+| Thorlabs **DC4100 / DC4104** ([page](https://www.thorlabs.com/advanced-four-channel-led-driver?pn=DC4100), [manual](https://media.thorlabs.com/globalassets/items/d/dc/dc4/dc4104/doc-101098.pdf)) | 0 mA; 1 mA resolution, ±10 mA; per-channel user limit | 1000 mA | **No**: firmware. External control is "Clipped to Limit", and a hidden menu raises the LED's own maximum until power-off (DC4104 manual) | 0–10 V at 100 mA/V, 0–100 kHz sine: one input for all four (DC4100) or one each (DC4104) | 4 | Through the DC4100-HUB ($401.67); 5 V maximum forward voltage, against the M940L3's 2.75 V typical | Not read | 3,354.38 / 3,691.20, + hub |
+| Mightex **SLA-1000-2** ([page](https://www.mightexsystems.com/product/sla-series-two-channel-led-drivers-with-manual-and-analog-input-controls/), [datasheet](https://mightex.wpenginepowered.com/wp-content/uploads/2019/04/SLA_leddriver_datasheet_v3p2_Apr2013.pdf)) | 0 mA by knob or analog; resolution not published (finer at a lower cap) | 1000 mA | **Yes, by DIP switch per channel: 350, 500 or 1000 mA** | Analog 0–5 V, linear; 1 kHz maximum. No separate TTL input | 2 | Bare LED+ / LED− pins: needs Thorlabs' CON8ML-4 female M8 lead ($39.10) per LED | 9–24 V; whether a supply is included was not read | €524.80 per 2 channels |
+| Mightex **SLA-0100-2** (same page) | As above | **100 mA**: cannot run the M940L3 at its rating | **Yes: 30, 50 or 100 mA** | As above; 50 kHz maximum | 2 | As above | As above | €524.80 per 2 channels |
+| Mightex **SLC-AA04 / SA04** ([page](https://www.mightexsystems.com/product/slc-sa-aa-series-universal-four-channel-led-controllers-with-external-triggers/)) | 0 mA; 12-bit | 1000 mA normal; **3500 mA** in strobe or trigger | **No**: a software limit ("built-in security feature") | Trigger per channel, high 4.5–10 V, which a 5 V logic output may not reach (INFERENCE) | 4 | Mightex connectors; an adapter is **UNVERIFIED** | 9–24 V | €1,395.20–2,265.60 |
+| Doric **LEDD** ([page](https://neuro.doriclenses.com/products/led-drivers), [manual](https://doriclenses.com/downloads/UserManual/UserManual_LED_Light_Source_V2.1.1.pdf)) | 40 mA; in low-power mode 2.5 mA (manual) or 4 mA (page), with a 200 mA ceiling | 2000 mA | **No**: the maximum is set with the front knob, and the software offers overdrive | TTL (high > 2.8 V); analog 0–5 V at 400 mA/V; rise and fall < 10 µs; 10 kHz | 1, 2 or 4 | M8 female; whether its pin-out matches Thorlabs' is **UNVERIFIED** | Included | Not published |
+| **Passive: Edmund NIR ND** ([#47-530](https://www.edmundoptics.com/p/10-od-25mm-dia-nir-nd-filter-/7611/)), row 5c | — | — | **Yes, optically**: transmission is 10^−OD at every current | — | 1 per light | Ø25 mm, in the collimator's output through SM1A38 and a retainer ring | None | 126.00 + 31.62 + 5.25 |
+
+**Checked and set aside:**
+
+- **Edmund Optics.** Its searches for "LED driver" and "LED controller" show no
+  constant-current driver for a mounted LED. The nearest are the Visionlux
+  [24V LED Controller #73-651](https://www.edmundoptics.com/p/24v-led-controller/55877/)
+  (200–2000 mA, a P1J connector, listed with Edmund's telecentric ring-light kit, $270) and
+  CCS's [PD2 controllers](https://www.edmundoptics.com/p/power-supply-pd2-3012-a/47268/) for
+  CCS lights ($570).
+- **Thorlabs has no K-Cube LED driver.** Its
+  [LED-driver list](https://www.thorlabs.com/led-drivers) is the LEDD1B, the upLED, the DC40,
+  the DC2200, a basic driver for Solis LEDs, and the DC4100/DC4104. The
+  [upLED](https://www.thorlabs.com/constant-current-usb-controlled-led-driver) (1.2 A, 1 mA
+  steps, $575.56) has no modulation input.
+- **Mightex, other lines.** The
+  [SLC-MA01-U](https://www.mightexsystems.com/product/compact-universal-1-and-2-channel-led-controllers/)
+  has no external trigger (€608). The
+  [SLB-1200-1](https://www.mightexsystems.com/product/slb-series-manual-analog-input-controlled-universal-led-driver-with-current-display/)
+  (DIP caps of 350, 750 or 1200 mA; €844.80) and the
+  [BLS-1000-2](https://www.mightexsystems.com/product/bls-high-speed-led-drivers/) (500, 750 or
+  1000 mA; from €1,561.60) have hard caps, but none lower than the LEDD1B's.
+- **Prizmatix's** [UHPTLCC-02](https://www.prizmatix.com/LEDUHP/Benchtop-UHP-T-LED-Controllers.aspx)
+  controls Prizmatix's own heads, whose driver is inside the head, so it cannot drive the
+  M940L3.
+- **Opto Engineering's** [LTDV1CH-17V](https://www.opto-e.com/en/products/ltdv-series/LTDV1CH-17V)
+  is a machine-vision strobe controller with 0.16 A continuous at most, priced by quote.
+
+**The attenuator.**
+
+- **Edmund's TECHSPEC NIR ND** ([family](https://www.edmundoptics.com/f/near-ir-nir-neutral-density-nd-filters/13025/))
+  is specified flat across 700–1100 nm, which covers 940 nm. It comes in OD 0.3–3.0 at
+  Ø25 mm. Its OD tolerance is ±10%, so OD 1.0 passes 7.9–12.6% (arithmetic).
+  - It is reflective, with the mirrored side toward the LED. So most of the rejected light is
+    sent back toward the LED rather than absorbed in the filter (INFERENCE).
+- **Thorlabs' absorptive NE-series**, such as
+  [NE10A](https://www.thorlabs.com/mounted-absorptive-neutral-density-filters?pn=NE10A) in an
+  SM1-threaded mount at $64.18, is cheaper. But Thorlabs selects its glass for flat absorption
+  over 400–650 nm only, so its OD at 940 nm would have to be read off its curve or measured.
+- **The fit.** The SM1U25-B's output is internal SM2 on a removable adapter. Removing it
+  exposes internal M34 × 0.5, and Thorlabs names the SM1A38 (external M34 × 0.5, internal SM1)
+  as the SM1 alternative ([Thorlabs](https://www.thorlabs.com/mounted-leds?pn=SM1U25-B)).
+  The filter sits in the SM1A38 under an SM1 retainer ring. Whether it is deep enough is
+  **UNVERIFIED**; if not, a short SM1 lens tube carries it.
+
+**Recommendation: keep the LEDD1B, and put the ND behind it as a cap that does not depend on
+the driver.** The choice is the ***PI's call***. Per eye:
+
+1. **The ND's OD is chosen at bring-up**, so the eye stays under the limit at the highest
+   current the LEDD1B can deliver, 1200 mA, not at the setting.
+   - The power meter reads the eye position with the filter in place and the LED at its
+     1000 mA rating. So the filter's own tolerance is inside the reading.
+   - The OD then carries at least a 1.2× margin for the driver's 1200 mA. This is ASSUMED:
+     the LED's output rises no faster than its current.
+2. **The trim pot is set to 1000 mA or less** (Thorlabs asks for the LED's rating anyway) and
+   covered with a tamper-evident seal.
+3. That gives **two independent hardware layers**. The ND alone keeps the eye under the
+   limit even at the driver's maximum. The trim pot keeps the current at or below the
+   1000 mA the ND was measured at, so the 1.2× margin stays spare. The knob and the MOD
+   voltage then work below both.
+4. **The filter is checked** at every bring-up and whenever the light is serviced. The
+   eye-position measurement is repeated whenever the light, collimator, filter or driver
+   changes (§7.1.2).
+
+**The cost per eye** (arithmetic):
+
+- LEDD1B $380.04 + KPS201 $43.15 + ND $126.00 + SM1A38 $31.62 + retainer $5.25 = **$586.06**.
+  Of that, the cap's parts are $162.87.
+- Both eyes: $1,172.12.
+- The ND's price is for OD 1.0. Other ODs' prices were not read.
+
+**Why not the others:**
+
+- **The fine, low limits are all firmware.** The DC40, DC2200, DC4100/4104, Doric and the
+  Mightex SLC can each be raised from a front panel or a USB link. The Thorlabs ones cost
+  $770.40–3,691.20 per driver.
+- **Mightex's DIP caps are hardware, but coarse.**
+  - The SLA-1000-2's lowest is 350 mA, above the LEDD1B's 200 mA.
+  - The SLA-0100-2's 30/50/100 mA cannot reach the LED's rating. It helps only if the measured
+    safe current is 100 mA or less. It is then a fallback at €262.40 per eye, plus a
+    CON8ML-4 and a 9–24 V supply.
+- **The ND works with whichever driver is bought.**
 
 ---
 
