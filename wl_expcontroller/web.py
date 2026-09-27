@@ -845,10 +845,12 @@ _LOGO = (
 #: **The stale timer runs from the frame's age, not from an event's arrival**
 #: (Ruling 12, 2026-09-27). Every event carries `age`, the seconds `wlx serve` has
 #: held the latest frame; the baseline is the arrival less that, and the stream is
-#: stale once `now - baseline` passes `--stale-after`, with that interval as the
-#: banner's N. A `null` age -- no frame yet -- runs no timer. It shares with `/health`
-#: *when* frames are due (`live`, `health.expects_frames`), not the clock: this one
-#: is the browser's, carried from `wlx serve`'s steady clock by `age`.
+#: stale once `now - baseline` reaches `--stale-after` -- `>=`, so the page agrees
+#: with `/health`'s own boundary -- with that interval as the banner's N. A `null`
+#: age -- no frame yet -- runs no timer. It shares with `/health` *when* frames are
+#: due (`live`, `health.expects_frames`), not the clock: this one is the page's own
+#: `performance.now()`, monotonic so a browser clock step never skews it, carried
+#: from `wlx serve`'s steady clock by `age`.
 #:
 #: **A lost stream is greyed as a stale one is** (m3): the timer stands down while
 #: the stream is lost, so without this a red *stream lost* banner sat over
@@ -877,8 +879,8 @@ _SCRIPT = """
       say("");
       return;
     }
-    var held = Date.now() - baseline;
-    if (held > staleMs) {
+    var held = performance.now() - baseline;
+    if (held >= staleMs) {
       body.classList.add("stale");
       say("stream stale · last frame " + Math.floor(held / 1000) + " s ago", "warn");
     } else {
@@ -893,7 +895,7 @@ _SCRIPT = """
       if (node) { node.innerHTML = payload.frags[id]; }
     });
     live = payload.live;
-    baseline = payload.age === null ? null : Date.now() - payload.age * 1000;
+    baseline = payload.age === null ? null : performance.now() - payload.age * 1000;
     lost = false;
     check();
   }

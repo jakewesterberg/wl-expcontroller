@@ -242,10 +242,11 @@ welfare number and bounds nothing.
   clock (`null` before any) (Ruling 12, 2026-09-27).
 - **Stale** (no frame for `--stale-after`): a banner reading *stream stale · last frame N s
   ago*, and the values are greyed. The page's timer runs only while frames are due, from a
-  baseline of the event's arrival less its `age`: stale once *now − baseline* exceeds
-  `--stale-after`, and N is *now − baseline*. So a page that connects onto an already-old
-  frame, or is woken by a refused one, does not restart the clock, and a `null` age runs no
-  timer (Ruling 12, 2026-09-27).
+  baseline of the event's arrival less its `age`, both on `performance.now()` (monotonic,
+  so a browser clock step cannot skew it): stale once *now − baseline* reaches
+  `--stale-after` (`>=`, matching `/health`'s own boundary), and N is *now − baseline*. So
+  a page that connects onto an already-old frame, or is woken by a refused one, does not
+  restart the clock, and a `null` age runs no timer (Ruling 12, 2026-09-27).
 - **Lost:** a banner reading *stream lost*, and the values are greyed as when stale
   (2026-09-27: the stale timer stands down while the stream is lost, so without this the
   banner sat over full-color numbers). The browser reconnects on its own and re-renders in

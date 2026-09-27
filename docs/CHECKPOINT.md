@@ -353,14 +353,16 @@ same handoff. Start b2 next, from the P4d-2b spec §2 and §4.0.
   tick colors are by family, where the mockup's were not.
 - **The page's stale banner** runs only while frames are due (running, or awaiting the
   return) — the same answer `/health` uses for *when* frames are due
-  (`health.expects_frames`), and not the same measure. `/health` is stale when
-  `frame_age_s >= --stale-after` on `wlx serve`'s steady clock. The page is stale when
-  `Date.now() − baseline > --stale-after` on the browser's clock, where the baseline is the
-  event's arrival less its `age` (Ruling 12, 2026-09-27). Every event carries `age`, and a
-  keepalive tick re-renders from a fresh snapshot instead of sending a comment, so the time
-  since the last reward and *wl-works sees* move between frames. Before this, a stalled
-  stream kept `ok · Last frame 0 s ago` on the page while `/health` said `degraded`, and a
-  page that reconnected onto an old frame showed no stale banner for `--stale-after`
+  (`health.expects_frames`). **The two now agree on the boundary as well**: `/health`
+  is stale when `frame_age_s >= --stale-after` on `wlx serve`'s steady clock, and the
+  page is stale when `performance.now() − baseline >= --stale-after` on its own
+  monotonic clock — `performance.now()`, not `Date.now()`, so a browser clock step
+  cannot skew the timer — where the baseline is the event's arrival less its `age`
+  (Ruling 12, 2026-09-27). Every event carries `age`, and a keepalive tick re-renders
+  from a fresh snapshot instead of sending a comment, so the time since the last
+  reward and *wl-works sees* move between frames. Before this, a stalled stream kept
+  `ok · Last frame 0 s ago` on the page while `/health` said `degraded`, and a page
+  that reconnected onto an old frame showed no stale banner for `--stale-after`
   seconds.
 - **A refused frame:** a schema-6 `wlx run` beside a schema-7 `wlx serve` shows a
   *Refused* banner, by design. **Ruling 11 (2026-09-27; put to the PI at handoff):** a

@@ -634,17 +634,20 @@ def test_the_script_does_only_what_spec_4_3_asks():
 def test_the_stale_timer_runs_from_the_frames_age_not_from_arrival():
     """Ruling 12 (2026-09-27). Python cannot run the script, so its text is pinned
     where it is load-bearing: the baseline is the event's arrival less the `age`
-    `wlx serve` sends, stale is `now - baseline` beyond `--stale-after`, the banner's
-    N is that same interval, and a `null` age -- no frame yet -- runs no timer. The
-    old `last = Date.now()` reset is what let a reconnect onto an old frame, or a
-    refusal's wake-up, restart the clock."""
+    `wlx serve` sends, stale is `now - baseline` at or beyond `--stale-after` --
+    `>=`, so the page agrees with `/health`'s own boundary -- the banner's N is that
+    same interval, and a `null` age -- no frame yet -- runs no timer. `now` and the
+    baseline are both `performance.now()`, monotonic, so a browser clock step never
+    skews the timer. The old `last = Date.now()` reset is what let a reconnect onto
+    an old frame, or a refusal's wake-up, restart the clock."""
     assert "last = Date.now()" not in _SCRIPT
+    assert "Date.now()" not in _SCRIPT
     assert (
-        "baseline = payload.age === null ? null : Date.now() - payload.age * 1000;"
+        "baseline = payload.age === null ? null : performance.now() - payload.age * 1000;"
         in _SCRIPT
     )
-    assert "var held = Date.now() - baseline;" in _SCRIPT
-    assert "if (held > staleMs) {" in _SCRIPT
+    assert "var held = performance.now() - baseline;" in _SCRIPT
+    assert "if (held >= staleMs) {" in _SCRIPT
     assert '"stream stale · last frame " + Math.floor(held / 1000) + " s ago"' in _SCRIPT
     assert "if (!live || baseline === null) {" in _SCRIPT
 
