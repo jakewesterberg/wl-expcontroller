@@ -1237,6 +1237,14 @@ bot check was served. Each row carries its finding; this is the summary.
      lens's front-thread question (C3).
    - Against: it is not threaded onto the lens, as the PI decided. Its 33 nm band is narrower
      than ±25 nm. Whether it fits in the CS body behind the 5 mm spacer is **UNVERIFIED**.
+   - **The PI's answer (2026-09-28): check the fit first, then decide.** Two checks, from
+     Edmund's mechanical drawing or a question to Edmund:
+     - whether it threads in behind the 5 mm CS-to-C spacer;
+     - whether the lenses still focus at the planned distances, since a glass filter behind
+       the lens shifts the focal plane by roughly a third of its thickness (thickness × (1 −
+       1/n); arithmetic, n about 1.5).
+
+     Until then, the MidOpt BN850 stays in C5.
    - The 940 nm twin, [#73-322](https://www.edmundoptics.com/p/narrow-nir-940nm-c-mount-bandpass-filter/54810/),
      is not needed: row 4 already has an Edmund filter for the lens thread.
 
@@ -1247,7 +1255,7 @@ bot check was served. Each row carries its finding; this is the summary.
   - spacers 6 × $17.20 = $103.20, and tripod adapters 6 × $6.20 = $37.20;
   - USB cables $112.60 (5 m to the tracker, 3 m to the behavior cameras) or $141.00 (all 5 m);
   - GPIO cables $3.00 (all 1 m) or $162.60 (all 4.5 m);
-  - so **+$256.00 to +$444.00**.
+  - so **+$256.00 to +$444.00**. **The PI accepts it (2026-09-28): Edmund anyway**, one vendor where possible.
 - The stages save $43.76 and the lamps $2.00.
 - **Net: +$210.24 to +$398.24 a rig**, plus $22.75 for the diffuser, which was not priced
   before. Buying those accessories from Teledyne direct instead is a per-row choice.
