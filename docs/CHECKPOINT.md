@@ -350,19 +350,44 @@ is now `main`'s). Then execute it subagent-driven, as b1 was.
   request is answered only when its `Host` names the console.
 - **Rig machines may connect to wl-works** (PI, 2026-09-27) -- for b2b's sign-in. A
   permission, not a route: today the lab LAN has no route to wl-works.
-- **The camera, its own package after b2** (PI, 2026-09-27). The separate behavioral-camera
-  system the lab had planned is folded into expcontroller: **one camera box per rig**
-  (a new S0 role, `rig/cam`), **headless**, running a daemon beside `taskd` ("treated as a
-  part of expcontroller that happens to run on a seperate box"), every control and
-  setting in expcontroller and the session configuration. It hosts every camera -- several
-  high-speed behavioral cameras for offline analysis, and an always-on monitoring camera
-  for sleepiness and state -- all **Blackfly S BFS-U3-16S2M-CS**, the eye tracker's own
-  body (maker's page read 2026-09-27: IMX273 mono global shutter, no filter, opto-isolated
-  trigger input). Triggered by the rig's sync box. **The eye tracker's IR is 940 nm**, so
-  the monitoring camera first tries seeing by the tracker's light alone, then a 940 nm
-  lamp strobed between the tracker's exposures, and 850 nm only if proven invisible and
-  filtered. Viewed only by people who can control. These are written into the P4d-2b
-  spec §6 on the b2a branch.
+- **The cameras, their own package after b2** (PI, 2026-09-27; its brainstorm has
+  started). The separate behavioral-camera system the lab had planned is folded into
+  expcontroller:
+  - **One headless camera box per rig** (a new S0 role, `rig/cam`), running a daemon
+    beside `taskd`, "treated as a part of expcontroller that happens to run on a seperate
+    box". Every control and setting lives in expcontroller and the session configuration.
+  - **2 to 6 cameras, all dual-purpose**: the high-speed behavioral cameras *are* the
+    monitoring cameras, and the console's live view is a thinned preview of chosen ones.
+  - **Every camera is a Blackfly S BFS-U3-16S2M-CS**, the eye tracker's own body (maker's
+    page read 2026-09-27: IMX273 mono global shutter, no filter, opto-isolated trigger
+    input).
+  - **For face (eyes, mouth, licking), hands and arms, body and posture, and 3D pose
+    from several views**, so every camera exposes on one shared hardware trigger.
+  - **200 fps, recording the whole session, compressed visually lossless on the box's
+    GPU.** That is about 1.9 GB/s raw across six cameras, so a USB3 controller per camera.
+    The GPU's encoding capacity is measured, not assumed.
+  - **The eye tracker's IR is 940 nm.** The cameras first try seeing by the tracker's light
+    alone, then a 940 nm lamp strobed between the tracker's exposures (which needs one
+    clock for both), and 850 nm only if proven invisible and filtered.
+  - Viewed only by people who can control.
+  - **A shared headless camera framework** (acquisition, triggering, recording, control
+    and health through expcontroller). The camera box is its first user.
+- **The eye tracker: a feasibility spike on reimplementing OpenIrisDPI** (PI, 2026-09-27)
+  as a headless expcontroller service on that framework. The PI chose to go straight to
+  the spike rather than first drive OpenIrisDPI through its remote API. The spike answers:
+  - P1 and P4 at 500 Hz on two cameras, on Linux: which language for the core;
+  - precision against OpenIrisDPI on the same recorded frames;
+  - the license approach: OpenIris is AGPL-3.0 and OpenIrisDPI GPL-3.0, while this
+    repository is Apache-2.0. A clean-room build from the paper versus a port is the PI's
+    call when the spike starts.
+- **A flaky test was behind two red runs** (fixed, `403de3c`).
+  `test_the_closed_interval_is_printed_once_the_return_is_taken` asserted an exact
+  "0 minutes" for an interval opened at `_hhmm()`, the minute truncated. A run crossing a
+  minute boundary reads "1 minute", which is right. That failed the b1 branch's CI sweep on
+  its *restored* run (run `36309285075`: departure 10:37, return 10:38), the only red in
+  it, and is the likely cause of the unexplained 2026-09-25 nightly. Both such assertions
+  now accept 0 or 1 minute, and still fail on a wrong interval (checked by shifting the
+  departure 60 s and 300 s). CI on the fix: `cli` swept, 23 caught, restored 1124.
 - **CI** (PI, 2026-09-27, "both"): split the mutation sweep across parallel jobs, and make a
   push run only the changed modules' check, with the full sweep nightly. **On `main` since
   `c215a10`**: `tools/mutation_gate.py`'s `--changed-only` (never escalates; says what the
