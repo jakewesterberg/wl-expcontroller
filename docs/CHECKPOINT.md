@@ -368,7 +368,8 @@ is now `main`'s). Then execute it subagent-driven, as b1 was.
     The GPU's encoding capacity is measured, not assumed.
   - **The eye tracker's IR is 940 nm.** The cameras first try seeing by the tracker's light
     alone, then a 940 nm lamp strobed between the tracker's exposures (which needs one
-    clock for both), and 850 nm only if proven invisible and filtered.
+    clock for both), and 850 nm only if proven invisible and filtered. **Superseded the same
+    day** by the PI's two bands; see the parts-list revision below.
   - Viewed only by people who can control.
   - **A shared headless camera framework** (acquisition, triggering, recording, control
     and health through expcontroller). The camera box is its first user.
@@ -403,15 +404,57 @@ is now `main`'s). Then execute it subagent-driven, as b1 was.
   - **NVIDIA's GeForce NVENC cap is 12 sessions per system** (SDK 13.1 application note and
     the support matrix; SDK 13.0 said 8). So 8 cameras fit with 4 spare, and the preview must
     not open NVENC sessions. Throughput for our mono 1440 × 1080 video is unmeasured (§7.5).
-  - **The camera box totals $4,686.93 against a ~$4,000 budget.** Two 4 TB NVMe drives are
-    $2,200 of it. One drive brings it to $3,586.94, but holds only 8.9 h of 4 cameras at the
-    ASSUMED 10:1. That is the PI's call, and P9's measured bitrate decides it (§7.6).
-  - **wl-sync's GPIO26 takes one strobe**, but the PI asked for both tracker cameras' strobes.
-    That works only if OpenIris runs them primary/secondary, which is unverified and must stay
-    unread under P10's clean-room rule. It is flagged as the PI's call (§7.1 row 12).
-  - **Lenses:** 12 mm (face) and 6 mm (body), Edmund C VIS-NIR, with MidOpt BN940 filters.
-    Edmund's pages disagree on the 6 mm lens's filter pitch (M43 × 0.50 against × 0.75), so
-    check it before buying.
+  - **The camera box totaled $4,686.93 against a ~$4,000 budget.** The PI chose **two** 4 TB
+    drives, accepting about $4,690 (`307816e`). The revision below re-prices the box as AMD.
+  - **wl-sync's GPIO26 takes one strobe.** The PI decided (`307816e`) that only the left
+    camera's ExposureActive goes to it; the right camera is aligned by its barcode samples.
+  - **Lenses:** 12 mm (face) and 6 mm (body), Edmund C VIS-NIR. The BN940 filters and the
+    6 mm lens's filter adapter are superseded by the revision below.
+- **The parts lists, revised after the PI's row-by-row walkthrough** (2026-09-27, branch
+  `s0-parts-lists-v2`; S0 §7, and P9 §1, §2 and §6). Every decision on the 38 rows is applied,
+  and the open picks were researched on makers' and distributors' pages the same day. What
+  would cost a session to rediscover:
+  - **Two IR bands.** The behavior cameras use 850 ± 25 nm (MidOpt BN850) with their own
+    850 nm lamps, strobed only during exposures. The tracker uses 940 ± 25 nm (BN940). P9's
+    plan of lighting the cameras passively by the tracker's 940 nm is gone.
+  - **The tracker lens** is an Edmund C VIS-NIR C-mount: the 75 mm #74-054 for about 45–50 cm,
+    or the 100 mm #27-555 for about 57–60 cm. The working distance picks, and the CS-to-C
+    spacer is needed.
+    - The 0.2× comes from a 200 px pupil and an ASSUMED 3.4 mm pupil.
+    - Both lenses (Ø48 and Ø52 mm) are wider than the eyes are apart, so the two cameras toe
+      in by about 1°.
+  - **One Thorlabs M940L3 with a Ø1" collimator per eye**, on an IPD system: two DTS25/M
+    slides and PAHT-CF brackets, the filament chosen from a cited creep comparison. The
+    drivers are two LEDD1Bs.
+    - **The LEDD1B's current limit stops at 200 mA.** If the measured safe current is lower, a
+      fixed attenuator has to enforce the cap.
+    - ICNIRP 2013's cornea-and-lens limit (100 W/m² for 1000 s or more) is cited. IEC 62471
+      itself was not read.
+  - **The fan-out is off the shelf**: a PRL-4110 (1:10 TTL, $1,850). It drives the
+    secondaries' **Line 0**.
+    - FLIR's own note wires Line 3, which caps at 3.6 V, so a 5 V box must not use it.
+    - **The primary's Line 1 cannot feed the box**, because its published low is above the
+      box's 0.5 V threshold. Line 2 can, once its unpublished low level is measured.
+  - **The camera box is AMD**: a Ryzen 7 9700X on an ASUS ProArt X870E-Creator WiFi, with a
+    slot map in which no slot disables another.
+    - The priced subtotal is $4,385.96, before the power supply, a rack case and a Noctua
+      cooler. That leaves about $304 under the accepted ~$4,690, which likely does not cover
+      them.
+    - The power supply is a Seasonic CORE GX ATX 3.1, 850 W. Its price is UNVERIFIED, because
+      Micro Center and B&H served bot checks.
+    - **No Teledyne guidance on AMD hosts was found.** The AMD host is proven by bring-up
+      check 2.
+    - On Linux, `pcie_aspm=off` does not disable ASPM.
+  - **The lamps** are Smart Vision Lights LM75-850-W (a built-in driver with a PNP strobe
+    input), with a MidOpt LP830 on each emitter. **Darkness at the eye position is a
+    required bring-up check.**
+  - **Waiting on the PI or the layout:**
+    - the tracker's working distance;
+    - independent or symmetric carriages;
+    - an arm or a stand for the monitor;
+    - the rack case and the cooler;
+    - cables through a possible passthrough panel (S0 §7.8);
+    - and the cameras wait for wl-nas.
 - **Pupil and corneal-reflection fallback beyond the DPI's reach** (PI, 2026-09-27; S5).
   Gaze comes from `pupil − CR1`, with its own map and a per-sample method flag, where P4
   cannot be vouched for. Design pending.
@@ -2079,7 +2122,7 @@ runs out of context before it produces anything.**
 | | → the interface | **done 2026-09-01** — pin map, refusing `Absent`, recording `Simulated`; the `nidaqmx` implementation needs a card | — | — |
 | | → the reward path above the pump | **done 2026-09-06** — a task's `Reward` reaches a ceiling-checked delivery and a `Pump` port; the driver that opens copper needs V10 | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
-| **P9** | The camera system: one headless camera box per rig (`rig/cam`), 2–4 Blackfly S cameras (8 max) at 200 fps, primary-triggered for 3D, recording the whole session, controlled only from expcontroller; camera failure pauses trials with an override | Designed 2026-09-27 (PI, section by section); after P4d-2b b2a, which it needs for the pause. **Parts list: S0 §7.2** (2026-09-27): the camera box totals $4,686.93 against ~$4,000; the fan-out board needs a design check | `docs/superpowers/specs/2026-09-27-P9-camera-system-design.md`; S0 §7 | b2a; the camera/encoder library ADR; wl-preproc's `bcam` amendment; hardware (the PI's purchase against S0 §7) |
+| **P9** | The camera system: one headless camera box per rig (`rig/cam`), 2–4 Blackfly S cameras (8 max) at 200 fps, primary-triggered for 3D, recording the whole session, controlled only from expcontroller; camera failure pauses trials with an override | Designed 2026-09-27 (PI, section by section); after P4d-2b b2a, which it needs for the pause. **Parts list: S0 §7.2–§7.8, revised after the PI's walkthrough** (2026-09-27, branch `s0-parts-lists-v2`). The box is AMD and rack-mounted, with a priced subtotal of $4,385.96 before the power supply, case and cooler, likely past the accepted ~$4,690. The fan-out is an off-the-shelf box (PRL-4110). 850 nm lamps are required, and the lenses carry 850 ± 25 nm band-pass filters | `docs/superpowers/specs/2026-09-27-P9-camera-system-design.md`; S0 §7 | b2a; the camera/encoder library ADR; wl-preproc's `bcam` amendment; hardware (the PI's purchase against S0 §7); **wl-nas, before the cameras go into regular use** (PI) |
 | P10 | A clean-room DPI eye tracker as a headless expcontroller service on P9's framework | **Spike done 2026-09-27: build it in C++, on conditions** (`docs/research/2026-09-27-p10-dpi-spike.md`). PI: validate on our rig's raw video, match or beat OpenIrisDPI on everything, C++ with an ADR, invalid frames as "no sample", OpenIrisDPI stays live meanwhile. **Real-data follow-up done 2026-09-27** (report §7b, OpenIrisDPI's tutorial recording): its P1 − P4 white floor (0.027–0.034 px) matches the spike's code at P4 SNR ≈ 40–50 (inference); a P4-only 40–160 Hz component makes most of the fixation jitter; `DataQuality` is 100 on every frame (wl-preproc's eye spec §1.1 says 0/50/100) and P4 is reported through every blink. Recommendation unchanged; §10 now requires the validation to use OpenIrisDPI's session settings, compare spectra, and include a model eye | P9 spec §8; the spike report | P9's cameras (the validation video) |
 
 **P1–P4b and P4d-1 needed no hardware and are done. P4c and P4d-2 need none either.**

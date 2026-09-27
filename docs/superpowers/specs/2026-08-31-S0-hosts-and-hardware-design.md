@@ -346,38 +346,53 @@ The eye tracker's and the behavior cameras' parts lists are in §7.
 
 ---
 
-## 7. Parts lists (addendum, 2026-09-27)
+## 7. Parts lists (addendum, 2026-09-27; revised the same day)
 
 A reasoned list for the PI, who owns procurement. It is not an order.
 
-- **Sources.** Every part fact (model, spec, price, compatibility) comes from the maker's or
+**Revised after the PI went through the first version row by row** (2026-09-27, 38 rows).
+The rows keep the walkthrough's numbers: 7.1-1 to 7.1-16 and C1 to C22. **The PI's
+decisions bind.** What is still open says what it waits on.
+
+- **Sources.** Every part fact (model, spec, price, compatibility) comes from the maker's or a
   distributor's own page, read 2026-09-27, or is marked **UNVERIFIED**. Links are in the
-  tables.
-- **Prices** are what each page showed that day in US dollars. Four Corsair prices were sale
-  prices, and NVIDIA's is its "starting at" figure. Thorlabs's site showed euros until it was
-  switched to US dollars. None is a quote.
+  tables. Two retailers, Micro Center and B&H, served a bot check on the power supply's page.
+  It was not bypassed, and neither is used. 8020.net did the same in the first version.
+- **Prices** are what each page showed that day, in US dollars unless marked €. Sale prices
+  are marked. None is a quote.
 - **Status** is one of: *decided*; *waits on* a named measurement or design; or *PI's call*.
-- **Arithmetic** in this section is labeled as arithmetic. **Assumptions** are labeled
-  ASSUMED.
+- **Arithmetic** is labeled as arithmetic, **assumptions** as ASSUMED, and **inferences** as
+  INFERENCE.
 
 **What binds the lists** (PI, 2026-09-27):
 
+- **Two IR bands.** The eye tracker uses **940 ± 25 nm** and the behavior cameras use
+  **850 ± 25 nm**. Each group's band-pass filter rejects the other group's light. So the
+  behavior cameras have their own 850 nm lamps, and C20 is required.
 - **The eye tracker.**
-  - OpenIrisDPI stays live on its own Windows PC and cameras.
-  - P10's C++ tracker is validated offline on raw eye video from our rig, so the tracker PC
+  - OpenIrisDPI stays live on **one tracker PC: Windows now, Linux later** (P10). There is
+    no second purchase.
+  - P10's tracker is validated offline on raw eye video from our rig, so the tracker PC
     records raw video from both cameras.
+  - **Direct view is the primary configuration.** The camera views the eye from below the
+    screen, mounted on the head-post frame and independent of the monitor. The stereoscope
+    (±10°) is secondary, and its mount is decided with the layout.
+  - **One collimated 940 nm light per eye.** The cameras and the lights ride on an IPD
+    adjustment system on the rig's existing frame, with 3D-printed brackets.
+  - The left camera's ExposureActive goes to wl-sync GPIO26 (S3 §8). The right camera is
+    aligned by its barcode samples.
   - The ACCES USB-AO16-8A stays as the analog backup.
-  - The camera views the eye from below the screen in direct view, which is the primary
-    configuration. The stereoscope (±10°) is the secondary one.
-  - The IR is 940 nm.
-  - The left camera's ExposureActive goes to wl-sync GPIO26 (S3 §8; PI, 2026-09-27). The right camera is aligned by its barcode samples.
 - **The behavior cameras (P9).**
   - 1–2 on the face and 1–2 on the body: 2–4 typical, 8 at most.
   - 200 fps, recorded the whole session, encoded on a consumer GPU.
-  - The primary triggers the rest through a fan-out board.
-  - The tracker's 940 nm light comes first. A lamp is a contingent line.
-- **The camera-box budget** is under about $4,000 for the computer, GPU, storage and USB
-  cards, not counting the cameras.
+  - The primary triggers the rest through an **off-the-shelf fan-out box**, which ideally
+    also strobes the lamps.
+  - **Fixed lenses now**, at ASSUMED distances. There are no filter adapters.
+  - The mounts are 3D-printed brackets on the existing frame.
+  - **The cameras do not go into regular use until wl-nas exists.**
+- **The camera box** is AMD and rack-mounted. Its target is about $4,000 for the computer,
+  GPU, storage and USB cards, not counting the cameras. The PI accepted about $4,690 with two
+  drives.
 
 ### 7.1 The eye tracker: changes from the OpenIrisDPI reference build
 
@@ -386,26 +401,196 @@ This addendum worked from that reading's hardware list and did not reopen the wi
 the list touches P10's method, which stays clean-room
 (`docs/research/2026-09-27-p10-dpi-spike.md` §3).
 
-| # | Role | Requirement | Candidate (maker, model) | Qty | Source, read 2026-09-27 | Price (USD) | Kept or changed; status |
+| # | Role | Requirement | Candidate (maker, model) | Qty | Source, read 2026-09-27 | Price (USD) | PI's decision; status |
 |---|---|---|---|---|---|---|---|
 | 1 | Tracker cameras | OpenIrisDPI's own frames: same sensor, 500 Hz at the paper's 720 × 450 ROI | Teledyne FLIR Blackfly S **BFS-U3-16S2M-CS** | 2 | [Teledyne product page](https://www.teledynevisionsolutions.com/products/blackfly-s-usb3/?model=BFS-U3-16S2M-CS&vertical=machine%20vision&segment=iis) | 556.50 each | **Kept.** It is also P9's body, so the rig has one camera model. *Decided* |
-| 2 | Lenses | The reference's optics, so P10's same-frames comparison compares trackers, not optics | Venus Optics **Laowa 100 mm f/2.8 2× Ultra Macro APO**, Canon EF | 2 | [maker's page](https://www.venuslens.net/product/laowa-100mm-f-2-8-2x-macro-apo/). It refused a scripted fetch; facts are from a search engine's excerpt of it | **UNVERIFIED** | **Kept.** The maker says only the EF version has a chip and motor for aperture control. On a passive adapter the aperture therefore cannot be set from the camera (INFERENCE; check at bring-up). *Decided* |
-| 3 | Lens adapters | An EF lens on a CS-mount body | a generic EF-to-C adapter, plus Teledyne **ACC-01-5004** CS-to-C 5 mm spacer | 2 + 2 | [spacer page](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/) | adapter **UNVERIFIED**; spacer 11.80 | **Changed: add the spacer**, unless the adapter bought is EF-to-CS. Without it, the 5 mm the spacer exists to supply comes out of the macro's focus travel. *Decided* |
-| 4 | IR filter | Pass 940 nm and block visible room light | Edmund Optics **#43-953**, 2" × 2" optical cast plastic IR long-pass (Thermoset ADC, 1.5 mm, over 90% transmission typical) | 1 | [Edmund page](https://www.edmundoptics.com/p/2quot-x-2quot-optical-cast-plastic-ir-longpass-filter/5422/) | 23.25 | **Kept.** The page text gives no cut-on wavelength: **UNVERIFIED**. That matters to P9's 850 nm option, which needs this filter to reject 850 nm (P9 §2). *Decided*; the 850 nm option *waits on* the cut-on |
-| 5 | Illuminator | 940 nm (PI), collimated onto the eye, and 10° shallower than the camera (the paper's rule) | Thorlabs **M940L3** (940 nm, 800 mW minimum, mounted LED, 1000 mA); **LEDD1B** T-Cube driver (1200 mA maximum; no supply); **KPS201** (15 V, 2.66 A); **SM2F** adjustable collimation adapter (Ø2"); **ACL50832U** (Ø2" asphere, f = 32 mm, NA 0.76, uncoated) | 1 each | Thorlabs [M940L3](https://www.thorlabs.com/item/M940L3), [LEDD1B](https://www.thorlabs.com/item/LEDD1B), [KPS201](https://www.thorlabs.com/item/KPS201), [SM2F](https://www.thorlabs.com/item/SM2F), [ACL50832U](https://www.thorlabs.com/item/ACL50832U) | 274.55 + 380.04 + 43.15 + 315.23 + 53.69 = **1,066.66** | **Kept.** *Decided* |
-| 6 | Lens clamps | Hold the lens barrels | Thorlabs **VG100/M** adjustable-height optics clamp, metric | 2 | [Thorlabs](https://www.thorlabs.com/item/VG100_M) | 109.63 each | **Kept.** *Decided* |
-| 7 | Frame | Carries rows 8 and 9 | 80/20 **1010** profile; the reference's brackets (4115, 4118, 4141, 4148, 4139, 4166); 1/4-20 fasteners | per layout | 8020.net refused scripted access with a bot check, which was not bypassed | **UNVERIFIED** | **Changed:** re-cut for our two configurations. *Waits on* rig geometry |
-| 8 | Direct-view mount (primary) | Hold the PG27UCDM by its VESA 100 × 100 mount (4.97 kg without its stand; §5.1). Put both cameras and the LED below its lower edge at the paper's 35° / 25° | a VESA 100 × 100 plate on the 80/20 frame | 1 | §5.1 (ASUS, read 2026-09-27) | **UNVERIFIED** (part not chosen) | **New.** The lowest camera angle that still centers P4 on this panel is 29.9° at 57 cm (panel comparison §4.2), so 35° fits. At the paper's 57 cm working distance, 35° puts the camera 46.7 cm forward of the eyes and 32.7 cm below them (same report). *Waits on* the direct-view design, which sets the viewing distance (57–65 cm) |
-| 9 | Stereoscope mount (secondary, ±10°) | The same camera-to-eye geometry, below M1 | 80/20, as row 7 | 1 | panel comparison §9 | — | **New.** At the paper's angles the camera clears M1 plus a 5 mm mount by about 11°, and the LED by about 3° (on the drawing, still at 31.5"). *Waits on* the drawing's recompute for 26.5" (§5.1) |
-| 10 | Camera USB cables | Camera to tracker PC | Teledyne **ACC-01-2301** USB3 Micro-B locking, 5 m. The reference used generic 15 ft (4.6 m) cables. Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16**, active, locking Micro-B, bus-powered, rated up to 16 m | 2 | [Teledyne cables](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Teledyne app note](https://www.teledynevisionsolutions.com/support/support-center/application-note/iis/extending-the-working-distance-of-usb-3.1-cameras); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 37.50 each; Newnex's price is not published | **Kept** while the run is passive: Teledyne recommends passive cables of 5 m or less. *Waits on* where the tracker PC sits |
-| 11 | GPIO cables | Camera GPIO to the sync box | Teledyne **ACC-01-3009** (Hirose HR10 6-pin, 1 m) or **ACC-01-3010** (4.5 m) | 2 | [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 37.50 / 43.90 | **Kept**, or the 4.5 m cable if the sync box is farther than 1 m. *Waits on* the layout |
-| 12 | Eye-group sync wiring | wl-sync's eye barcode BNC (`CAM_SYNC_EYE`) goes into the camera's opto input, Line 0. ExposureActive leaves by the opto output, Line 1, into wl-sync J17B, which is GPIO26. That front end supplies its own 1 kΩ pull-up to 5 V (wl-sync `hardware/breakout/frame-time-inputs.md`) | wiring | — | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm); wl-sync at `92714ce` | — | **New**, per the PI. **GPIO26 is one input**, sized for one strobe per group because a primary triggers the rest. Two free-running cameras on it would wire-OR their strobes. **Decided (PI, 2026-09-27): only the left camera's ExposureActive goes to GPIO26.** It is the frame-time cross-check for that camera. The right camera is aligned by the barcode it samples every frame, as the left is too, so no wire-OR and no sync-box change. *decided* |
-| 13 | Tracker PC | Windows; OpenIrisDPI stays live on its own PC (PI) | the reference's class: i9-12900K, 16 GB or more, 2 or more USB 3.1 ports | 1 | the reference build | — | **Kept**, with rows 14 and 15 added. *PI's call* (procurement) |
-| 14 | One USB3 controller per camera | 2 × 162 MB/s (arithmetic, below) | Teledyne **ACC-01-1205**: four independent Fresco FL1100 host controllers, PCIe 2.0 x4, 4 locking ports. Powered from the slot or a 4-pin/SATA 12 V connector; Windows or Linux (datasheet) | 1 | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis); [datasheet](https://flir.netx.net/file/asset/71254/original/attachment/) | 148.00 | **New, if the PC lacks one controller per camera.** Teledyne's 2-port card (ACC-01-1201) is one Renesas uPD720202 on PCIe 2.0 x1, so both cameras would share it. *Waits on* checking the tracker PC's controllers |
-| 15 | Raw validation video (P10) | Raw video from both cameras (PI), at 324 MB/s sustained | Samsung **990 PRO 4 TB** (MZ-V9P4T0B/AM; PCIe 4.0; 5 years or 2,400 TBW) | 1 | [Samsung](https://www.samsung.com/us/memory-storage/nvme-ssd/990-pro-pcie-4-0-nvme-ssd-4tb-sku-mz-v9p4t0b-am/) | 1,099.99 | **New.** Holds 3.4 h at the recording's frame size (below). *Waits on* two things. Does OpenIris write the video raw or compressed? (**UNVERIFIED**) And the drive's sustained write rate after its cache is unpublished, so it is measured |
-| 16 | Analog backup | Analog eye into SpikeGLX (PI) | ACCES I/O **USB-AO16-8A** (16-bit, 8 analog outputs, 2 analog inputs; the family page lists outputs updated at up to 4 kHz) | 1 | [ACCES family page](https://accesio.com/product/usb-ao16-16a/) | 604.00 | **Kept.** `docs/research/openiris-dpi.md` names the **-8E** (439.00; 8 outputs, no inputs). The PI named the 8A. *Decided* |
+| 2 | Lenses | A C-mount machine-vision lens, NIR-coated, at about the reference's magnification (0.2×), focusing at the working distance, with a ring if needed (§7.1.1) | For about 45–50 cm: Edmund Optics **#74-054**, 75 mm C VIS-NIR. It has f/2.0–16, a 425–1000 nm BBAR coating, a 2/3" format, a 500 mm–∞ working distance, a **M43 × 0.75** filter thread, and measures Ø48 × 98.8 mm. For about 57–60 cm: Edmund **#27-555**, 100 mm C VIS-NIR. It has f/2.8–22, the same coating, a 4/3" format, 750 mm–∞, a **M46 × 0.75** thread, and measures Ø52 × 92.1 mm | 2 | [#74-054](https://www.edmundoptics.com/p/75mm-c-vis-nir-series-fixed-focal-length-lens/56588/); [#27-555](https://www.edmundoptics.com/p/100mm-c-vis-nir-series-fixed-focal-length-lens/53829/) | 690.00 each (9 in stock); 760.00 each ("contact us") | **Changed** from the Laowa macro to a C-mount lens. Which focal length *waits on* the direct-view working distance (§7.1.1) |
+| 3 | Spacer and ring | Put the C-mount lens on the CS body, and focus closer than the lens's minimum | Teledyne **ACC-01-5004** CS-to-C 5 mm spacer. It is needed: the C-mount flange distance is 17.526 mm and CS is 12.526 mm (Edmund). Plus a C-mount extension ring where the eye is inside the lens's minimum working distance (§7.1.1): Edmund **#54-628** (5 mm), or the **#54-261** kit (0.5, 1, 2 × 5, 10, 15 and 40 mm) to fit it on the bench | 2 + 0–2 | [spacer](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/); [Edmund, lens mounts](https://www.edmundoptics.com/knowledge-center/application-notes/imaging/lens-mounts/); [#54-628](https://www.edmundoptics.com/p/5mm-length-c-mount-extension-tube/11303/); [#54-261](https://www.edmundoptics.com/p/c-mount-extension-tube-kit/11115/) | 11.80 each; 33.25; 133.00 (kit, "contact us") | **The spacer is needed**; the EF adapter is gone. The ring *waits on* the working distance |
+| 4 | IR filter | 940 ± 25 nm band-pass, threaded straight onto the lens, no adapter | MidOpt **BN940**: useful range 928–955 nm, FWHM 55 nm, peak transmission 85% or more. **BN940-43** (M43 × 0.75) on #74-054; **BN940-46** (M46 × 0.75) on #27-555 | 2 | [MidOpt BN940](https://midopt.com/filters/bn940/); [MidOpt threads](https://midopt.com/mounting-solutions/threaded-mount/); Machine Vision Direct [BN940-43](https://machinevisiondirect.com/products/midopt-bn940-43), [BN940-46](https://machinevisiondirect.com/products/midopt-bn940-46) | 231.00 / 252.00 each (built to order, 15 business days) | **Changed** from the long-pass sheet. *Decided*; the size follows row 2. MidOpt's 55 nm FWHM is slightly wider than ±25 nm, and its useful range sits inside ±25 nm |
+| 5 | Light, per eye | One compact collimated 940 nm source per eye, riding on the IPD carriage. It sits 10° shallower than its camera (the paper's rule), with its current capped for eye safety (§7.1.2) | Thorlabs **M940L3** (940 nm; 800 mW minimum at 1000 mA; FWHM 37 nm) with a **SM1U25-B** adjustable collimation adapter, which has a Ø1" asphere, AR-coated 650–1050 nm. It replaces the reference's Ø2" SM2F + ACL50832U. Alternative: Mightex **LCS-0940-02-22**, an integrated collimator: 200 mW typical at 1000 mA, 22 mm aperture, 3.4° half-divergence | 2 | [Thorlabs mounted LEDs](https://www.thorlabs.com/mounted-leds?pn=M940L3); [SM1U25-B](https://www.thorlabs.com/item/SM1U25-B); [Mightex](https://www.mightexsystems.com/product/high-power-led-collimator-sources-22-mm-clear-aperture/) | 274.55 (lead time) + 338.29 = **612.84 per eye**; Mightex's price is not published | **Changed** (PI): one light per eye, on the IPD system. Edmund has no compact collimated 940 nm source (§7.1.2). Thorlabs or Mightex is the *PI's call* |
+| 5b | Light driver | Constant current, a modulation input (so the lights can later strobe with the exposures), and a current cap the operator cannot turn past | Thorlabs **LEDD1B** T-Cube: up to 1200 mA; modulation to 5 kHz; trigger mode to 1 kHz; a current limit adjustable from **0.2 to 1.2 A** by a trim pot. With a **KPS201** supply. One per eye | 2 + 2 | [LEDD1B family page](https://www.thorlabs.com/t-cube-tm-led-driver?pn=LEDD1B); [LEDD1B](https://www.thorlabs.com/item/LEDD1B); [KPS201](https://www.thorlabs.com/item/KPS201) | 380.04 + 43.15 each | **Two single-channel drivers, one per eye.** No two-channel driver with a modulation input was sensible (§7.1.2). **The LEDD1B's limit does not go below 200 mA** (§7.1.2) |
+| 6 | Lens clamps | — | Thorlabs VG100/M | — | — | — | **Dropped** (PI). A C-mount lens is held by the camera |
+| 7 | IPD adjustment system | Per-animal eye spacing. It carries both cameras and both lights, on the rig's existing frame, with 3D-printed brackets | Requirements are in §7.1.3. An off-the-shelf slide: Thorlabs **DTS25/M** dovetail stage (25 mm travel, 1 mm per turn, a locking screw, ±250 µrad angular deviation, 68 × 99 × 20 mm), one per side | 2 | [Thorlabs DTS25](https://www.thorlabs.com/1-inch-25-mm-travel-dovetail-translation-stages?pn=DTS25/M); [DTS25/M](https://www.thorlabs.com/item/DTS25_M) | 233.88 each | **Changed** (PI) from 80/20 framing. Its design *waits on* rig geometry. Symmetric or independent carriages is the *PI's call* (§7.1.3) |
+| 8 | Direct-view camera mount (primary) | The cameras and lights sit on the head-post frame, **independent of the monitor**, below the screen at about 30–35° (panel comparison §4.2) | The IPD system (row 7) on a 3D-printed bracket from the frame | 1 | panel comparison | — | **Changed** (PI). At the paper's 57 cm and 35°, the camera is 46.7 cm forward of the eyes and 32.7 cm below them (panel comparison §4.2). *Waits on* the direct-view working distance |
+| 8b | Monitor arm or stand | The PG27UCDM (VESA 100 × 100; 4.97 kg without its stand, §5.1) goes on its own arm or stand, off the camera frame | Ergotron **LX Desk Monitor Arm, 45-241-224**: VESA 75 and 100; 3.2–11.3 kg; a clamp or grommet | 1 | [Ergotron](https://www.ergotron.com/en-us/products/product-details/45-241) | 219.00 | **New** (PI). A spring arm can be moved, so the viewing distance is re-measured each session or the arm is locked in place (INFERENCE; V9). Arm or fixed stand is the *PI's call* |
+| 9 | Stereoscope mount (secondary, ±10°) | The same camera-to-eye geometry, below M1 | — | — | panel comparison §9 | — | **Decided with the layout** (PI): either the one carriage moves, or there is a second fixed position |
+| 10 | Camera USB cables | Camera to tracker PC | Teledyne **ACC-01-2301** USB3 Micro-B, locking, 5 m. Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16**, active | 2 | [Teledyne cables](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Teledyne app note](https://www.teledynevisionsolutions.com/support/support-center/application-note/iis/extending-the-working-distance-of-usb-3.1-cameras); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 37.50 each; Newnex's price is not published | **Kept** (PI). The length is chosen with the layout, and §7.8 covers a passthrough panel |
+| 11 | GPIO cables | Camera GPIO to the sync box | Teledyne **ACC-01-3009** (Hirose HR10 6-pin, 1 m) or **ACC-01-3010** (4.5 m) | 2 | [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 37.50 / 43.90 | **Kept** (PI). The length is chosen with the layout |
+| 12 | Eye-group sync wiring | wl-sync's eye barcode BNC (`CAM_SYNC_EYE`) goes into each camera's opto input, Line 0. The left camera's ExposureActive leaves by its opto output, Line 1, into wl-sync J17B, which is GPIO26. That front end supplies its own 1 kΩ pull-up to 5 V (wl-sync `hardware/breakout/frame-time-inputs.md`) | wiring | — | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm); wl-sync at `92714ce` | — | **Decided** (PI, 2026-09-27): only the left camera's ExposureActive goes to GPIO26, so there is no wire-OR and no sync-box change. The right camera is aligned by the barcode it samples every frame |
+| 13 | Tracker PC | **One PC: Windows 11 now** (OpenIrisDPI), **Linux later** (P10). Reference class (the reference used an i9-12900K). A free PCIe slot that is **x4 electrical** for row 14, a PCIe 2.0 x4 card. A free M.2 slot for row 15. Neither slot may disable the other. PCIe ASPM on the bring-up list (§7.6) | requirements, not a model | 1 | the reference build; row 14's card page | — | **Changed** (PI): one PC, and no second purchase at P10. The model is the *PI's call* |
+| 14 | One USB3 controller per camera | 2 × 162 MB/s (arithmetic, §7.1.4) | Teledyne **ACC-01-1205**: four independent Fresco FL1100 host controllers on PCIe 2.0 x4 | 1 | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis) | 148.00 | **Always added** (PI). *Decided* |
+| 15 | Raw validation video (P10) | Raw video from both cameras, at 324 MB/s sustained | Samsung **990 PRO 4 TB** (MZ-V9P4T0B/AM; PCIe 4.0; 5 years or 2,400 TBW) | 1 | [Samsung](https://www.samsung.com/us/memory-storage/nvme-ssd/990-pro-pcie-4-0-nvme-ssd-4tb-sku-mz-v9p4t0b-am/) | 1,099.99 | **Kept** (PI). Whether OpenIris writes raw or compressed video is **UNVERIFIED**, and is confirmed first. The drive's sustained write rate after its cache is unpublished, so it is measured |
+| 16 | Analog backup | Analog eye into SpikeGLX | ACCES I/O **USB-AO16-8A** (16-bit, 8 analog outputs, 2 analog inputs) | 1 | [ACCES family page](https://accesio.com/product/usb-ao16-16a/) | 604.00 | **Kept** (PI), the 8A and not the 8E. *Decided* |
 
-**Raw validation video: the arithmetic**, 8-bit mono, two cameras:
+#### 7.1.1 The tracker lens: magnification and focal length
+
+**The magnification.**
+
+- **The reference image scale.** The pupil is about 200 px across in OpenIrisDPI's
+  tutorial frames (the P10 spike reads semi-axes of 105 × 97 px). At 3.45 µm per pixel, that
+  is 0.690 mm on the sensor (arithmetic).
+- **The pupil: 3.4 mm, ASSUMED.** This is the PI's working figure, not a measurement on our
+  animals. It gives m = 0.690 / 3.4 = **0.203** (arithmetic).
+- The result is only as good as that assumption. A 3 mm pupil would give m = 0.23, and a 5 mm
+  pupil m = 0.138 (arithmetic).
+
+**The focal length.** By the thin lens, m = f / (u − f), so f = u · m / (1 + m), where u is
+the object distance. The extension past infinity focus is Δ = f² / (u − f). Principal-plane
+offsets are ignored, and Edmund measures working distance from the lens's front, so each
+ring length below is an estimate to within a few millimeters. It is fitted on the bench.
+
+| Working distance u (ASSUMED) | f for m = 0.203 | Lens | m with it | 3.4 mm pupil on the sensor | Δ needed | Δ at the lens's own minimum | Ring |
+|---|---|---|---|---|---|---|---|
+| 45 cm | 75.9 mm | #74-054, 75 mm | 0.200 | 197 px | 15.0 mm | 13.2 mm (at 500 mm) | about 2 mm |
+| 50 cm | 84.4 mm | #74-054, 75 mm | 0.176 | 174 px | 13.2 mm | 13.2 mm | none |
+| 57 cm (the paper's) | 96.2 mm | #27-555, 100 mm | 0.213 | 210 px | 21.3 mm | 15.4 mm (at 750 mm) | about 6 mm |
+| 60 cm | 101.3 mm | #27-555, 100 mm | 0.200 | 197 px | 20.0 mm | 15.4 mm | about 5 mm |
+
+- **The field at m = 0.2** is 24.8 × 18.6 mm at the eye for the full sensor, and 12.4 × 7.8 mm
+  for the 720 × 450 ROI (arithmetic).
+- **The ROI can move on the sensor** by 360 px horizontally and 315 px vertically in each
+  direction. That is ±6.2 mm and ±5.4 mm at the eye, so fine positioning needs no carriage
+  movement (arithmetic).
+- **CS against C.** The camera is CS-mount. A C-mount lens needs the 5 mm spacer (row 3).
+- **NIR focus.** None of these makers publishes a focus shift at 940 nm, so focus is set under
+  the 940 nm light with the filter on.
+- **Lens width against the eye spacing.** Both lenses (Ø48 mm and Ø52 mm) are wider than the
+  largest eye separation in the drawing, 38 mm. The two cameras therefore cannot sit side by
+  side on parallel axes at eye spacing. Each is aimed at its own eye with a small toe-in.
+  Arithmetic: with the lens centers 52 mm apart, each axis is 7–11 mm off its eye's line, a
+  toe-in of 0.9–1.4° at 45 cm. The toe-in is set once and held (§7.1.3).
+
+**Other makers checked** (read 2026-09-27):
+
+- **Computar.** The M7528-MP (75 mm, MOD 0.3 m, M30.5 × 0.5) and the M7528-MPW3 (MOD 0.4 m,
+  M34 × 0.5) are both **discontinued** on Computar's own pages
+  ([M7528-MP](https://www.computar.com/products/m7528-mp),
+  [M7528-MPW3](https://www.computar.com/products/m7528-mpw3)). Graftek still lists them, with
+  a 400–1000 nm range, at $217 and $319.
+- **Thorlabs.** The MVL75M23 (75 mm f/2.5, 1.2 m minimum working distance, M34 × 0.5,
+  $252.95) and the MVL100M23 (100 mm f/2.8, 2.0 m, M40.5 × 0.5, $246.10) are about $440–510
+  cheaper per lens
+  ([Thorlabs](https://www.thorlabs.com/camera-lenses-for-machine-vision?pn=MVL75M23)).
+  Neither states a NIR coating, and at these distances they need about 10–16 mm of extension
+  (arithmetic). They are the value alternative if the NIR coating is not required.
+- **Kowa.** The LM75FC24M has a 400–1000 nm coating, a 150 mm MOD and a M34 × 0.5 thread, and
+  measures Ø45 × 89 mm, at €966
+  ([Kowa](https://www.kowa-lenses.com/LM75FC24M-1.1-75mm-24MP-C-Mount-Lens/12459)). It is a
+  1.1" 24 MP lens, far more than this sensor needs.
+
+#### 7.1.2 The per-eye light, its driver, and eye safety
+
+**What was checked for a compact collimated 940 nm source** (the PI asked about Edmund, and
+about a smaller LED with a collimator):
+
+- **Edmund Optics.** A search of Edmund's site lists 940 nm bar lights, a ring light, linear
+  backlights, a coaxial spot light, and a 6" × 6" collimated backlight, which is far too
+  large. Only one compact light was opened: the Advanced Illumination MicroBrite spot light,
+  SL223-940IC.
+  - It is Ø7.9 × 38.1 mm and is not collimated.
+  - Edmund notes that its intensity cannot be controlled ($355;
+    [Edmund](https://www.edmundoptics.com/p/ir-940nm-microbrite-led-spot-light/45702/)).
+  - **Among what was found, Edmund has nothing compact and collimated with current
+    control.**
+- **Thorlabs.** The smaller collimator is the Ø1" SM1U25-B on the reference's own M940L3,
+  replacing the Ø2" SM2F. Thorlabs' ready-collimated M940L3-C versions fit microscope ports.
+  The M940L3's housing diameter was not read: Thorlabs uses Ø30.5 mm and Ø57.0 mm housings
+  (**UNVERIFIED** which).
+- **Mightex LCS-0940-02-22.** This is an integrated collimator that any constant-current
+  source can drive. Its housing size and price are not published (**UNVERIFIED**).
+- **Recommendation: Thorlabs M940L3 + SM1U25-B.** It is the reference's emitter, it runs from
+  the LEDD1B, and its price is published. Mightex is the alternative if its housing proves
+  smaller.
+
+**The driver.** It is two single-channel LEDD1Bs, one per eye.
+
+- Thorlabs' only multi-channel driver with modulation is the
+  [DC4100](https://www.thorlabs.com/item/DC4100): four channels with **one** modulation
+  input, at $3,354.38.
+- Mightex's two-channel
+  [SLC-MA02-U](https://www.mightexsystems.com/product/compact-universal-1-and-2-channel-led-controllers/)
+  has **no** external trigger.
+- Mightex's four-channel
+  [SLC-AA04-US](https://www.mightexsystems.com/product/slc-sa-aa-series-universal-four-channel-led-controllers-with-external-triggers/)
+  has a trigger per channel, at €1,395.20 and up. It sets its current limit in software from
+  0 mA.
+
+**Eye safety** (welfare; kept from the first version):
+
+- **The requirement.**
+  - At bring-up, measure the IR at each eye position with a power meter, with each light at
+    its set current.
+  - Cap the driver current so that exposure stays under the limits for the longest session.
+  - Re-check whenever a light, its collimation or its current changes.
+- **IEC 62471:2006 was not read.** IEC sells it, so its limit values are **UNVERIFIED** here.
+- **ICNIRP 2013** (*Health Physics* 105(1):74–96;
+  [PDF](https://www.icnirp.org/cms/upload/publications/ICNIRPVisible_Infrared2013.pdf), read
+  2026-09-27) gives these limits:
+  - **The cornea and lens, 780 nm–3 µm** (its eqns 20–21):
+    - 18 · t^−0.75 kW m⁻² for t under 1000 s;
+    - **100 W m⁻² (10 mW cm⁻²) for 1000 s or longer.**
+    - A thermal detector read without the guideline's spectral weighting gives a
+      conservative value.
+  - **The retina, for a near-IR source with a weak visual stimulus** (eqns 8–9): a radiance
+    limit that depends on the source's angular size, α.
+    - It is computed from the rig's geometry at bring-up, using the typeset equations.
+    - The PDF's text layer garbles eqn 9's constant, so it is not quoted here.
+- **These limits are for human eyes.** Whether they transfer to macaques is **UNVERIFIED**.
+- **The power, as arithmetic.** A uniform Ø25 mm beam (ASSUMED uniform) at 100 W m⁻² carries
+  49 mW. Thorlabs rates the M940L3 at 800 mW minimum at 1000 mA, so the light runs far below
+  its rating. How far depends on the collimator's capture, which is measured.
+- **The cap must be one the operator cannot turn past.**
+  - The LEDD1B's trim-pot limit goes down to 200 mA and no lower (Thorlabs).
+  - If the safe current is below 200 mA, that limit does not protect the eye. The fix is
+    then one of:
+    - a fixed attenuator in the light (a neutral-density filter or an aperture), sized so the
+      eye stays under the limit at 200 mA; or
+    - a driver whose limit reaches the value. Mightex's is a software setting, not a
+      hardware stop.
+
+#### 7.1.3 The IPD adjustment system: requirements
+
+- **The range.** The drawing's eye-separation table covers IPD 30–38 mm
+  (`2026-08-31-stereoscope-optics-drawing.md` §4). That puts each eye 15–19 mm from the
+  midline, ±2 mm about 34 mm.
+  - Each carriage needs that ±2 mm, plus margin for a head that is not centered on the frame
+    (ASSUMED ±5 mm). That is at least ±7 mm per side.
+  - The DTS25/M's 25 mm of travel covers it, and the ROI adds ±6.2 mm of fine positioning
+    (§7.1.1).
+- **Independent carriages are recommended** over a symmetric slide.
+  - The head post sets where the eyes are, and nothing guarantees they are centered on the
+    frame.
+  - A symmetric slide keeps the pair centered but cannot follow an off-center head. One such
+    slide is the igus drylin **SLW-BB-0620**
+    ([igus](https://www.igus.com/product/22670)): one left-right screw moves two carriages in
+    opposite directions, with an optional clamp. Its price is not published.
+  - Which kind is the *PI's call*.
+- **Locked after adjustment.** A clamp holds the carriage without relying on the lead screw.
+  The DTS25/M has a locking screw.
+- **The cameras and lights ride together.** Each carriage carries its camera and its eye's
+  light, so re-positioning for an animal does not change the paper's 10° between them.
+- **Rotation stability matters.**
+  - DPI cancels head translation, but not camera rotation (PI).
+  - A camera roll rotates the P1 − P4 vector. A turned collimated light moves the reflections
+    as an eye rotation would (INFERENCE).
+  - So the brackets hold angle: stiff sections, short lever arms, and two fasteners or a keyed
+    face at each joint, with no single-screw pivots.
+  - The DTS25/M's angular deviation over its travel is ±250 µrad (Thorlabs).
+- **Filament: stiff and creep-resistant.** The recommendation is **carbon-fiber-filled
+  high-temperature nylon (PAHT-CF)**, or polycarbonate (PC). **Not PLA.**
+  - The reason: a comparison of FDM-printed PLA, PC and PAHT-CF ranked PAHT-CF highest in
+    steady-state (stage II) creep resistance, then PC, then PLA. PAHT-CF also had the highest
+    flexural modulus (*J. Mater. Eng. Perform.*,
+    [doi:10.1007/s11665-024-09144-9](https://link.springer.com/article/10.1007/s11665-024-09144-9),
+    abstract read 2026-09-27).
+  - Whether the lab's printer can print either is the lab's check.
+- **Metal threaded inserts.** Every screwed joint that is adjusted, or that carries a camera
+  or a light, goes into a heat-set or press-fit brass insert, never into printed thread.
+- **The camera interface** is Teledyne's ACC-01-0003 tripod adapter (1/4"-20), as for C21.
+
+#### 7.1.4 Raw validation video: the arithmetic
+
+8-bit mono, two cameras:
 
 - **At the recording's frame, 720 × 450.** This is the spike's §7b.1 inference from the
   recording's coordinates. 720 × 450 × 1 B × 500 fps = 162.0 MB/s per camera and 324.0 MB/s
@@ -418,30 +603,30 @@ the list touches P10's method, which stays clean-room
 
 ### 7.2 The behavior-camera system (P9)
 
-| # | Role | Requirement | Candidate (maker, model) | Qty | Source, read 2026-09-27 | Price (USD) | Status |
+| # | Role | Requirement | Candidate (maker, model) | Qty | Source, read 2026-09-27 | Price (USD) | PI's decision; status |
 |---|---|---|---|---|---|---|---|
-| 1 | Cameras | 1–2 on the face (blinks, eyelids, licking) and 1–2 on the body (hands, arms, posture); 200 fps; 8 at most | Teledyne FLIR **BFS-U3-16S2M-CS**: Sony IMX273, 1/2.9", 1440 × 1080, 226 fps, 3.45 µm, CS-mount, USB 3.1 Gen 1, 3 W maximum | 2–4 (8 max) | [Teledyne](https://www.teledynevisionsolutions.com/products/blackfly-s-usb3/?model=BFS-U3-16S2M-CS&vertical=machine%20vision&segment=iis) | 556.50 each | *Decided* (PI) |
-| 2 | Face lens | About 15 cm of field at about 40 cm (ASSUMED), so f ≈ 12.8 mm (§7.3) | Edmund Optics **#27-554**, 12 mm TECHSPEC C VIS-NIR: 425–1000 nm broadband AR coating; C-mount; up to 2/3"; f/1.8–16; working distance 100 mm to ∞; 11 mm image circle; filter thread **M25.5 × 0.50** | 1–2 | [Edmund](https://www.edmundoptics.com/p/12mm-c-vis-nir-series-fixed-focal-length-lens/53828/) | 635.00 | *Waits on* rig geometry |
-| 3 | Body lens | About 60 cm of field at about 80 cm (ASSUMED), so f ≈ 6.6 mm (§7.3) | Edmund Optics **#39-939**, 6 mm C VIS-NIR: the same coating; up to 1/1.8"; f/1.4–16; working distance 75 mm to ∞; 9 mm image circle; distortion up to −6.84%; filter thread through adapter #85-308 | 1–2 | [Edmund](https://www.edmundoptics.com/p/6mm-c-series-vis-nir-fixed-focal-length-lens/40554/) | 725.00 (stock: "contact us") | *Waits on* rig geometry |
-| 4 | Filter adapter, 6 mm lens | A filter thread for the 6 mm lens | Edmund Optics **#85-308**, M43 × 0.75 female from 36 mm | 1 per body lens | [Edmund](https://www.edmundoptics.com/p/filter-adapter-m43-x-075-from-36mm-diameter/28238/) | 60.50 | **Check before buying.** The lens page gives its filter thread through this adapter as M43 × **0.50**, and the adapter's page says M43 × **0.75**. MidOpt's M43 is × 0.75. *Waits on* Edmund confirming |
-| 5 | 940 nm band-pass filter | Pass the tracker's 940 nm and reject the rest; the thread must match the lens | MidOpt **BN940**: useful range 928–955 nm, FWHM 55 nm, peak transmission 85% or more. **BN940-25.5** (M25.5 × 0.5) on the 12 mm lens; **BN940-43** (M43 × 0.75) on #85-308 for the 6 mm lens | 1 per camera | [BN940](https://midopt.com/filters/bn940/); [MidOpt thread table](https://midopt.com/mounting-solutions/threaded-mount/) | not published (by quote) | *Decided* (940 nm, PI); the 6 mm lens's thread per row 4 |
-| 6 | CS-to-C spacer | A C-mount lens on the CS body | Teledyne **ACC-01-5004** | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/) | 11.80 | *Decided* |
-| 7 | USB host card | One controller per camera (P9 §2). Four cameras are 1.24 GB/s through one PCIe 2.0 x4 card (arithmetic) | Teledyne **ACC-01-1205** (§7.1 row 14) | 1 (2 for 8 cameras) | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis) | 148.00 | *Decided.* Whether one card sustains four cameras is P9 bring-up check 2 |
-| 8 | USB cables | Passive runs of 5 m or less (Teledyne's recommendation); active beyond that | Teledyne **ACC-01-2300** (3 m) or **ACC-01-2301** (5 m), locking. Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16** | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 24.60 / 37.50; Newnex's price is not published | *Waits on* where the box sits. An active cable puts repeater electronics at the rig. P9 bring-up check 4 (no added neural noise) covers it |
-| 9 | GPIO cables | Camera GPIO to the fan-out board and the sync box | Teledyne **ACC-01-3009** (1 m) or **ACC-01-3010** (4.5 m) | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 37.50 / 43.90 | *Waits on* the layout |
-| 10 | Trigger fan-out board | The primary's exposure drives up to 7 secondaries' opto inputs, each needing 3.5–7 mA at 2.6 V or more | custom: wl-sync's comparator front end, then one SN74AHCT541 channel and one 47 Ω resistor per secondary (§7.4) | 1 | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm); wl-sync at `92714ce` | parts only, not priced | **Needs a design check** |
-| 11 | Behavior-group sync wiring | The primary samples the barcode every frame; the group's ExposureActive goes to GPIO27 (P9 §2; S3 §8) | Barcode from wl-sync's `CAM_SYNC_BEH1` BNC into the primary's Line 0. The primary's Line 1 (opto output) to wl-sync J6B, which is GPIO27. The primary's Line 2 to the fan-out input | wiring | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm) | — | *Decided* (S3, P9). **Line 3 must not take the barcode**: its input high is 3.6 V at most, and the barcode is 5 V logic. Driving ExposureActive on Lines 1 and 2 at once is **UNVERIFIED** in Spinnaker. Only one of wl-sync's four behavior barcode BNCs is used |
-| 12 | Camera box: CPU | Acquisition and file writing for 4–8 streams; the lanes for x8/x8 | Intel **Core Ultra 7 265K**: 20 cores (8 P + 12 E); 24 PCIe lanes, in configurations up to 1x16+2x4 or 2x8+2x4; 125 W base, 250 W maximum turbo; up to 256 GB DDR5 | 1 | [Intel](https://www.intel.com/content/www/us/en/products/sku/241063/intel-core-ultra-7-processor-265k-30m-cache-up-to-5-50-ghz/specifications.html) | RCP 394–404 | *Decided* for the list. The brand is the PI's call. Chosen partly because Intel publishes a US price. AMD's store redirected this session to its EU prices |
-| 13 | Motherboard | GPU and the first USB card on CPU lanes (x8/x8). A second USB card, for 8 cameras, on a slot of x4 or wider | ASUS **ProArt Z890-Creator WiFi**: 2 × PCIe 5.0 x16 (x16 or x8/x8); 1 × PCIe 4.0 x16 at x4 from the chipset, disabled when M.2_5 is in use; 5 × M.2; 10 GbE and 2.5 GbE | 1 | [ASUS spec](https://www.asus.com/motherboards-components/motherboards/proart/proart-z890-creator-wifi/techspec/); [ASUS US page](https://www.asus.com/us/motherboards-components/motherboards/proart/proart-z890-creator-wifi/) | 489.99 (ASUS Store) | *Decided* for the list. The 10 GbE port is for the copy to wl-nas |
-| 14 | RAM | Acquisition buffers; no swapping | Corsair **Vengeance 32 GB (2 × 16 GB) DDR5-4800 CL40**, CMK32GX5M2A4800C40 | 1 kit | [Corsair DDR5 page](https://www.corsair.com/us/en/c/memory/ddr5-ram) | 399.99 (sale; list 505.99) | *Decided.* 32 GB, not 64: Corsair's 64 GB kits were 780–1,040 that day |
-| 15 | GPU | Two or more NVENC, within the 12-session cap (§7.5) | NVIDIA **GeForce RTX 5070 Ti**: 2 × ninth-generation NVENC; 300 W; NVIDIA asks for 750 W of system power | 1 | [NVIDIA 5070 family](https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5070-family/); [NVIDIA matrix](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new) | from 749 (NVIDIA's "starting at"; partner boards vary) | *Waits on* P9's encoder measurement. It is the task PC's GPU too (§4), so the lab runs one driver line |
-| 16 | Video NVMe | 4 cameras for 12 h at an ASSUMED 10:1 is 5.37 TB (§7.6) | 2 × Samsung **990 PRO 4 TB** (MZ-V9P4T0B/AM), 8 TB in all | 2 | [Samsung](https://www.samsung.com/us/memory-storage/nvme-ssd/990-pro-pcie-4-0-nvme-ssd-4tb-sku-mz-v9p4t0b-am/) | 1,099.99 each | **Two drives, decided** (PI, 2026-09-27; §7.6). How many hours they hold *waits on* P9's measured bitrate |
-| 17 | Power supply | 750 W or more (NVIDIA), with the CPU's 250 W turbo | Corsair **RM850e**, CP-9020296-NA | 1 | [Corsair PSU page](https://www.corsair.com/us/en/c/psu) | 115.99 (sale; list 144.99) | *Decided* |
-| 18 | Case | ATX; a 360 mm radiator | Corsair **FRAME 4000D RS ARGB**, CC-9011296-WW: ATX and E-ATX; 360 mm radiators front and top; GPUs up to 430 mm; 7 slots | 1 | [Corsair](https://www.corsair.com/us/en/p/pc-cases/cc-9011296-ww/frame-4000d-rs-argb-modular-mid-tower-pc-case-cc-9011296-ww) | 89.99 (sale; list 124.99) | *Decided* |
-| 19 | CPU cooler | LGA 1851 | Corsair **NAUTILUS 360 RS**, CW-9060089-WW (LGA 1851 listed) | 1 | [Corsair](https://www.corsair.com/us/en/p/cpu-coolers/cw-9060089-ww/nautilus-360-rs-liquid-cpu-cooler-cw-9060089-ww) | 89.99 (sale; list 109.99) | *Decided* |
-| 20 | Behavior lamp (contingent) | Only if the passive 940 nm image is too dark (P9 §2; bring-up check 3). The tracker's LED is collimated onto the eye, so the body is the likely dark view | a second Thorlabs M940L3 + LEDD1B + KPS201 chain, diffused rather than collimated (diffuser not chosen) | 0–1 | as §7.1 row 5 | 274.55 + 380.04 + 43.15 | *PI's call* after bring-up check 3. Strobing it in the tracker's off-time needs one clock (P9 §2); the LEDD1B's modulation input was not read (**UNVERIFIED**). **Interference with the tracker must be proven absent at bring-up**: P1 and P4 unchanged, and no stray 940 nm in the tracker's images |
-| 21 | Camera mounts | Face and body views from several angles (3D) | 80/20 1010 rails on the rig frame. Per camera: Teledyne **ACC-01-0003** tripod adapter (1/4"-20) and a 1/4"-20 ball head | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/tripod-adapter-for-bfs-30mm-bfly-cmln-cm3-ffmv-fl2-fl3-fmvu/) | 11.80; ball head **UNVERIFIED** | *Waits on* rig geometry |
-| 22 | Interim offload | Until wl-nas exists, video stays on the box (P9 §5) | not chosen | — | — | — | *PI's call.* At 10:1 the 8 TB holds one worst-case session (12 h, 4 cameras), and P9 §4 opens a session paused when the disk is short |
+| C1 | Cameras | 1–2 on the face (blinks, eyelids, licking) and 1–2 on the body (hands, arms, posture); 200 fps; 8 at most | Teledyne FLIR **BFS-U3-16S2M-CS**: Sony IMX273, 1/2.9", 1440 × 1080, 226 fps, 3.45 µm, CS-mount, USB 3.1 Gen 1, 3 W maximum | 2–4 (8 max) | [Teledyne](https://www.teledynevisionsolutions.com/products/blackfly-s-usb3/?model=BFS-U3-16S2M-CS&vertical=machine%20vision&segment=iis) | 556.50 each | **Kept.** *Decided* |
+| C2 | Face lens | About 15 cm of field at about 40 cm (ASSUMED), so f ≈ 12.8 mm (§7.3). NIR-coated; a filter thread of its own | Edmund Optics **#27-554**, 12 mm C VIS-NIR: 425–1000 nm BBAR; 2/3"; f/1.8–16; 100 mm–∞; filter thread **M25.5 × 0.50**; Ø32 × 27.9 mm | 1–2 | [Edmund](https://www.edmundoptics.com/p/12mm-c-vis-nir-series-fixed-focal-length-lens/53828/) | 635.00 (20+ in stock) | **Fixed lens now** (PI). *Decided.* Edmund was the fallback, and it is the best-value NIR-coated lens found (§7.3) |
+| C3 | Body lens | About 60 cm of field at about 80 cm (ASSUMED), so f ≈ 6.6 mm (§7.3). NIR-coated; a filter thread of its own | Edmund Optics **#39-939**, 6 mm C VIS-NIR: the same coating; up to 1/1.8"; f/1.4–16; 75 mm–∞; distortion up to −6.84%; Ø36 × 48.9 mm. It has a **front thread, M34 × 0.5 (female)**. Its listed filter thread is M43 × 0.50, through adapter #85-308 ("Required") | 1–2 | [Edmund](https://www.edmundoptics.com/p/6mm-c-series-vis-nir-fixed-focal-length-lens/40554/) | 725.00 ("contact us") | **Fixed lens now** (PI). *Decided*. The filter goes in the front M34 thread, with no adapter. Whether a filter there touches the front glass or vignettes is **UNVERIFIED**: ask Edmund before buying |
+| C4 | Filter adapter | — | Edmund #85-308 | — | — | — | **Dropped** (PI: no adapters) |
+| C5 | 850 ± 25 nm band-pass filter | Passes the behavior lamps and rejects the tracker's 940 nm; threads straight onto the lens | MidOpt **BN850**: useful range 840–865 nm, FWHM 52 nm, peak transmission 85% or more, tolerance ±10 nm. **BN850-25.5** on the 12 mm; **BN850-34** in the 6 mm's front thread. MidOpt's BP850 is not used: its FWHM is 160 nm | 1 per camera | [MidOpt BN850](https://midopt.com/filters/bn850/); [MidOpt BP850](https://midopt.com/filters/bp850/); Graftek [BN850-25.5](https://graftek.com/product/bn850-25-5/), [BN850-34](https://graftek.com/product/bn850-34/) | 168.00 / 197.00 each (lead time on request) | **Kept, at 850 nm** (PI's bands). *Decided* |
+| C6 | CS-to-C spacer | A C-mount lens on the CS body | Teledyne **ACC-01-5004** | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/) | 11.80 | **Kept.** *Decided* |
+| C7 | USB host card | One controller per camera (P9 §2). Four cameras are 1.24 GB/s through one PCIe 2.0 x4 card (arithmetic) | Teledyne **ACC-01-1205** (§7.1 row 14) | 1 (2 for 8 cameras) | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis) | 148.00 | **Kept.** *Decided.* Whether one card sustains four cameras is P9 bring-up check 2 |
+| C8 | USB cables | Passive runs of 5 m or less (Teledyne); active beyond that | Teledyne **ACC-01-2300** (3 m) or **ACC-01-2301** (5 m), locking. Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16** | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 24.60 / 37.50; Newnex's price is not published | **Waits** (PI) on the layout and a possible passthrough panel (§7.8) |
+| C9 | GPIO cables | Camera GPIO to the fan-out box and the sync box | Teledyne **ACC-01-3009** (1 m) or **ACC-01-3010** (4.5 m) | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 37.50 / 43.90 | **Waits** (PI), as C8 |
+| C10 | Trigger fan-out | The primary's exposure drives up to 7 secondaries' opto inputs (3.5–7 mA at 2.6 V or more), plus the lamps' strobe inputs | Pulse Research Lab **PRL-4110**, a 1:10 TTL fanout and 50 Ω line driver. Its TTL input switches between 50 Ω and 10 kΩ (VIH 2.0 V minimum, VIL 0.5 V maximum). Its back-terminated outputs give 5.0 V into high impedance and 2.5 V into 50 Ω, with 9 ns delay and 500 ps skew typical, on BNC | 1 | [PRL-4110](https://www.pulseresearchlab.com/products/prl-4110) | 1,850.00 with its supply | **Off the shelf** (PI). The electrical check against FLIR's figures is in §7.4. *Waits on* measuring the primary's Line 2 low level |
+| C11 | Behavior-group sync wiring | The primary samples the barcode every frame. The group's ExposureActive goes to GPIO27 (P9 §2; S3 §8) | Barcode from wl-sync's `CAM_SYNC_BEH1` BNC into the primary's Line 0. The primary's Line 1 (opto output) goes to wl-sync J6B, which is GPIO27. The primary's Line 2 goes to the fan-out input, pulled up to 5 V at the box (§7.4) | wiring | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm) | — | **Kept.** *Decided.* **Line 3 must not take the barcode**: its input high is 3.6 V at most, and the barcode is 5 V logic. Driving ExposureActive on Lines 1 and 2 at once is **UNVERIFIED** in Spinnaker |
+| C12 | Camera box: CPU | Acquisition and file writing for 4–8 streams | AMD **Ryzen 7 9700X**: 8 cores and 16 threads; 3.8 GHz base, 5.5 GHz boost; 65 W; AM5; PCIe 5.0, 28 lanes (24 usable); DDR5 to DDR5-5600 (2 × 1R); no cooler in the box, and AMD recommends a premium air cooler | 1 | [AMD](https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-7-9700x.html); [Newegg](https://www.newegg.com/amd-ryzen-7-9000-series-ryzen-7-9700x-granite-ridge-socket-am5-desktop-cpu-processor/p/N82E16819113843) | 339.00 (Newegg, new) | **AMD** (PI). *Decided* |
+| C13 | Motherboard | The GPU, two x4 USB cards and two NVMe drives, with no slot disabling another. ATX, for a rack case | ASUS **ProArt X870E-Creator WiFi**. From the CPU: 2 × PCIe 5.0 x16 slots (x16, x8/x8, or x8/x4/x4 with M.2_2) and M.2_1 and M.2_2 (PCIe 5.0 x4). From the chipset: a PCIe 4.0 x16 slot running at x4, and M.2_3 and M.2_4 (PCIe 4.0 x4). ATX, 30.5 × 24.4 cm; 10 GbE and 2.5 GbE | 1 | [ASUS spec](https://www.asus.com/motherboards-components/motherboards/proart/proart-x870e-creator-wifi/techspec/); [ASUS US](https://www.asus.com/us/motherboards-components/motherboards/proart/proart-x870e-creator-wifi/) | 549.99 (ASUS Store, showing "Notify me") | *Decided* for the list. The slot map is in §7.6. The 10 GbE is for the copy to wl-nas |
+| C14 | RAM | Acquisition buffers; no swapping; runs on AM5 | Corsair **Vengeance 32 GB (2 × 16 GB) DDR5-4800 CL40**, CMK32GX5M2A4800C40 | 1 kit | [Corsair DDR5 page](https://www.corsair.com/us/en/c/memory/ddr5-ram) | 399.99 (sale; list 505.99) | **Kept** (PI). It is a DDR5-4800 kit, under the 9700X's listed DDR5-5600. Whether it is on the board's qualified list is **UNVERIFIED** |
+| C15 | GPU | Two or more NVENC, within the 12-session cap (§7.5) | NVIDIA **GeForce RTX 5070 Ti**: 2 × ninth-generation NVENC; 300 W; NVIDIA asks for 750 W of system power | 1 | [NVIDIA 5070 family](https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5070-family/); [NVIDIA matrix](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new) | from 749 (NVIDIA's "starting at"; partner boards vary) | **Kept, pending the encode measurement** (PI). For the rack case, a board of NVIDIA's SFF-Ready size (§7.6) |
+| C16 | Video NVMe | 4 cameras for 12 h at an ASSUMED 10:1 is 5.37 TB (§7.6) | 2 × Samsung **990 PRO 4 TB** (MZ-V9P4T0B/AM), 8 TB in all | 2 | [Samsung](https://www.samsung.com/us/memory-storage/nvme-ssd/990-pro-pcie-4-0-nvme-ssd-4tb-sku-mz-v9p4t0b-am/) | 1,099.99 each | **Two drives, decided** (PI). How many hours they hold *waits on* P9's measured bitrate |
+| C17 | Power supply | 750 W or more (NVIDIA) | Seasonic **CORE GX ATX 3.1 (2024), 850 W**: 80 PLUS Gold; fully modular; a native 12V-2x6 cable (up to 600 W); ATX 3.1 and PCIe 5.1; 140 × 150 × 86 mm; 7-year warranty. Retailers name it **CORE GX-850 ATX3** | 1 | [Seasonic](https://seasonic.com/core-gx-atx-3-2024/); [Newegg (the 1000 W sibling)](https://www.newegg.com/seasonic-usa-atx-3-1-1000-w-80-plus-gold-certified-power-supply-core-gx-1000-atx3/p/N82E16817151283) | **UNVERIFIED**. Newegg offered the 750 W at 114.99 and the 1000 W at 159.99, not the 850 W. Micro Center and B&H served bot checks | **Seasonic, decided** (PI). The model name is "CORE GX ATX 3.1" at 850 W. "Core" is the series and "Gold" its rating; no model is called "Core Gold" |
+| C18 | Case | Rack-mount | not chosen; constraints in §7.6 | 1 | — | — | **Rack-mount** (PI). The model is the *PI's call* |
+| C19 | CPU cooler | AM5; its height fits the case | a Noctua, not chosen; constraints in §7.6 | 1 | — | — | **Noctua** (PI), chosen with the case |
+| C20 | Behavior lamps | **Required**, 850 nm, one per view (face, body). A diffuse flood, placed outside the animal's view. A visible-cut filter on each emitter. A driver with a strobe input, so the lamps flash only during behavior exposures (§7.7) | Smart Vision Lights **LM75-850-W**: 850 nm; 80° lens; 8 LEDs; 80 × 34 × 26 mm; a built-in Multi-Drive driver; PNP (above 4 V) or NPN strobe input; 24 VDC; 6.6 W maximum continuous; IEC 62471 Exempt Group at 850 nm (SVL's datasheet). Add a MidOpt **LP830** long-pass (50% cut-on at 830 nm), cut to the emitter window, and a diffuser, both held in the lamp's bracket | 2 (1 per view) | [SVL LM75](https://smartvisionlights.com/products/lm75/); [SVL datasheet, rev. 09/25/26](https://smartvisionlights.com/wp-content/uploads/LM75_Datasheet.pdf); [Machine Vision Direct](https://machinevisiondirect.com/products/lm75-850-w); [MidOpt LP830](https://midopt.com/filters/lp830/) | 511.00 each. LP830 is priced by quote (**UNVERIFIED**). The diffuser and the 24 V supply are not chosen | **Required** (PI). *Decided* for the list. The darkness check is required (§7.7) |
+| C21 | Camera mounts | Face and body views from several angles (3D) | 3D-printed brackets on the existing frame, with the filament and insert rules of §7.1.3. Per camera, a Teledyne **ACC-01-0003** tripod adapter (1/4"-20) is the interface | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/tripod-adapter-for-bfs-30mm-bfly-cmln-cm3-ffmv-fl2-fl3-fmvu/) | 11.80 each | **Changed** (PI) from 80/20 rails and ball heads. The positions *wait on* rig geometry |
+| C22 | Interim offload | Where the video goes before wl-nas | — | — | — | — | **Wait for wl-nas** (PI). The cameras do not go into regular use until it exists. Until then, video stays on the box for bring-up only, and is never deleted before a checksummed copy exists (P9 §5) |
 
 ### 7.3 Lenses: the focal lengths
 
@@ -458,14 +643,37 @@ the list touches P10's method, which stays clean-room
 | Face (eyes, mouth) | 40 cm | 15 cm | 12.8 mm | **12 mm** | 16.1 × 12.0 cm | 0.11 mm/px |
 | Body (hands, arms, posture) | 80 cm | 60 cm | 6.6 mm | **6 mm** | 65.7 × 49.3 cm | 0.46 mm/px |
 
-- **Why these lenses.** Each chosen lens is slightly shorter than the computed focal length,
-  so its field is at least the assumed one. The image circles (11 mm and 9 mm) cover the
-  sensor's 6.21 mm diagonal.
-- **NIR.** Both lenses are Edmund's C VIS-NIR series, coated for 425–1000 nm and designed for
-  NIR use. No focus-shift figure at 940 nm is published, so focus is set under 940 nm light.
+- **Why these focal lengths.** Each is slightly shorter than the computed one, so its field is
+  at least the assumed one. The image circles (11 mm and 9 mm) cover the sensor's 6.21 mm
+  diagonal.
+- **Best value, NIR-coated: Edmund's C VIS-NIR series is the pick** among lenses whose maker
+  states a NIR coating. The others checked (read 2026-09-27):
+  - **Kowa.**
+    - The LM12JC (12 mm, f/1.4, M27 × 0.5) is $292 and sold out. Kowa's US page gives its
+      coating as "Visible (400nm - 800nm)" and its EU page as "Peak Coating (400nm –
+      1000nm)". The US page rates it for 5.0 µm pixels, against the camera's 3.45 µm. The
+      LM6JC is also "Visible (400nm - 800nm)", at $292, sold out
+      ([LM12JC](https://www.kowavision.com/products/lm12jc),
+      [EU](https://www.kowa-lenses.com/LM12JC-2-3-12mm-MP-C-Mount-Lens/10223),
+      [LM6JC](https://www.kowavision.com/products/lm6jc)).
+    - The LM12JC10M has a VIS-to-NIR broadband coating and a M25.5 × 0.5 thread, at $1,394,
+      sold out ([Kowa](https://www.kowavision.com/products/lm12jc10m)).
+    - The LM12HC is visible only.
+  - **Computar.** Its "IR Corrected" MPYIR series and its MP2 series are discontinued
+    ([MPYIR](https://www.computar.com/series/mpyir), [MP2](https://www.computar.com/series/mp2)).
+  - **Fujinon.** The HF-XA-5M series page makes no NIR statement. The HF12XA-5M has a
+    M25.5 × 0.5 thread and the HF6XA-5M a M37.5 × 0.5 thread
+    ([Fujifilm](https://www.fujifilm.com/us/en/business/optical-devices/mvlens/hf-xa-5m-series)).
+  - **No lens with a built-in band-pass filter was found.**
+- **NIR focus.** No focus-shift figure at 850 nm is published, so focus is set under the lamps
+  with the filter on.
+- **The 6 mm lens and a band-pass.** An interference band-pass shifts toward shorter
+  wavelengths off-axis. The corners of the 6 mm lens's wide field may therefore darken
+  (INFERENCE). MidOpt says its BN940's narrow-band design is less sensitive to that shift; its
+  BN850 page makes no such claim. This is checked at bring-up.
 - **Rerun when the geometry is set.** Change u and the field, and recompute f.
 
-### 7.4 The trigger fan-out board (needs a design check)
+### 7.4 The trigger fan-out, off the shelf
 
 **FLIR's figures for the BFS-U3-16S2** come from its
 [Input/Output Control](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm)
@@ -481,36 +689,50 @@ pages. They were measured with the opto I/O at 5 V / 1 kΩ and the non-isolated 
 | 2 | Non-isolated input/output | Open drain; sinks up to 25 mA; up to 24 V; input high 2.6–24 V; propagation up to 1 µs. **Its output low level is not published** |
 | 3 | Non-isolated input | High 2.6–3.6 V |
 
-**The proposed circuit**, built from two stages wl-sync already uses (wl-sync at `92714ce`):
+**FLIR's own reference** is its
+[synchronized-capture application note](https://www.teledynevisionsolutions.com/support/support-center/application-note/iis/configuring-synchronized-capture-with-multiple-cameras/)
+(read 2026-09-27):
 
-1. **Input.** The primary's Line 2, pulled up to +5 V on the board, into a copy of wl-sync's
-   frame-time front end (`hardware/breakout/frame-time-inputs.md` §1–§4): 100 Ω, a BAT54S
-   clamp, and an LM339 on +12 V with a 2.50 V threshold and about 33 mV of hysteresis. It is a
-   comparator because Line 2's low level is unpublished. A TTL input's margin would be a
-   coincidence, which is wl-sync's own reasoning for the opto output.
-2. **Output.** One SN74AHCT541, with one channel and one 47 Ω series resistor per secondary.
-   That is how wl-sync drives its five camera BNCs: its finding F4 was one output driving
-   several coax runs (`hardware/README.md`). Seven secondaries at 7 mA at most are 49 mA,
-   inside the part's 75 mA package limit and its 8 mA recommended per output (wl-sync
-   `datasheet-params.toml`, `[sn74ahct541]`). The eighth channel is a monitor output.
-3. **Power and ground.** +12 V in for the LM339, and +5 V regulated on the board for the
-   pull-ups and the buffer. The board's ground is the primary's camera ground (pin 6) and
-   each secondary's opto ground (pin 5), so the secondaries stay isolated.
-4. **Line 1 stays wl-sync's.** Its front end supplies its own pull-up. A second pull-up on
-   the same output would move FLIR's operating point.
-5. **Polarity.** Which edge starts a secondary's exposure is set in the camera file (P9 §3)
-   and verified at bring-up.
+- The primary's opto output (pin 4, Line 1) is pulled up by 10 kΩ to the primary's own
+  3.3 V (pin 3).
+- It drives each secondary's **pin 1, Line 3**, the non-isolated input, with the grounds
+  joined.
+- FLIR says any hardware trigger giving a 3.3 or 5 V square wave can stand in for the primary.
 
-**The design check must settle:**
+A **5 V** box must not drive Line 3, because Line 3's high is 3.6 V at most. It drives each
+secondary's **Line 0**, the opto input, which also keeps each secondary isolated.
 
-- the AHCT541's output high at 7 mA against the opto input's 2.6 V (not pinned by wl-sync,
-  so **UNVERIFIED** here);
-- whether Lines 1 and 2 can both carry ExposureActive (§7.2 row 11);
-- the secondaries' trigger latency, which FLIR does not publish, so the primary-to-secondary
-  exposure skew is measured with every camera imaging one LED pulse.
+**The pick: Pulse Research Lab PRL-4110** (C10). It has 10 outputs: 7 secondaries, 2 lamps
+(§7.7), and 1 spare or monitor. The electrical check follows, as arithmetic against the
+makers' figures.
 
-No off-the-shelf fan-out was verified. A lab pulse distribution amplifier would do if each
-output sources 7 mA at 2.6 V or more.
+- **Output into a secondary's Line 0.**
+  - The output is 5.0 V into high impedance, behind a 50 Ω back-termination.
+  - At Line 0's 7 mA maximum, the 50 Ω drops 0.35 V, leaving about 4.65 V, well above 2.6 V.
+  - PRL does not publish its output current limit, so seven loads at once are **UNVERIFIED**
+    until bring-up.
+- **Output into a lamp's PNP input.** SVL gives 2.8 mA at 4 V and "> +4 VDC" to activate. At
+  about 3 mA (ASSUMED from the datasheet's trend), 5.0 V less 50 Ω × 3 mA is about 4.85 V.
+  That activates it, with under 1 V of margin.
+- **Input from the primary.**
+  - Line 1's published low (0.86–0.92 V at 5 V / 1 kΩ) is above the PRL's VIL maximum of
+    0.5 V. **Line 1 cannot feed the box directly**, and it is wl-sync's anyway.
+  - The input is Line 2 (open drain), pulled up to 5 V at the box. **Its low level is
+    unpublished, so it is measured at bring-up** before the box is trusted.
+  - If it fails, the first version's comparator stage (wl-sync's frame-time front end; §7.4
+    at `a898480`) goes in front of the box.
+- **Timing.**
+  - The box adds 9 ns (PRL).
+  - The secondaries' own trigger latency is not published by FLIR. So the primary-to-secondary
+    exposure skew is measured, with every camera imaging one LED pulse.
+
+**The alternative: ESPER TriggerBox**
+([ESPER](https://www.esperhq.com/product/multiple-camera-trigger-triggerbox/)).
+
+- It has 6 outputs per unit, each 3.3 or 5 V TTL or a contact closure. Units can be linked,
+  and the delay is 2 µs in its "all trigger" mode. It costs £220 before VAT.
+- Two units would be needed for 7 secondaries and the lamps.
+- Its output current is not published (**UNVERIFIED**), and its 3.5 mm jacks do not lock.
 
 **For wl-sync (an ask, not a change here).** Its `[flir_bfs_gpio]` pins the BFS-U3-200S6
 page's 0.87 V low. The 16S2 page gives 0.92 V unloaded and 0.86 V loaded at the same
@@ -568,7 +790,7 @@ The demand, as arithmetic:
   proves visually lossless on our video. P9 requires measuring it on the box: 8 streams
   for 12 hours (bring-up check 2).
 
-### 7.6 The camera box and the budget
+### 7.6 The camera box: AMD, rack-mounted, and the budget
 
 **Storage: the arithmetic.**
 
@@ -582,64 +804,203 @@ The demand, as arithmetic:
 | 4, for 12 h (43,200 s) | 10.75 TB | **5.37 TB** (124.4 MB/s) | 2.69 TB |
 | 8, for 12 h | 21.50 TB | 10.75 TB | 5.37 TB |
 
-- **Capacity.** 8 TB holds a 12-hour, 4-camera session at any ratio of 6.7:1 or better. 4 TB
-  needs 13.4:1, and holds 8.9 h at 10:1.
+- **Capacity.** 8 TB holds a 12-hour, 4-camera session at any ratio of 6.7:1 or better.
 - **Endurance.** Samsung lists 2,400 TBW per drive, so a 5.37 TB session is about 0.1% of
   the pair's 4,800 TBW.
 - **Sustained write.** Samsung publishes a sequential write figure, not a sustained rate
   after the cache. 124 MB/s (or 249 MB/s for 8 cameras) is checked in bring-up check 2.
 
+**The slot map** (ProArt X870E-Creator WiFi, from ASUS's spec page):
+
+- **GPU** in PCIEX16(G5)_1. It runs at x8 once slot 2 is used.
+- **USB card 1** in PCIEX16(G5)_2, at x8, or at x4 if M.2_2 is used. Either is more than the
+  card's PCIe 2.0 x4.
+- **USB card 2** (for 8 cameras) in the chipset's x16 slot, at x4. ASUS lists no sharing for
+  that slot.
+- **NVMe 1** in M.2_1, from the CPU. **NVMe 2** in M.2_3 or M.2_4, from the chipset. M.2_2 is
+  left empty.
+- **No slot disables another** in this map.
+- **Physical spacing is UNVERIFIED.** A GPU 2.5 slots thick must not cover slot 2; this is read
+  from the board's manual before buying.
+- **Every camera is on an ACC-01-1205**, and none is on the board's own USB. The second card
+  shares the chipset's link to the CPU with NVMe 2 and the network. That load is part of
+  bring-up check 2.
+- **An alternative board: ASUS ProArt B650-Creator**
+  ([ASUS spec](https://www.asus.com/motherboards-components/motherboards/proart/proart-b650-creator/techspec/)).
+  - It has 2 × PCIe 4.0 x16 from the CPU (x16 or x8/x8), and M.2_1 and M.2_2 from the CPU.
+  - Its chipset x16 slot runs at x4 and is **disabled when M.2_3 runs at x4**.
+  - So the same map works with M.2_3 empty.
+  - It has 2.5 GbE only, and ASUS's US page showed no price.
+
+**Teledyne's guidance on AMD hosts: none found.**
+
+- These were read:
+  - the ACC-01-1205 page: PCIe 2.0 x4, four Fresco FL1100 controllers;
+  - the
+    [USB 3.1 Multiple Camera Setup](https://www.teledynevisionsolutions.com/support/support-center/application-note/iis/usb-3.1-multiple-camera-setup/)
+    note. Its test systems are all Intel, and it puts effective USB 3.1 bandwidth at about
+    450 MB/s.
+- The "Recommended USB 3.1 System Components" note returned HTTP 500 from
+  teledynevisionsolutions.com and 404 from its FLIR mirror.
+- So an AMD host is **UNVERIFIED** for these cameras. Bring-up check 2 (8 cameras for 12 h
+  with no drops) is what verifies it.
+
+**PCIe ASPM goes on the bring-up list** (PI), for the camera box and the tracker PC.
+
+- ASPM is disabled in the board's firmware for the USB cards' slots, and read back from Linux
+  for each device.
+- The Linux kernel's `pcie_aspm=off` does **not** disable ASPM. It leaves whatever the
+  firmware configured unchanged
+  ([kernel parameters](https://www.kernel.org/doc/Documentation/admin-guide/kernel-parameters.txt),
+  read 2026-09-27).
+- Where the ASUS firmware exposes the setting is **UNVERIFIED**.
+
+**The rack case and the cooler: the constraints.** Both are the PI's call, chosen together.
+
+- **The board** is ATX, 30.5 × 24.4 cm.
+- **The power supply** is ATX, 140 mm deep (Seasonic).
+- **The GPU's length and height.**
+  - Take an RTX 5070 Ti that meets NVIDIA's
+    [SFF-Ready](https://www.nvidia.com/en-us/geforce/news/small-form-factor-sff-ready/) size:
+    304 mm long at most, 151 mm tall at most including the power cable's bend radius, and
+    2.5 slots at most.
+  - Which partner cards meet it is **UNVERIFIED**.
+- **Three cards** fit: the GPU and two USB cards, with the spacing above.
+- **The cooler's height** is set by the case maker's stated limit, not by a rule per rack
+  unit.
+  - One example that meets every constraint here is the Sliger **CX4170a**, a 17"-deep 4U
+    ([Sliger](https://www.sliger.com/products/cx4170a)). It takes ATX to EATX boards, GPUs up to
+    375 mm long and 158 mm tall, air coolers up to 153 mm, and an ATX power supply. It has
+    room for 7 × 120 mm fans, none included. Its price was not read.
+  - For a shorter case, Noctua markets the 110 mm **NH-D9L** as fully 3U compliant
+    ([Noctua](https://www.noctua.at/en/products/nh-d9l)). Its AM5 fit was not read
+    (**UNVERIFIED**).
+  - The 9700X is 65 W. AMD recommends a premium air cooler.
+- **Airflow** runs front to back through the rack, past the GPU and both USB cards. The case's
+  fans are bought with it.
+
 **The camera box**, 4 cameras:
 
 | Item | Part | Price (USD) |
 |---|---|---|
-| CPU | Intel Core Ultra 7 265K | 404.00 (top of Intel's range) |
-| Motherboard | ASUS ProArt Z890-Creator WiFi | 489.99 |
+| CPU | AMD Ryzen 7 9700X | 339.00 |
+| Motherboard | ASUS ProArt X870E-Creator WiFi | 549.99 |
 | RAM | Corsair CMK32GX5M2A4800C40, 32 GB | 399.99 |
 | GPU | NVIDIA GeForce RTX 5070 Ti | 749.00 |
 | Video NVMe | 2 × Samsung 990 PRO 4 TB | 2,199.98 |
 | USB card | Teledyne ACC-01-1205 | 148.00 |
-| Power supply | Corsair RM850e | 115.99 |
-| Case | Corsair FRAME 4000D RS ARGB | 89.99 |
-| CPU cooler | Corsair NAUTILUS 360 RS | 89.99 |
-| **Total** | | **4,686.93** |
+| **Priced subtotal** | | **4,385.96** |
+| Power supply | Seasonic CORE GX ATX 3.1, 850 W | **UNVERIFIED** (its 750 W and 1000 W siblings were 114.99 and 159.99) |
+| Case | rack-mount, not chosen | — |
+| CPU cooler | Noctua, not chosen | — |
 
-**The list meets the 12-hour requirement and is over the ~$4,000 budget by $686.93** at the
-day's prices:
+**Against the targets** (arithmetic):
 
-- Four Corsair items are at sale prices; at list they add $190. The GPU is NVIDIA's
-  "starting at" price.
-- The NVMe is 47% of the total. Samsung's store listed its 4 TB 990 PRO at $1,099.99.
-
-**The variant within budget** drops the second drive, for **$3,586.94**. It holds 8.9 h of 4
-cameras at 10:1, and meets 12 h only if the measured ratio is 13.4:1 or better.
-
+- The priced subtotal is **$385.96 over the ~$4,000 target** before the power supply, case and
+  cooler.
+- The PI accepted about $4,690. That leaves about **$304** for those three.
+- If the power supply costs what its siblings do, $144–189 is left for a rack case and a
+  cooler. That is likely too little: no rack-case price was read, so this is an INFERENCE.
+  **Expect the total to pass $4,690.**
+- **Against the first version** ($4,686.93): the CPU is $65.00 cheaper and the board $60.00
+  dearer. The power supply, case and cooler are replaced by rack-fit parts.
 - **Eight cameras** add a second ACC-01-1205 ($148) in the chipset slot, and at 10:1 another
   8 TB.
-- **Decided (PI, 2026-09-27): two drives, 8 TB, at about $4,687**, accepting the $687 over the ~$4,000 target. P9's bitrate measurement still says how many hours 8 TB holds.
-- **Outside the budget:** the cameras, lenses, filters, cables and the fan-out board. So is a
-  separate OS drive: the OS shares drive 1 here.
+- **Outside the budget:** the cameras, lenses, filters, lamps, cables and the fan-out box. So
+  is a separate OS drive: the OS shares drive 1 here.
 - **Not sized here:** P10's tracker running on this box later (the spike's §9 item 7).
 
-### 7.7 What this list cannot settle yet
+### 7.7 The behavior lamps (850 nm)
 
-- **The rig geometry.** Every camera distance and field in §7.3 is ASSUMED. Where the camera
-  box sits decides passive against active USB, and the GPIO lengths.
+- **What they are** (PI): one per view (face and body), 850 nm, a diffuse flood, and outside
+  the animal's view.
+- **The pick: Smart Vision Lights LM75-850-W** (C20). It has a built-in driver, so there is no
+  separate driver to buy. From SVL's datasheet (rev. 09/25/26):
+  - **Continuous-mode wiring**:
+    - the light follows its trigger for as long as the trigger is held, from 30 µs with no
+      upper limit;
+    - 10 µs latency;
+    - 275 mA at most at 24 VDC ±5%.
+  - **OverDrive** is brighter, but its duty cycle is 10% at most and its strobe 50 ms at most.
+    At 200 fps that allows exposures of 0.5 ms or less (arithmetic). **Use continuous-mode
+    wiring** unless exposures are that short.
+  - **The trigger** is PNP (above +4 V, 24 V at most) or NPN (below 1 V), not both.
+- **Strobed only during behavior exposures** (PI).
+  - A spare channel of the fan-out box drives each lamp's PNP input. The box's input is the
+    primary's exposure output, so the lamps are on while the primary exposes.
+  - The secondaries start later by their own trigger latency, which FLIR does not publish.
+    The tail of their exposures may go unlit by that much.
+  - This is measured in the skew test (§7.4). If it matters, the secondaries' exposure is set
+    shorter than the primary's.
+- **A visible-cut filter on each emitter.** A MidOpt LP830 is cut to cover the LM75's
+  emitting area (71 × 25.5 mm) and held in the lamp's bracket. It cuts the LED's shorter
+  wavelengths, which is where a faint red glow comes from (INFERENCE).
+  - Whether 850 nm light is visible to rhesus monkeys at these levels is **UNVERIFIED**.
+- **The diffuser** is a diffusing sheet in the bracket. It is not chosen. SVL lists diffusers
+  among its accessories, but none for the LM75.
+- **Power.** Each lamp needs 24 VDC. SVL's 5PM12-5 is a 5 m cable. The 24 V supply is not
+  chosen.
+- **Eye safety.** SVL rates the LM75 at 850 nm as Exempt Group under IEC 62471:2006, with no
+  photobiological hazard even in continuous use. That is SVL's own test, stated on its
+  datasheet.
+- **Required at bring-up** (P9 §6, check 3):
+  - **Darkness at the eye position, as S4's patches are.** In a dark room, with the lamps
+    strobing at session settings, a dark-adapted observer at the eye position sees no glow. A
+    visible glow means more filtering, moving the lamp, or a question to the PI.
+  - **No interference with the tracker.** P1 and P4 are unchanged with the lamps on and off,
+    and no 850 nm shows in the tracker's images through its BN940.
+  - **No added neural noise** from the lamps' drivers (check 4).
+
+### 7.8 Cables through a passthrough panel
+
+The PI said: "we may have a passthrough panel from in to out of the rig". If there is one,
+the cables cross it, and the layout decides it. This is what it implies:
+
+- **USB3.**
+  - Teledyne recommends passive cables of 5 m or less, and notes that longer cables see more
+    bad or dropped packets.
+  - It says nothing about couplers
+    ([app note](https://www.teledynevisionsolutions.com/support/support-center/application-note/iis/extending-the-working-distance-of-usb-3.1-cameras)).
+  - A bulkhead coupler adds two mated connector pairs to every passive run, and whether that
+    still fits Teledyne's 5 m is **UNVERIFIED**.
+  - The options, in order:
+    1. continuous cables through a gland or split grommet, with no connector in the run;
+    2. active cables through the panel. Teledyne's suggested vendors are Icron (Spectra
+       3001-15), Newnex (FireNEX-UL-8 and -12) and Alysium (A70-8403);
+    3. a USB3 bulkhead coupler, qualified by a 12-hour, 8-camera run with no drops (check 2).
+- **GPIO and trigger lines.**
+  - BNC bulkhead feedthroughs suit the barcode, ExposureActive and trigger lines, since the
+    fan-out box is BNC.
+  - The Hirose HR10 camera cables go through a gland. Panel-mount HR10 receptacles were not
+    looked up (**UNVERIFIED**).
+- **Grounding.** A metal panel joins the cable shields to whatever the panel is bonded to. It
+  is part of the no-added-noise check (INFERENCE; check 4).
+
+### 7.9 What this list cannot settle yet
+
+- **The rig geometry.**
+  - The tracker's working distance picks its lens (75 or 100 mm) and its ring.
+  - Every behavior camera's distance and field in §7.3 is ASSUMED.
+  - Where the camera box sits decides passive against active USB, the GPIO lengths, and
+    whether a passthrough panel is used (§7.8).
 - **The measurements P9 names:**
-  - the real bitrate, which sizes the NVMe and decides the budget variant;
+  - the real bitrate, which sizes the NVMe;
   - NVENC throughput on our mono 1440 × 1080 video at a visually lossless preset, for 4 and
     for 8 cameras;
-  - 940 nm sensitivity, since no NIR quantum efficiency is published;
-  - whether the passive light is bright enough, and whether a lamp disturbs P1 and P4;
-  - 12 hours at 200 fps with no drops;
+  - sensitivity at 850 nm, since no NIR quantum efficiency is published, and whether the
+    lamps are bright enough at the chosen exposure;
+  - darkness at the eye position, and no change to P1 and P4 with the lamps on;
+  - 12 hours at 200 fps with no drops, on an AMD host, with ASPM off;
   - no added neural noise.
+- **The tracker's light at the eye.** It is measured with a power meter, and the driver
+  current is capped (§7.1.2).
+- **The primary's Line 2 low level** into the fan-out box (§7.4).
 - **The ASUS proximity sensor.** It is still open whether the Neo Proximity Sensor and pixel
   cleaning can be turned off (open item 3). How the sensor senses is not published. So
-  whether the tracker's 940 nm light, or mounts under the bezel, affect it is **UNVERIFIED**,
-  and the below-screen mount cannot be placed until that is known.
+  whether the tracker's 940 nm light affects it is **UNVERIFIED**.
 - **The direct-view design.** It sets the viewing distance (57–65 cm), and with it the camera
-  angle, the mount, and the photodiode shields. The stereoscope drawing's recompute for
-  26.5" sets the secondary mount.
+  angle, the lens, the mount, and the photodiode shields. The stereoscope drawing's recompute
+  for 26.5" sets the secondary mount.
 
 ---
 

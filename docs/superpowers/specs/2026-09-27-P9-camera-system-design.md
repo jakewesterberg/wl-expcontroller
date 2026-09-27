@@ -43,7 +43,9 @@
 - **When cameras fail, trials pause, with an override:** "it pauses and says cameras not
   running, but you can still unpause. The warning should also monitor for the cameras
   coming back online and indicate that it is safe to unpause when they are running again."
-- **The eye tracker's IR is 940 nm.**
+- **Two IR bands** (PI, 2026-09-27, in the parts walkthrough): **850 ± 25 nm for the
+  behavior cameras**, lit by their own strobed 850 nm lamps, and **940 ± 25 nm for the eye
+  tracker**. Each group's band-pass rejects the other's light (§2).
 
 ## 2. Hardware and timing
 
@@ -57,7 +59,7 @@
   - bus-powered at 3 W maximum, 29 × 29 × 30 mm, 36 g;
   - Spinnaker SDK.
 
-  No near-infrared quantum efficiency is published, so sensitivity at 940 nm is
+  No near-infrared quantum efficiency is published, so sensitivity at 850 nm is
   **UNVERIFIED** and is measured at bring-up (§6).
 - **The box's parts, sized to 8 cameras at 200 fps:**
   - **Raw rate:** about 311 MB/s per camera, arithmetic from the sensor's size, 8-bit
@@ -67,11 +69,13 @@
   - **Encoding:** a GPU whose encoder is **measured** compressing 8 such streams before any
     card is chosen. Consumer NVIDIA cards cap simultaneous encoder sessions; the current
     cap is **UNVERIFIED** and is checked against NVIDIA's own documentation first.
-  - **Lenses:** each lens carries a 940 nm band-pass filter.
+  - **Lenses:** each lens carries an 850 ± 25 nm band-pass filter, threaded straight on
+    (S0 §7.2).
 - **Synchronized exposure, for 3D.** One **primary** camera free-runs at 200 fps. Its output
-  line drives every other camera's trigger input through a small **fan-out board**, since
-  one output line does not drive seven inputs. All cameras expose at the same instant, so
-  frame *N* of every camera is one moment.
+  line drives every other camera's trigger input through an off-the-shelf **fan-out box**
+  (PI, 2026-09-27; S0 §7.4), since one output line does not drive seven inputs. The same box
+  strobes the behavior lamps. All cameras expose at the same instant, so frame *N* of every
+  camera is one moment.
 - **Alignment with the neural data, by the lab's existing design, unchanged** (S3 §8,
   wl-sync since 2026-08-16):
   - the sync box does not trigger cameras;
@@ -81,15 +85,30 @@
     (GPIO27);
   - every camera stamps each frame's number and exposure time into the frame (chunk data),
     so a dropped or misaligned frame is detected and named, never guessed.
-- **Light.** At 200 fps an exposure is at most 5 ms. The plan, in order:
-  1. **Passive:** the cameras see by the eye tracker's own 940 nm light, through their
-     band-pass filters.
-  2. If that is too dark, the design **returns to the PI with measured options.** It does
-     not add a lamp on its own. The options are:
-     - a 940 nm lamp strobed only in the tracker's off-time, which needs the tracker and
-       the cameras on one clock (P10);
-     - 850 nm, only if the tracker's own filter rejects it and its faint glow is shown
-       invisible from the animal's position.
+- **Light: two bands, each group with its own light** (PI, 2026-09-27, in the S0 §7 parts
+  walkthrough). This supersedes the morning's plan, which lit the behavior cameras passively
+  by the tracker's 940 nm, and its fallbacks.
+  - **The behavior cameras: 850 ± 25 nm.** Every lens carries an 850 nm band-pass (MidOpt
+    BN850, useful range 840–865 nm).
+    - The cameras are lit by **their own 850 nm lamps, one per view** (face, body): a diffuse
+      flood, placed outside the animal's view (S0 §7.7).
+  - **The eye tracker: 940 ± 25 nm**, through its own band-pass (MidOpt BN940, useful range
+    928–955 nm) and its own collimated light per eye (S0 §7.1).
+  - **Each band-pass rejects the other group's light.** So the tracker and the cameras need
+    no shared clock to keep out of each other's images, which the interference check below
+    confirms.
+  - **The lamps flash only during behavior exposures.** The primary's exposure output drives
+    the lamp drivers' strobe inputs through the fan-out box. At 200 fps an exposure is at
+    most 5 ms, and the lamps' duty cycle is the exposure's. That means less light, heat and
+    glow, and the lamps stay locked to the frames.
+  - **Visibility, kept as a check.** An 850 nm lamp's faint red glow could be a stimulus in a
+    dark visual task. Whether rhesus monkeys see it at these levels is **UNVERIFIED**.
+    - Each emitter has a visible-cut filter (a MidOpt LP830 long-pass).
+    - The lamps sit outside the animal's view.
+    - **Darkness at the eye position is verified at bring-up**, as S4's photodiode patches
+      are (§6, check 3).
+  - **Interference, kept as a check.** With the lamps strobing, the tracker's P1 and P4 are
+    unchanged, and no 850 nm reaches the tracker's images (§6, check 3).
 
 ## 3. Control, all in expcontroller
 
@@ -161,8 +180,12 @@
 - **Bring-up checks on real hardware** (added to the verification list):
   1. All cameras' exposure stamps agree, and wl-preproc decodes the barcode from the primary.
   2. 8 cameras at 200 fps for 12 hours with no drops, and the GPU encoder keeps up.
-  3. The eye tracker's P1 and P4 reflections are unaffected, and the passive 940 nm image
-     is bright enough.
+  3. **Light.**
+     - With the 850 nm lamps strobing at session settings, a dark-adapted observer at the
+       eye position sees no glow, as S4's patch check requires.
+     - The eye tracker's P1 and P4 are unchanged with the lamps on and off, and no 850 nm
+       shows in the tracker's images.
+     - The 850 nm image is bright enough at the chosen exposure.
   4. No added noise in a real neural recording.
   5. The preview never disturbs recording.
 
