@@ -67,10 +67,10 @@ are detected at the display surface.
 | Component | Runs on | Language | Job | Simulator |
 |---|---|---|---|---|
 | `taskd` | Task PC (Linux) | Python | Trial execution, display, gaze logic, DIO, session record | Full headless run against replayed/synthetic inputs |
-| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and records the actor** — anybody attached has full access, with visibility rather than a lock (S9a §8); `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008). **The link exists** (`wl_expcontroller/link.py`, P4d-1, 2026-09-19): `taskd` holds a `Link` port, drained and published once per trial boundary and never per frame, whose live implementation (`ZmqLink`) binds a ZMQ PUB socket for `Telemetry` and a REP socket for `SetParameter`/`Stop` commands (ADR-0003's transport, untouched). `ZmqConsole` is the other end. Reached today by `wlx run --link PUB,REP` and a terminal client, `wlx console --sub PUB --req REP --as WHO`; the browser client and the HTTP/WS server this row otherwise describes — which is also where `labhost` lives (S9a §7) — are P4d-2 | Runs against a fake `taskd` (`link.Simulated`), or a real one over loopback sockets |
+| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and records the actor** — anybody attached has full access, with visibility rather than a lock (S9a §8); `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008). **The link exists** (`wl_expcontroller/link.py`, P4d-1, 2026-09-19): `taskd` holds a `Link` port, drained and published once per trial boundary and never per frame, whose live implementation (`ZmqLink`) binds a ZMQ PUB socket for `Telemetry` and a REP socket for `SetParameter`/`Stop` commands (ADR-0003's transport, untouched). `ZmqConsole` is the other end. Reached today by `wlx run --link PUB,REP` and a terminal client, `wlx console --sub PUB --req REP --as WHO`. **The browser console exists, read-only** (P4d-2b slice b1, 2026-09-26): `wlx serve --link PUB,REP --http HOST:PORT --health-token-file PATH` is its own process — a stdlib `ThreadingHTTPServer`, one `ZmqConsole` on a telemetry thread, server-sent events to each browser from a bounded queue, and every pane rendered in Python (`web.py`) so the page's script only swaps fragments. The wl-works fonts are bundled and served by the box, so the page never reaches the internet (PI, 2026-09-26). Reads are open to the LAN; writes from the box are slice b2, and OAuth is P4d-3 | Runs against a fake `taskd` (`link.Simulated`), or a real one over loopback sockets |
 | `neurofeatd` | Acquisition PC | C++ | SpikeGLX `fetchLatest` on the filtered AP stream -> MUA features -> ZMQ PUB | Synthetic feature publisher |
 | `rhxfeatd` | Intan host | C++/Rust | RHX Spike Output socket -> features -> ZMQ PUB; bounded reader | Synthetic spike-raster publisher |
-| `labhost` | Task PC | Python | The pull-only endpoint wl-works polls — **a surface of `console` since 2026-09-19, not its own process** (S9a §7): same server, separate path, separate auth | Contract tests |
+| `labhost` | Task PC | Python | The pull-only endpoint wl-works polls — **a surface of `console` since 2026-09-19, not its own process** (S9a §7): same server, separate path, separate auth. Served as `GET /health` by `wlx serve` (`health.py`, P4d-2b b1): `HealthResponse` schema 1, contract-tested against wl-preproc's own model; a bearer token read from a file outside the repository, compared with `hmac.compare_digest`, one `401` for every credential failure — the rules of wl-preproc's `responder/handler.py`. Exactly one reading is featured, the most urgent (PI, 2026-09-26), because wl-works shows only the first | Contract tests |
 | `openiris` | OpenIris PC | (existing C#) | dDPI tracking; UDP 9003; remote API; analog out | UDP replay server |
 
 Welfare-critical modules requiring human review: reward scheduling and per-delivery limits,
@@ -125,6 +125,14 @@ which is what a task's `Reward` action actually reaches. **The whole route from 
 declaration to fluid is readable in `welfare.py` alone**, which is the property to preserve —
 "can anything deliver reward without asking the ceiling" should stay a question one file
 answers.
+
+**`deliver` also records when it delivered** (`Welfare.last_delivery_wall_at`, P4d-2b b1,
+2026-09-26): the charge — `commanded` and `deliveries` — still lands before the valve opens,
+as it always did, but the wall instant is stored only once the pump returns, so a delivery
+the pump refused is charged but not timed. `Rig` reads that instant through `Session.wall_now`
+— the session's `SessionClock`, the one clock every welfare instant is on — for the console's
+time since the last reward. Nothing compares it with a limit, and it is not refused when it is
+not a number, so a display field can never end a trial.
 
 **Whether a duration limit applies at all is declared, not inferred** (`welfare.Deployment`,
 PI 2026-09-19). A rig session declares `RIG_FIXED` or `RIG_CHAIRED` and is refused without both
@@ -201,6 +209,9 @@ display layer that per-trial scenes do not reset.
   monotonic time, sequence number. Latest-wins.
 - **Control/telemetry** (console <-> taskd): ZMQ REQ/REP for commands, PUB for telemetry.
   Bearer token, rate limit, and a write-arbitration rule for concurrent writers.
+- **Browser** (browser <-> console): HTTP, with server-sent events carrying rendered HTML
+  fragments to the page (P4d-2b spec §1). WebSockets are deferred to the replica pane, if
+  V11 shows a browser can carry it at display rate.
 - **Hardware truth:** every trial event gets a strobed word into the recorders and a JSONL
   record carrying the word, frame index and monotonic time.
 

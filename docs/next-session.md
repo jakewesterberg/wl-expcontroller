@@ -95,7 +95,36 @@ closed, verified 2026-09-06 by reading the runs.
 
 ---
 
-## 1. The thing that needs a person, not a session — approved 2026-09-26 (P4d-2a)
+## 1. The thing that needs a person, not a session — P4d-2b b1, awaiting the PI
+
+Give the PI (memory: he wants numbered items to approve, not the files):
+
+1. **`welfare.deliver` now records when it delivered each reward.** The charge —
+   `commanded` and `deliveries` — still lands before the valve opens, as it always did; the
+   wall instant is kept as `last_delivery_wall_at` only once the pump returns, so a delivery
+   the pump refused is charged but not timed. Nothing compares it with a limit, and it is
+   not refused when it is not a number, so a display field can never end a trial the animal
+   completed. `Rig` reads it through `Session.wall_now`, once per reward: the session's
+   `SessionClock`, the one anchored clock every other welfare instant is on (Ruling 8), so a
+   host clock stepped mid-session does not move it. Pinned by
+   `test_a_delivery_records_the_wall_instant_it_was_delivered_at`,
+   `test_a_rewards_instant_is_read_from_the_rigs_wall_clock`,
+   `test_a_delivery_the_pump_refused_is_charged_but_not_timed`,
+   `test_a_delivery_with_an_unknown_ref_is_refused_before_the_charge`,
+   `test_a_session_records_when_it_last_paid_on_its_own_wall_clock` and
+   `test_a_rewards_instant_is_on_the_sessions_anchored_clock_not_the_host_clock`.
+
+2. **The fonts ship under ADR-0004's amendment of 2026-09-26** (PI: "Allow OFL fonts"), for
+   information, not for approval. The PI settled it when asked: the fonts ship unmodified
+   with each family's `OFL.txt`; condition 2 permits bundling them with any software; and
+   condition 5 exempts "any document created using the Font Software", so the Apache-2.0
+   code and the pages it serves are unaffected. Pinned by
+   `test_every_font_the_page_uses_is_bundled_with_its_license` and
+   `test_the_fonts_ship_with_the_package`.
+
+It merges to `main` by fast-forward only after he approves item 1; item 2 is for information.
+
+## 1a. The thing that needs a person, not a session — approved 2026-09-26 (P4d-2a)
 
 **The PI approved all seven items below on 2026-09-26.** The branch was fast-forwarded onto
 `main` at `0c18827`. This section is now the record of what he approved.
@@ -570,19 +599,15 @@ Three things S9a §6–§10 depends on that nobody has built:
 
 ---
 
-## 6. P4d-1 shipped; P4d-2a awaits review; P4d-2b is next
+## 6. P4d-2a is on `main`; P4d-2b b1 is built; b2 is next
 
-**2026-09-26: P4d-2 is two packages now.** **P4d-2a**, closing the out-of-cage interval, is
-built on branch `p4d2a-return-to-cage` and waits on the PI's review of its spec §7 (§1 above).
-**P4d-2b, the browser console and `GET /health`, is next once he approves** and P4d-2a has
-fast-forwarded onto `main`. Its spec is
-`docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 are approved, and
-§4 is slice b1, the read-only console, planned in
-`docs/superpowers/plans/2026-09-26-p4d2b-b1-read-only-console.md`. b1 builds on telemetry
-schema 6, which only P4d-2a carries, and its Task 2 (`welfare.deliver` recording the last
-reward's instant) is welfare-critical, so it needs the PI's review too. Slices b2–b6 are
-designed one at a time. What follows is the 2026-09-19 account of P4d-1 and of P4d-2 as one
-package, kept as the record.
+**2026-09-27.** b1 is built on branch `p4d2b-b1-read-only-console` and awaits the PI's
+approval of its welfare item (§1 above). **b2 is next** — writes from the box (spec §2's
+four conditions on `POST /commands`, the `NAME (box, unverified)` attribution, and the
+greyed controls' sentence), per spec §4.0's slice list, and it first closes P4d-2a's M8
+(`SetParameter.value`'s type) before any write ships. The command thread that owns the REQ
+socket arrives with b2 (`serve.py`'s module docstring names it). What follows is the
+2026-09-19 account of P4d-1 and of P4d-2 as one package, kept as the record.
 
 **What moved, 2026-09-19 (`p4d1-console-link`, on top of `p4b-session-management`).**
 This section used to describe P4d as "the link between a console process and a

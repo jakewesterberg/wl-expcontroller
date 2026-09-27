@@ -318,10 +318,50 @@ figure was one low. In order:
 
 ---
 
-## What moved on 2026-09-26, afternoon
+## What moved on 2026-09-27, P4d-2b slice b1: the read-only browser console
 
-**Resume here:** P4d-2a is merged (below). Start P4d-2b's b1 from its plan, after checking
-the plan against the merged code.
+**Resume here:** b1 is built on branch `p4d2b-b1-read-only-console`, awaiting the PI's
+approval of the welfare item below. Start b2 next, from the P4d-2b spec §2 and §4.0.
+
+- **What was built:** telemetry schema 7, `wlx serve`, the page, `/health`, and the files
+  it lives in (`serve.py`, `web.py`, `health.py`).
+- **The one welfare-critical change:** `Welfare.deliver`'s `wall_now` and
+  `last_delivery_wall_at`, and `Rig.wall_clock`, which is `Session.wall_now` — the one
+  anchored clock. `deliver` records when it delivered: the charge (`commanded`,
+  `deliveries`) still lands before the valve opens, as it always did, but the wall instant
+  is stored only once the pump returns, so a delivery the pump refused is charged but not
+  timed. The fonts shipped under ADR-0004's 2026-09-26 amendment. The branch awaits the
+  PI's approval of the welfare item.
+- **Ledger Ruling 1 (2026-09-27):** the frame carries its own instant, `wall_at`, and
+  `wlx serve` ages a frame on its steady clock, so the time since the last reward never
+  reads a host clock against a session instant — the question the pre-flight raised, and
+  the controller's answer.
+- **The PI's three rulings on the plan** (2026-09-26, recorded in spec §3 and §4.2):
+  exactly one featured reading, the most urgent; the strip's correct counts `correct` plus
+  `correct_reject`, the one rollup, while every other count stays unrolled; and the fonts
+  bundled and served by the box, with ADR-0004 reopened for their OFL-1.1 licenses. Also:
+  tick colors are by family, where the mockup's were not.
+- **The page's stale banner** runs only while frames are due (running, or awaiting the
+  return), which is also `/health`'s staleness rule.
+- **A refused frame:** a schema-6 `wlx run` beside a schema-7 `wlx serve` shows a
+  *Refused* banner, by design.
+- **The telemetry thread's failure ends `wlx serve` (Ruling 9).** A bad `--link`, or any
+  exception that escapes the telemetry thread, ends the process. It exits 1, prints a
+  sentence and the traceback on stderr, and says the session is unaffected. A console that
+  cannot see the session must not look healthy: before this change, a typo in `--link` left
+  a page showing no banner and `/health` saying `ok` forever. `parse_link` now also
+  requires `tcp://HOST:PORT`.
+- **A frame is refused by its schema number first.** `link.decode` reads `schema` before
+  any other field and raises `link.SchemaMismatch`, a `link.FrameError`, with the schema
+  sentence. `wlx serve` shows that sentence on its page as a *Refused* banner. `wlx console`
+  prints it and exits 1, instead of a `KeyError` traceback.
+- **The `/health` token file is refused when it is inside any git checkout**, found by
+  walking up to a `.git` file or directory, and when it holds a non-printable character.
+
+The gate's result and the test count are added to this entry in Task 13 Step 3, once they
+exist.
+
+## What moved on 2026-09-26, afternoon
 
 ### The console was designed by mockup, and the PI ruled as it went
 
@@ -1791,7 +1831,7 @@ runs out of context before it produces anything.**
 | **P4c** | Parquet derivation at close ~~; the `labhost` endpoint~~ (`labhost` moved under `console`, ADR-0008 — see P4d-2) | Contract-tested against `wl-preproc`'s published schema | S10 | nothing. Independently ready to pick up; `trials.jsonl` now carries block and condition per row, so the derivation has what it needs |
 | ~~P4d-1~~ | ~~The console link: telemetry out, commands in, over a real socket~~ | **done 2026-09-19** — `Session` gains a `Link` port drained once per trial boundary, never per frame; `link.py`'s `Telemetry`/`Staged`/`Refused` message and `SetParameter`/`Stop` commands; `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB + REQ/REP; `wlx console` as a terminal client. Not welfare-critical and built to stay that way. Three items found and deliberately left open; **one of them (a pump fault publishing nothing) was closed by the PI on 2026-09-19 and one was widened by the same decisions** — see "What moved" above | — | — |
 | **P4d-2a** | Close the out-of-cage interval: both ends recorded as wall instants, the return taken at `wlx run`'s terminal as the ELN's stand-in, the clock published after the loop, and a separate in-session clock | **On `main` (`0c18827`), approved by the PI 2026-09-26** | `docs/superpowers/specs/2026-09-26-P4d2a-return-to-cage-design.md` §7, §10 | **the PI's review** |
-| **P4d-2b** | The browser console and `GET /health` (S9a §7), with the `labhost` endpoint it carries (`labhost` is a surface of `console`, not its own process), in six slices b1–b6 | **b1 specified and planned; b2–b6 still to be brainstormed.** Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0. §4 is slice b1, the read-only console, and its plan is `docs/superpowers/plans/2026-09-26-p4d2b-b1-read-only-console.md`. b2–b6 each get a section as they are designed | that spec | **P4d-2a merging** (b1 builds on telemetry schema 6) |
+| **P4d-2b** | The browser console and `GET /health` (S9a §7), with the `labhost` endpoint it carries (`labhost` is a surface of `console`, not its own process), in six slices b1–b6 | **b1 built on branch `p4d2b-b1-read-only-console`, awaiting the PI's approval of the welfare item.** Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0. §4 is slice b1, the read-only console, built on telemetry schema 7. **Next is b2** (writes from the box) — read the P4d-2b spec §2 and §4.0. b3–b6 each get a section as they are designed | that spec | **the PI's approval of the welfare item** |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
 | **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |
 | | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested | — | — |

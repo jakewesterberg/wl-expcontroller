@@ -193,11 +193,20 @@ animal is completing, which is the rule `welfare.Rig` already follows for pump f
    wl-works ──── polls /health, links to the console ─────┐
        │  OAuth2 (identity)                               │
        ▼                                                  ▼
-browser ──HTTP/WS──►  console  ──ZMQ REQ/REP (commands)──►  taskd ──► world, devices
+browser ──HTTP + SSE──►  console  ──ZMQ REQ/REP (commands)──►  taskd ──► world, devices
                       ├ OAuth client + local credential  ◄──ZMQ PUB (telemetry)──┘
-                      ├ static assets, WS fan-out
+                      ├ the page, SSE fan-out
                       └ /health  (the labhost surface)
 ```
+
+**HTTP and server-sent events, not WebSockets** (P4d-2b spec §1, PI 2026-09-26). Panes are
+rendered to HTML in Python and pushed as fragments, so what a pane may never drop is a pytest
+assertion on the renderer. WebSockets are deferred to the replica pane, if V11 shows a browser
+can carry it at display rate — an added endpoint for one pane, not a rewrite. Known limit,
+accepted: when not served over HTTP/2, a browser holds at most six server-sent-event
+connections per browser and domain, and both Chrome and Firefox have marked that "Won't fix"
+(MDN, "Using server-sent events", read 2026-09-27, page last modified 2026-09-03). `wlx serve`
+speaks HTTP/1.0, so the limit applies: a seventh console tab on one box in one browser stalls.
 
 **Two processes, and the split was already mandatory.** §1 of S9: *"`taskd` and `console`
 are separate processes under all conditions. The hot loop never renders a plot, serves a
@@ -320,7 +329,13 @@ defence is structural rather than careful.
 | In session | `Telemetry.in_session_seconds` (schema 6, P4d-2a spec §10 item 3): the session opened to the session ended, on the wall, from `taskd.Session.opened_wall_at`/`ended_wall_at`. `None` before the session opens, never `0.0`. **It bounds nothing** (PI, 2026-09-26: *"only shown and recorded"*): `welfare` never sees it, and it has no warning line |
 | Trials, outcomes, aborts by reason | `simulate.Tally`, already shared with `taskd` |
 | Still needed, by condition | `scheduler` quotas |
-| Parameter row | The task's own `Param` declarations; writes return through `Session.set` |
+| Configuration: task, allocation, bounded config | `SessionSpec.task`, `.allocation`, `.bounds_config` — what the config snapshot's `versions` records. Display mode and stimulus calibration have no source yet and say so |
+| The day's floor; the out-of-cage limit | `welfare.bounds.minima[DAILY_FLUID]` and `ceilings[OUT_OF_CAGE].value` — the numbers `shortfall` and `must_stop` read. The limit is `None` cage-side |
+| Time since the last reward | `Telemetry.wall_at` less `Telemetry.last_reward_at` (`welfare.last_delivery_wall_at`) — the frame's own instant and the reward's, both on the session's `SessionClock` — plus the seconds `wlx serve` has held the frame on its steady clock (ledger Ruling 1, 2026-09-27). No host clock is subtracted from a session instant, so a step of the host clock moves nothing. **What keeps a working, unpaid animal visible on the strip** since 2026-09-26: fluid today standing still while this grows |
+| Recent outcomes | `Session.recent_outcomes` — the last 60 strings `trials.jsonl` records, from the one string both are handed |
+| Correct / trials, on the strip | `Telemetry.outcomes["correct"]` plus `["correct_reject"]`, over `trial_index`: **the one rollup, ruled for the strip only** (PI, 2026-09-26: both are the right answer on their trial). The Working? pane and `/health` count every outcome as it occurred |
+| Parameter row | `Session.parameters` → `Telemetry.params`: the task's own `Param` declarations with their values, then the welfare ceilings a console may stage; writes return through `Session.set` |
+| Trials per minute | **Derived by `wlx serve`**, from `trial_index` over the last five minutes of frames, labeled derived on the page, bounding nothing — the one console number not in the record, and it says so |
 | Drops, staleness | `eye`'s staleness accounting |
 
 **If the console needs a number that is not in those objects, the fix is to add it to the
@@ -337,6 +352,12 @@ a console change that stopped showing either — a simplified pane, a folded sum
 reconciliation that no longer published `fluid_session_ml` — would turn a permitted operation
 into a silent one.** That is a welfare regression arrived at by editing a display, which is
 the reason this sits in the console spec rather than only in S8.
+
+**Since 2026-09-26 neither is on the always-visible strip** (P4d-2b spec §4.0; asked against
+this paragraph, the PI answered "fine as is"): both are on Runtime and End of session in every
+state, and `tests/test_web.py::test_fluid_session_and_the_supplement_are_never_dropped` holds
+that. What keeps a working, unpaid animal visible at a glance is fluid today standing still on
+the strip while the time since the last reward grows.
 
 **And since 2026-09-20 there is a second reason, which changes what `fluid session: 0.00 mL`
 means to whoever is reading it.** Asked again, the PI gave the reason behind the ruling:
@@ -378,8 +399,8 @@ unattended and cage-side, saw the stream simply stop. The loop boundary now sets
 is the behaviour that matters; the frame only means a stranger can read what happened off
 the screen, which is this spec's own rule for an abort reason.
 
-Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is 6
-as of 2026-09-26** (P4d-2a), and every bump since 2 is the same case: a field that still
+Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is 7
+as of 2026-09-26** (P4d-2b b1), and every bump since 2 is the same case: a field that still
 decodes and no longer means what it did, or a new one whose absence a console built against
 the old number would misread. `link.SCHEMA`'s comment carries the same history.
 
@@ -397,6 +418,12 @@ the old number would misread. `link.SCHEMA`'s comment carries the same history.
   built against 5 renders an `awaiting_return` frame's advancing out-of-cage clock as a
   running session, can tell a pump fault from a clean finish only by parsing
   `stopped_because`, and has no field for the in-session clock.
+- **7 (2026-09-26, P4d-2b b1):** `task`, `allocation`, `bounds_config` and `params` (the
+  configuration), `floor_ml` and `out_of_cage_limit_s` (the limits its numbers are read
+  against), `wall_at` (the frame's own instant, ledger Ruling 1, 2026-09-27), `last_reward_at`
+  and `recent_outcomes` arrived. Nothing changed meaning; a schema-7 reader cannot decode a
+  schema-6 frame, which lacks them, so `wlx serve` refuses it and says so on its page rather
+  than guessing.
 
 Trial-rate telemetry on one topic; the replica's display-rate stream, if V11 permits one, on
 a separate droppable topic.
