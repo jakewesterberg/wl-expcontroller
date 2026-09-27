@@ -1247,6 +1247,71 @@ bot check was served. Each row carries its finding; this is the summary.
      Until then, the MidOpt BN850 stays in C5.
    - The 940 nm twin, [#73-322](https://www.edmundoptics.com/p/narrow-nir-940nm-c-mount-bandpass-filter/54810/),
      is not needed: row 4 already has an Edmund filter for the lens thread.
+   - **Fit check (2026-09-28).** Read on Edmund's own product/spec-sheet pages and drawings,
+     and on Teledyne FLIR's own Blackfly S documentation, all on 2026-09-28 (browser reads;
+     no bot check was served on any of them):
+     - **#73-321's mechanical specs** (Edmund's spec sheet for
+       [#73-321](https://www.edmundoptics.com/p/narrow-nir-850nm-c-mount-bandpass-filter/54809/),
+       read 2026-09-28): filter thread **C-Mount** (the same 1"-32 UN thread family the
+       lenses and the spacer use — Edmund's own page for
+       [#03-618](https://www.edmundoptics.com/p/5mm-spacer-to-convert-cs-mount-cameras-to-c-mount/90/)
+       gives "Female Thread: C-Mount (1" - 32 TPI)", read 2026-09-28); outer diameter
+       25.40 mm; clear aperture 19.50 mm; **substrate thickness 1.00 mm**; **mount thickness
+       3.00 mm** (the ring's front-to-back length). Whether it adds to the lens-to-sensor
+       stack depends on how it mounts, which is not published (see below); construction "Mounted in Black Anodized Ring".
+       Substrate glass type/index is not published — **UNVERIFIED**; n ≈ 1.5 is assumed
+       below, as the PI's original note already assumed. No dimensioned drawing beyond this
+       spec sheet is published, so the ring's step profile is also **UNVERIFIED**.
+     - **Where it threads.** C-mount and CS-mount are the same thread; Edmund's own
+       [Lens Mounts](https://www.edmundoptics.com/knowledge-center/application-notes/imaging/lens-mounts/)
+       note (read 2026-09-28) gives C-Mount flange distance **17.526 mm** and CS-Mount
+       **12.526 mm** (the 5.00 mm the spacer makes up), so #73-321 can physically thread onto
+       the camera's CS-mount face, between camera and spacer, or between spacer and lens —
+       thread compatibility does not decide the order. Teledyne's own Blackfly S
+       Installation Guide and the BFS-U3-16S2 model pages
+       (https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/LensMount.htm,
+       read 2026-09-28) state the BFS-U3-16S2M (monochrome) has a 1 mm ± 0.07 mm clear glass
+       dust-protection window (Schott B270, replacing the color IR-cut filter) plus a further
+       "0.5 mm sensor package window" between the mount face and the sensor, but neither that
+       guide nor Edmund's pages publish a maximum-intrusion or thread-depth figure for the
+       CS-mount cavity beyond the flange-distance number itself. **Whether the camera body
+       has 3.00 mm of unobstructed physical depth for the filter ring before the internal
+       shutter/PCB is still UNVERIFIED** — unchanged from the PI's original note; no
+       manufacturer page answers it.
+     - **Rear protrusion.** Edmund's own dimensioned drawings (read 2026-09-28) give
+       #27-554's (12 mm) max rear protrusion past its C-mount flange as **0.52 mm**, and
+       #39-939's (6 mm) as **4.50 mm at 50 mm working distance / 5.13 mm at infinity**.
+       Neither number is the blocker here: a filter threaded behind the flange sits on the
+       camera side of the register, not the lens side, so it does not have to clear the
+       lens's own rear barrel.
+     - **Focus shift (arithmetic; corrected by the controller).** What matters is how the
+       ring mounts, and Edmund does not publish it.
+       - **Recessed:** if the ring threads *into* the camera's mount and sits inside it, with
+         the spacer and lens threaded in front, the stack length is unchanged. Only the glass
+         shifts the image plane back, by t·(1 − 1/n) = 1.00 × (1 − 1/1.5) ≈ **0.33 mm**
+         (n assumed; substrate UNVERIFIED). That shift uses up focus travel: the lens must
+         extend by (v − f) + 0.33 mm. By the thin-lens relation (principal planes ignored):
+         - #27-554, 12 mm, at 40 cm: v − f = 144/388 ≈ 0.37 mm, so 0.70 mm of its ≈ 1.64 mm
+           travel (∞ → 100 mm). **It focuses.**
+         - #39-939, 6 mm, at 80 cm: v − f = 36/794 ≈ 0.05 mm, so 0.38 mm of its ≈ 0.52 mm
+           travel (∞ → 75 mm). **It focuses, with about 0.14 mm to spare**, which a
+           glass with n above 1.5 would narrow. Neither lens reaches infinity with the filter
+           in; the rig does not need infinity.
+       - **Stacked:** if the ring instead sits between the spacer and the lens, adding its
+         3.00 mm, the lens needs about 2.67 mm more extension than either has. Then neither
+         lens focuses at any distance.
+     - **Verdict: unknown until Edmund answers two things.**
+       - Does #73-321 recess inside a camera's mount, with the lens in front of it, or does
+         it stack?
+       - Does the Blackfly S's CS mount have at least 3 mm of clear depth for the ring, in
+         front of its 1 mm dust window?
+
+       If it recesses and fits, both lenses focus at the planned distances by the
+       arithmetic above. The 6 mm lens's margin is thin, so it is checked on the rig. The
+       MidOpt BN850 stays in C5 until then.
+       *An agent's first draft of this check concluded "doesn't fit and focus", assuming
+       the ring stacks. The controller corrected it, because a camera-mount filter
+       normally recesses.*
 
 **The price effect** (arithmetic): one rig with 2 tracker and 4 behavior cameras, 2 stages and
 2 lamps.
