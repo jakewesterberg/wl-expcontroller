@@ -118,27 +118,36 @@ def select(changed: list[str], *, changed_only: bool = False) -> tuple[list[str]
     and `changed_only` is checked in both, not in one and forgotten in the other.
     Each says, when it would have escalated, that it did not and that the nightly
     sweep covers it, so the log does not read like a full check that happened to
-    select nothing. **If a third escalation path is ever added here, it must get
+    select nothing. **Not escalating adds nothing; it never removes anything**: the
+    modules the change touched directly, and their own test files, are still swept
+    beside a shared path (2026-09-28 -- until then a shared path returned an empty
+    selection early, so a push touching `conftest.py` and `serve.py` swept neither).
+    **If a third escalation path is ever added here, it must get
     the same `if changed_only` treatment**, or `--changed-only` silently stops
     meaning "never escalates" for that one path -- `tests/test_mutation_gate.py`'s
     `test_every_escalation_path_in_select_is_covered_by_changed_only` is what would
     need a new case added alongside the new path.
     """
+    # Under --changed-only a shared path adds nothing -- but it never *removes*
+    # anything either: the modules the change touched directly are still swept below
+    # (fix of 2026-09-28; until then a shared path returned an empty selection early,
+    # so a push touching `conftest.py` and `serve.py` swept neither).
+    not_escalated = ""
     if any(path in GLOBAL for path in changed):
         hit = next(path for path in changed if path in GLOBAL)
-        if changed_only:
-            return [], (
-                f"{hit} changed; --changed-only does not escalate on it -- "
-                f"the nightly full sweep covers it"
-            )
-        return sorted(RETURNS), f"{hit} changed; it alters what every test sees"
-    if any(path.startswith("tasks/") for path in changed):
-        if changed_only:
-            return [], (
-                "tasks/ changed; --changed-only does not escalate on it -- "
-                "the nightly full sweep covers it"
-            )
-        return sorted(RETURNS), "tasks/ changed; reference tasks are inputs to many tests"
+        if not changed_only:
+            return sorted(RETURNS), f"{hit} changed; it alters what every test sees"
+        not_escalated = (
+            f"{hit} changed; --changed-only does not escalate on it -- "
+            f"the nightly full sweep covers it"
+        )
+    elif any(path.startswith("tasks/") for path in changed):
+        if not changed_only:
+            return sorted(RETURNS), "tasks/ changed; reference tasks are inputs to many tests"
+        not_escalated = (
+            "tasks/ changed; --changed-only does not escalate on it -- "
+            "the nightly full sweep covers it"
+        )
 
     chosen: set[str] = set()
     for path in changed:
@@ -153,6 +162,8 @@ def select(changed: list[str], *, changed_only: bool = False) -> tuple[list[str]
             stem = Path(path).stem[len("test_") :]
             if stem in RETURNS:
                 chosen.add(stem)
+    if not_escalated:
+        return sorted(chosen), f"{not_escalated}; swept: changed modules and their own test files"
     return sorted(chosen), "changed modules and their own test files"
 
 

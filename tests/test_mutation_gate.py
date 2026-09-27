@@ -269,6 +269,26 @@ def test_changed_only_does_not_escalate_on_a_tasks_change_and_says_so():
     assert "nightly" in why
 
 
+@pytest.mark.parametrize(
+    "shared", ["tests/conftest.py", "pyproject.toml", "tasks/visual_search.py"]
+)
+def test_changed_only_still_sweeps_the_modules_a_push_changed_beside_a_shared_file(
+    shared,
+):
+    """"Never escalate" means "add nothing for the shared file", never "sweep
+    nothing". Until 2026-09-28 a push that touched `conftest.py` and `serve.py`
+    together selected zero modules -- not even `serve` -- because the shared file
+    returned an empty selection before the changed modules were looked at (found
+    by the b2a plan's pre-flight). The directly changed module and its test file
+    must still be swept, and the reason must still say what was not escalated."""
+    modules, why = gate.select(
+        [shared, "wl_expcontroller/serve.py", "tests/test_gaze.py"], changed_only=True
+    )
+    assert modules == ["gaze", "serve"]
+    assert "does not escalate" in why
+    assert "nightly" in why
+
+
 def test_every_escalation_path_in_select_is_covered_by_changed_only():
     """`select()` has exactly two ways to escalate to every module: a GLOBAL path,
     and a `tasks/` path. This pins that count so a third escalation path added later
