@@ -96,6 +96,66 @@ def _bounded_real_wait(monkeypatch):
     yield real_wait
 
 
+def _teardown_without_close(server: Server) -> None:
+    """Stop `server` the way `Server.close` should, but never by calling `close`
+    itself (fix round 3, I). The mutation harness blanks every function named
+    `close` in `serve.py` at once, `Hub.close` and `Server.close` alike -- proven
+    by the reviewer with the harness's own `_neuter_source`
+    (`tools/mutate.py`): a `Server` a test built through `run()` for
+    `test_wlx_serve_returns_130_for_a_ctrl_c_between_construction_and_wait`
+    reported `1 passed in 0.16s` and then never let the interpreter exit, because
+    nothing had told its telemetry thread to stop and the still-open `zmq.Context`
+    blocked destroying itself at shutdown around it.
+
+    Bounded and safe to call more than once (a test that already closed its own
+    `Server` gets this again at teardown; every step here is idempotent or a
+    no-op on an already-stopped object). `self._http.shutdown()` and each
+    thread's own `.join()` are skipped when that thread's `Thread.ident` is
+    `None` -- fix round 2, N2's reasoning, restated here rather than duplicated
+    with `_started`, which cannot tell "never started" from "already up."
+    """
+    server._stop.set()
+    server.hub.close()
+    web_started = server._web.ident is not None
+    telemetry_started = server._telemetry.ident is not None
+    if web_started:
+        server._http.shutdown()
+    server._http.server_close()
+    if web_started:
+        server._web.join(timeout=5)
+    if telemetry_started:
+        server._telemetry.join(timeout=5)
+
+
+@pytest.fixture(autouse=True)
+def _torn_down_servers(monkeypatch):
+    """Fix round 3, I. Wraps `Server.__init__` so every `Server` this file builds
+    -- whether a test constructs one directly (`server_cleanup`'s old job) or
+    `serve.run`/`main` builds one internally (`test_wlx_serve_returns_130_for_a_
+    ctrl_c_between_construction_and_wait` and the N2 test, neither of which ever
+    called `server_cleanup`) -- is torn down at teardown through
+    `_teardown_without_close`, never through `Server.close`.
+
+    Autouse, so a new test cannot forget it the way the two tests above did.
+    `server_cleanup` (below) is kept as a pass-through for the tests that already
+    call it -- fix round 3 merged its teardown into this one rather than running
+    both (each step in `_teardown_without_close` is idempotent, but there is no
+    reason to call `shutdown()`/`join()` twice from two independent fixtures when
+    one suffices).
+    """
+    real_init = Server.__init__
+    built: list[Server] = []
+
+    def _record_init(self, *args, **kwargs) -> None:
+        real_init(self, *args, **kwargs)
+        built.append(self)
+
+    monkeypatch.setattr(Server, "__init__", _record_init)
+    yield
+    for server in built:
+        _teardown_without_close(server)
+
+
 # --- the hub (Task 9) ------------------------------------------------------------
 
 
@@ -848,29 +908,23 @@ def _main_uninterrupted(argv: list) -> int:
 
 @pytest.fixture
 def server_cleanup():
-    """Registers each `Server` a test builds, and stops it at teardown **without
-    calling `Server.close`** -- `zmq_cleanup`'s reasoning, for this module's object.
+    """Registers each `Server` a test builds -- kept for the tests that already
+    call it, as a pass-through.
 
-    The mutation harness blanks every function named `close` in `serve.py` at once,
-    `Hub.close` and `Server.close` alike. A `Server` left running then holds its
-    telemetry thread in a ZMQ receive into interpreter shutdown, and the suite hung for
-    the harness's full 300 s (found while this plan was checked, 2026-09-26) -- the
-    harness noticing, not a test. With this teardown, the test that checks `close`
-    fails in seconds instead.
+    **Fix round 3.** The actual teardown -- without calling `Server.close`, for
+    the reason `_torn_down_servers`'s docstring above gives in full -- moved to
+    that autouse fixture, which catches every `Server` this file builds (this
+    one's own explicit registration included, since it also goes through
+    `Server.__init__`) rather than only the ones a test remembered to hand to
+    this one. Two independent teardowns of the same `Server` would have been
+    redundant, not wrong (`_teardown_without_close`'s own steps are each
+    idempotent), so there was no reason to keep both doing the work.
     """
-    started: list = []
 
     def _register(server):
-        started.append(server)
         return server
 
     yield _register
-    for server in started:
-        server._stop.set()
-        if server._started:
-            server._telemetry.join(timeout=5)
-            server._http.shutdown()
-        server._http.server_close()
 
 
 def _endpoints(zmq_cleanup) -> tuple[str, str]:
@@ -1293,6 +1347,34 @@ def test_wlx_serve_ends_with_a_sentence_when_the_telemetry_thread_cannot_start(
     assert exit_code == 1
     assert "wlx serve: the telemetry thread stopped" in captured.err
     assert "simulated: this transport cannot connect" in captured.err
+
+
+def test_a_fatal_exception_with_no_message_is_named_plainly(
+    tmp_path, monkeypatch, capsys
+):
+    """Fix round 3, M1: `_fatal_reason` built `f"{type(exc).__name__}: {exc}"`
+    inline, so an exception raised with no message (`RuntimeError()`, no argument,
+    `str(exc) == ""`) printed a dangling `"...stopped: RuntimeError: ; the
+    session is unaffected"` -- the same trailing colon-and-space fix round 2,
+    M-e already fixed for `link.FrameError`'s own message (`link._describe`),
+    reachable here too since this was a second, independent place that built the
+    same shape of string by hand instead of sharing that helper."""
+
+    def _raises_with_no_message(*args, **kwargs):
+        raise RuntimeError()
+
+    monkeypatch.setattr(serve._link, "ZmqConsole", _raises_with_no_message)
+
+    exit_code = _main_uninterrupted(_serve_args(tmp_path))
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert (
+        "wlx serve: the telemetry thread stopped: RuntimeError; "
+        "the session is unaffected"
+    ) in captured.err
+    assert "RuntimeError: ;" not in captured.err
+    assert "RuntimeError:\n" not in captured.err
     assert "the session is unaffected" in captured.err
 
 

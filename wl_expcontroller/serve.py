@@ -626,7 +626,11 @@ class Server:
         except Exception as exc:  # noqa: BLE001 -- ends the process, never hidden (I1)
             if self._stop.is_set():
                 return  # asked to stop; a transport error on the way out is not new
-            self._fatal_reason = f"{type(exc).__name__}: {exc}"
+            # fix round 3, M1: `_link._describe` (fix round 2, M-e) prints the
+            # exception type alone when its own message is empty, instead of the
+            # dangling "RuntimeError: " this line used to build inline -- the same
+            # bug M-e fixed for `link.FrameError`, reachable here too.
+            self._fatal_reason = _link._describe(exc)
             # fix round 2, M-c: the one-line reason is what an operator reads; the
             # full traceback is what diagnoses a hub bug nobody anticipated.
             self._fatal_traceback = traceback.format_exc()
@@ -644,9 +648,18 @@ class Server:
         `self._web.start()`: `self._started` is set *before* either thread starts, so
         it cannot tell "both threads are up" from "one of them never got the chance."
         `Thread.ident` can: it stays `None` until a thread has actually begun running,
-        and `.start()` itself blocks until `.ident` is set, so checking it here --
-        after `start()` has returned, raised, or never run at all -- is safe either
-        way.
+        and `.start()` itself blocks until `.ident` is set, so checking it here
+        correctly separates "never started" from "already running" for the
+        `shutdown()` deadlock and the `join()` `RuntimeError` above.
+
+        **Fix round 3, M3: this does not cover every interleaving, and saying so
+        plainly matters more than sounding finished.** A Ctrl-C landing during
+        `Thread.start()`'s own internal startup wait (POSIX: `Thread._started.wait()`,
+        called from inside `.start()` itself, a narrow window) can still leave that
+        thread alive briefly after this method returns. That is not a hang -- the
+        thread is a daemon and its own loop checks `_stop`, which is set above -- but
+        it may print an exception traceback (for instance, from a socket this method
+        has already closed underneath it) before it notices and exits.
         """
         if self._closed:
             return
@@ -828,19 +841,22 @@ def parse_http(text: str) -> tuple[str, int]:
 def _wait(server: Server) -> None:
     """Block until the operator interrupts, or the telemetry thread cannot go on
     (fix round 1, I1). Its own function so a test can stand in for the person
-    pressing Ctrl-C; `Event.wait` is interrupted by Ctrl-C the same way `time.sleep`
-    is on every platform this runs on, and returns on its own once `server._fatal`
-    is set -- which is the only way this can return without `KeyboardInterrupt`, so
-    `run` tells the two apart by whether an exception came out of this call.
+    pressing Ctrl-C, and returns on its own once `server._fatal` is set -- which
+    is the only way this can return without `KeyboardInterrupt`, so `run` tells
+    the two apart by whether an exception came out of this call.
 
-    **Fix round 2, M-b.** A single `Event.wait()` with no timeout is historically not
-    reliably interruptible by Ctrl-C on Windows (a blocking wait with no timeout
-    never returns control to the interpreter for a signal to be noticed there,
-    unlike POSIX's `EINTR`-driven retry loop). Waiting in a loop with a short
-    timeout -- checked and abandoned once a second, never once forever -- gives the
-    interpreter that chance regardless of platform, at the cost of a wake-up this
-    process is not otherwise doing anything with. Not a measurement of this system,
-    a portability property of `threading.Event`.
+    **Fix round 2, M-b; fix round 3, M2 (its docstring contradicted itself, and
+    this rewrite is the fix for that too -- CLAUDE.md: no fabrication).** On
+    POSIX, `Event.wait()` is interrupted by Ctrl-C the same way `time.sleep` is --
+    this codebase's own tests exercise exactly that path on this platform.
+    **Windows is UNVERIFIED here**: a blocking `Event.wait()` with no timeout is
+    documented elsewhere as not reliably interruptible by Ctrl-C on that platform
+    (a wait with no timeout never returns control to the interpreter for a signal
+    to be noticed there), but nothing in this repository has measured it. Waiting
+    in a loop with a short timeout -- checked and abandoned once a second, never
+    once forever -- is the portable form regardless of which platform's claim
+    turns out to hold, at the cost of a wake-up this process is not otherwise
+    doing anything with. Not a measurement of this system either way.
     """
     while not server._fatal.wait(1.0):
         pass
