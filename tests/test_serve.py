@@ -21,6 +21,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -935,6 +936,20 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
         assert "stopped by e2e" in ended["frags"]["banners"]
         assert ended["live"] is False
     finally:
+        # Fix round 1, M6: an assertion above this `finally` (or the `Stop` never
+        # reaching the session for some other reason) used to leave the runner
+        # thread with no `Stop` sent at all, riding out its full `E2E_TRIAL_BUDGET`
+        # (about 13 s, the plan's pre-flight measurement) before this test's own
+        # 30 s join -- close on a slow host, and a wasted 13 s on every host when
+        # the thing under test is a bug that already showed itself. Sending one
+        # more `Stop` here, if the session is still running, ends it at the next
+        # trial boundary instead of at the budget.
+        if runner.is_alive():
+            try:
+                with zmq_cleanup(ZmqConsole(pub, rep)) as rescue:
+                    rescue.send(Stop(by="e2e-cleanup"))
+            except Exception:  # noqa: BLE001 -- best-effort cleanup, never masks
+                pass  # the real failure above with a cleanup-path exception here
         runner.join(timeout=30)
         first.close()
         if second is not None:
@@ -944,6 +959,13 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
     # threads this test cannot register with `zmq_cleanup`; collected here, under the
     # test's control (`ZmqLink.close`'s docstring).
     gc.collect()
+    # Fix round 1, M6: a `KeyError` here, if `_run`'s thread crashed before ever
+    # setting `result["exit_code"]`, pointed at this line instead of at whatever
+    # actually crashed `_run` -- a stack trace whose most useful frame is missing.
+    assert "exit_code" in result, (
+        "wlx run's thread never recorded an exit code -- it likely raised before "
+        "main() returned; check this test's own thread for the real traceback"
+    )
     assert result["exit_code"] == 0
 
 
@@ -1007,6 +1029,83 @@ def test_a_frame_this_console_cannot_read_is_shown_as_refused_not_guessed(
         gc.collect()
 
 
+#: A schema-6 frame's own field set (`link.py`'s schema docstring, entry 6), built
+#: by hand rather than via `replace(frame(), schema=6)`: that helper starts from a
+#: *schema-7* frame and only overwrites `schema`, so it still carries `task`,
+#: `allocation`, `bounds_config`, `params`, `floor_ml`, `out_of_cage_limit_s`,
+#: `wall_at`, `last_reward_at` and `recent_outcomes` -- every field schema 7 added.
+#: A real schema-6 `wlx run` never sends those at all (fix round 1, I3).
+_SCHEMA_6_PAYLOAD = {
+    "schema": 6,
+    "session_id": "2027-01-14_08",
+    "subject": "REFERENCE",
+    "trial_index": 5,
+    "block": "block-1",
+    "stopped_because": None,
+    "stop_kind": None,
+    "phase": "running",
+    "fluid_session_ml": 12.5,
+    "fluid_today_ml": 12.5,
+    "shortfall_ml": 0.0,
+    "out_of_cage_seconds": 300.0,
+    "chair_seconds": None,
+    "in_session_seconds": 300.0,
+    "deployment": "cage_side",
+    "duration_warning": None,
+    "outcomes": {"correct": 3},
+    "hangs": 0,
+    "owed": {},
+    "staged": [],
+    "refusals": [],
+    "refusals_dropped": 0,
+}
+
+
+def test_a_real_schema_6_frame_is_refused_by_name_not_a_keyerror(
+    zmq_cleanup, server_cleanup
+):
+    """Fix round 1, I3: `test_a_frame_this_console_cannot_read_is_shown_as_refused_not_guessed`'s
+    schema-6 case above uses `replace(frame(), schema=6)`, which only overwrites the
+    `schema` field on an otherwise-complete schema-7 frame -- `task` and the rest of
+    schema 7's additions are still on it, so `decode` (before this fix) sailed past
+    building the whole `Telemetry` and only its `schema != SCHEMA` check afterward
+    ever fired.
+
+    A real schema-6 `wlx run` sends none of those fields. Before this fix, `decode`
+    read fields in encoding order and hit `data["task"]` -- missing from a genuine
+    schema-6 payload -- before it ever compared `schema`, so `wlx serve` showed
+    "a telemetry frame could not be decoded, so it is not shown: KeyError: 'task'"
+    instead of naming the schema mismatch it actually was."""
+    link = zmq_cleanup(
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    )
+    server = server_cleanup(
+        Server(
+            sub=link.pub_endpoint,
+            req=link.rep_endpoint,
+            http=("127.0.0.1", 0),
+            token=TOKEN,
+        )
+    )
+    server.start()
+    try:
+        import msgpack
+
+        why = _until_refused(
+            server,
+            lambda: link._pub.send(
+                msgpack.packb(_SCHEMA_6_PAYLOAD, use_bin_type=True)
+            ),
+            "schema 6",
+        )
+        assert "this console reads schema 7" in why
+        assert "KeyError" not in why
+        assert "could not be decoded" not in why
+    finally:
+        server.close()
+        gc.collect()
+
+
 def test_closing_the_server_stops_serving(zmq_cleanup, server_cleanup):
     pub, rep = _endpoints(zmq_cleanup)
     server = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
@@ -1020,6 +1119,41 @@ def test_closing_the_server_stops_serving(zmq_cleanup, server_cleanup):
     with pytest.raises(OSError):
         _request(port, "GET", "/")
     gc.collect()
+
+
+def test_closing_the_server_stops_its_threads_and_open_streams(
+    zmq_cleanup, server_cleanup
+):
+    """Fix round 1, I2: the security review's mutants -- deleting `self._stop.set()`
+    or `self.hub.close()` in `Server.close` -- passed every existing `Server` test,
+    each merely 5 s slower (the `.join(timeout=5)` calls timing out rather than
+    returning promptly). None of those tests checked what `close()` is actually
+    supposed to stop: this one does, three ways.
+
+    Bounded well under the 5 s join cap (2 s), so a mutant that reintroduces either
+    deletion fails this test in seconds -- not by hanging the suite, and not merely
+    by being slower than an assertion nobody wrote."""
+    pub, rep = _endpoints(zmq_cleanup)
+    server = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
+    server.start()
+
+    with _stream(server.address[1]) as response:
+        started = time.monotonic()
+        server.close()
+        elapsed_close = time.monotonic() - started
+
+        drain_started = time.monotonic()
+        for _ in _events(response):
+            pass  # drain to EOF; `_events` returns once `readline()` sees one
+        elapsed_drain = time.monotonic() - drain_started
+
+    assert elapsed_close < 2.0, f"close() took {elapsed_close:.2f}s (want well under 5s)"
+    assert elapsed_drain < 2.0, (
+        f"an /events stream open when close() ran took {elapsed_drain:.2f}s to see "
+        f"EOF (want well under 5s)"
+    )
+    assert not server._telemetry.is_alive(), "the telemetry thread outlived close()"
+    assert not server._web.is_alive(), "the HTTP thread outlived close()"
 
 
 def _token_file(tmp_path, text: str = f"{TOKEN}\n") -> Path:
@@ -1072,9 +1206,121 @@ def test_wlx_serve_serves_until_interrupted_then_closes(
     gc.collect()
 
 
+class _OneFrameThenNothingConsole:
+    """A fake `ZmqConsole`: one good frame on its first `receive()`, then a
+    `TimeoutError` -- deterministic, no real socket, no timing dependency. Stands
+    in for `_link.ZmqConsole` in the fix round 1, I1(b) tests below, so a fatal
+    exception past that one frame is exercised the instant `_listen` starts,
+    rather than waiting on a real PUB/SUB round trip that could in principle be
+    slow on a loaded host."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        self._served = False
+
+    def receive(self):
+        if self._served:
+            raise TimeoutError("no more simulated frames")
+        self._served = True
+        return frame()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        return None
+
+
+def test_wlx_serve_ends_with_a_sentence_when_the_telemetry_thread_cannot_start(
+    tmp_path, monkeypatch, capsys
+):
+    """Fix round 1, I1(b): before this fix, `ZmqConsole(...)` construction (the
+    `with` statement at the top of `Server._listen`) sat outside every `try`, so a
+    `--link` that parsed but that ZeroMQ itself refused at connect time --
+    `tcp://127.0.0.1:abc`, a wildcard host, an unknown scheme -- raised out of a
+    daemon thread. `threading`'s default excepthook prints that once to stderr and
+    the thread is simply gone: `wlx serve` kept its HTTP server up and `/health`
+    kept saying `ok` on the last frame it ever received, forever.
+
+    `_link.ZmqConsole` is monkeypatched to raise on construction rather than
+    reproduced with a real endpoint zmq happens to reject on this host/zmq
+    version: `parse_link` (I1(a), same fix round) already refuses every endpoint
+    shape the security review found that reaches this point, so a *real*
+    zmq-raises-at-connect reproduction would depend on some other, unlisted zmq
+    quirk instead of the one behavior this test exists to pin -- that whatever
+    reaches this point and raises ends the process with a sentence.
+    """
+
+    def _raises_on_construction(*args, **kwargs):
+        raise RuntimeError("simulated: this transport cannot connect")
+
+    monkeypatch.setattr(serve._link, "ZmqConsole", _raises_on_construction)
+
+    exit_code = _main_uninterrupted(_serve_args(tmp_path))
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "wlx serve: the telemetry thread stopped" in captured.err
+    assert "simulated: this transport cannot connect" in captured.err
+    assert "the session is unaffected" in captured.err
+
+
+def test_wlx_serve_ends_with_a_sentence_when_offering_a_frame_raises(
+    tmp_path, monkeypatch, capsys
+):
+    """Fix round 1, I1(b): not only a failure at construction -- anything
+    unexpected escaping the receive loop must end the process too, not just a
+    decode/schema problem (`link.FrameError`, handled separately and non-fatally).
+    `Hub.offer` stands in for any future bug in the hub itself; `_OneFrameThenNothingConsole`
+    hands `_listen` one good, schema-7 frame deterministically so `offer` is
+    reached on the very first iteration."""
+    monkeypatch.setattr(serve._link, "ZmqConsole", _OneFrameThenNothingConsole)
+
+    def _raises(self, telemetry) -> None:
+        raise RuntimeError("simulated: the hub could not accept this frame")
+
+    monkeypatch.setattr(Hub, "offer", _raises)
+
+    exit_code = _main_uninterrupted(_serve_args(tmp_path))
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "wlx serve: the telemetry thread stopped" in captured.err
+    assert "simulated: the hub could not accept this frame" in captured.err
+    assert "the session is unaffected" in captured.err
+
+
+def test_wlx_serve_returns_130_for_a_ctrl_c_between_construction_and_wait(
+    tmp_path, monkeypatch, capsys
+):
+    """Fix round 1, M5: `server.start()` and the startup print used to sit before
+    the `try`/`except KeyboardInterrupt` this function wraps `_wait` in, so a
+    Ctrl-C landing there -- after `Server()` is built but before the first
+    `_wait` call -- escaped as a bare `KeyboardInterrupt` traceback instead of the
+    130 every other interruption path here returns."""
+    real_start = Server.start
+
+    def _start_then_interrupt(self) -> None:
+        real_start(self)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(Server, "start", _start_then_interrupt)
+
+    exit_code = _main_uninterrupted(_serve_args(tmp_path))
+    captured = capsys.readouterr()
+
+    assert exit_code == 130
+    assert "the session keeps running on the box" in captured.err
+
+
 def test_serving_waits_for_the_operator():
-    """A `_wait` that returned would end the console the moment it started."""
-    waiter = threading.Thread(target=serve._wait, args=(None,), daemon=True)
+    """A `_wait` that returned would end the console the moment it started.
+
+    Fix round 1, I1: `_wait` now blocks on a real `Server`'s `_fatal` `Event`
+    rather than looping on its own, so this stub carries one that is never set --
+    `server=None` (the old stand-in) no longer works, since `_wait` reads
+    `server._fatal` unconditionally."""
+    stub = SimpleNamespace(_fatal=threading.Event())
+    waiter = threading.Thread(target=serve._wait, args=(stub,), daemon=True)
     waiter.start()
     waiter.join(timeout=0.2)
 
@@ -1083,7 +1329,16 @@ def test_serving_waits_for_the_operator():
 
 @pytest.mark.parametrize(
     ("text", "why"),
-    [("", "is empty"), ("   \n", "is empty"), ("tök\n", "non-ASCII")],
+    [
+        ("", "is empty"),
+        ("   \n", "is empty"),
+        ("tök\n", "non-ASCII"),
+        # Fix round 1, M2: `.strip()` only removes *leading/trailing* whitespace,
+        # so a second line survives inside the token -- no HTTP header can carry
+        # it, and `hmac.compare_digest` would never see the wl-works's correct
+        # token match, since wl-works cannot send a newline in a header value.
+        (f"{TOKEN}\nsecond-line\n", "cannot be carried in a header"),
+    ],
 )
 def test_wlx_serve_refuses_a_token_it_cannot_use(tmp_path, text, why):
     with pytest.raises(SystemExit, match=why):
@@ -1099,6 +1354,39 @@ def test_wlx_serve_refuses_a_token_file_inside_the_repository(tmp_path):
         main(_serve_args(tmp_path, token=inside))
 
 
+def test_read_token_refuses_a_file_inside_any_git_checkout_not_just_this_one(
+    tmp_path,
+):
+    """Fix round 1, M1: `_REPO_ROOT` was `Path(__file__).resolve().parents[1]` --
+    somewhere in `site-packages` for a non-editable install of `wl_expcontroller`,
+    guarding nothing there -- and the test above computed the very same expression
+    to check against, so it agreed with the refusal regardless of whether that path
+    was a real git checkout. Walking up from the token file itself, looking for a
+    `.git` entry, catches a checkout wherever it actually is, and works whether
+    `.git` is a directory (an ordinary clone) or a file (a worktree, this session's
+    own worktree among them -- `git worktree`'s own on-disk layout)."""
+    as_directory = tmp_path / "repo-with-git-dir"
+    (as_directory / ".git").mkdir(parents=True)
+    token_under_dir_repo = as_directory / "health.token"
+    token_under_dir_repo.write_text(f"{TOKEN}\n", encoding="utf-8")
+
+    as_worktree = tmp_path / "repo-with-git-file"
+    as_worktree.mkdir()
+    (as_worktree / ".git").write_text("gitdir: /elsewhere/.git/worktrees/x\n", encoding="utf-8")
+    token_under_worktree = as_worktree / "health.token"
+    token_under_worktree.write_text(f"{TOKEN}\n", encoding="utf-8")
+
+    outside = tmp_path / "not-a-checkout" / "health.token"
+    outside.parent.mkdir()
+    outside.write_text(f"{TOKEN}\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="inside this repository"):
+        serve.read_token(token_under_dir_repo)
+    with pytest.raises(SystemExit, match="inside this repository"):
+        serve.read_token(token_under_worktree)
+    assert serve.read_token(outside) == TOKEN
+
+
 def test_wlx_serve_refuses_a_token_file_it_cannot_read(tmp_path):
     with pytest.raises(SystemExit, match="cannot read"):
         main(_serve_args(tmp_path, token=tmp_path / "missing.token"))
@@ -1106,15 +1394,63 @@ def test_wlx_serve_refuses_a_token_file_it_cannot_read(tmp_path):
 
 @pytest.mark.parametrize(
     "link",
-    ["tcp://127.0.0.1:5571", "a,b,c", ",tcp://127.0.0.1:5572", "5571,5572"],
+    ["tcp://127.0.0.1:5571", "a,b,c", ",tcp://127.0.0.1:5572"],
 )
 def test_wlx_serve_refuses_a_link_that_is_not_two_endpoints(tmp_path, link):
     with pytest.raises(SystemExit, match="exactly two"):
         main(_serve_args(tmp_path, link=link))
 
 
+def test_parse_link_strips_whitespace_around_each_endpoint():
+    """Fix round 1, I1(a): the security review's own reproduction was a `--link`
+    with a space after the comma -- `"tcp://127.0.0.1:5571, tcp://127.0.0.1:5572"`
+    -- which the old `parse_link` returned with the leading space still on the
+    second endpoint, still `"://"`-shaped, so it passed straight through and only
+    ZeroMQ noticed, inside the telemetry thread, with no `try` around it (I1(b))."""
+    assert serve.parse_link("tcp://127.0.0.1:5571, tcp://127.0.0.1:5572") == (
+        "tcp://127.0.0.1:5571",
+        "tcp://127.0.0.1:5572",
+    )
+
+
 @pytest.mark.parametrize(
-    "http", ["8080", "localhost:", "127.0.0.1:99999", "[::1]:8080", "::1:8080"]
+    ("link", "why"),
+    [
+        # The security review's own reproduction, RE-CHECKED here as a positive
+        # case above and as the four negatives it named below: each of these
+        # passed the old `parse_link` (every half still contained "://") and only
+        # made ZeroMQ raise once the telemetry thread tried to connect (I1(b)).
+        ("tcp://127.0.0.1:abc,tcp://127.0.0.1:5572", "decimal"),
+        ("tcp://127.0.0.1,tcp://127.0.0.1:5572", "port"),
+        ("tcp://*:5571,tcp://127.0.0.1:5572", "wildcard"),
+        ("foo://127.0.0.1:5571,tcp://127.0.0.1:5572", "tcp://HOST:PORT"),
+        # Not one of the review's probes, but the same shape: two endpoints, no
+        # scheme on either -- moved here from
+        # `test_wlx_serve_refuses_a_link_that_is_not_two_endpoints` (fix round 1),
+        # since "5571,5572" really is two endpoints, just not `tcp://` ones, and
+        # deserves its own sentence rather than borrowing "exactly two"'s.
+        ("5571,5572", "tcp://HOST:PORT"),
+    ],
+)
+def test_wlx_serve_refuses_a_link_endpoint_zmq_would_choke_on(tmp_path, link, why):
+    with pytest.raises(SystemExit, match=why):
+        main(_serve_args(tmp_path, link=link))
+
+
+@pytest.mark.parametrize(
+    "http",
+    [
+        "8080",
+        "localhost:",
+        "127.0.0.1:99999",
+        "[::1]:8080",
+        "::1:8080",
+        # Fix round 1, M3: "²" (superscript two) is a digit by
+        # `str.isdigit()`'s reckoning but not by `int()`'s -- the old check used
+        # the former and let `int(port)` raise a bare, uncaught `ValueError`
+        # instead of this function's own sentence.
+        "127.0.0.1:²",
+    ],
 )
 def test_wlx_serve_refuses_an_address_it_cannot_serve_on(tmp_path, http):
     with pytest.raises(SystemExit, match="HOST:PORT"):

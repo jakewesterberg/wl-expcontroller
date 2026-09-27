@@ -31,6 +31,7 @@ from wl_expcontroller.cli import (
     render,
 )
 from wl_expcontroller.link import (
+    SCHEMA,
     ParamRow,
     Refused,
     SetParameter,
@@ -609,9 +610,16 @@ def _telemetry(**overrides) -> Telemetry:
     Schema 7's fields (P4d-2b b1) default to a configured rig session with nothing
     rewarded and no outcome yet: `last_reward_at` is `None` and `recent_outcomes`
     empty, so a test that does not ask for either sees their *none yet* lines.
+
+    `schema=SCHEMA`, not a stale literal (fix round 1, I3): `decode` now refuses any
+    other value before touching a single other field (`link.SchemaMismatch`), and
+    `test_console_renders_a_refusal_that_actually_crossed_the_wire` below sends this
+    fixture through a real `encode`/`decode` round trip. `render` itself never reads
+    `.schema` -- nothing here is a claim about what schema this renderer targets,
+    only that a wire round trip needs a schema `decode` will accept.
     """
     base = Telemetry(
-        schema=1,
+        schema=SCHEMA,
         session_id="2027-01-14_01",
         subject="REFERENCE",
         trial_index=3,

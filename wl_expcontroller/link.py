@@ -547,6 +547,35 @@ def encode(telemetry: Telemetry) -> bytes:
     return msgpack.packb(payload, use_bin_type=True)
 
 
+class FrameError(Exception):
+    """A telemetry frame that arrived but could not be shown: bytes `decode` could
+    not parse at all, or a field this schema's `Telemetry` needs that the payload
+    did not carry. Raised by `decode`, and caught non-fatally wherever a frame is
+    read (`serve.Server._listen`'s `Hub.reject`) -- **never a transport failure**,
+    which is what ends the telemetry thread instead (fix round 1, I1's distinction:
+    a `zmq.ZMQError` from a broken connection is not a `FrameError` and is left to
+    propagate out of `_listen`'s per-frame `try` on purpose)."""
+
+
+class SchemaMismatch(FrameError):
+    """`decode` read a schema this build does not know how to read the rest of the
+    frame for. Raised **before any other field is touched** (fix round 1, I3): a
+    security review found a real schema-6 `wlx run` beside a schema-7 `wlx serve`
+    raised `KeyError: 'task'` instead of naming the mismatch, because the old
+    `decode` read fields in encoding order and only checked `schema` against every
+    other field's `Telemetry(...)` call already having succeeded. This class is
+    raised the moment `data["schema"] != SCHEMA` is known, so a frame from an older
+    or newer build is refused by name every time, not only when its particular
+    field layout happens to decode cleanly up to the point schema was checked."""
+
+    def __init__(self, schema: object) -> None:
+        self.schema = schema
+        super().__init__(
+            f"a telemetry frame carried schema {schema!r} and this console reads "
+            f"schema {SCHEMA}, so it is not shown rather than guessed at"
+        )
+
+
 def decode(payload: bytes) -> Telemetry:
     """The inverse of `encode`, rebuilding `Staged`/`Refused` rather than leaving
     them as the plain dicts msgpack hands back.
@@ -566,10 +595,41 @@ def decode(payload: bytes) -> Telemetry:
     day rendered as a confident `0.0` is exactly the failure `welfare.shortfall()`
     exists to prevent, and a console showing it would be the same failure one hop
     further downstream.
+
+    **The schema is read and checked first, before any other field** (fix round 1,
+    I3): see `SchemaMismatch`. Every other way this can fail -- bytes that are not
+    msgpack at all, or a schema-matching payload still missing a field this schema's
+    `Telemetry` needs -- raises `FrameError` too, so a caller can catch one type for
+    "this frame is bad" without knowing `msgpack`'s or a dict's own exception
+    classes. Raised, never returned: `wlx console` (`cli.py`) and `wlx serve`
+    (`serve.Server._listen`) both call this directly and are the ones that decide
+    whether "bad frame" is fatal for them.
     """
     import msgpack
 
-    data = msgpack.unpackb(payload, raw=False)
+    try:
+        data = msgpack.unpackb(payload, raw=False)
+    except Exception as exc:  # noqa: BLE001 -- any of msgpack's own exception types
+        raise FrameError(
+            f"a telemetry frame could not be decoded, so it is not shown: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    schema = data.get("schema") if isinstance(data, dict) else None
+    if schema != SCHEMA:
+        raise SchemaMismatch(schema)
+    try:
+        return _telemetry_from(data)
+    except (KeyError, TypeError) as exc:
+        raise FrameError(
+            f"a telemetry frame could not be decoded, so it is not shown: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def _telemetry_from(data: dict) -> Telemetry:
+    """The field-by-field rebuild `decode` used to do inline. Split out so `decode`
+    can wrap only this part's `KeyError`/`TypeError` in `FrameError` -- the schema
+    check above it must not be, since `SchemaMismatch` already is one."""
     return Telemetry(
         schema=data["schema"],
         session_id=data["session_id"],

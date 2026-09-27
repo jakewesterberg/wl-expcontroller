@@ -518,9 +518,6 @@ def make_handler(
 #: measurement; `wlx console` keeps `ZmqConsole`'s 5 s.
 RECEIVE_TIMEOUT_S = 0.5
 
-#: The checkout this module runs from. A token file inside it is refused (spec §2).
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-
 
 class Server:
     """`wlx serve`'s whole process, as an object a test can start and stop.
@@ -546,6 +543,13 @@ class Server:
         self._req = req
         self._receive_timeout_s = receive_timeout_s
         self._stop = threading.Event()
+        #: Set by `_listen` when the telemetry thread cannot go on -- a transport
+        #: failure, never a bad frame (fix round 1, I1). `_wait` blocks on this
+        #: alongside the operator's Ctrl-C, and `run` reads `_fatal_reason` once it
+        #: wakes to say why, then closes and returns non-zero rather than serving on
+        #: with a telemetry thread that is quietly gone.
+        self._fatal = threading.Event()
+        self._fatal_reason: str | None = None
         self._http = ThreadingHTTPServer(
             http,
             make_handler(
@@ -580,32 +584,44 @@ class Server:
         so its sockets have one owning thread (spec §2).
 
         **A frame this console cannot use is said, never shown and never fatal**
-        (Review Focus 1): one that does not decode, and one of another schema -- which
-        may decode perfectly well and mean something else (`link.SCHEMA`'s own rule).
-        Either goes to `Hub.reject`, the page says why, and the last good frame stays.
+        (Review Focus 1): one that does not decode, and one of another schema --
+        `link.decode` raises `link.FrameError` for both (`link.SchemaMismatch` is
+        one), checked first thing every schema, before any other field is touched
+        (fix round 1, I3). Either goes to `Hub.reject`, the page says why, and the
+        last good frame stays.
+
+        **A transport failure ends this thread, not silently** (fix round 1, I1).
+        Before this fix, `ZmqConsole`'s own construction and every call in this loop
+        sat outside any `try`, so a `--link` endpoint that parsed but that ZeroMQ
+        itself refused (a bad port, a wildcard host connected-to rather than bound,
+        an unknown scheme) raised out of this daemon thread, which `threading`
+        prints to stderr and then quietly drops -- `wlx serve` kept its HTTP server
+        up, `/health` kept saying `ok` on the last frame it ever got, forever. Now
+        anything that is not a `TimeoutError` (an idle receive; expected, not an
+        error) or a `FrameError` (a bad frame; said, not fatal) escapes this `with`
+        block, is caught once below, and sets `_fatal` so `run` can end the process
+        instead of serving on with a dead telemetry thread. Nothing here retries in
+        a loop with no sleep: a fatal exception ends the thread on the first one,
+        it does not spin.
         """
-        with _link.ZmqConsole(
-            self._sub, self._req, receive_timeout_s=self._receive_timeout_s
-        ) as console:
-            while not self._stop.is_set():
-                try:
-                    frame = console.receive()
-                except TimeoutError:
-                    continue
-                except Exception as exc:  # noqa: BLE001 -- said on the page, never fatal
-                    self.hub.reject(
-                        f"a telemetry frame could not be decoded, so it is not shown: "
-                        f"{type(exc).__name__}: {exc}"
-                    )
-                    continue
-                if frame.schema != _link.SCHEMA:
-                    self.hub.reject(
-                        f"a telemetry frame carried schema {frame.schema!r} and this "
-                        f"console reads schema {_link.SCHEMA}, so it is not shown "
-                        f"rather than guessed at"
-                    )
-                    continue
-                self.hub.offer(frame)
+        try:
+            with _link.ZmqConsole(
+                self._sub, self._req, receive_timeout_s=self._receive_timeout_s
+            ) as console:
+                while not self._stop.is_set():
+                    try:
+                        frame = console.receive()
+                    except TimeoutError:
+                        continue
+                    except _link.FrameError as exc:
+                        self.hub.reject(str(exc))
+                        continue
+                    self.hub.offer(frame)
+        except Exception as exc:  # noqa: BLE001 -- ends the process, never hidden (I1)
+            if self._stop.is_set():
+                return  # asked to stop; a transport error on the way out is not new
+            self._fatal_reason = f"{type(exc).__name__}: {exc}"
+            self._fatal.set()
 
     def close(self) -> None:
         """Stop serving, end every open stream, and close the `ZmqConsole`. Safe to
@@ -623,22 +639,47 @@ class Server:
             self._telemetry.join(timeout=5)
 
 
+def _git_checkout_containing(path: Path) -> Path | None:
+    """The nearest ancestor of `path` (`path` itself included) with a `.git` entry --
+    file or directory -- or `None` if none of them has one.
+
+    **Fix round 1, M1.** `_REPO_ROOT`, computed from `Path(__file__)`, is somewhere
+    under `site-packages` for a non-editable install of `wl_expcontroller` -- and
+    `read_token`'s "inside this repository" refusal, checked with
+    `resolved.is_relative_to(_REPO_ROOT)`, then guards nothing there: no token file
+    written into a real git checkout is ever *inside* a `site-packages` directory. Its
+    own test computed `_REPO_ROOT` the identical way, so it agreed with the check
+    regardless of whether that path was a real repository, which is why the test kept
+    passing while the check itself guarded nothing.
+
+    Walking up from the token path instead finds any git checkout wherever it
+    actually is -- **a file counts, not only a directory**, because a worktree's
+    `.git` is a file naming the real one elsewhere (this repository's own worktrees,
+    this session's own worktree among them, are exactly this case)."""
+    for candidate in (path, *path.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
 def read_token(path: Path) -> str:
     """The `/health` bearer token: from a file, never from the repository (spec §2).
 
     Refused, each with a sentence and before anything binds: a file inside this
     checkout -- one `git add` from public -- a file that cannot be read, an empty one
-    (there is no default token), and one holding a non-ASCII character, which
+    (there is no default token), one holding a non-ASCII character, which
     `hmac.compare_digest` cannot compare, so every request would fail, the correct
-    one included (wl-preproc refuses the same). The whitespace around it -- the
-    newline an editor leaves -- is not part of the token.
+    one included (wl-preproc refuses the same), and one holding a newline or other
+    control character no HTTP header can carry (fix round 1, M2). The whitespace
+    around it -- the newline an editor leaves -- is not part of the token.
     """
     resolved = path.expanduser().resolve()
-    if resolved.is_relative_to(_REPO_ROOT):
+    checkout = _git_checkout_containing(resolved)
+    if checkout is not None:
         raise SystemExit(
-            f"refused: the /health token file {str(path)!r} is inside this repository, "
-            f"one `git add` from being published; keep it outside the checkout "
-            f"(P4d-2b spec §2: a token file, never the repository)"
+            f"refused: the /health token file {str(path)!r} is inside this repository "
+            f"({checkout}), one `git add` from being published; keep it outside any "
+            f"checkout (P4d-2b spec §2: a token file, never the repository)"
         )
     try:
         token = resolved.read_text(encoding="utf-8").strip()
@@ -658,6 +699,12 @@ def read_token(path: Path) -> str:
             "hmac.compare_digest cannot compare it, which would make every request "
             "fail authentication, the correct one included"
         )
+    if not token.isprintable():
+        raise SystemExit(
+            "refused: the /health token cannot be carried in a header: it contains "
+            "a newline or other control character (a token file with a second line, "
+            "for example); write it on one line with nothing else in the file"
+        )
     return token
 
 
@@ -665,16 +712,67 @@ def parse_link(text: str) -> tuple[str, str]:
     """`PUB,REP`, exactly as `wlx run --link` takes it. This process reads the first
     and, in b1, never sends to the second.
 
-    Each must at least name a transport (`tcp://...`): ZeroMQ refuses one that does
-    not only when the telemetry thread connects, where the refusal would be a
-    traceback on a thread rather than a sentence before anything binds."""
-    parts = text.split(",")
-    if len(parts) != 2 or not all("://" in part for part in parts):
+    **Fix round 1, I1(a).** This used to check only that each half contained
+    `"://"` somewhere, which is what its docstring already claimed to do and did
+    not: `"tcp://127.0.0.1:5571, tcp://127.0.0.1:5572"` (a space after the comma,
+    the security review's own reproduction) passed it, and the leading space rode
+    along into `ZmqConsole.connect()` inside the telemetry thread, where ZeroMQ
+    refused it -- a traceback on a daemon thread instead of a sentence here.
+    `tcp://127.0.0.1:abc`, `tcp://127.0.0.1` (no port), `tcp://*:5571` and
+    `foo://...` all passed the same way.
+
+    Now each endpoint is stripped and required to be `tcp://HOST:PORT`, PORT a
+    decimal number from 1 to 65535, HOST anything but empty or `*` -- a console
+    *connects*; it never binds, so a wildcard bind address is never what it means
+    (`link.ZmqConsole`'s own docstring makes the same distinction from
+    `link.ZmqLink`). Only `tcp://` -- neither `wlx run --link` nor `wlx console
+    --sub/--req` (`cli.py`) restrict a `--link`/`--sub`/`--req` value to a
+    transport at all before handing it to `ZmqLink`/`ZmqConsole`, and nothing in
+    this codebase's tests exercises `ipc://`/`inproc://` through either of those
+    end to end (only `link._binds_beyond_this_machine`'s own classification test
+    does, and only on the *bind* side); accepting them here without an end-to-end
+    check anywhere would be inventing support this parser cannot verify.
+    """
+    parts = [part.strip() for part in text.split(",")]
+    if len(parts) != 2 or not all(parts):
         raise SystemExit(
             f"refused: --link expects PUB,REP -- exactly two comma-separated endpoints "
             f"such as tcp://127.0.0.1:5571, as given to `wlx run --link` -- got {text!r}"
         )
+    for endpoint in parts:
+        _refuse_unless_tcp_endpoint(endpoint, text)
     return parts[0], parts[1]
+
+
+def _refuse_unless_tcp_endpoint(endpoint: str, whole: str) -> None:
+    """One `--link` endpoint, already stripped: `tcp://HOST:PORT` or a `SystemExit`
+    naming exactly what is wrong with it, before anything connects (fix round 1,
+    I1(a))."""
+    scheme, sep, rest = endpoint.partition("://")
+    if not sep or scheme != "tcp":
+        raise SystemExit(
+            f"refused: --link endpoint {endpoint!r} (in {whole!r}) must be "
+            f"tcp://HOST:PORT"
+        )
+    host, colon, port = rest.rpartition(":")
+    if not colon or not host:
+        raise SystemExit(
+            f"refused: --link endpoint {endpoint!r} is missing a port -- expected "
+            f"tcp://HOST:PORT"
+        )
+    if host == "*":
+        raise SystemExit(
+            f"refused: --link endpoint {endpoint!r} names a wildcard host; a "
+            f"console connects, it never binds, so give the box's own address "
+            f"or name instead"
+        )
+    # M3's `isascii()`-and-`isdecimal()` fix applies here for the same reason:
+    # `str.isdigit()` accepts characters `int()` does not.
+    if not port.isascii() or not port.isdecimal() or not (1 <= int(port) <= 65535):
+        raise SystemExit(
+            f"refused: --link endpoint {endpoint!r}'s port must be a decimal "
+            f"number from 1 to 65535"
+        )
 
 
 def parse_http(text: str) -> tuple[str, int]:
@@ -685,7 +783,13 @@ def parse_http(text: str) -> tuple[str, int]:
         or not host
         or ":" in host
         or host.startswith("[")
-        or not port.isdigit()
+        # fix round 1, M3: `str.isdigit()` accepts characters `int()` does not --
+        # `"²"` (superscript two) is a digit by Unicode's reckoning and raised
+        # a bare `ValueError` traceback out of `int(port)` below instead of this
+        # sentence. `isascii() and isdecimal()` is the pair `int()` itself agrees
+        # with.
+        or not port.isascii()
+        or not port.isdecimal()
         or int(port) > 65535
     ):
         raise SystemExit(
@@ -697,10 +801,13 @@ def parse_http(text: str) -> tuple[str, int]:
 
 
 def _wait(server: Server) -> None:
-    """Block until the operator interrupts. Its own function so a test can stand in
-    for the person pressing Ctrl-C; `time.sleep` is interrupted by it everywhere."""
-    while True:
-        time.sleep(3600)
+    """Block until the operator interrupts, or the telemetry thread cannot go on
+    (fix round 1, I1). Its own function so a test can stand in for the person
+    pressing Ctrl-C; `Event.wait` with no timeout is interrupted by Ctrl-C the same
+    way `time.sleep` is, and returns on its own once `server._fatal` is set --
+    which is the only way this can return without `KeyboardInterrupt`, so `run`
+    tells the two apart by whether an exception came out of this call."""
+    server._fatal.wait()
 
 
 def run(args) -> int:
@@ -708,6 +815,11 @@ def run(args) -> int:
 
     Every refusal is a sentence, and all of them happen before anything binds.
     Ctrl-C ends it with 130, as `wlx console` does, and says what it did not stop.
+    A telemetry thread that cannot go on ends it too (fix round 1, I1): `_wait`
+    returns on its own rather than raising, so it is distinguished from Ctrl-C by
+    `server._fatal` being set, and this returns 1 with a sentence naming why --
+    the session on the box is unaffected either way; this is the console's own
+    process, and closing it commands nothing.
     """
     token = read_token(args.health_token_file)
     sub, req = parse_link(args.link)
@@ -726,14 +838,18 @@ def run(args) -> int:
         )
     except OSError as exc:
         raise SystemExit(f"refused: cannot serve on {host}:{port}: {exc}") from exc
-    server.start()
-    bound_host, bound_port = server.address
-    print(
-        f"wlx serve: the console is at http://{bound_host}:{bound_port}/, reading "
-        f"{sub}; GET /health needs the bearer token",
-        flush=True,
-    )
+    # fix round 1, M5: `server.start()` and the startup print used to sit after this
+    # `try`, so a Ctrl-C landing between construction and `_wait` escaped as a bare
+    # `KeyboardInterrupt` traceback instead of the 130 this function promises
+    # everywhere else. Both are inside it now.
     try:
+        server.start()
+        bound_host, bound_port = server.address
+        print(
+            f"wlx serve: the console is at http://{bound_host}:{bound_port}/, reading "
+            f"{sub}; GET /health needs the bearer token",
+            flush=True,
+        )
         _wait(server)
     except KeyboardInterrupt:
         print(
@@ -744,4 +860,11 @@ def run(args) -> int:
         return 130
     finally:
         server.close()
+    if server._fatal.is_set():
+        print(
+            f"wlx serve: the telemetry thread stopped: {server._fatal_reason}; "
+            f"the session is unaffected",
+            file=sys.stderr,
+        )
+        return 1
     return 0

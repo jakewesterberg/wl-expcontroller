@@ -26,7 +26,7 @@ _BLOCKER_SCRIPT = Path(__file__).resolve().parent / "_transport_import_blocker.p
 _REPO_ROOT = _BLOCKER_SCRIPT.parent.parent
 
 
-def test_link_taskd_and_cli_import_with_zmq_and_msgpack_unavailable():
+def test_link_taskd_cli_health_serve_and_web_import_with_zmq_and_msgpack_unavailable():
     """Runs the blocker **in a subprocess, on purpose.** By the time this test runs,
     `tests/test_link.py` has almost certainly already imported real `zmq`/`msgpack`
     into this pytest process's `sys.modules` -- and once a module is cached there,
@@ -56,7 +56,7 @@ def test_link_taskd_and_cli_import_with_zmq_and_msgpack_unavailable():
     # trusted -- ...
     assert "BLOCKED: import zmq raised" in result.stdout, result.stdout
     assert "BLOCKED: import msgpack raised" in result.stdout, result.stdout
-    # ...and only then did the three modules under test import successfully, from
+    # ...and only then did the six modules under test import successfully, from
     # this worktree specifically (R9).
     assert "PASS: wl_expcontroller.link imported" in result.stdout, result.stdout
     assert "PASS: wl_expcontroller.taskd imported" in result.stdout, result.stdout
@@ -66,5 +66,5 @@ def test_link_taskd_and_cli_import_with_zmq_and_msgpack_unavailable():
     assert "PASS: wl_expcontroller.serve imported" in result.stdout, result.stdout
     assert "PASS: wl_expcontroller.web imported" in result.stdout, result.stdout
     assert str(_REPO_ROOT) in result.stdout, (
-        f"expected all three imports to resolve under {_REPO_ROOT}:\n{result.stdout}"
+        f"expected all six imports to resolve under {_REPO_ROOT}:\n{result.stdout}"
     )
