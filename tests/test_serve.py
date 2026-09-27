@@ -8,7 +8,6 @@ seconds rather than hanging the suite (and the mutation sweep) for 300.
 
 from __future__ import annotations
 
-import gc
 import http.client
 import json
 import os
@@ -29,6 +28,9 @@ from types import SimpleNamespace
 import pytest
 
 from _frames import ENDPOINT, frame
+# Autouse: every `ZmqLink`/`ZmqConsole` built here, `wlx serve`'s telemetry thread's and
+# `wlx run --link`'s included, has its context destroyed at teardown without `close()`.
+from _zmq_release import _every_zmq_context_released  # noqa: F401
 from wl_expcontroller import serve
 from wl_expcontroller.cli import main
 from wl_expcontroller.link import Stop, ZmqConsole, ZmqLink
@@ -131,7 +133,7 @@ def _teardown_without_close(server: Server) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _torn_down_servers(monkeypatch):
+def _torn_down_servers(monkeypatch, _every_zmq_context_released):
     """Fix round 3, I. Wraps `Server.__init__` so every `Server` this file builds
     -- whether a test constructs one directly (`server_cleanup`'s old job) or
     `serve.run`/`main` builds one internally (`test_wlx_serve_returns_130_for_a_
@@ -145,6 +147,10 @@ def _torn_down_servers(monkeypatch):
     both (each step in `_teardown_without_close` is idempotent, but there is no
     reason to call `shutdown()`/`join()` twice from two independent fixtures when
     one suffices).
+
+    It requests `_every_zmq_context_released` (`tests/_zmq_release.py`) so that
+    fixture's teardown runs after this one. The telemetry thread is joined before its
+    `ZmqConsole`'s context is destroyed, never while a socket is still in use there.
     """
     real_init = Server.__init__
     built: list[Server] = []
@@ -483,6 +489,22 @@ def _events(response, *, deadline_s: float | None = None):
             name = line[len("event: ") :]
         elif line.startswith("data: "):
             data = line[len("data: ") :]
+
+
+def _read_to_eof(response, *, within_s: float) -> bool:
+    """Read `response` to its end. True if the end came within `within_s` on this
+    test's own clock. False if the server was still writing when that time ran out.
+
+    The socket's 10 s timeout cannot bound this read alone. A stream that never ends
+    but keeps writing, which is what a `Hub.take` that stopped returning `CLOSED`
+    produces, has a line ready for every `readline()`, so that timeout never fires.
+    Draining it with an unbounded loop hung the whole suite under that mutant instead
+    of failing this test (2026-09-27)."""
+    ends = time.monotonic() + within_s
+    while time.monotonic() < ends:
+        if not response.readline():
+            return True
+    return False
 
 
 @contextmanager
@@ -1319,9 +1341,9 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
             second.close()
     assert not runner.is_alive(), "wlx run did not finish once it was stopped"
     # Both servers' `ZmqConsole`s and `main()`'s own `ZmqLink` were built inside
-    # threads this test cannot register with `zmq_cleanup`; collected here, under the
-    # test's control (`ZmqLink.close`'s docstring).
-    gc.collect()
+    # threads this test cannot register with `zmq_cleanup`. `_every_zmq_context_released`
+    # destroys their contexts at teardown. The `gc.collect()` that used to stand here was
+    # where `link.close`'s mutant deadlocked (`tests/_zmq_release.py`).
     # Fix round 1, M6: a `KeyError` here, if `_run`'s thread crashed before ever
     # setting `result["exit_code"]`, pointed at this line instead of at whatever
     # actually crashed `_run` -- a stack trace whose most useful frame is missing.
@@ -1389,7 +1411,6 @@ def test_a_frame_this_console_cannot_read_is_shown_as_refused_not_guessed(
         assert _request(server.address[1], "GET", "/")[0] == 200
     finally:
         server.close()
-        gc.collect()
 
 
 #: A schema-6 frame's own field set (`link.py`'s schema docstring, entry 6), built
@@ -1466,7 +1487,6 @@ def test_a_real_schema_6_frame_is_refused_by_name_not_a_keyerror(
         assert "could not be decoded" not in why
     finally:
         server.close()
-        gc.collect()
 
 
 def test_closing_the_server_stops_serving(zmq_cleanup, server_cleanup):
@@ -1481,7 +1501,6 @@ def test_closing_the_server_stops_serving(zmq_cleanup, server_cleanup):
 
     with pytest.raises(OSError):
         _request(port, "GET", "/")
-    gc.collect()
 
 
 def test_closing_the_server_stops_its_threads_and_open_streams(
@@ -1506,11 +1525,11 @@ def test_closing_the_server_stops_its_threads_and_open_streams(
         elapsed_close = time.monotonic() - started
 
         drain_started = time.monotonic()
-        for _ in _events(response):
-            pass  # drain to EOF; `_events` returns once `readline()` sees one
+        ended = _read_to_eof(response, within_s=5.0)
         elapsed_drain = time.monotonic() - drain_started
 
     assert elapsed_close < 2.0, f"close() took {elapsed_close:.2f}s (want well under 5s)"
+    assert ended, "an /events stream open when close() ran was still sending 5 s later"
     assert elapsed_drain < 2.0, (
         f"an /events stream open when close() ran took {elapsed_drain:.2f}s to see "
         f"EOF (want well under 5s)"
@@ -1566,7 +1585,6 @@ def test_wlx_serve_serves_until_interrupted_then_closes(
     assert "the session keeps running on the box" in captured.err
     with pytest.raises(OSError):
         _request(seen["port"], "GET", "/")
-    gc.collect()
 
 
 class _OneFrameThenNothingConsole:

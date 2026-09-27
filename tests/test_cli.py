@@ -13,7 +13,6 @@ proved a person could actually run `wlx run --link` and attach `wlx console` to 
 from __future__ import annotations
 
 import argparse
-import gc
 import json
 import threading
 import time
@@ -22,6 +21,9 @@ from datetime import datetime, timedelta
 
 import pytest
 
+# Autouse: every `ZmqLink`/`ZmqConsole` built here, `main()`'s own included, has its
+# context destroyed at teardown without `close()` (`tests/_zmq_release.py`).
+from _zmq_release import _every_zmq_context_released  # noqa: F401
 from wl_expcontroller.bounds import Exceeded
 from wl_expcontroller.cli import (
     _RETURN_PROMPT,
@@ -392,11 +394,13 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     fixture was module-local, so this file's sockets were not protected by it. See
     `conftest.py`'s copy for the full mechanism. `main()`'s *own* `ZmqLink`, built
     and closed entirely inside the background thread below, has no handle this test
-    could register the same way; `gc.collect()` after the thread joins forces its
-    cyclic collection to happen under this test's own control -- Task 5's own
-    measurements found that path safe ("even from an explicit `gc.collect()` in a
-    bare script ... none of these reproduce it outside pytest") -- rather than
-    leaving it to whenever pytest's internal collector next happens to run.
+    could register the same way. This test used to force its collection with a
+    `gc.collect()` after the thread joined, on the strength of Task 5's measurement
+    that an explicit `gc.collect()` in a bare script was safe. It is not: the link sits
+    in a reference cycle through its `Session`, and a collection of that cycle is
+    exactly where `link.close`'s mutant deadlocked (2026-09-27). The autouse
+    `_every_zmq_context_released` (`tests/_zmq_release.py`) destroys its context at
+    teardown instead, without the collector and without `close()`.
 
     Runs `wlx run` on a background thread (a real `Session.run()`, not a mock) and
     drives a real `ZmqConsole` from the test's own thread -- the same two-sided
@@ -512,13 +516,6 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     finally:
         runner_thread.join(timeout=15)
     assert not runner_thread.is_alive(), "wlx run did not finish on its own"
-    # Forces the background thread's own ZmqLink -- built and closed entirely
-    # inside main(), so this test has no handle to register with zmq_cleanup --
-    # through a cyclic collection this test controls, rather than leaving an
-    # abandoned Context (if a future mutation ever neuters close()) for whichever
-    # later pytest-internal collection happens to reach it first. See this
-    # function's docstring.
-    gc.collect()
     assert result["exit_code"] == 0
 
     changes_path = (
@@ -1047,7 +1044,6 @@ def test_console_shows_a_schema_mismatch_as_a_sentence_not_a_traceback(
     assert "console: a telemetry frame carried schema 6" in captured.err
     assert "this console reads schema 7" in captured.err
     assert "Traceback" not in captured.err
-    gc.collect()
 
 
 # ---------------------------------------------------------------------------
