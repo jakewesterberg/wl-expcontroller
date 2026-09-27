@@ -9,6 +9,7 @@ is not a `/health`.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 
@@ -123,7 +124,8 @@ EXPECTED = {
 def _readings(case: str) -> dict:
     found, age = CASES[case]
     return {
-        r["key"]: r for r in readings(found, frame_age_s=age, stale_after_s=30.0)
+        r["key"]: r
+        for r in readings(found, frame_age_s=age, stale_after_s=30.0, rejected=None)
     }
 
 
@@ -134,7 +136,10 @@ def _readings(case: str) -> dict:
 def test_the_verdict_follows_the_specs_table(case):
     found, age = CASES[case]
 
-    assert verdict(found, frame_age_s=age, stale_after_s=30.0) == EXPECTED[case]
+    assert (
+        verdict(found, frame_age_s=age, stale_after_s=30.0, rejected=None)
+        == EXPECTED[case]
+    )
 
 
 def test_a_rig_session_awaiting_its_return_that_goes_quiet_is_degraded():
@@ -142,7 +147,10 @@ def test_a_rig_session_awaiting_its_return_that_goes_quiet_is_degraded():
     silence then means nobody can see an animal that is still out."""
     awaiting, _ = CASES["awaiting return"]
 
-    assert verdict(awaiting, frame_age_s=45.0, stale_after_s=30.0) == "degraded"
+    assert (
+        verdict(awaiting, frame_age_s=45.0, stale_after_s=30.0, rejected=None)
+        == "degraded"
+    )
 
 
 def test_an_ended_sessions_last_frame_is_its_last_and_never_stale():
@@ -161,15 +169,19 @@ def test_a_fault_is_down_even_after_the_return_and_beside_a_warning():
         duration_warning=WARNING,
     )
 
-    assert verdict(faulted, frame_age_s=1.0, stale_after_s=30.0) == "down"
+    assert (
+        verdict(faulted, frame_age_s=1.0, stale_after_s=30.0, rejected=None) == "down"
+    )
 
 
 def test_unknown_is_never_emitted():
     """`unknown` is wl-works' word for a host that went silent; a host answering the
     request cannot be silent (wl-preproc `docs/ops/lab-host-protocol.md`)."""
     for found, age in CASES.values():
-        for stale_after in (0.5, 30.0):
-            assert verdict(found, frame_age_s=age, stale_after_s=stale_after) in {
+        for stale_after, rejected in itertools.product((0.5, 30.0), (None, REFUSED)):
+            assert verdict(
+                found, frame_age_s=age, stale_after_s=stale_after, rejected=rejected
+            ) in {
                 "ok",
                 "degraded",
                 "down",
@@ -211,6 +223,7 @@ def test_the_readings_come_in_the_specs_order():
             frame(duration_warning=WARNING, outcomes={"correct": 30, "no_fixation": 8}),
             frame_age_s=2.0,
             stale_after_s=30.0,
+            rejected=None,
         )
     ]
 
@@ -232,7 +245,7 @@ def test_the_readings_come_in_the_specs_order():
 def test_the_readings_say_what_a_person_needs_to_know():
     values = {
         r["key"]: r["value"]
-        for r in readings(frame(), frame_age_s=3.0, stale_after_s=30.0)
+        for r in readings(frame(), frame_age_s=3.0, stale_after_s=30.0, rejected=None)
     }
 
     assert values["session"] == "2027-01-14_01 · A · tasks/fixation_detection.py"
@@ -252,7 +265,7 @@ def test_an_ended_session_gives_its_reason_and_where_the_animal_is():
         found = frame(stop_kind="completed", stopped_because="every block is finished", **overrides)
         return {
             r["key"]: r["value"]
-            for r in readings(found, frame_age_s=1.0, stale_after_s=30.0)
+            for r in readings(found, frame_age_s=1.0, stale_after_s=30.0, rejected=None)
         }["state"]
 
     assert state() == "ended (completed): every block is finished"
@@ -273,7 +286,7 @@ def test_absences_are_sentences_never_zeros():
     )
     values = {
         r["key"]: r["value"]
-        for r in readings(found, frame_age_s=None, stale_after_s=30.0)
+        for r in readings(found, frame_age_s=None, stale_after_s=30.0, rejected=None)
     }
 
     assert values["out_of_cage"] == "cage-side, no limit"
@@ -283,7 +296,8 @@ def test_absences_are_sentences_never_zeros():
 
 def test_with_no_session_it_says_so():
     values = {
-        r["key"]: r["value"] for r in readings(None, frame_age_s=None, stale_after_s=30.0)
+        r["key"]: r["value"]
+        for r in readings(None, frame_age_s=None, stale_after_s=30.0, rejected=None)
     }
 
     assert values == {
@@ -291,6 +305,94 @@ def test_with_no_session_it_says_so():
         "state": "waiting for the session's telemetry",
         "last_frame": "none received",
     }
+
+
+# --- a refused frame (Ruling 11, 2026-09-27) --------------------------------------
+
+#: `Hub.reject`'s reason for a schema-6 `wlx run`, with markup to be spelled out.
+REFUSED = "a telemetry frame carried schema 6 <b>&"
+
+
+@pytest.mark.parametrize("case", sorted(CASES))
+def test_a_refusal_degrades_the_verdict_at_once_unless_the_held_frame_faulted(case):
+    """Ruling 11: a frame this console could not read means it cannot see the
+    session, whatever the frame it still holds says -- `degraded` at once, not after
+    `--stale-after`. A held fault stays `down`: a refusal never lowers a verdict."""
+    found, age = CASES[case]
+
+    assert verdict(found, frame_age_s=age, stale_after_s=30.0, rejected=REFUSED) == (
+        "down" if EXPECTED[case] == "down" else "degraded"
+    )
+
+
+@pytest.mark.parametrize("case", sorted(CASES))
+def test_with_a_refusal_exactly_one_reading_is_still_featured(case):
+    found, age = CASES[case]
+    rows = readings(found, frame_age_s=age, stale_after_s=30.0, rejected=REFUSED)
+
+    assert sum(r["featured"] for r in rows) == 1
+
+
+@pytest.mark.parametrize(
+    ("case", "key"),
+    [
+        ("no session", "refused"),
+        ("running", "refused"),
+        ("warning", "duration_warning"),
+        ("stale", "refused"),
+        ("ended by the limit", "state"),
+        ("completed", "refused"),
+        ("awaiting return", "refused"),
+        ("returned after the limit", "refused"),
+        ("fault", "state"),
+        ("cage-side", "refused"),
+        ("markup", "refused"),
+    ],
+)
+def test_a_refusal_is_featured_after_the_warning_and_the_unreturned_state(case, key):
+    """Ruling 11's place in `_featured`'s ruled order: after the duration warning
+    and the state of a session that faulted or ended on the limit with the animal
+    not back, and before the last frame's age -- so a stale held frame features the
+    refusal, which says why no new frame is shown."""
+    found, age = CASES[case]
+    featured = [
+        r["key"]
+        for r in readings(found, frame_age_s=age, stale_after_s=30.0, rejected=REFUSED)
+        if r["featured"]
+    ]
+
+    assert featured == [key]
+
+
+def test_a_refusal_is_a_reading_after_the_state_in_plain_text():
+    rows = readings(frame(), frame_age_s=1.0, stale_after_s=30.0, rejected=REFUSED)
+
+    assert [r["key"] for r in rows][:4] == ["session", "state", "refused", "out_of_cage"]
+    refused = next(r for r in rows if r["key"] == "refused")
+    assert refused["label"] == "Refused"
+    assert refused["value"] == "a telemetry frame carried schema 6 (lt)b(gt)(amp)"
+
+
+def test_without_a_refusal_there_is_no_refused_reading():
+    for found, age in CASES.values():
+        keys = {
+            r["key"]
+            for r in readings(found, frame_age_s=age, stale_after_s=30.0, rejected=None)
+        }
+        assert "refused" not in keys
+
+
+@_contract
+@pytest.mark.parametrize("case", sorted(CASES))
+def test_a_body_with_a_refusal_is_wl_preprocs_health_response(case):
+    found, age = CASES[case]
+    body = json.dumps(
+        response(found, frame_age_s=age, stale_after_s=30.0, rejected=REFUSED)
+    )
+
+    parsed = HealthResponse.model_validate_json(body)
+
+    assert parsed.verdict == ("down" if EXPECTED[case] == "down" else "degraded")
 
 
 def test_markup_in_a_value_is_spelled_out_as_wl_preproc_does():
@@ -330,6 +432,7 @@ def test_the_strips_rollup_never_reaches_health():
             ),
             frame_age_s=1.0,
             stale_after_s=30.0,
+            rejected=None,
         )
     }
 
@@ -359,11 +462,17 @@ def test_plain_text_spells_out_the_three_characters():
 
 
 @pytest.mark.parametrize("case", sorted(CASES))
-def test_no_action_is_ever_offered(case):
+@pytest.mark.parametrize("rejected", [None, "a telemetry frame carried schema 6"])
+def test_no_action_is_ever_offered(case, rejected):
     """ADR-0008: no welfare action goes through wl-works."""
     found, age = CASES[case]
 
-    assert response(found, frame_age_s=age, stale_after_s=30.0)["actions"] == []
+    assert (
+        response(found, frame_age_s=age, stale_after_s=30.0, rejected=rejected)[
+            "actions"
+        ]
+        == []
+    )
 
 
 # --- the contract: wl-preproc's own model -------------------------------------
@@ -373,7 +482,9 @@ def test_no_action_is_ever_offered(case):
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_the_body_is_wl_preprocs_health_response(case):
     found, age = CASES[case]
-    body = json.dumps(response(found, frame_age_s=age, stale_after_s=30.0))
+    body = json.dumps(
+        response(found, frame_age_s=age, stale_after_s=30.0, rejected=None)
+    )
 
     parsed = HealthResponse.model_validate_json(body)
 

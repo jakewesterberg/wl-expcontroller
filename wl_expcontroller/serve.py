@@ -442,6 +442,8 @@ def make_handler(
             )
 
         def _health(self) -> None:
+            """`health.response` from one snapshot, the refusal included (Ruling 11,
+            2026-09-27): a console refusing every frame is `degraded`, never `ok`."""
             latest, view = self._hub.snapshot(
                 on_box=False, stale_after_s=self._stale_after_s
             )
@@ -450,7 +452,8 @@ def make_handler(
                 _health.response(
                     latest,
                     frame_age_s=view.frame_age_s,
-                    stale_after_s=self._stale_after_s,
+                    stale_after_s=view.stale_after_s,
+                    rejected=view.rejected,
                 ),
             )
 

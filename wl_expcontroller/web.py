@@ -298,11 +298,17 @@ def _banner(tone: str, tag: str, text: str) -> str:
 def _banners(frame: Telemetry | None, view: View) -> str:
     """A refused frame first, then the duration warning and the stop reason -- where
     a person looks when something is wrong. The stream's own banner (stale, lost) is
-    the page script's, in its own element."""
+    the page script's, in its own element.
+
+    **With no frame, *Waiting* only when nothing was refused either** (Ruling 11,
+    2026-09-27): a refused frame is a session publishing in a form this console
+    cannot read, so a sentence saying nothing had arrived would be false beside it."""
     out = []
     if view.rejected:
         out.append(_banner("crit", "Refused", _e(view.rejected)))
     if frame is None:
+        if view.rejected:
+            return "".join(out)
         out.append(
             _banner(
                 "info",
@@ -408,17 +414,21 @@ def _wrong(frame: Telemetry | None) -> str:
 
 
 def _health_pane(frame: Telemetry | None, view: View) -> str:
-    """*wl-works sees*: `/health`'s verdict and readings, as they would be sent."""
-    verdict = _health.verdict(
-        frame, frame_age_s=view.frame_age_s, stale_after_s=view.stale_after_s
+    """*wl-works sees*: `/health`'s verdict and readings, as they would be sent --
+    `health.response` itself, from the same `View` fields `serve`'s `/health` hands
+    it, so the two cannot disagree about a refusal (Ruling 11)."""
+    body = _health.response(
+        frame,
+        frame_age_s=view.frame_age_s,
+        stale_after_s=view.stale_after_s,
+        rejected=view.rejected,
     )
+    verdict = body["verdict"]
     rows = "".join(
         f'<div class="r"><span class="f">{"◆" if reading["featured"] else ""}</span>'
         f'<span class="l">{_e(reading["label"])}</span>'
         f'<span class="v">{_e(reading["value"])}</span></div>'
-        for reading in _health.readings(
-            frame, frame_age_s=view.frame_age_s, stale_after_s=view.stale_after_s
-        )
+        for reading in body["readings"]
     )
     return f'<div><span class="pill {_VERDICT_TONE[verdict]}">{verdict}</span></div>{rows}'
 

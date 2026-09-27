@@ -313,6 +313,39 @@ def test_a_refused_frame_is_said_above_everything_else():
     assert "schema 6" in banners
 
 
+def test_a_refusal_with_no_frame_held_says_so_and_nothing_else():
+    """Ruling 11 (2026-09-27): with a refusal and no frame, the *Waiting* banner's
+    "no session is publishing" is false -- one is, in a schema this console cannot
+    read -- so only the refusal is said."""
+    banners = fragments(
+        None, view(frame_age_s=None, rejected="a telemetry frame carried schema 6")
+    )["banners"]
+
+    assert banners.startswith('<div class="banner crit"><span class="tag">Refused</span>')
+    assert "Waiting" not in banners
+    assert "no telemetry yet" not in banners
+
+
+@pytest.mark.parametrize("held", [None, *sorted(STATES)])
+def test_the_health_pane_features_a_refusal_as_health_does(held):
+    """Ruling 11: the pane shows `/health`'s verdict and featured reading, so a
+    refusal is on it too -- `degraded`, featured, unless a held frame's warning or
+    fault outranks it -- and still with exactly one ◆."""
+    found = None if held is None else frame(**STATES[held])
+    pane = fragments(
+        found, view(frame_age_s=None if found is None else 0.5, rejected="schema 6")
+    )["rt-health"]
+
+    assert pane.count("◆") == 1
+    assert '<span class="l">Refused</span><span class="v">schema 6</span>' in pane
+    if held == "fault":
+        assert '<span class="pill crit">down</span>' in pane
+    else:
+        assert '<span class="pill warn">degraded</span>' in pane
+    if held in (None, "running", "awaiting return", "returned", "cage-side"):
+        assert '<span class="f">◆</span><span class="l">Refused</span>' in pane
+
+
 def test_the_stop_reason_is_a_banner_and_ends_the_summary():
     parts = fragments(frame(**STATES["returned"]), view())
 

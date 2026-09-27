@@ -708,6 +708,85 @@ def test_health_over_http_is_wl_preprocs_health_response():
     assert HealthResponse.model_validate_json(body).verdict == "ok"
 
 
+# --- a refused frame (Ruling 11, 2026-09-27) ---------------------------------------
+
+#: What `Server._listen` hands `Hub.reject` for a schema-6 `wlx run` beside this
+#: `wlx serve` -- the case the final review probed, where every frame is refused.
+REFUSED = (
+    "a telemetry frame carried schema 6, and this console reads schema 7, so it is "
+    "not shown"
+)
+
+
+def _health_body(port: int) -> dict:
+    status, _, body = _request(
+        port, "GET", "/health", {"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert status == 200
+    return json.loads(body)
+
+
+def _featured(body: dict) -> list[tuple[str, str]]:
+    return [(r["key"], r["value"]) for r in body["readings"] if r["featured"]]
+
+
+def test_a_refusal_alone_makes_health_degraded_with_the_refusal_featured():
+    """Ruling 11: every frame refused used to leave `/health` answering `ok`, "none
+    attached", with no reading that mentioned the refusal -- wl-works saw a healthy
+    host that could not see its session. Driven by `Hub.reject` alone."""
+    hub = _hub()
+    hub.reject(REFUSED)
+    with _served(hub) as port:
+        body = _health_body(port)
+
+    assert body["verdict"] == "degraded"
+    assert _featured(body) == [("refused", REFUSED)]
+
+
+def test_a_refusal_alone_shows_the_same_on_the_page_and_no_waiting_banner():
+    """Ruling 11: the page's *wl-works sees* pane said a green `ok`, and a *Waiting*
+    banner under the red *Refused* one asserted that no session was publishing on
+    the link -- false, since one was, in a schema this console cannot read."""
+    hub = _hub()
+    hub.reject(REFUSED)
+    with _served(hub) as port, _stream(port) as response:
+        frags = next(_events(response))["frags"]
+
+    assert '<span class="pill warn">degraded</span>' in frags["rt-health"]
+    assert re.search(
+        r'<span class="f">◆</span><span class="l">Refused</span>'
+        r'<span class="v">[^<]*schema 6',
+        frags["rt-health"],
+    )
+    assert frags["rt-health"].count("◆") == 1
+    assert '<span class="tag">Refused</span>' in frags["banners"]
+    assert "Waiting" not in frags["banners"]
+    assert "no telemetry yet" not in frags["banners"]
+
+
+def test_an_accepted_frame_after_a_refusal_returns_health_to_ok():
+    """Ruling 11: `degraded` lasts until the next frame this console can read --
+    `Hub.offer` clears the refusal -- whether a good frame was held before it or
+    not."""
+    hub = _hub()
+    with _served(hub) as port:
+        hub.reject(REFUSED)
+        assert _health_body(port)["verdict"] == "degraded"
+
+        hub.offer(frame())
+        body = _health_body(port)
+        assert body["verdict"] == "ok"
+        assert "refused" not in {r["key"] for r in body["readings"]}
+
+        hub.reject(REFUSED)
+        body = _health_body(port)
+        assert body["verdict"] == "degraded"
+        assert _featured(body) == [("refused", REFUSED)]
+
+        hub.offer(frame(trial_index=41))
+        assert _health_body(port)["verdict"] == "ok"
+
+
 # --- fix round 1: the security review's four findings ----------------------------
 
 

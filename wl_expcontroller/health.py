@@ -16,6 +16,10 @@ frame and two numbers in, a dict out. `wlx serve` supplies how old the frame is.
 - **Exactly one reading is featured, the most urgent** (PI, 2026-09-26, spec §3).
   wl-works' Plan 10 §4 says of more than one "the first wins", and wl-preproc emits
   exactly one for that reason. `_featured` holds the ruled order.
+- **A frame this console refused is said here too** (Ruling 11, 2026-09-27; put to
+  the PI at handoff). `wlx serve` hands in `View.rejected`, and a refusal makes the
+  verdict `degraded` until the next frame it can read: a console that cannot read
+  the session's frames cannot vouch for it, whatever its last good frame says.
 
 **The behavioral counts are grouped here and nowhere else** (`families`), so the
 browser console's Working? pane and this body show them identically (spec §3): total
@@ -115,22 +119,31 @@ def _stale(frame: Telemetry | None, frame_age_s: float | None, stale_after_s: fl
 
 
 def verdict(
-    frame: Telemetry | None, *, frame_age_s: float | None, stale_after_s: float
+    frame: Telemetry | None,
+    *,
+    frame_age_s: float | None,
+    stale_after_s: float,
+    rejected: str | None,
 ) -> str:
     """Spec §3's table, first match wins:
 
-    - no session attached yet: `ok`
     - ended by a fault: `down`, whatever else holds
+    - a frame refused since the last one this console could read: `degraded`, at
+      once (Ruling 11, 2026-09-27). `rejected` is `View.rejected`, and has no
+      default so that no caller can leave it out
+    - no session attached yet: `ok`
     - returned to the cage (`phase == "closed"`): `ok`, however it ended
     - the duration warning active, or no frame for `stale_after_s` while more were
       due: `degraded`
     - ended by the out-of-cage limit and not yet back: `degraded`
     - otherwise -- running normally, or ended any other way: `ok`
     """
+    if frame is not None and frame.stop_kind == "fault":
+        return "down"
+    if rejected:
+        return "degraded"
     if frame is None:
         return "ok"
-    if frame.stop_kind == "fault":
-        return "down"
     if frame.phase == "closed":
         return "ok"
     if frame.duration_warning or _stale(frame, frame_age_s, stale_after_s):
@@ -169,17 +182,22 @@ def _age_text(frame_age_s: float | None) -> str:
     return "none received" if frame_age_s is None else f"{ago(frame_age_s)} ago"
 
 
-def _featured(frame: Telemetry | None, verdict_: str, stale: bool) -> str:
+def _featured(
+    frame: Telemetry | None, verdict_: str, stale: bool, rejected: str | None
+) -> str:
     """The one reading wl-works' home page shows: the most urgent (PI, 2026-09-26,
     spec §3) -- the warning, else the state of a session that faulted or ended on the
-    limit with the animal not back, else a stale stream's age, else the out-of-cage
-    time a rig session is bounded by, else the state."""
+    limit with the animal not back, else a refused frame's reason (Ruling 11,
+    2026-09-27), else a stale stream's age, else the out-of-cage time a rig session
+    is bounded by, else the state."""
     if frame is None:
-        return "state"
+        return "refused" if rejected else "state"
     if frame.duration_warning:
         return "duration_warning"
     if verdict_ == "down" or (frame.stop_kind == "limit" and frame.phase != "closed"):
         return "state"
+    if rejected:
+        return "refused"
     if stale:
         return "last_frame"
     if frame.out_of_cage_seconds is not None:
@@ -188,21 +206,29 @@ def _featured(frame: Telemetry | None, verdict_: str, stale: bool) -> str:
 
 
 def readings(
-    frame: Telemetry | None, *, frame_age_s: float | None, stale_after_s: float
+    frame: Telemetry | None,
+    *,
+    frame_age_s: float | None,
+    stale_after_s: float,
+    rejected: str | None,
 ) -> list[dict]:
-    """The readings, in spec §3's order: session, state, time out of cage, the
-    duration warning when active, fluid this session, supplement owed, the
-    behavioral counts, and the last frame's age. Every value through `plain_text`."""
+    """The readings, in spec §3's order: session, state, the refused frame's reason
+    when there is one (Ruling 11), time out of cage, the duration warning when
+    active, fluid this session, supplement owed, the behavioral counts, and the last
+    frame's age. Every value through `plain_text`."""
+    refused = [("refused", "Refused", rejected)] if rejected else []
     if frame is None:
         rows = [
             ("session", "Session", "none attached"),
             ("state", "State", "waiting for the session's telemetry"),
+            *refused,
             ("last_frame", "Last frame", _age_text(frame_age_s)),
         ]
     else:
         rows = [
             ("session", "Session", f"{frame.session_id} · {frame.subject} · {frame.task}"),
             ("state", "State", _state_text(frame)),
+            *refused,
             ("out_of_cage", "Time out of cage", _cage_text(frame)),
         ]
         if frame.duration_warning:
@@ -226,8 +252,14 @@ def readings(
         ]
     featured = _featured(
         frame,
-        verdict(frame, frame_age_s=frame_age_s, stale_after_s=stale_after_s),
+        verdict(
+            frame,
+            frame_age_s=frame_age_s,
+            stale_after_s=stale_after_s,
+            rejected=rejected,
+        ),
         _stale(frame, frame_age_s, stale_after_s),
+        rejected,
     )
     return [
         {"key": key, "label": label, "value": plain_text(str(value)), "featured": key == featured}
@@ -236,12 +268,21 @@ def readings(
 
 
 def response(
-    frame: Telemetry | None, *, frame_age_s: float | None, stale_after_s: float
+    frame: Telemetry | None,
+    *,
+    frame_age_s: float | None,
+    stale_after_s: float,
+    rejected: str | None,
 ) -> dict:
     """The whole `/health` body: `HealthResponse`'s three fields, `actions` always
     empty."""
+    seen = {
+        "frame_age_s": frame_age_s,
+        "stale_after_s": stale_after_s,
+        "rejected": rejected,
+    }
     return {
-        "verdict": verdict(frame, frame_age_s=frame_age_s, stale_after_s=stale_after_s),
-        "readings": readings(frame, frame_age_s=frame_age_s, stale_after_s=stale_after_s),
+        "verdict": verdict(frame, **seen),
+        "readings": readings(frame, **seen),
         "actions": [],
     }
