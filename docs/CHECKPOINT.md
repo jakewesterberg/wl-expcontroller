@@ -380,6 +380,32 @@ is now `main`'s). Then execute it subagent-driven, as b1 was.
   - the license approach: OpenIris is AGPL-3.0 and OpenIrisDPI GPL-3.0, while this
     repository is Apache-2.0. A clean-room build from the paper versus a port is the PI's
     call when the spike starts.
+- **The display is now the 27-inch ASUS PG27UCDM** (PI, 2026-09-27; S0 §5.1). It is a
+  26.5" 4th-gen tandem QD-OLED, 4K/240 over DP 2.1a UHBR20 without compression, with a
+  3-year burn-in warranty. It replaces the PG32UCDM Gen 3 chosen the day before.
+  - Why: **most experiments view the monitor directly, not through the stereoscope**, which
+    needs only ±10° (PI). The tracker camera views the eye from below the screen.
+  - The comparison is `docs/research/2026-09-27-panel-27-vs-32.md`. The camera angle differs
+    by 1–2° between panels, and DPI's P4 reach (about 10° in macaques) is the limit at 15°,
+    not the panel.
+  - **Still to do, and it costs a session to rediscover:**
+    - **direct viewing is designed nowhere.** S0, S4 and architecture.md assume every task
+      goes through the stereoscope; photodiode patches, viewport mapping, a V9 test and the
+      viewing distance are all open;
+    - **§5.2's geometry and the stereoscope optics drawing are still 31.5"**, and the
+      drawing undersizes M1/M2 and gets the nasal clip wrong (per the comparison report).
+  - Ask ASUS whether pixel cleaning and the Neo Proximity Sensor can be turned off, as
+    before.
+- **Pupil and corneal-reflection fallback beyond the DPI's reach** (PI, 2026-09-27; S5).
+  Gaze comes from `pupil − CR1`, with its own map and a per-sample method flag, where P4
+  cannot be vouched for. Design pending.
+- **P10's real-data follow-up** (`f5b95f3`) found that OpenIrisDPI reports P4 through every
+  blink, a median 320–340 px off, with `DataQuality` = 100 on every row. That contradicts
+  wl-preproc's eye spec §1.1, which says 0/50/100.
+- **Outstanding asks to wl-preproc**, not yet sent:
+  - the `bcam` sidecar's stale `trigger_source` (P9 §7);
+  - the fixed `CR1 − CR4` signal, which the fallback extends;
+  - the `DataQuality` description.
 - **A flaky test was behind two red runs** (fixed, `403de3c`).
   `test_the_closed_interval_is_printed_once_the_return_is_taken` asserted an exact
   "0 minutes" for an interval opened at `_hhmm()`, the minute truncated. A run crossing a

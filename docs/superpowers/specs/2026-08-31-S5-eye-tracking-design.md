@@ -19,6 +19,21 @@ calibration, merged that same day.
 | Source ranking | `CalibrationSource` | `FITTED`, **`ONLINE`**, `CARRIED_FORWARD`, `REFUSED` |
 | Recorded file columns | `eye/ohdpi.py` | `LeftFrameNumber`, `LeftSeconds`, `Int0` (sync word, bit 0 on the reference rig), `LeftCR1X`, `LeftCR4X`, ~100 columns total |
 
+**Decided 2026-09-27, design pending: a pupil and corneal-reflection fallback beyond the
+DPI's reach** (PI). The OpenIrisDPI paper puts P4's visibility at about 10° of gaze in
+macaques. The lab's stimuli go to about 15°, and this spec's own calibration targets already
+reach 10.8–16.3° (`docs/research/2026-09-27-panel-27-vs-32.md`). Where P4 cannot be vouched
+for, gaze comes from `pupil − CR1` instead:
+- the tracker already reports both;
+- the fallback has its own calibration map;
+- every sample carries which method produced it.
+
+Still to design:
+- the switching rule;
+- the second map and how the two join;
+- the per-sample flag in the record;
+- the ask to wl-preproc, whose signal is fixed as `CR1 − CR4`.
+
 **`ONLINE` is defined as our map and it outranks carry-forward.** Their docstring: *"the
 calibration that was in use during acquisition, as opposed to our offline fit — the map the
 animal was actually held to, which is why it outranks carry-forward … The behavioural control

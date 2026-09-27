@@ -134,12 +134,54 @@ specified for more than two.
 
 ### 5.1 Panel class
 
-**32-inch-class 16:9 flat OLED**, dual-mode preferred. Specific model deferred: the
-intended purchase is a **tandem OLED expected to release in late 2026**.
+**27-inch-class 16:9 flat tandem QD-OLED at 4K/240** (changed from 32-inch-class on
+2026-09-27; see below). **QD-OLED is a requirement** (PI, 2026-09-26).
 
-**QD-OLED is a requirement** (PI, 2026-09-26).
+**Chosen (PI, 2026-09-27): the ASUS ROG Swift OLED PG27UCDM.** It replaces the PG32UCDM
+Gen 3 chosen the day before. **Why:** most experiments view the monitor directly, not
+through the stereoscope, which needs only ±10° (PI, 2026-09-27). The eye-tracker camera
+views the eye from below the screen, and the PI's worry was the camera angle a larger
+screen forces. The comparison (`docs/research/2026-09-27-panel-27-vs-32.md`) found:
+- the camera-angle difference is only 1–2° at a given distance;
+- the 27-inch shows less field;
+- neither panel is the limit at 15°: DPI's P4 reach (about 10° in macaques, per the
+  OpenIrisDPI paper) is the limit, and it is handled by a pupil and corneal-reflection
+  fallback (S5, PI 2026-09-27).
 
-**Chosen (PI, 2026-09-26): the ASUS ROG Swift OLED PG32UCDM Gen 3 (PG32UCDM3).** ASUS lists:
+The PI chose the 27-inch with those numbers in hand.
+
+**Direct-view geometry at 57 cm** (the comparison's figures): about ±27° × ±16°, at about
+65 px/deg. That leaves roughly a degree of vertical margin beyond a 15° target, so **the
+direct-view viewing distance is still open** and is set in the direct-view design.
+
+ASUS lists, per the spec page and product page read 2026-09-27:
+- a **26.5" Tandem QD-OLED**, "Latest 4th-gen QD-OLED", 3840 × 2160 at 240 Hz, 0.153 mm
+  pixel pitch, 10-bit;
+- **"DisplayPort 2.1a UHBR20 (80Gbps full bandwidth)"**, carrying "4K at 240Hz ... without
+  compression", plus HDMI 2.1 × 2;
+- DisplayHDR 400 True Black;
+- **a three-year warranty that includes panel burn-in**;
+- VESA 100 × 100, 4.97 kg without its stand.
+
+Sources:
+- [spec page](https://rog.asus.com/monitors/27-to-31-5-inches/rog-swift-oled-pg27ucdm/spec/)
+- [product page](https://rog.asus.com/monitors/27-to-31-5-inches/rog-swift-oled-pg27ucdm/)
+
+With the RTX 5070 Ti, 4K/240 runs without DSC, so open item 4 stays closed. Still open,
+as for the panel before it:
+- **ASUS's "Pixel cleaning" runs automatically.** Its **Neo Proximity Sensor "transitions to
+  a black image"** when it decides you have stepped away. Only its detection distance is
+  stated as adjustable, and no page says either feature can be turned off. §5.4 test 1
+  disqualifies a panel on this, so ask ASUS before buying.
+- **No FHD/480 mode is listed.**
+- **Full-field luminance and color accuracy are unpublished**, so V9 measures them.
+
+**§5.2's geometry and the stereoscope optics drawing must be recomputed for 26.5".** The
+comparison also found that the drawing's relations undersize M1 and M2 enough to clip the
+field's corners, and that its nasal-clip formula is wrong. Both are recorded in the
+comparison report and still to be fixed. §5.2 below still shows the 31.5" figures.
+
+**The PG32UCDM Gen 3, chosen 2026-09-26 and replaced 2026-09-27.** ASUS lists:
 - a 31.5" **Tandem QD-OLED** panel at 4K/240;
 - **"DisplayPort 2.1a UHBR20 (80Gbps full bandwidth)"**, carrying "4K at 240Hz ... without
   compression";
@@ -163,7 +205,7 @@ item 4. Three things remain:
 - **Unpublished figures:** full-field luminance at 100% APL and color depth are not listed,
   so they are unverified until V9 measures them.
 
-§5.2's geometry is recomputed from the 31.5" viewable diagonal.
+Its §5.2 geometry was computed from the 31.5" viewable diagonal.
 
 **Considered the same day:**
 - The **Samsung Odyssey OLED G8 G80SH** (`LS32HG802SNXZA`; QD-OLED, "DP 2.1 (UHBR20)",
@@ -308,7 +350,7 @@ November, production run mid-November to mid-December, with almost no slack for 
 |---|---|---|
 | 1 | `wl-stack` adopting the `rig/*` role vocabulary | the registry entry's `runs_on` |
 | 2 | Whether `rig/intan` and `rig/sglx` are one machine | V8, and the task PC's network layout |
-| 3 | ~~Tandem panel model~~ **The ASUS PG32UCDM Gen 3, a tandem QD-OLED, was chosen** (PI, 2026-09-26, §5.1). Still open: **whether its pixel shift and Neo Proximity Sensor can be fully turned off** (§5.4 test 1). Ask ASUS before buying | the panel purchase |
-| 4 | ~~Whether the chosen GPU + panel can avoid DSC~~ **Closed 2026-09-26: yes.** The RTX 5070 Ti and the PG32UCDM Gen 3 both list DisplayPort 2.1 UHBR20, and ASUS states 4K/240 "without compression" (§4, §5.1) | — |
+| 3 | ~~Tandem panel model~~ **The ASUS PG27UCDM, a 26.5" tandem QD-OLED, was chosen** (PI, 2026-09-27, §5.1, replacing the PG32UCDM Gen 3 of 2026-09-26). Still open: **whether its automatic pixel cleaning and Neo Proximity Sensor can be fully turned off** (§5.4 test 1). Ask ASUS before buying | the panel purchase |
+| 4 | ~~Whether the chosen GPU + panel can avoid DSC~~ **Closed 2026-09-26: yes.** The RTX 5070 Ti and the PG27UCDM both list DisplayPort 2.1 UHBR20, and ASUS states 4K/240 "without compression" for the PG27UCDM (read 2026-09-27; §4, §5.1) | — |
 | 5 | Photodiode patch placement against the real optics | rig build, and `wl-sync` agreement |
 | 6 | Viewing distance against the real chair and head-post geometry | optics build |
