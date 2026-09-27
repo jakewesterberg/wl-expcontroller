@@ -396,6 +396,22 @@ is now `main`'s). Then execute it subagent-driven, as b1 was.
       drawing undersizes M1/M2 and gets the nasal clip wrong (per the comparison report).
   - Ask ASUS whether pixel cleaning and the Neo Proximity Sensor can be turned off, as
     before.
+- **Parts lists for the eye tracker and the camera system: S0 §7** (addendum, 2026-09-27,
+  branch `s0-parts-lists`). S0's open items are now §8, with the same item numbers. Every part
+  fact is cited to a maker's page read that day, or marked UNVERIFIED. It is a reasoned list
+  for the PI, not an order. What would cost a session to rediscover:
+  - **NVIDIA's GeForce NVENC cap is 12 sessions per system** (SDK 13.1 application note and
+    the support matrix; SDK 13.0 said 8). So 8 cameras fit with 4 spare, and the preview must
+    not open NVENC sessions. Throughput for our mono 1440 × 1080 video is unmeasured (§7.5).
+  - **The camera box totals $4,686.93 against a ~$4,000 budget.** Two 4 TB NVMe drives are
+    $2,200 of it. One drive brings it to $3,586.94, but holds only 8.9 h of 4 cameras at the
+    ASSUMED 10:1. That is the PI's call, and P9's measured bitrate decides it (§7.6).
+  - **wl-sync's GPIO26 takes one strobe**, but the PI asked for both tracker cameras' strobes.
+    That works only if OpenIris runs them primary/secondary, which is unverified and must stay
+    unread under P10's clean-room rule. It is flagged as the PI's call (§7.1 row 12).
+  - **Lenses:** 12 mm (face) and 6 mm (body), Edmund C VIS-NIR, with MidOpt BN940 filters.
+    Edmund's pages disagree on the 6 mm lens's filter pitch (M43 × 0.50 against × 0.75), so
+    check it before buying.
 - **Pupil and corneal-reflection fallback beyond the DPI's reach** (PI, 2026-09-27; S5).
   Gaze comes from `pupil − CR1`, with its own map and a per-sample method flag, where P4
   cannot be vouched for. Design pending.
@@ -2063,7 +2079,7 @@ runs out of context before it produces anything.**
 | | → the interface | **done 2026-09-01** — pin map, refusing `Absent`, recording `Simulated`; the `nidaqmx` implementation needs a card | — | — |
 | | → the reward path above the pump | **done 2026-09-06** — a task's `Reward` reaches a ceiling-checked delivery and a `Pump` port; the driver that opens copper needs V10 | — | — |
 | P8 | Neural plane, both feature sources | post-v1 | S7 | hardware |
-| **P9** | The camera system: one headless camera box per rig (`rig/cam`), 2–4 Blackfly S cameras (8 max) at 200 fps, primary-triggered for 3D, recording the whole session, controlled only from expcontroller; camera failure pauses trials with an override | Designed 2026-09-27 (PI, section by section); after P4d-2b b2a, which it needs for the pause | `docs/superpowers/specs/2026-09-27-P9-camera-system-design.md` | b2a; the camera/encoder library ADR; wl-preproc's `bcam` amendment; hardware |
+| **P9** | The camera system: one headless camera box per rig (`rig/cam`), 2–4 Blackfly S cameras (8 max) at 200 fps, primary-triggered for 3D, recording the whole session, controlled only from expcontroller; camera failure pauses trials with an override | Designed 2026-09-27 (PI, section by section); after P4d-2b b2a, which it needs for the pause. **Parts list: S0 §7.2** (2026-09-27): the camera box totals $4,686.93 against ~$4,000; the fan-out board needs a design check | `docs/superpowers/specs/2026-09-27-P9-camera-system-design.md`; S0 §7 | b2a; the camera/encoder library ADR; wl-preproc's `bcam` amendment; hardware (the PI's purchase against S0 §7) |
 | P10 | A clean-room DPI eye tracker as a headless expcontroller service on P9's framework | **Spike done 2026-09-27: build it in C++, on conditions** (`docs/research/2026-09-27-p10-dpi-spike.md`). PI: validate on our rig's raw video, match or beat OpenIrisDPI on everything, C++ with an ADR, invalid frames as "no sample", OpenIrisDPI stays live meanwhile. **Real-data follow-up done 2026-09-27** (report §7b, OpenIrisDPI's tutorial recording): its P1 − P4 white floor (0.027–0.034 px) matches the spike's code at P4 SNR ≈ 40–50 (inference); a P4-only 40–160 Hz component makes most of the fixation jitter; `DataQuality` is 100 on every frame (wl-preproc's eye spec §1.1 says 0/50/100) and P4 is reported through every blink. Recommendation unchanged; §10 now requires the validation to use OpenIrisDPI's session settings, compare spectra, and include a model eye | P9 spec §8; the spike report | P9's cameras (the validation video) |
 
 **P1–P4b and P4d-1 needed no hardware and are done. P4c and P4d-2 need none either.**
