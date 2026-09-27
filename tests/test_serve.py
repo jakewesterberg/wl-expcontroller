@@ -1788,7 +1788,14 @@ def test_wlx_serve_exits_130_on_a_real_sigint(tmp_path):
     starts it as its own process -- the real `_wait`, not this file's bounded
     stand-in -- waits for its address line, fetches the page from it, sends SIGINT,
     and reads 130 and the sentence. Every wait is bounded, and the process is killed
-    if it outlives one."""
+    if it outlives one.
+
+    The child starts with SIGINT at its default, as a terminal gives it, whatever
+    this run inherited. A suite started as a background job -- `nohup ... &`, or a
+    mutation sweep launched that way -- has SIGINT ignored, an ignored signal
+    survives exec, and Python installs its `KeyboardInterrupt` handler only over the
+    default. Without this the test failed there, and every mutation baseline with
+    it, while passing at a terminal (2026-09-27)."""
     command = [
         sys.executable,
         "-c",
@@ -1801,6 +1808,7 @@ def test_wlx_serve_exits_130_on_a_real_sigint(tmp_path):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL),
     )
     try:
         first_line: queue.Queue = queue.Queue()
@@ -1829,12 +1837,12 @@ def test_wlx_serve_exits_130_on_a_real_sigint(tmp_path):
 def test_serving_waits_for_the_operator(_bounded_real_wait):
     """A `_wait` that returned would end the console the moment it started.
 
-    Fix round 1, I1: `_wait` now blocks on a real `Server`'s `_fatal` `Event`
-    rather than looping on its own, so this stub carries one that is never set --
-    `server=None` (the old stand-in) no longer works, since `_wait` reads
+    `_wait` blocks on a real `Server`'s `_fatal` `Event` -- set when the telemetry
+    thread dies (Ruling 9) -- rather than looping on its own, so this stub carries
+    one that is never set; `server=None` does not work, since `_wait` reads
     `server._fatal` unconditionally.
 
-    Fix round 2, N1: this file's autouse `_bounded_real_wait` fixture replaces
+    This file's autouse `_bounded_real_wait` fixture replaces
     `serve._wait` everywhere else with a bounded stand-in, so a mutant that breaks
     the real one fails a test instead of hanging the suite -- but that means
     `serve._wait` is no longer the real function by the time a test body runs.
