@@ -104,9 +104,9 @@ Give the PI (memory: he wants numbered items to approve, not the files):
    was commanded, before the charge and the valve. The charge — `commanded` and
    `deliveries` — still lands before the valve opens, as it always did; the instant is kept
    as `last_delivery_wall_at` only once the pump returns, so a delivery the pump refused is
-   charged but not timed. Nothing compares it with a limit, and it is
-   not refused when it is not a number, so a display field can never end a trial the animal
-   completed. `Rig` reads it through `Session.wall_now`, once per reward: the session's
+   charged but not timed. Nothing compares it with a limit, and it is not refused when it
+   is not a number, so a display field can never end a trial the animal completed. `Rig`
+   reads it through `Session.wall_now`, once per reward: the session's
    `SessionClock`, the one anchored clock every other welfare instant is on (Ruling 8), so a
    host clock stepped mid-session does not move it. Pinned by
    `test_a_delivery_records_the_wall_instant_it_was_delivered_at`,
@@ -124,7 +124,27 @@ Give the PI (memory: he wants numbered items to approve, not the files):
    `test_every_font_the_page_uses_is_bundled_with_its_license` and
    `test_the_fonts_ship_with_the_package`.
 
-It merges to `main` by fast-forward only after he approves item 1; item 2 is for information.
+3. **A refused frame makes `/health` `degraded`** (Ruling 11, 2026-09-27) -- a question,
+   not a settled fact, because it adds a row to spec §3's table, and the PI approved that
+   table. With a schema-6 `wlx run` beside a schema-7 `wlx serve`, every frame is refused.
+   Before this ruling, `/health` said `ok` throughout and the page said no session was
+   publishing. It is now `degraded` at once, with a featured *Refused* reading placed
+   after the duration warning and the fault or unreturned-limit state, and before the
+   last frame's age; the next frame this console can read clears it. **Built as
+   recommended.** One wording question alongside it: while no frame has ever been
+   readable, the session reading still says "none attached" -- should that instead say a
+   session is attached but unreadable, now that a refusal is told apart from silence?
+   Pinned by `test_a_refusal_degrades_the_verdict_at_once_unless_the_held_frame_faulted`,
+   `test_with_a_refusal_exactly_one_reading_is_still_featured`,
+   `test_a_refusal_is_featured_after_the_warning_and_the_unreturned_state`,
+   `test_without_a_refusal_there_is_no_refused_reading`,
+   `test_a_refusal_alone_makes_health_degraded_with_the_refusal_featured`,
+   `test_a_refusal_alone_shows_the_same_on_the_page_and_no_waiting_banner`,
+   `test_an_accepted_frame_after_a_refusal_returns_health_to_ok` and
+   `test_with_a_refusal_and_no_frame_it_never_says_nothing_arrived`.
+
+It merges to `main` by fast-forward only after he approves item 1; items 2 and 3 are for
+information and a question, and do not gate the merge.
 
 ## 1a. The thing that needs a person, not a session — approved 2026-09-26 (P4d-2a)
 

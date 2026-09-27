@@ -1902,9 +1902,10 @@ NOT_ENTRY_POINTS = {
     "Card.emit.code": "an event code leaving this module; dio owns its range",
     "Rig.mark.code": "an event code, not a welfare quantity; dio owns its range",
     # P4d-2b b1 (spec §4.1): the instant the last reward was commanded, kept once the
-    # pump returns, for the console's time since the last reward. Compared against nothing, so refusing a non-finite one
-    # would end a trial the animal completed over a display field -- the reason
-    # `Welfare.deliveries` is exempt, on an instant.
+    # pump returns, for the console's time since the last reward. Compared against
+    # nothing, so refusing a non-finite one would end a trial the animal completed
+    # over a display field -- the reason `Welfare.deliveries` is exempt, on an
+    # instant.
     "Welfare.deliver.wall_now": (
         "a display instant stored as last_delivery_wall_at and compared against no "
         "limit; refusing it would abort a completed trial over a display field"

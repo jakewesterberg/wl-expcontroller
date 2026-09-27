@@ -344,8 +344,8 @@ class Telemetry:
     wall_at: float
     #: `welfare.last_delivery_wall_at`: the instant the last reward was commanded,
     #: kept once the pump returns -- POSIX seconds on the session's anchored clock,
-    #: or `None` before the first, never `0.0` (P4d-2b spec §4.1). A console reads it against `wall_at`, the same
-    #: clock, never against its own.
+    #: or `None` before the first, never `0.0` (P4d-2b spec §4.1). A console reads it
+    #: against `wall_at`, the same clock, never against its own.
     last_reward_at: float | None
     #: `session.recent_outcomes`: the last `RECENT_OUTCOMES` outcome strings, oldest
     #: first, exactly as `trials.jsonl` records them, `hang` included.

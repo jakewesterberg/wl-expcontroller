@@ -1157,8 +1157,9 @@ class Rig:
 
     **`wall_clock` is `taskd.Session.wall_now`, and nothing else** -- the session's
     `SessionClock` above, or the wall a test injected -- read once per reward so
-    `Welfare.deliver` can record when it paid (P4d-2b spec §4.1): one clock read and
-    one float store on the trial's path, per reward and never per frame. **The one
+    `Welfare.deliver` can record the instant the reward was commanded, kept once the
+    pump returns (P4d-2b spec §4.1): one clock read and one float store on the
+    trial's path, per reward and never per frame. **The one
     anchored clock, not a second one** (P4d-2a Ruling 8): the reward's instant is on
     the base the departure, the return and every published frame are. Required, with
     no default: a default of `time.time` would be that second clock -- off the anchor

@@ -704,7 +704,13 @@ def _until_sent(events, fragment: str) -> dict:
 def test_every_payload_carries_age_and_it_is_null_before_any_frame():
     """Ruling 12: the page's stale timer is based on `age`, so every event carries
     it -- the full render, a refusal's wake-up, a frame's, and a keepalive
-    refresh."""
+    refresh.
+
+    The last batch reads until an `age == 0.0` payload rather than a fixed count:
+    keepalives arrive every `keepalive_s` regardless of the test thread, so a stall
+    of one interval or more between `reject` and `offer` -- entirely plausible under
+    the mutation gate's parallel load -- would otherwise let a backlogged pre-offer
+    refresh be the third read and make `payloads[-1]` describe the wrong state."""
     hub = _hub()
     with _served(hub, keepalive_s=0.05) as port, _stream(port) as response:
         events = _events(response, deadline_s=10.0)
@@ -712,7 +718,12 @@ def test_every_payload_carries_age_and_it_is_null_before_any_frame():
         hub.reject(REFUSED)
         payloads += [next(events) for _ in range(3)]
         hub.offer(frame())
-        payloads += [next(events) for _ in range(3)]
+        for _, payload in zip(range(200), events):
+            payloads.append(payload)
+            if payload["age"] == 0.0:
+                break
+        else:
+            raise AssertionError("no refresh carried age == 0.0 after the offer")
 
     assert all("age" in payload for payload in payloads)
     assert payloads[0]["age"] is None

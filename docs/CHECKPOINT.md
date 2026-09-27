@@ -24,8 +24,8 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > look.
 >
 > **That merge was a fast-forward**, so `main`'s history stays linear and every commit
-> described below is reachable from it, except the b1 branch's until it merges. `git branch --show-current` still costs nothing
-> before believing the rest.
+> described below is reachable from it, except the b1 branch's until it merges.
+> `git branch --show-current` still costs nothing before believing the rest.
 >
 > **P4b's CI history is worth keeping.** Its first run failed (`34769913502`,
 > 2026-09-13): pytest green on all three Pythons, mutation gate red on `calibration` and
@@ -402,8 +402,11 @@ here, one line each:
 - macOS lets overlapping binds succeed where Linux refuses them, so a port clash on the rig
   may not reproduce on a Mac.
 - There is no process-level restart test; the manual check covers it.
-- `link.decode` checks that fields are present, not their types. Only a buggy producer
-  reaches that, and Ruling 9 makes it loud.
+- `link.decode` checks that fields are present, not their types. **Ruling 9 only makes a
+  wrong type loud for `trial_index` and `session_id`**, the two fields `Hub.offer`
+  compares -- every other field is unchecked. A decoded frame with `floor_ml="x"` is
+  accepted by `Hub.offer`, `/health` still says `ok`, and every page render raises
+  `ValueError`, which is what loops a stream on "stream lost".
 - Already carried elsewhere, and left there: the Rig↔Session reference cycle (`welfare.Rig`'s
   docstring) and M8 (`SetParameter.value`'s type, closed before b2's writes ship).
 
