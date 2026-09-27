@@ -1,0 +1,707 @@
+{
+ "options": [
+  {
+   "option": "A",
+   "panel": "32 (PG32UCDM3)",
+   "D_cm": 57.0,
+   "HW_cm": 17.487,
+   "HH_cm": 19.7365,
+   "theta_H_deg": 17.05546222963286,
+   "theta_V_deg": 19.098635965610647,
+   "px_per_deg_mean_S0": 56.28695294649105,
+   "px_per_deg_center": 54.61452317100116,
+   "px_per_deg_at_15": 58.53566951472239,
+   "arcmin_per_px_center": 1.0986088775715686,
+   "arcmin_per_px_at_15": 1.0250160371858277,
+   "arcmin_per_px_at_edge": 1.004102929574457,
+   "pitch_mm": 0.18215625,
+   "shows_15deg_H": true,
+   "accommodation_D": 1.7543859649122806,
+   "mirrors_sym_fullV": {
+    "a_cm": 5.215302796363013,
+    "nasal_clip_deg_drawing": 17.05546222963286,
+    "lateral_shift_cm": 15.886999999999999,
+    "Z_physical_cm": 41.113,
+    "mirror_plane_to_screen_cm": 35.89769720363699,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 17.487,
+    "M1_mm": [
+     45.25483399593905,
+     36.11642934751529
+    ],
+    "M2_mm": [
+     183.1113642428244,
+     146.13529794400648
+    ]
+   },
+   "mirrors_sym_stop": {
+    "a_cm": 5.215302796363013,
+    "nasal_clip_deg_drawing": 17.05546222963286,
+    "lateral_shift_cm": 15.886999999999999,
+    "Z_physical_cm": 41.113,
+    "mirror_plane_to_screen_cm": 35.89769720363699,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 17.487,
+    "M1_mm": [
+     45.25483399593905,
+     32.0
+    ],
+    "M2_mm": [
+     183.1113642428244,
+     129.47928736842104
+    ]
+   },
+   "mirrors_sym_stop_largest_ipd": {
+    "a_cm": 6.193172070681078,
+    "nasal_clip_deg_drawing": 17.05546222963286,
+    "lateral_shift_cm": 15.586999999999998,
+    "Z_physical_cm": 41.413000000000004,
+    "mirror_plane_to_screen_cm": 35.219827929318924,
+    "M1_center_x_cm": 1.9,
+    "M2_center_x_cm": 17.487,
+    "M1_mm": [
+     53.74011537017761,
+     38.0
+    ],
+    "M2_mm": [
+     188.9934506101979,
+     133.63855052631575
+    ]
+   },
+   "mirrors_s3_plane7": {
+    "a_cm": 7.0,
+    "nasal_clip_deg_drawing": 12.875001559612476,
+    "lateral_shift_cm": 15.886999999999999,
+    "Z_physical_cm": 41.113,
+    "mirror_plane_to_screen_cm": 34.113,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 17.487,
+    "M1_mm": [
+     52.998025411395524,
+     48.47561403508771
+    ],
+    "M2_mm": [
+     173.28082965580134,
+     158.4944826315789
+    ]
+   },
+   "exact_sym_stop": {
+    "nasal_clip_deg_exact": 23.87241849199863,
+    "nasal_limited_by": "viewport",
+    "ridge_z_cm": 3.615302796363013,
+    "a_exact_symmetric_cm": 6.815302796363014,
+    "M1": {
+     "length_mm": 49.95675262018689,
+     "height_temporal_mm": 46.162022625465035,
+     "height_center_mm": 32.0,
+     "height_nasal_mm": 24.487494462120907
+    },
+    "M2": {
+     "length_mm": 202.13639776569687,
+     "height_temporal_mm": 186.78205603219192,
+     "height_center_mm": 129.47928736842104,
+     "height_nasal_mm": 99.08197913729911
+    },
+    "M1_temporal_edge_xz_cm": [
+     -2.308101131273252,
+     7.523403927636265
+    ],
+    "M1_nasal_edge_xz_cm": [
+     1.2243747231060453,
+     3.990928073256968
+    ],
+    "M2_temporal_edge_xz_cm": [
+     -25.226102801609592,
+     14.55440559797261
+    ],
+    "M2_nasal_edge_xz_cm": [
+     -10.932901043135043,
+     0.2612038394980573
+    ],
+    "M1_bottom_at_eye_x_deg": 17.05546222963286
+   },
+   "exact_sym_stop_largest_ipd": {
+    "nasal_clip_deg_exact": 23.872418491998634,
+    "nasal_limited_by": "viewport",
+    "ridge_z_cm": 4.293172070681077,
+    "a_exact_symmetric_cm": 8.093172070681078,
+    "M1": {
+     "length_mm": 59.32364373647193,
+     "height_temporal_mm": 54.817401867739726,
+     "height_center_mm": 38.0,
+     "height_nasal_mm": 29.07889967376858
+    },
+    "M2": {
+     "length_mm": 208.62962528635947,
+     "height_temporal_mm": 192.7820560321919,
+     "height_center_mm": 133.63855052631575,
+     "height_nasal_mm": 102.26478956059444
+    },
+    "M1_temporal_edge_xz_cm": [
+     -2.7408700933869863,
+     8.934042164068064
+    ],
+    "M1_nasal_edge_xz_cm": [
+     1.4539449836884288,
+     4.739227086992649
+    ],
+    "M2_temporal_edge_xz_cm": [
+     -25.226102801609592,
+     15.832274872290673
+    ],
+    "M2_nasal_edge_xz_cm": [
+     -10.473760521970275,
+     1.0799325926513548
+    ],
+    "M1_bottom_at_eye_x_deg": 17.05546222963286
+   },
+   "photodiode_strip_cm": 2.249500000000001,
+   "photodiode_strip_px": 123.49288042545898,
+   "vergence_deg": 3.215760739827487,
+   "vergence_MA": 1.7543859649122806,
+   "camera": {
+    "Z_cm": 41.113,
+    "line_height_at_panel_plane_cm": -28.787632518415794,
+    "active_area_bottom_cm": -19.7365,
+    "housing_bottom_cm_ASSUMED_centered": -20.65,
+    "clearance_below_housing_cm": 8.137632518415796,
+    "camera_z_cm": 46.69166652447253,
+    "camera_y_cm": -32.693856872009626,
+    "camera_behind_panel_plane_cm": 5.578666524472531
+   }
+  },
+  {
+   "option": "B",
+   "panel": "27 (PG27UCDM)",
+   "D_cm": 57.0,
+   "HW_cm": 14.74925,
+   "HH_cm": 16.6465,
+   "theta_H_deg": 14.507582063632098,
+   "theta_V_deg": 16.280119907503973,
+   "px_per_deg_mean_S0": 66.17229499645896,
+   "px_per_deg_center": 64.75204954091205,
+   "px_per_deg_at_15": 69.40103753098974,
+   "arcmin_per_px_center": 0.9266115964729489,
+   "arcmin_per_px_at_15": 0.864540389229889,
+   "arcmin_per_px_at_edge": 0.8684627180931365,
+   "pitch_mm": 0.15363802083333333,
+   "shows_15deg_H": false,
+   "accommodation_D": 1.7543859649122806,
+   "mirrors_sym_fullV": {
+    "a_cm": 6.183365255860468,
+    "nasal_clip_deg_drawing": 14.507582063632098,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 43.85075,
+    "mirror_plane_to_screen_cm": 37.66738474413953,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     45.254833995939045,
+     36.11627709883553
+    ],
+    "M2_mm": [
+     141.49160819541058,
+     112.91943152866008
+    ]
+   },
+   "mirrors_sym_stop": {
+    "a_cm": 6.183365255860468,
+    "nasal_clip_deg_drawing": 14.507582063632098,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 43.85075,
+    "mirror_plane_to_screen_cm": 37.66738474413953,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     45.254833995939045,
+     32.0
+    ],
+    "M2_mm": [
+     141.49160819541058,
+     100.04967563596492
+    ]
+   },
+   "mirrors_sym_stop_largest_ipd": {
+    "a_cm": 7.342746241334305,
+    "nasal_clip_deg_drawing": 14.507582063632098,
+    "lateral_shift_cm": 12.84925,
+    "Z_physical_cm": 44.15075,
+    "mirror_plane_to_screen_cm": 36.8080037586657,
+    "M1_center_x_cm": 1.9,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     53.74011537017762,
+     38.0
+    ],
+    "M2_mm": [
+     147.78124858177216,
+     104.49712300438597
+    ]
+   },
+   "mirrors_s3_plane7": {
+    "a_cm": 7.0,
+    "nasal_clip_deg_drawing": 12.875001559612476,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 43.85075,
+    "mirror_plane_to_screen_cm": 36.85075,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     48.24322852320103,
+     40.88614035087719
+    ],
+    "M2_mm": [
+     138.86641033158693,
+     117.68929478070174
+    ]
+   },
+   "exact_sym_stop": {
+    "nasal_clip_deg_exact": 19.243506160450693,
+    "nasal_limited_by": "viewport",
+    "ridge_z_cm": 4.583365255860468,
+    "a_exact_symmetric_cm": 7.783365255860469,
+    "M1": {
+     "length_mm": 48.5023631743367,
+     "height_temporal_mm": 43.17083128701857,
+     "height_center_mm": 32.0,
+     "height_nasal_mm": 25.42186852127374
+    },
+    "M2": {
+     "length_mm": 151.6451782240674,
+     "height_temporal_mm": 134.9758646000367,
+     "height_center_mm": 100.04967563596492,
+     "height_nasal_mm": 79.48280311292453
+    },
+    "M1_temporal_edge_xz_cm": [
+     -2.1585415643509287,
+     8.341906820211397
+    ],
+    "M1_nasal_edge_xz_cm": [
+     1.2710934260636872,
+     4.912271829796781
+    ],
+    "M2_temporal_edge_xz_cm": [
+     -19.898043230001832,
+     12.9321584858623
+    ],
+    "M2_nasal_edge_xz_cm": [
+     -9.175109844353774,
+     2.209225100214242
+    ],
+    "M1_bottom_at_eye_x_deg": 14.507582063632098
+   },
+   "exact_sym_stop_largest_ipd": {
+    "nasal_clip_deg_exact": 19.243506160450693,
+    "nasal_limited_by": "viewport",
+    "ridge_z_cm": 5.442746241334305,
+    "a_exact_symmetric_cm": 9.242746241334306,
+    "M1": {
+     "length_mm": 57.596556269524825,
+     "height_temporal_mm": 51.26536215333456,
+     "height_center_mm": 38.0,
+     "height_nasal_mm": 30.188468869012567
+    },
+    "M2": {
+     "length_mm": 158.38616908225194,
+     "height_temporal_mm": 140.9758646000367,
+     "height_center_mm": 104.49712300438597,
+     "height_nasal_mm": 83.01600380840219
+    },
+    "M1_temporal_edge_xz_cm": [
+     -2.563268107666728,
+     9.906014349001033
+    ],
+    "M1_nasal_edge_xz_cm": [
+     1.5094234434506284,
+     5.833322797883677
+    ],
+    "M2_temporal_edge_xz_cm": [
+     -19.898043230001832,
+     14.39153947133614
+    ],
+    "M2_nasal_edge_xz_cm": [
+     -8.698449809579891,
+     3.1919460509141966
+    ],
+    "M1_bottom_at_eye_x_deg": 14.507582063632098
+   },
+   "photodiode_strip_cm": 1.8972499999999997,
+   "photodiode_strip_px": 123.488312965066,
+   "vergence_deg": 3.215760739827487,
+   "vergence_MA": 1.7543859649122806,
+   "camera": {
+    "Z_cm": 43.85075,
+    "line_height_at_panel_plane_cm": -30.704625706149425,
+    "active_area_bottom_cm": -16.6465,
+    "housing_bottom_cm_ASSUMED_centered": -18.46,
+    "clearance_below_housing_cm": 12.244625706149424,
+    "camera_z_cm": 46.69166652447253,
+    "camera_y_cm": -32.693856872009626,
+    "camera_behind_panel_plane_cm": 2.840916524472533
+   }
+  },
+  {
+   "option": "C",
+   "panel": "27 (PG27UCDM)",
+   "D_cm": 48.076127980785735,
+   "HW_cm": 14.74925,
+   "HH_cm": 16.6465,
+   "theta_H_deg": 17.05546222963286,
+   "theta_V_deg": 19.098561287957907,
+   "px_per_deg_mean_S0": 56.28695294649105,
+   "px_per_deg_center": 54.61452317100117,
+   "px_per_deg_at_15": 58.5356695147224,
+   "arcmin_per_px_center": 1.0986088775715683,
+   "arcmin_per_px_at_15": 1.0250160371858275,
+   "arcmin_per_px_at_edge": 1.0041029295744568,
+   "pitch_mm": 0.15363802083333333,
+   "shows_15deg_H": true,
+   "accommodation_D": 2.0800343996081865,
+   "mirrors_sym_fullV": {
+    "a_cm": 5.215302796363013,
+    "nasal_clip_deg_drawing": 17.05546222963286,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 34.92687798078573,
+    "mirror_plane_to_screen_cm": 29.71157518442272,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     45.254833995939045,
+     36.11627709883554
+    ],
+    "M2_mm": [
+     159.35504047600813,
+     127.1756029299349
+    ]
+   },
+   "mirrors_sym_stop": {
+    "a_cm": 5.215302796363013,
+    "nasal_clip_deg_drawing": 17.05546222963286,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 34.92687798078573,
+    "mirror_plane_to_screen_cm": 29.71157518442272,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     45.254833995939045,
+     32.0
+    ],
+    "M2_mm": [
+     159.35504047600813,
+     112.6810297368421
+    ]
+   },
+   "mirrors_sym_stop_largest_ipd": {
+    "a_cm": 6.193172070681078,
+    "nasal_clip_deg_drawing": 17.05546222963286,
+    "lateral_shift_cm": 12.84925,
+    "Z_physical_cm": 35.22687798078574,
+    "mirror_plane_to_screen_cm": 29.033705910104658,
+    "M1_center_x_cm": 1.9,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     53.7401153701776,
+     38.0
+    ],
+    "M2_mm": [
+     165.23712684338156,
+     116.84029289473683
+    ]
+   },
+   "mirrors_s3_plane7": {
+    "a_cm": 7.0,
+    "nasal_clip_deg_drawing": 12.875001559612476,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 34.92687798078573,
+    "mirror_plane_to_screen_cm": 27.926877980785733,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     52.99802541139552,
+     48.47540968630876
+    ],
+    "M2_mm": [
+     152.55292336008017,
+     139.5347355174081
+    ]
+   },
+   "exact_sym_stop": {
+    "nasal_clip_deg_exact": 23.87241849199863,
+    "nasal_limited_by": "viewport",
+    "ridge_z_cm": 3.615302796363013,
+    "a_exact_symmetric_cm": 6.815302796363014,
+    "M1": {
+     "length_mm": 49.956752620186876,
+     "height_temporal_mm": 46.162022625465035,
+     "height_center_mm": 32.0,
+     "height_nasal_mm": 24.487494462120907
+    },
+    "M2": {
+     "length_mm": 175.91182273597946,
+     "height_temporal_mm": 162.54950763040011,
+     "height_center_mm": 112.6810297368421,
+     "height_nasal_mm": 86.22737786459382
+    },
+    "M1_temporal_edge_xz_cm": [
+     -2.3081011312732516,
+     7.523403927636265
+    ],
+    "M1_nasal_edge_xz_cm": [
+     1.2243747231060453,
+     3.990928073256968
+    ],
+    "M2_temporal_edge_xz_cm": [
+     -21.276725381520006,
+     13.34277817788302
+    ],
+    "M2_nasal_edge_xz_cm": [
+     -8.83788110677031,
+     0.9039339031333228
+    ],
+    "M1_bottom_at_eye_x_deg": 17.05546222963286
+   },
+   "exact_sym_stop_largest_ipd": {
+    "nasal_clip_deg_exact": 23.872418491998634,
+    "nasal_limited_by": "viewport",
+    "ridge_z_cm": 4.293172070681077,
+    "a_exact_symmetric_cm": 8.093172070681078,
+    "M1": {
+     "length_mm": 59.32364373647191,
+     "height_temporal_mm": 54.817401867739726,
+     "height_center_mm": 38.0,
+     "height_nasal_mm": 29.07889967376858
+    },
+    "M2": {
+     "length_mm": 182.40505025664206,
+     "height_temporal_mm": 168.54950763040011,
+     "height_center_mm": 116.84029289473683,
+     "height_nasal_mm": 89.41018828788916
+    },
+    "M1_temporal_edge_xz_cm": [
+     -2.740870093386986,
+     8.934042164068064
+    ],
+    "M1_nasal_edge_xz_cm": [
+     1.4539449836884284,
+     4.739227086992649
+    ],
+    "M2_temporal_edge_xz_cm": [
+     -21.276725381520006,
+     14.620647452201084
+    ],
+    "M2_nasal_edge_xz_cm": [
+     -8.378740585605541,
+     1.72266265628662
+    ],
+    "M1_bottom_at_eye_x_deg": 17.05546222963286
+   },
+   "photodiode_strip_cm": 1.8972499999999979,
+   "photodiode_strip_px": 123.48831296506589,
+   "vergence_deg": 3.8122630891146696,
+   "vergence_MA": 2.0800343996081865,
+   "camera": {
+    "Z_cm": 34.92687798078573,
+    "line_height_at_panel_plane_cm": -24.456063248276894,
+    "active_area_bottom_cm": -16.6465,
+    "housing_bottom_cm_ASSUMED_centered": -18.46,
+    "clearance_below_housing_cm": 5.996063248276894,
+    "camera_z_cm": 46.69166652447253,
+    "camera_y_cm": -32.693856872009626,
+    "camera_behind_panel_plane_cm": 11.764788543686798
+   }
+  },
+  {
+   "option": "D",
+   "panel": "27 (PG27UCDM)",
+   "D_cm": 51.436747485820526,
+   "HW_cm": 14.74925,
+   "HH_cm": 16.6465,
+   "theta_H_deg": 16.0,
+   "theta_V_deg": 17.933162421677604,
+   "px_per_deg_mean_S0": 60.0,
+   "px_per_deg_center": 58.4321898495655,
+   "px_per_deg_at_15": 62.62743232869249,
+   "arcmin_per_px_center": 1.0268312749268997,
+   "arcmin_per_px_at_15": 0.958046622206979,
+   "arcmin_per_px_at_edge": 0.9488167913512662,
+   "pitch_mm": 0.15363802083333333,
+   "shows_15deg_H": true,
+   "accommodation_D": 1.9441353679597804,
+   "mirrors_sym_fullV": {
+    "a_cm": 5.579863110145454,
+    "nasal_clip_deg_drawing": 16.0,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 38.28749748582052,
+    "mirror_plane_to_screen_cm": 32.70763437567507,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     45.254833995939045,
+     36.11627709883554
+    ],
+    "M2_mm": [
+     151.90030435508368,
+     121.22624257063787
+    ]
+   },
+   "mirrors_sym_stop": {
+    "a_cm": 5.579863110145454,
+    "nasal_clip_deg_drawing": 16.0,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 38.28749748582052,
+    "mirror_plane_to_screen_cm": 32.70763437567507,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     45.254833995939045,
+     32.0
+    ],
+    "M2_mm": [
+     151.90030435508368,
+     107.4097352737801
+    ]
+   },
+   "mirrors_sym_stop_largest_ipd": {
+    "a_cm": 6.626087443297727,
+    "nasal_clip_deg_drawing": 16.0,
+    "lateral_shift_cm": 12.84925,
+    "Z_physical_cm": 38.58749748582053,
+    "mirror_plane_to_screen_cm": 31.9614100425228,
+    "M1_center_x_cm": 1.9,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     53.74011537017761,
+     37.99999999999999
+    ],
+    "M2_mm": [
+     157.95247044839414,
+     111.68926295922724
+    ]
+   },
+   "mirrors_s3_plane7": {
+    "a_cm": 7.0,
+    "nasal_clip_deg_drawing": 12.875001559612476,
+    "lateral_shift_cm": 13.14925,
+    "Z_physical_cm": 38.28749748582052,
+    "mirror_plane_to_screen_cm": 31.287497485820523,
+    "M1_center_x_cm": 1.6,
+    "M2_center_x_cm": 14.74925,
+    "M1_mm": [
+     51.013761942130294,
+     45.30826916383948
+    ],
+    "M2_mm": [
+     146.84129183035273,
+     130.41823463564182
+    ]
+   },
+   "exact_sym_stop": {
+    "nasal_clip_deg_exact": 21.901304881917472,
+    "nasal_limited_by": "viewport",
+    "ridge_z_cm": 3.979863110145454,
+    "a_exact_symmetric_cm": 7.179863110145454,
+    "M1": {
+     "length_mm": 49.309178445843585,
+     "height_temporal_mm": 44.86476408434278,
+     "height_center_mm": 32.0,
+     "height_nasal_mm": 24.868944823244306
+    },
+    "M2": {
+     "length_mm": 165.50893135736385,
+     "height_temporal_mm": 150.5910135443705,
+     "height_center_mm": 107.4097352737801,
+     "height_nasal_mm": 83.47396187509109
+    },
+    "M1_temporal_edge_xz_cm": [
+     -2.243238204217139,
+     7.823101314362593
+    ],
+    "M1_nasal_edge_xz_cm": [
+     1.2434472411622153,
+     4.33641586898324
+    ],
+    "M2_temporal_edge_xz_cm": [
+     -20.678800677218526,
+     13.10941378736398
+    ],
+    "M2_nasal_edge_xz_cm": [
+     -8.975551906245448,
+     1.4061650163908999
+    ],
+    "M1_bottom_at_eye_x_deg": 16.0
+   },
+   "exact_sym_stop_largest_ipd": {
+    "nasal_clip_deg_exact": 21.90130488191747,
+    "nasal_limited_by": "viewport",
+    "ridge_z_cm": 4.726087443297727,
+    "a_exact_symmetric_cm": 8.526087443297726,
+    "M1": {
+     "length_mm": 58.554649404439246,
+     "height_temporal_mm": 53.276907350157046,
+     "height_center_mm": 37.99999999999999,
+     "height_nasal_mm": 29.531871977602606
+    },
+    "M2": {
+     "length_mm": 172.10330617941514,
+     "height_temporal_mm": 156.59101354437047,
+     "height_center_mm": 111.68926295922724,
+     "height_nasal_mm": 86.79981618380769
+    },
+    "M1_temporal_edge_xz_cm": [
+     -2.6638453675078524,
+     9.28993281080558
+    ],
+    "M1_nasal_edge_xz_cm": [
+     1.4765935988801306,
+     5.149493844417597
+    ],
+    "M2_temporal_edge_xz_cm": [
+     -20.678800677218526,
+     14.45563812051625
+    ],
+    "M2_nasal_edge_xz_cm": [
+     -8.509259190809615,
+     2.286096634107342
+    ],
+    "M1_bottom_at_eye_x_deg": 16.0
+   },
+   "photodiode_strip_cm": 1.8972499999999997,
+   "photodiode_strip_px": 123.488312965066,
+   "vergence_deg": 3.5633550476272484,
+   "vergence_MA": 1.9441353679597804,
+   "camera": {
+    "Z_cm": 38.28749748582052,
+    "line_height_at_panel_plane_cm": -26.809194358756837,
+    "active_area_bottom_cm": -16.6465,
+    "housing_bottom_cm_ASSUMED_centered": -18.46,
+    "clearance_below_housing_cm": 8.349194358756836,
+    "camera_z_cm": 46.69166652447253,
+    "camera_y_cm": -32.693856872009626,
+    "camera_behind_panel_plane_cm": 8.404169038652007
+   }
+  }
+ ],
+ "checks": {
+  "S0_31.5_at_57": [
+   17.0,
+   18.99,
+   56.5
+  ],
+  "PI_27.0_half_width_cm": 14.943,
+  "PI_27.0_theta_H_at_57": 14.69,
+  "PI_27.0_D_for_17deg_cm": 48.88,
+  "maker_27_D_for_17deg_cm": 48.24,
+  "drawing_s3_reproduced": [
+   52.901654249334676,
+   48.20586586055314,
+   172.54638389846122,
+   157.23039203518547
+  ],
+  "drawing_s42_reproduced_E1.9_stop17": [
+   53.747611907067636,
+   38.0,
+   188.07305981215157,
+   132.96918726768547
+  ]
+ }
+}

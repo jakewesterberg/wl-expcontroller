@@ -1,0 +1,2540 @@
+{
+ "date": "2026-09-27",
+ "note": "SYNTHETIC frames; not rig or eye numbers. See p4_range.py docstring.",
+ "machine": "macOS-27.0-arm64-arm-64bit-Mach-O",
+ "environment": {
+  "python": "3.13.9",
+  "numpy": "2.5.3",
+  "numba": "0.67.0",
+  "scipy": "1.18.1"
+ },
+ "grid_deg": [
+  -17.0,
+  17.0,
+  1.0
+ ],
+ "frames_per_point": 3,
+ "anchoring": {
+  "g4_px_per_deg": 10.487078165101824,
+  "g4_um_per_deg_at_16.2um": 170.04797244712609,
+  "committed_p4_rel_px_per_deg": 3.4061724973533183,
+  "k_foreshortening": 1.5548313865955206
+ },
+ "analytic_occlusion_deg": {
+  "cam35_scale0.75": {
+   "right": 7.5,
+   "up": 8.57,
+   "left": 7.5,
+   "down": 8.36,
+   "up-right": 7.99,
+   "down-right": 7.94,
+   "min_over_directions": 7.5
+  },
+  "cam35_scale1.0": {
+   "right": 10.0,
+   "up": 11.48,
+   "left": 10.0,
+   "down": 11.1,
+   "up-right": 10.69,
+   "down-right": 10.59,
+   "min_over_directions": 10.0
+  },
+  "cam35_scale1.25": {
+   "right": 12.49,
+   "up": 14.4,
+   "left": 12.49,
+   "down": 13.82,
+   "up-right": 13.42,
+   "down-right": 13.25,
+   "min_over_directions": 12.49
+  },
+  "cam35_scale1.5": {
+   "right": 14.98,
+   "up": 17.35,
+   "left": 14.98,
+   "down": 16.51,
+   "up-right": 16.17,
+   "down-right": 15.93,
+   "min_over_directions": 14.98
+  },
+  "cam35_scale1.75": {
+   "right": 17.46,
+   "up": 20.32,
+   "left": 17.46,
+   "down": 19.18,
+   "up-right": 18.96,
+   "down-right": 18.62,
+   "min_over_directions": 17.46
+  },
+  "cam0_scale0.75": {
+   "right": 7.5,
+   "up": 7.5,
+   "left": 7.5,
+   "down": 7.5,
+   "up-right": 7.52,
+   "down-right": 7.52,
+   "min_over_directions": 7.5
+  },
+  "cam0_scale1.0": {
+   "right": 10.0,
+   "up": 10.0,
+   "left": 10.0,
+   "down": 10.0,
+   "up-right": 10.04,
+   "down-right": 10.04,
+   "min_over_directions": 10.0
+  },
+  "cam0_scale1.25": {
+   "right": 12.49,
+   "up": 12.49,
+   "left": 12.49,
+   "down": 12.49,
+   "up-right": 12.58,
+   "down-right": 12.58,
+   "min_over_directions": 12.49
+  },
+  "cam0_scale1.5": {
+   "right": 14.98,
+   "up": 14.98,
+   "left": 14.98,
+   "down": 14.98,
+   "up-right": 15.13,
+   "down-right": 15.13,
+   "min_over_directions": 14.98
+  },
+  "cam0_scale1.75": {
+   "right": 17.46,
+   "up": 17.46,
+   "left": 17.46,
+   "down": 17.46,
+   "up-right": 17.7,
+   "down-right": 17.7,
+   "min_over_directions": 17.46
+  }
+ },
+ "fixed_roi_720x450_limit_deg": {
+  "scale0.75": {
+   "right": 25.7,
+   "up": 17.6,
+   "down": 16.3
+  },
+  "scale1.0": {
+   "right": 23.4,
+   "up": 15.0,
+   "down": 13.6
+  },
+  "scale1.25": {
+   "right": 21.0,
+   "up": 12.4,
+   "down": 10.9
+  },
+  "scale1.5": {
+   "right": 18.6,
+   "up": 9.6,
+   "down": 8.3
+  },
+  "scale1.75": {
+   "right": 16.2,
+   "up": 6.8,
+   "down": 5.7
+  }
+ },
+ "illuminator_coverage": {
+  "scale1.0 one (paper)": {
+   "disc15": 0.417,
+   "disc17": 0.324
+  },
+  "scale1.0 two, +/-7 az": {
+   "disc15": 0.741,
+   "disc17": 0.609
+  },
+  "scale1.0 four, +/-6.5 diag": {
+   "disc15": 0.989,
+   "disc17": 0.929
+  },
+  "scale1.0 seven, hex r=9": {
+   "disc15": 1.0,
+   "disc17": 0.995
+  },
+  "scale1.25 one (paper)": {
+   "disc15": 0.678,
+   "disc17": 0.527
+  },
+  "scale1.25 two, +/-7 az": {
+   "disc15": 0.912,
+   "disc17": 0.839
+  },
+  "scale1.25 four, +/-6.5 diag": {
+   "disc15": 1.0,
+   "disc17": 0.999
+  },
+  "scale1.25 seven, hex r=9": {
+   "disc15": 1.0,
+   "disc17": 1.0
+  },
+  "scale1.5 one (paper)": {
+   "disc15": 0.963,
+   "disc17": 0.781
+  },
+  "scale1.5 two, +/-7 az": {
+   "disc15": 0.994,
+   "disc17": 0.959
+  },
+  "scale1.5 four, +/-6.5 diag": {
+   "disc15": 1.0,
+   "disc17": 1.0
+  },
+  "scale1.5 seven, hex r=9": {
+   "disc15": 1.0,
+   "disc17": 1.0
+  }
+ },
+ "range_vs_camera_angle_deg": {
+  "fig2_k_scale1.0": {
+   "0": 10.0,
+   "20": 10.0,
+   "25": 10.0,
+   "30": 10.0,
+   "35": 10.0,
+   "40": 10.0,
+   "45": 10.0
+  },
+  "fig2_k_scale1.5": {
+   "0": 14.98,
+   "20": 14.98,
+   "25": 14.98,
+   "30": 14.98,
+   "35": 14.98,
+   "40": 14.98,
+   "45": 14.98
+  },
+  "cosine_k1_scale1.0": {
+   "0": 10.69,
+   "20": 10.33,
+   "25": 10.23,
+   "30": 10.12,
+   "35": 10.0,
+   "40": 9.86,
+   "45": 9.71
+  },
+  "cosine_k1_scale1.5": {
+   "0": 15.82,
+   "20": 15.03,
+   "25": 14.81,
+   "30": 14.57,
+   "35": 14.31,
+   "40": 14.02,
+   "45": 13.69
+  }
+ },
+ "summary": {
+  "committed_scale1.0": {
+   "RP4_15": {
+    "first_not_ok_deg": 8.54400374531753,
+    "first_lost_or_wrong_deg": 8.54400374531753,
+    "right_first_not_ok": 13.0,
+    "right_first_lost": 14.0,
+    "left_first_not_ok": null,
+    "left_first_lost": null,
+    "up_first_not_ok": 15.0,
+    "up_first_lost": 16.0,
+    "down_first_not_ok": null,
+    "down_first_lost": null,
+    "ring": {
+     "10": {
+      "ok": 0.9285714285714286,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.07142857142857142
+     },
+     "12": {
+      "ok": 0.7941176470588235,
+      "biased": 0.08823529411764706,
+      "wrong": 0.04411764705882353,
+      "lost": 0.07352941176470588
+     },
+     "15": {
+      "ok": 0.6547619047619048,
+      "biased": 0.047619047619047616,
+      "wrong": 0.27380952380952384,
+      "lost": 0.023809523809523808
+     },
+     "17": {
+      "ok": 0.6160714285714286,
+      "biased": 0.008928571428571428,
+      "wrong": 0.20535714285714285,
+      "lost": 0.16964285714285715
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.9779179810725552,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.022082018927444796
+    },
+    "disc15_fraction": {
+     "ok": 0.8617771509167842,
+     "biased": 0.018335684062059238,
+     "wrong": 0.07475317348377997,
+     "lost": 0.045133991537376586
+    },
+    "disc17_fraction": {
+     "ok": 0.8190899001109878,
+     "biased": 0.016648168701442843,
+     "wrong": 0.11653718091009989,
+     "lost": 0.04772475027746948
+    },
+    "disc15_worst_mean_p4_err_px": 11.270065926570775
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 8.54400374531753,
+    "first_lost_or_wrong_deg": 8.54400374531753,
+    "right_first_not_ok": 17.0,
+    "right_first_lost": 17.0,
+    "left_first_not_ok": null,
+    "left_first_lost": null,
+    "up_first_not_ok": null,
+    "up_first_lost": null,
+    "down_first_not_ok": null,
+    "down_first_lost": null,
+    "ring": {
+     "10": {
+      "ok": 0.9285714285714286,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.07142857142857142
+     },
+     "12": {
+      "ok": 0.9264705882352942,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.07352941176470588
+     },
+     "15": {
+      "ok": 0.9642857142857143,
+      "biased": 0.011904761904761904,
+      "wrong": 0.0,
+      "lost": 0.023809523809523808
+     },
+     "17": {
+      "ok": 0.7857142857142857,
+      "biased": 0.044642857142857144,
+      "wrong": 0.0,
+      "lost": 0.16964285714285715
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.9779179810725552,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.022082018927444796
+    },
+    "disc15_fraction": {
+     "ok": 0.9548660084626234,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.045133991537376586
+    },
+    "disc17_fraction": {
+     "ok": 0.9445061043285239,
+     "biased": 0.00776914539400666,
+     "wrong": 0.0,
+     "lost": 0.04772475027746948
+    },
+    "disc15_worst_mean_p4_err_px": 0.0
+   }
+  },
+  "anchored_cam35_scale0.75": {
+   "RP4_15": {
+    "first_not_ok_deg": 5.656854249492381,
+    "first_lost_or_wrong_deg": 5.830951894845301,
+    "right_first_not_ok": 6.0,
+    "right_first_lost": 6.0,
+    "left_first_not_ok": 6.0,
+    "left_first_lost": 6.0,
+    "up_first_not_ok": 7.0,
+    "up_first_lost": 7.0,
+    "down_first_not_ok": 7.0,
+    "down_first_lost": 7.0,
+    "ring": {
+     "10": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.3438485804416404,
+     "biased": 0.00946372239747634,
+     "wrong": 0.1861198738170347,
+     "lost": 0.4605678233438486
+    },
+    "disc15_fraction": {
+     "ok": 0.153737658674189,
+     "biased": 0.004231311706629055,
+     "wrong": 0.08321579689703808,
+     "lost": 0.7588152327221439
+    },
+    "disc17_fraction": {
+     "ok": 0.12097669256381798,
+     "biased": 0.003329633740288568,
+     "wrong": 0.06548279689234185,
+     "lost": 0.8102108768035516
+    },
+    "disc15_worst_mean_p4_err_px": 11.919475234965034
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 7.0,
+    "first_lost_or_wrong_deg": 7.0,
+    "right_first_not_ok": 7.0,
+    "right_first_lost": 7.0,
+    "left_first_not_ok": 7.0,
+    "left_first_lost": 7.0,
+    "up_first_not_ok": 8.0,
+    "up_first_lost": 8.0,
+    "down_first_not_ok": 8.0,
+    "down_first_lost": 8.0,
+    "ring": {
+     "10": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.5205047318611987,
+     "biased": 0.01892744479495268,
+     "wrong": 0.0,
+     "lost": 0.4605678233438486
+    },
+    "disc15_fraction": {
+     "ok": 0.23272214386459802,
+     "biased": 0.00846262341325811,
+     "wrong": 0.0,
+     "lost": 0.7588152327221439
+    },
+    "disc17_fraction": {
+     "ok": 0.18312985571587126,
+     "biased": 0.006659267480577136,
+     "wrong": 0.0,
+     "lost": 0.8102108768035516
+    },
+    "disc15_worst_mean_p4_err_px": 0.23563704668318528
+   }
+  },
+  "anchored_cam35_scale1.0": {
+   "RP4_15": {
+    "first_not_ok_deg": 8.246211251235321,
+    "first_lost_or_wrong_deg": 8.54400374531753,
+    "right_first_not_ok": 9.0,
+    "right_first_lost": 9.0,
+    "left_first_not_ok": 9.0,
+    "left_first_lost": 9.0,
+    "up_first_not_ok": 10.0,
+    "up_first_lost": 10.0,
+    "down_first_not_ok": 10.0,
+    "down_first_lost": 10.0,
+    "ring": {
+     "10": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.5357142857142857,
+      "lost": 0.4642857142857143
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.7160883280757098,
+     "biased": 0.04100946372239748,
+     "wrong": 0.2113564668769716,
+     "lost": 0.031545741324921134
+    },
+    "disc15_fraction": {
+     "ok": 0.32016925246826516,
+     "biased": 0.018335684062059238,
+     "wrong": 0.11706629055007052,
+     "lost": 0.5444287729196051
+    },
+    "disc17_fraction": {
+     "ok": 0.2519422863485017,
+     "biased": 0.014428412874583796,
+     "wrong": 0.09211986681465038,
+     "lost": 0.6415094339622641
+    },
+    "disc15_worst_mean_p4_err_px": 11.994049885401248
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 9.433981132056603,
+    "first_lost_or_wrong_deg": 9.848857801796104,
+    "right_first_not_ok": 10.0,
+    "right_first_lost": 10.0,
+    "left_first_not_ok": 10.0,
+    "left_first_lost": 10.0,
+    "up_first_not_ok": 11.0,
+    "up_first_lost": 11.0,
+    "down_first_not_ok": 11.0,
+    "down_first_lost": 11.0,
+    "ring": {
+     "10": {
+      "ok": 0.39285714285714285,
+      "biased": 0.14285714285714285,
+      "wrong": 0.0,
+      "lost": 0.4642857142857143
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.9526813880126183,
+     "biased": 0.015772870662460567,
+     "wrong": 0.0,
+     "lost": 0.031545741324921134
+    },
+    "disc15_fraction": {
+     "ok": 0.44287729196050774,
+     "biased": 0.012693935119887164,
+     "wrong": 0.0,
+     "lost": 0.5444287729196051
+    },
+    "disc17_fraction": {
+     "ok": 0.34850166481687017,
+     "biased": 0.009988901220865706,
+     "wrong": 0.0,
+     "lost": 0.6415094339622641
+    },
+    "disc15_worst_mean_p4_err_px": 0.24965326960361267
+   }
+  },
+  "anchored_cam35_scale1.25": {
+   "RP4_15": {
+    "first_not_ok_deg": 10.770329614269007,
+    "first_lost_or_wrong_deg": 11.0,
+    "right_first_not_ok": 11.0,
+    "right_first_lost": 11.0,
+    "left_first_not_ok": 11.0,
+    "left_first_lost": 11.0,
+    "up_first_not_ok": 13.0,
+    "up_first_lost": 13.0,
+    "down_first_not_ok": 13.0,
+    "down_first_lost": 13.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 0.07352941176470588,
+      "biased": 0.08823529411764706,
+      "wrong": 0.6470588235294118,
+      "lost": 0.19117647058823528
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.5500705218617772,
+     "biased": 0.01692524682651622,
+     "wrong": 0.14950634696755993,
+     "lost": 0.2834978843441467
+    },
+    "disc17_fraction": {
+     "ok": 0.4328523862375139,
+     "biased": 0.013318534961154272,
+     "wrong": 0.11764705882352941,
+     "lost": 0.4361820199778024
+    },
+    "disc15_worst_mean_p4_err_px": 11.92305249915845
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 12.0,
+    "first_lost_or_wrong_deg": 12.0,
+    "right_first_not_ok": 12.0,
+    "right_first_lost": 13.0,
+    "left_first_not_ok": 12.0,
+    "left_first_lost": 12.0,
+    "up_first_not_ok": 14.0,
+    "up_first_lost": 14.0,
+    "down_first_not_ok": 14.0,
+    "down_first_lost": 14.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 0.7794117647058824,
+      "biased": 0.029411764705882353,
+      "wrong": 0.0,
+      "lost": 0.19117647058823528
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.7066290550070522,
+     "biased": 0.009873060648801129,
+     "wrong": 0.0,
+     "lost": 0.2834978843441467
+    },
+    "disc17_fraction": {
+     "ok": 0.5560488346281909,
+     "biased": 0.00776914539400666,
+     "wrong": 0.0,
+     "lost": 0.4361820199778024
+    },
+    "disc15_worst_mean_p4_err_px": 0.2310453660728058
+   }
+  },
+  "anchored_cam35_scale1.5": {
+   "RP4_15": {
+    "first_not_ok_deg": 13.341664064126334,
+    "first_lost_or_wrong_deg": 13.341664064126334,
+    "right_first_not_ok": 14.0,
+    "right_first_lost": 14.0,
+    "left_first_not_ok": 14.0,
+    "left_first_lost": 14.0,
+    "up_first_not_ok": 16.0,
+    "up_first_lost": 16.0,
+    "down_first_not_ok": 15.0,
+    "down_first_lost": 15.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 0.047619047619047616,
+      "biased": 0.047619047619047616,
+      "wrong": 0.5952380952380952,
+      "lost": 0.30952380952380953
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.8519040902679831,
+     "biased": 0.022566995768688293,
+     "wrong": 0.11706629055007052,
+     "lost": 0.00846262341325811
+    },
+    "disc17_fraction": {
+     "ok": 0.6714761376248612,
+     "biased": 0.018867924528301886,
+     "wrong": 0.1453940066592675,
+     "lost": 0.16426193118756938
+    },
+    "disc15_worst_mean_p4_err_px": 11.945304501927922
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 14.560219778561036,
+    "first_lost_or_wrong_deg": 14.866068747318506,
+    "right_first_not_ok": 15.0,
+    "right_first_lost": 15.0,
+    "left_first_not_ok": 15.0,
+    "left_first_lost": 15.0,
+    "up_first_not_ok": 17.0,
+    "up_first_lost": 17.0,
+    "down_first_not_ok": 16.0,
+    "down_first_lost": 16.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 0.5833333333333334,
+      "biased": 0.10714285714285714,
+      "wrong": 0.0,
+      "lost": 0.30952380952380953
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.9788434414668548,
+     "biased": 0.012693935119887164,
+     "wrong": 0.0,
+     "lost": 0.00846262341325811
+    },
+    "disc17_fraction": {
+     "ok": 0.8135405105438401,
+     "biased": 0.022197558268590455,
+     "wrong": 0.0,
+     "lost": 0.16426193118756938
+    },
+    "disc15_worst_mean_p4_err_px": 0.3974225207089148
+   }
+  },
+  "anchored_cam35_scale1.75": {
+   "RP4_15": {
+    "first_not_ok_deg": 15.811388300841896,
+    "first_lost_or_wrong_deg": 16.0,
+    "right_first_not_ok": 16.0,
+    "right_first_lost": 16.0,
+    "left_first_not_ok": 16.0,
+    "left_first_lost": 16.0,
+    "up_first_not_ok": null,
+    "up_first_lost": null,
+    "down_first_not_ok": null,
+    "down_first_lost": null,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "17": {
+      "ok": 0.2767857142857143,
+      "biased": 0.044642857142857144,
+      "wrong": 0.48214285714285715,
+      "lost": 0.19642857142857142
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc17_fraction": {
+     "ok": 0.9356270810210877,
+     "biased": 0.01220865704772475,
+     "wrong": 0.049944506104328525,
+     "lost": 0.0022197558268590455
+    },
+    "disc15_worst_mean_p4_err_px": 0.0
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 17.0,
+    "first_lost_or_wrong_deg": 17.0,
+    "right_first_not_ok": 17.0,
+    "right_first_lost": 17.0,
+    "left_first_not_ok": 17.0,
+    "left_first_lost": 17.0,
+    "up_first_not_ok": null,
+    "up_first_lost": null,
+    "down_first_not_ok": null,
+    "down_first_lost": null,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "17": {
+      "ok": 0.7857142857142857,
+      "biased": 0.017857142857142856,
+      "wrong": 0.0,
+      "lost": 0.19642857142857142
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc17_fraction": {
+     "ok": 0.9977802441731409,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0022197558268590455
+    },
+    "disc15_worst_mean_p4_err_px": 0.0
+   }
+  },
+  "anchored_cam0_scale1.0": {
+   "RP4_15": {
+    "first_not_ok_deg": 8.06225774829855,
+    "first_lost_or_wrong_deg": 8.246211251235321,
+    "right_first_not_ok": 9.0,
+    "right_first_lost": 9.0,
+    "left_first_not_ok": 9.0,
+    "left_first_lost": 9.0,
+    "up_first_not_ok": 9.0,
+    "up_first_lost": 9.0,
+    "down_first_not_ok": 9.0,
+    "down_first_lost": 9.0,
+    "ring": {
+     "10": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.6498422712933754,
+     "biased": 0.04416403785488959,
+     "wrong": 0.2302839116719243,
+     "lost": 0.07570977917981073
+    },
+    "disc15_fraction": {
+     "ok": 0.29055007052186177,
+     "biased": 0.019746121297602257,
+     "wrong": 0.10296191819464035,
+     "lost": 0.5867418899858956
+    },
+    "disc17_fraction": {
+     "ok": 0.2286348501664817,
+     "biased": 0.01553829078801332,
+     "wrong": 0.08102108768035517,
+     "lost": 0.6748057713651499
+    },
+    "disc15_worst_mean_p4_err_px": 11.855264550414992
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 9.219544457292887,
+    "first_lost_or_wrong_deg": 9.848857801796104,
+    "right_first_not_ok": 10.0,
+    "right_first_lost": 10.0,
+    "left_first_not_ok": 10.0,
+    "left_first_lost": 10.0,
+    "up_first_not_ok": 10.0,
+    "up_first_lost": 10.0,
+    "down_first_not_ok": 10.0,
+    "down_first_lost": 10.0,
+    "ring": {
+     "10": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.8706624605678234,
+     "biased": 0.05362776025236593,
+     "wrong": 0.0,
+     "lost": 0.07570977917981073
+    },
+    "disc15_fraction": {
+     "ok": 0.38928067700987307,
+     "biased": 0.023977433004231313,
+     "wrong": 0.0,
+     "lost": 0.5867418899858956
+    },
+    "disc17_fraction": {
+     "ok": 0.30632630410654826,
+     "biased": 0.018867924528301886,
+     "wrong": 0.0,
+     "lost": 0.6748057713651499
+    },
+    "disc15_worst_mean_p4_err_px": 0.22190351566138133
+   }
+  },
+  "anchored_cam0_scale1.5": {
+   "RP4_15": {
+    "first_not_ok_deg": 13.038404810405298,
+    "first_lost_or_wrong_deg": 13.341664064126334,
+    "right_first_not_ok": 14.0,
+    "right_first_lost": 14.0,
+    "left_first_not_ok": 14.0,
+    "left_first_lost": 14.0,
+    "up_first_not_ok": 14.0,
+    "up_first_lost": 14.0,
+    "down_first_not_ok": 14.0,
+    "down_first_lost": 14.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.023809523809523808,
+      "lost": 0.9761904761904762
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.771509167842031,
+     "biased": 0.012693935119887164,
+     "wrong": 0.15655853314527504,
+     "lost": 0.05923836389280677
+    },
+    "disc17_fraction": {
+     "ok": 0.607103218645949,
+     "biased": 0.009988901220865706,
+     "wrong": 0.12319644839067703,
+     "lost": 0.2597114317425083
+    },
+    "disc15_worst_mean_p4_err_px": 12.049964213799663
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 14.317821063276353,
+    "first_lost_or_wrong_deg": 14.560219778561036,
+    "right_first_not_ok": 15.0,
+    "right_first_lost": 15.0,
+    "left_first_not_ok": 15.0,
+    "left_first_lost": 15.0,
+    "up_first_not_ok": 15.0,
+    "up_first_lost": 15.0,
+    "down_first_not_ok": 15.0,
+    "down_first_lost": 15.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.023809523809523808,
+      "wrong": 0.0,
+      "lost": 0.9761904761904762
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.92524682651622,
+     "biased": 0.015514809590973202,
+     "wrong": 0.0,
+     "lost": 0.05923836389280677
+    },
+    "disc17_fraction": {
+     "ok": 0.7280799112097669,
+     "biased": 0.01220865704772475,
+     "wrong": 0.0,
+     "lost": 0.2597114317425083
+    },
+    "disc15_worst_mean_p4_err_px": 0.26771280526324404
+   }
+  },
+  "anchored_cam30_scale1.0": {
+   "RP4_15": {
+    "first_not_ok_deg": 8.246211251235321,
+    "first_lost_or_wrong_deg": 8.48528137423857,
+    "right_first_not_ok": 9.0,
+    "right_first_lost": 9.0,
+    "left_first_not_ok": 9.0,
+    "left_first_lost": 9.0,
+    "up_first_not_ok": 10.0,
+    "up_first_lost": 10.0,
+    "down_first_not_ok": 10.0,
+    "down_first_lost": 10.0,
+    "ring": {
+     "10": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.3392857142857143,
+      "lost": 0.6607142857142857
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.7034700315457413,
+     "biased": 0.022082018927444796,
+     "wrong": 0.2334384858044164,
+     "lost": 0.04100946372239748
+    },
+    "disc15_fraction": {
+     "ok": 0.3145275035260931,
+     "biased": 0.009873060648801129,
+     "wrong": 0.1156558533145275,
+     "lost": 0.5599435825105783
+    },
+    "disc17_fraction": {
+     "ok": 0.24750277469478357,
+     "biased": 0.00776914539400666,
+     "wrong": 0.09100998890122086,
+     "lost": 0.6537180910099889
+    },
+    "disc15_worst_mean_p4_err_px": 11.951226235992417
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 9.433981132056603,
+    "first_lost_or_wrong_deg": 9.848857801796104,
+    "right_first_not_ok": 10.0,
+    "right_first_lost": 10.0,
+    "left_first_not_ok": 10.0,
+    "left_first_lost": 10.0,
+    "up_first_not_ok": 11.0,
+    "up_first_lost": 11.0,
+    "down_first_not_ok": 11.0,
+    "down_first_lost": 11.0,
+    "ring": {
+     "10": {
+      "ok": 0.21428571428571427,
+      "biased": 0.125,
+      "wrong": 0.0,
+      "lost": 0.6607142857142857
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.9369085173501577,
+     "biased": 0.022082018927444796,
+     "wrong": 0.0,
+     "lost": 0.04100946372239748
+    },
+    "disc15_fraction": {
+     "ok": 0.42736248236953456,
+     "biased": 0.012693935119887164,
+     "wrong": 0.0,
+     "lost": 0.5599435825105783
+    },
+    "disc17_fraction": {
+     "ok": 0.3362930077691454,
+     "biased": 0.009988901220865706,
+     "wrong": 0.0,
+     "lost": 0.6537180910099889
+    },
+    "disc15_worst_mean_p4_err_px": 0.26196136182520985
+   }
+  },
+  "anchored_cam30_scale1.5": {
+   "RP4_15": {
+    "first_not_ok_deg": 13.341664064126334,
+    "first_lost_or_wrong_deg": 13.341664064126334,
+    "right_first_not_ok": 14.0,
+    "right_first_lost": 14.0,
+    "left_first_not_ok": 14.0,
+    "left_first_lost": 14.0,
+    "up_first_not_ok": 15.0,
+    "up_first_lost": 15.0,
+    "down_first_not_ok": 15.0,
+    "down_first_lost": 15.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.6785714285714286,
+      "lost": 0.32142857142857145
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.8279266572637518,
+     "biased": 0.022566995768688293,
+     "wrong": 0.13963328631875882,
+     "lost": 0.009873060648801129
+    },
+    "disc17_fraction": {
+     "ok": 0.6514983351831298,
+     "biased": 0.017758046614872364,
+     "wrong": 0.13984461709211987,
+     "lost": 0.19089900110987792
+    },
+    "disc15_worst_mean_p4_err_px": 12.075097343601934
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 14.560219778561036,
+    "first_lost_or_wrong_deg": 14.866068747318506,
+    "right_first_not_ok": 15.0,
+    "right_first_lost": 15.0,
+    "left_first_not_ok": 15.0,
+    "left_first_lost": 15.0,
+    "up_first_not_ok": 16.0,
+    "up_first_lost": 17.0,
+    "down_first_not_ok": 16.0,
+    "down_first_lost": 16.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 0.5238095238095238,
+      "biased": 0.15476190476190477,
+      "wrong": 0.0,
+      "lost": 0.32142857142857145
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.9746121297602257,
+     "biased": 0.015514809590973202,
+     "wrong": 0.0,
+     "lost": 0.009873060648801129
+    },
+    "disc17_fraction": {
+     "ok": 0.7902330743618202,
+     "biased": 0.018867924528301886,
+     "wrong": 0.0,
+     "lost": 0.19089900110987792
+    },
+    "disc15_worst_mean_p4_err_px": 0.47793304828896055
+   }
+  },
+  "anchored_cam40_scale1.0": {
+   "RP4_15": {
+    "first_not_ok_deg": 8.246211251235321,
+    "first_lost_or_wrong_deg": 8.54400374531753,
+    "right_first_not_ok": 9.0,
+    "right_first_lost": 9.0,
+    "left_first_not_ok": 9.0,
+    "left_first_lost": 9.0,
+    "up_first_not_ok": 10.0,
+    "up_first_lost": 10.0,
+    "down_first_not_ok": 10.0,
+    "down_first_lost": 10.0,
+    "ring": {
+     "10": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.6071428571428571,
+      "lost": 0.39285714285714285
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.7476340694006309,
+     "biased": 0.031545741324921134,
+     "wrong": 0.20189274447949526,
+     "lost": 0.01892744479495268
+    },
+    "disc15_fraction": {
+     "ok": 0.3342736248236953,
+     "biased": 0.014104372355430184,
+     "wrong": 0.1227080394922426,
+     "lost": 0.5289139633286318
+    },
+    "disc17_fraction": {
+     "ok": 0.2630410654827969,
+     "biased": 0.011098779134295227,
+     "wrong": 0.09655937846836848,
+     "lost": 0.6293007769145395
+    },
+    "disc15_worst_mean_p4_err_px": 12.01721226353275
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 9.848857801796104,
+    "first_lost_or_wrong_deg": 9.848857801796104,
+    "right_first_not_ok": 10.0,
+    "right_first_lost": 10.0,
+    "left_first_not_ok": 10.0,
+    "left_first_lost": 10.0,
+    "up_first_not_ok": 12.0,
+    "up_first_lost": 12.0,
+    "down_first_not_ok": 11.0,
+    "down_first_lost": 11.0,
+    "ring": {
+     "10": {
+      "ok": 0.5,
+      "biased": 0.10714285714285714,
+      "wrong": 0.0,
+      "lost": 0.39285714285714285
+     },
+     "12": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "15": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 1.0
+     }
+    },
+    "disc10_fraction": {
+     "ok": 0.9684542586750788,
+     "biased": 0.012618296529968454,
+     "wrong": 0.0,
+     "lost": 0.01892744479495268
+    },
+    "disc15_fraction": {
+     "ok": 0.459802538787024,
+     "biased": 0.011283497884344146,
+     "wrong": 0.0,
+     "lost": 0.5289139633286318
+    },
+    "disc17_fraction": {
+     "ok": 0.36182019977802443,
+     "biased": 0.008879023307436182,
+     "wrong": 0.0,
+     "lost": 0.6293007769145395
+    },
+    "disc15_worst_mean_p4_err_px": 0.3320001218276805
+   }
+  },
+  "anchored_cam40_scale1.5": {
+   "RP4_15": {
+    "first_not_ok_deg": 13.341664064126334,
+    "first_lost_or_wrong_deg": 13.341664064126334,
+    "right_first_not_ok": 14.0,
+    "right_first_lost": 14.0,
+    "left_first_not_ok": 14.0,
+    "left_first_lost": 14.0,
+    "up_first_not_ok": 16.0,
+    "up_first_lost": 16.0,
+    "down_first_not_ok": 16.0,
+    "down_first_lost": 16.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 0.19047619047619047,
+      "biased": 0.07142857142857142,
+      "wrong": 0.42857142857142855,
+      "lost": 0.30952380952380953
+     },
+     "17": {
+      "ok": 0.0,
+      "biased": 0.0,
+      "wrong": 0.11607142857142858,
+      "lost": 0.8839285714285714
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.8730606488011283,
+     "biased": 0.023977433004231313,
+     "wrong": 0.09449929478138223,
+     "lost": 0.00846262341325811
+    },
+    "disc17_fraction": {
+     "ok": 0.6958934517203108,
+     "biased": 0.021087680355160933,
+     "wrong": 0.1453940066592675,
+     "lost": 0.13762486126526083
+    },
+    "disc15_worst_mean_p4_err_px": 11.781073334343924
+   },
+   "RP4_6": {
+    "first_not_ok_deg": 14.7648230602334,
+    "first_lost_or_wrong_deg": 14.866068747318506,
+    "right_first_not_ok": 15.0,
+    "right_first_lost": 15.0,
+    "left_first_not_ok": 15.0,
+    "left_first_lost": 15.0,
+    "up_first_not_ok": null,
+    "up_first_lost": null,
+    "down_first_not_ok": 17.0,
+    "down_first_lost": 17.0,
+    "ring": {
+     "10": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "12": {
+      "ok": 1.0,
+      "biased": 0.0,
+      "wrong": 0.0,
+      "lost": 0.0
+     },
+     "15": {
+      "ok": 0.6785714285714286,
+      "biased": 0.011904761904761904,
+      "wrong": 0.0,
+      "lost": 0.30952380952380953
+     },
+     "17": {
+      "ok": 0.09821428571428571,
+      "biased": 0.017857142857142856,
+      "wrong": 0.0,
+      "lost": 0.8839285714285714
+     }
+    },
+    "disc10_fraction": {
+     "ok": 1.0,
+     "biased": 0.0,
+     "wrong": 0.0,
+     "lost": 0.0
+    },
+    "disc15_fraction": {
+     "ok": 0.9901269393511989,
+     "biased": 0.0014104372355430183,
+     "wrong": 0.0,
+     "lost": 0.00846262341325811
+    },
+    "disc17_fraction": {
+     "ok": 0.8512763596004439,
+     "biased": 0.011098779134295227,
+     "wrong": 0.0,
+     "lost": 0.13762486126526083
+    },
+    "disc15_worst_mean_p4_err_px": 0.10110036968020115
+   }
+  }
+ },
+ "class_maps": {
+  "committed_scale1.0": {
+   "RP4_15": [
+    "bb...........bWWWWWWWWWxxxxxxxxxxxx",
+    "...............bWWWWWWWWWxxxxxxxxxx",
+    ".................bbWWWWWWWxxxxxxxxx",
+    "...................bWWWWWWWxxxxxxxx",
+    ".....................WWWWWWWxxxxxxx",
+    "......................WWWWWWWxxxxxx",
+    ".......................bWWWWWWxxxxx",
+    "........................bWWWWWxxxxx",
+    ".........................bWWWWWxxxx",
+    "..........................bWWWWxxxx",
+    "...........................WWWWWxxx",
+    "...........................bWWWWxxx",
+    "............................WWWWWxx",
+    "............................bWWWWxx",
+    ".............................WWWWxx",
+    ".............................bWWWWx",
+    "..............................WWWWx",
+    "..............................bWWWx",
+    "..............................bWWWx",
+    "...............................WWWW",
+    "...............................WWWW",
+    "...............................bWWW",
+    "...............................bWWW",
+    "................................WWW",
+    "............x...................WWW",
+    "..........xxxxx.................WWW",
+    "..........xxxxx.................WWW",
+    "..........xxxxx.................WWW",
+    "..........xxxxx.................WWW",
+    "..........xxxxx.................WWW",
+    "..........xxxxx................bWWW",
+    "............x..................bWWW",
+    "...............................WWWW",
+    "...............................WWWW",
+    "..............................bWWWx"
+   ],
+   "RP4_6": [
+    ".......................xxxxxxxxxxxx",
+    ".......................bbxxxxxxxxxx",
+    ".........................bxxxxxxxxx",
+    "..........................bxxxxxxxx",
+    "............................xxxxxxx",
+    ".............................xxxxxx",
+    ".............................bxxxxx",
+    "..............................xxxxx",
+    "..............................bxxxx",
+    "..............................bxxxx",
+    "................................xxx",
+    "................................xxx",
+    "................................bxx",
+    ".................................xx",
+    ".................................xx",
+    ".................................bx",
+    "..................................x",
+    "..................................x",
+    "..................................x",
+    "..................................b",
+    "...................................",
+    "...................................",
+    "...................................",
+    "...................................",
+    "............x......................",
+    "..........xxxxx....................",
+    "..........xxxxx....................",
+    "..........xxxxx....................",
+    "..........xxxxx....................",
+    "..........xxxxx....................",
+    "..........xxxxx....................",
+    "............x......................",
+    "..................................b",
+    "..................................b",
+    "..................................x"
+   ]
+  },
+  "anchored_cam35_scale0.75": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxWWb...WWWxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxWW.......WWxxxxxxxxxxxx",
+    "xxxxxxxxxxxWWb.......bWWxxxxxxxxxxx",
+    "xxxxxxxxxxxWW.........WWxxxxxxxxxxx",
+    "xxxxxxxxxxxW...........Wxxxxxxxxxxx",
+    "xxxxxxxxxxxW...........Wxxxxxxxxxxx",
+    "xxxxxxxxxxxW...........Wxxxxxxxxxxx",
+    "xxxxxxxxxxxW...........Wxxxxxxxxxxx",
+    "xxxxxxxxxxxW...........Wxxxxxxxxxxx",
+    "xxxxxxxxxxxWW.........WWxxxxxxxxxxx",
+    "xxxxxxxxxxxWW.........WWxxxxxxxxxxx",
+    "xxxxxxxxxxxxWW.......WWxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxWWW...WWWxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxx......bxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxx.........xxxxxxxxxxxxx",
+    "xxxxxxxxxxxx...........xxxxxxxxxxxx",
+    "xxxxxxxxxxx............bxxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxxb...........bxxxxxxxxxxx",
+    "xxxxxxxxxxxx...........xxxxxxxxxxxx",
+    "xxxxxxxxxxxxx.........xxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxb.....bxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam35_scale1.0": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWWW...WWWWxxxxxxxxxxxx",
+    "xxxxxxxxxxxWWb.......WWWxxxxxxxxxxx",
+    "xxxxxxxxxxWWb.........bWWxxxxxxxxxx",
+    "xxxxxxxxxxWb...........bWxxxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxW...............Wxxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxWb...............bWxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxWb...............bWxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxxW...............Wxxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxxWb...........bWxxxxxxxxxx",
+    "xxxxxxxxxxWWb.........bWWxxxxxxxxxx",
+    "xxxxxxxxxxxWWW.......WWWxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWWW...WWWWxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxx.......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxb..........xxxxxxxxxxxx",
+    "xxxxxxxxxxxb...........bxxxxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxxb................xxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxxxxb...........bxxxxxxxxxxx",
+    "xxxxxxxxxxxxb.........bxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxb......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam35_scale1.25": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWWW...bWWWxxxxxxxxxxxx",
+    "xxxxxxxxxxWWWb........WWWxxxxxxxxxx",
+    "xxxxxxxxxWWW...........WWWxxxxxxxxx",
+    "xxxxxxxxWWW.............WWWxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxWW.................WWxxxxxxx",
+    "xxxxxxxW..................bWxxxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxxWb...................bWxxxxxx",
+    "xxxxxxW.....................Wxxxxxx",
+    "xxxxxxW.....................Wxxxxxx",
+    "xxxxxxW.....................Wxxxxxx",
+    "xxxxxxW.....................WWxxxxx",
+    "xxxxxxW.....................Wxxxxxx",
+    "xxxxxxW.....................Wxxxxxx",
+    "xxxxxxW.....................Wxxxxxx",
+    "xxxxxxWb...................bWxxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxxxWb..................Wxxxxxxx",
+    "xxxxxxxWW.................WWxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxWWW...........WWWxxxxxxxxx",
+    "xxxxxxxxxxxWWb.......bWWxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWWWb.bWWWWxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxWWWWWxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxx.......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxx...........xxxxxxxxxxxx",
+    "xxxxxxxxxxb..............xxxxxxxxxx",
+    "xxxxxxxxxb................xxxxxxxxx",
+    "xxxxxxxx..................bxxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................bxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxxx....................bxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxxb...............bxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxxx...........xxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxx.....xxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam35_scale1.5": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxWWWWWWWWWxxxxxxxxxxxxx",
+    "xxxxxxxxxxxWWWWW..bWWWWWxxxxxxxxxxx",
+    "xxxxxxxxxWWWb.........bWWWxxxxxxxxx",
+    "xxxxxxxxWWW.............WWWxxxxxxxx",
+    "xxxxxxxWWW...............WWWxxxxxxx",
+    "xxxxxxxWW.................WWWxxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxxWb.....................bWxxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxWb.......................bWxxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxWW.........................WWxxx",
+    "xxxWW.........................bWxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxWb.........................bWxxx",
+    "xxxWW.........................WWxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxxWb.......................bWxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxxWb.....................bWxxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxxxWW.................WWxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxxWWb...........bWWxxxxxxxxx",
+    "xxxxxxxxxxWWWW.......bWWWxxxxxxxxxx",
+    "xxxxxxxxxxxxWWWWWWWWWWWxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxb.......bxxxxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxb...............bxxxxxxxxx",
+    "xxxxxxxxb.................bxxxxxxxx",
+    "xxxxxxxb...................bxxxxxxx",
+    "xxxxxxx.....................bxxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxb.......................bxxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxb.........................bxxxx",
+    "xxxx...........................xxxx",
+    "xxxx...........................xxxx",
+    "xxxb............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxxb...........................bxxx",
+    "xxxx...........................xxxx",
+    "xxxx...........................xxxx",
+    "xxxx..........................bxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxx........................bxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxxxb..............xxxxxxxxxx",
+    "xxxxxxxxxxxxb..........xxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam35_scale1.75": {
+   "RP4_15": [
+    "xxxxxxxxxWWWb.........bWWWxxxxxxxxx",
+    "xxxxxxxWWWb.............WWWWxxxxxxx",
+    "xxxxxxWWW.................WWWxxxxxx",
+    "xxxxxWWW...................WWWxxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxWW.........................WWxxx",
+    "xxxWb.........................bWxxx",
+    "xxWW...........................WWxx",
+    "xxWb...........................bWxx",
+    "xxW.............................Wxx",
+    "xWW.............................WWx",
+    "xWb.............................bWx",
+    "xW...............................Wx",
+    "xW...............................Wx",
+    "xW...............................Wx",
+    "xW...............................Wx",
+    "xW...............................Wx",
+    "xW...............................Wx",
+    "xW...............................Wx",
+    "xW...............................Wx",
+    "xW...............................Wx",
+    "xW..............................bWx",
+    "xWW.............................WWx",
+    "xxW.............................Wxx",
+    "xxWb...........................bWxx",
+    "xxWW...........................WWxx",
+    "xxxWW.........................WWxxx",
+    "xxxWWb........................WWxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxxxWWW...............bWWxxxxxxx",
+    "xxxxxxxxWWWb...........bWWWxxxxxxxx",
+    "xxxxxxxxxxWWWW......bWWWWxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxb...................bxxxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxx........................bxxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxx...........................xxxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xx...............................xx",
+    "xx...............................xx",
+    "xx...............................xx",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "x.................................x",
+    "xx...............................xx",
+    "xx...............................xx",
+    "xxb.............................bxx",
+    "xxx.............................xxx",
+    "xxxb...........................bxxx",
+    "xxxxb..........................xxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxxxxb..................xxxxxxxx",
+    "xxxxxxxxxx..............bxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam0_scale1.0": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWWb...bWWWxxxxxxxxxxxx",
+    "xxxxxxxxxxxWWb.......bWWxxxxxxxxxxx",
+    "xxxxxxxxxxWW...........WWxxxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxW..............bWxxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxWW...............bWxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxWb...............bWxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxxWb.............bWxxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxxWW...........WWxxxxxxxxxx",
+    "xxxxxxxxxxxWWb.......bWWxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWWb...bWWWxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxb.....bxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxb.........bxxxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxb..............xxxxxxxxxx",
+    "xxxxxxxxx................bxxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxb.................bxxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxxb.................bxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxx................bxxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxxxxb...........bxxxxxxxxxxx",
+    "xxxxxxxxxxxxb.........bxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxb.....bxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam0_scale1.5": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxWWWW.....WWWWxxxxxxxxxxx",
+    "xxxxxxxxxWWW...........WWWxxxxxxxxx",
+    "xxxxxxxxWWb.............bWWxxxxxxxx",
+    "xxxxxxxWW.................WWxxxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxxWb.....................bWxxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxxW.........................WWxxx",
+    "xxxWW.........................bWxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxWb.........................WWxxx",
+    "xxxWW.........................Wxxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxxW......................bWxxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxxxWW.................WWxxxxxxx",
+    "xxxxxxxxWWb..............WWxxxxxxxx",
+    "xxxxxxxxxWWW...........WWWxxxxxxxxx",
+    "xxxxxxxxxxxWWWW.....bWWWxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxx.......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxb............xxxxxxxxxxx",
+    "xxxxxxxxxb...............bxxxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxb.......................bxxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxx..........................bxxxx",
+    "xxxx...........................xxxx",
+    "xxxx...........................bxxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxxb...........................xxxx",
+    "xxxx...........................xxxx",
+    "xxxxb..........................xxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxxb........................xxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxxxb................xxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxxxxx.......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam30_scale1.0": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxWWWWWxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxWWWW.bWWWxxxxxxxxxxxxx",
+    "xxxxxxxxxxxWWW.......WWWxxxxxxxxxxx",
+    "xxxxxxxxxxWWb.........WWWxxxxxxxxxx",
+    "xxxxxxxxxxWW...........bWxxxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxW...............Wxxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxWb...............bWxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxWb...............bWxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxxW...............Wxxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxxWW...........WWxxxxxxxxxx",
+    "xxxxxxxxxxxWW.........WWxxxxxxxxxxx",
+    "xxxxxxxxxxxxWW.......WWWxxxxxxxxxxx",
+    "xxxxxxxxxxxxxWWWW.WWWWxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxWWWWWxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxx.....xxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxx.........xxxxxxxxxxxxx",
+    "xxxxxxxxxxxb...........bxxxxxxxxxxx",
+    "xxxxxxxxxxb..............xxxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxxb...............bxxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxxx...........bxxxxxxxxxxx",
+    "xxxxxxxxxxxxx........bxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxb...bxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam30_scale1.5": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxWxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWWWWWWWWWWxxxxxxxxxxxx",
+    "xxxxxxxxxxWWWWb.....bWWWWxxxxxxxxxx",
+    "xxxxxxxxxWWW...........WWWxxxxxxxxx",
+    "xxxxxxxxWWb.............bWWxxxxxxxx",
+    "xxxxxxxWW.................WWxxxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxWWb...................bWWxxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxWb.......................bWxxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxWW.........................WWxxx",
+    "xxxWb.........................bWxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxWW.........................bWxxx",
+    "xxxWW.........................WWxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxxWW.......................bWxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxxWWb...................bWxxxxxx",
+    "xxxxxxWW...................WWxxxxxx",
+    "xxxxxxxWW.................WWxxxxxxx",
+    "xxxxxxxxWWb.............WWWxxxxxxxx",
+    "xxxxxxxxxWWW...........WWWxxxxxxxxx",
+    "xxxxxxxxxxxWWWW.....bWWWxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxbxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxx..........bxxxxxxxxxxxx",
+    "xxxxxxxxxxb.............bxxxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxb.......................bxxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxb..........................xxxx",
+    "xxxx...........................xxxx",
+    "xxxx...........................xxxx",
+    "xxxb...........................bxxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxxb...........................bxxx",
+    "xxxx...........................xxxx",
+    "xxxx...........................xxxx",
+    "xxxxb.........................bxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxxb.......................xxxxxx",
+    "xxxxxx......................bxxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxxxb...............bxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxxxxx.......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam40_scale1.0": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxWWWWWxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxWWWWWWWWWxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWW.....WWWxxxxxxxxxxxx",
+    "xxxxxxxxxxxWW........bWWxxxxxxxxxxx",
+    "xxxxxxxxxxWW...........WWxxxxxxxxxx",
+    "xxxxxxxxxWWb...........bWWxxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxW...............Wxxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxWb...............bWxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxW.................Wxxxxxxxx",
+    "xxxxxxxxWb...............bWxxxxxxxx",
+    "xxxxxxxxWW...............WWxxxxxxxx",
+    "xxxxxxxxxW...............Wxxxxxxxxx",
+    "xxxxxxxxxWW.............WWxxxxxxxxx",
+    "xxxxxxxxxWWb...........bWWxxxxxxxxx",
+    "xxxxxxxxxxWW...........WWxxxxxxxxxx",
+    "xxxxxxxxxxxWW........bWWxxxxxxxxxxx",
+    "xxxxxxxxxxxxWWW.....WWWxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxb...bxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxx.........xxxxxxxxxxxxx",
+    "xxxxxxxxxxxx...........xxxxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxxb...............bxxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxxxb...............bxxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxxxb.........bxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxx.......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  "anchored_cam40_scale1.5": {
+   "RP4_15": [
+    "xxxxxxxxxxxxxxWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxWWWWWWWWWWWWWxxxxxxxxxxx",
+    "xxxxxxxxxxWWWW.......WWWWxxxxxxxxxx",
+    "xxxxxxxxxWWW...........WWWxxxxxxxxx",
+    "xxxxxxxxWWb.............bWWxxxxxxxx",
+    "xxxxxxxWW.................WWxxxxxxx",
+    "xxxxxxWWb.................bWWxxxxxx",
+    "xxxxxxWb...................bWWxxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxxWb......................Wxxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxWW.........................WWxxx",
+    "xxxWW.........................bWxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxW...........................Wxxx",
+    "xxxWb.........................bWxxx",
+    "xxxWW.........................WWxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxxW.........................Wxxxx",
+    "xxxxWW.......................WWxxxx",
+    "xxxxxWb......................Wxxxxx",
+    "xxxxxWW.....................WWxxxxx",
+    "xxxxxxWb...................WWxxxxxx",
+    "xxxxxxWWb.................bWWxxxxxx",
+    "xxxxxxxWWW...............bWWxxxxxxx",
+    "xxxxxxxxWWW.............WWWxxxxxxxx",
+    "xxxxxxxxxxWWb.........bWWWxxxxxxxxx",
+    "xxxxxxxxxxxWWWWb...bWWWWxxxxxxxxxxx",
+    "xxxxxxxxxxxxxWWWWWWWWxxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "RP4_6": [
+    "xxxxxxxxxxxxxx.......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxb...........bxxxxxxxxxxx",
+    "xxxxxxxxxx...............xxxxxxxxxx",
+    "xxxxxxxxx.................xxxxxxxxx",
+    "xxxxxxxx...................xxxxxxxx",
+    "xxxxxxx.....................xxxxxxx",
+    "xxxxxx......................bxxxxxx",
+    "xxxxxx.......................bxxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxx..........................bxxxx",
+    "xxxx...........................xxxx",
+    "xxxx...........................xxxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxx.............................xxx",
+    "xxxx...........................xxxx",
+    "xxxx...........................xxxx",
+    "xxxx...........................xxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxx.........................xxxxx",
+    "xxxxxx.......................xxxxxx",
+    "xxxxxxb.....................bxxxxxx",
+    "xxxxxxxb....................xxxxxxx",
+    "xxxxxxxxb.................bxxxxxxxx",
+    "xxxxxxxxxx...............bxxxxxxxxx",
+    "xxxxxxxxxxx.............xxxxxxxxxxx",
+    "xxxxxxxxxxxxxb.......xxxxxxxxxxxxxx",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  }
+ },
+ "class_map_legend": "rows: elevation +17 (top) to -17 deg; columns: azimuth -17 to +17 deg; '.' ok, 'b' biased > 0.1 px, 'W' wrong (error > 2 px), 'x' lost",
+ "elapsed_s": 495.4995758533478
+}

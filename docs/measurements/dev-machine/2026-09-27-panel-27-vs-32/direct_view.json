@@ -1,0 +1,351 @@
+{
+ "assumptions": {
+  "border_bottom_all": false,
+  "margin_deg": 2.0,
+  "p4_offset_deg": 10.0,
+  "ipd_cm": 3.2
+ },
+ "rows": [
+  {
+   "panel": "32",
+   "D_cm": 45.0,
+   "field_H_deg": 37.854351394333165,
+   "field_V_deg": 23.68172241485557,
+   "housing_side_deg": 38.5820874939561,
+   "px_per_deg_mean": 50.7207211133837,
+   "px_per_deg_center": 43.11672881921144,
+   "px_per_deg_at_15": 46.21237066951767,
+   "arcmin_per_px_center": 1.3915712449239868,
+   "bottom_edge_active_deg": 23.68172241485557,
+   "bottom_edge_housing_deg": 24.649864342674707,
+   "margin_for_15deg_V": 8.681722414855571,
+   "shows_15deg": true,
+   "camera_floor_deg": 26.649864342674707,
+   "led_floor_deg": 26.649864342674707,
+   "camera_p4_centered_min_deg": 36.649864342674704,
+   "paper_35_25_fits": false,
+   "accommodation_D": 2.2222222222222223
+  },
+  {
+   "panel": "32",
+   "D_cm": 50.0,
+   "field_H_deg": 34.972019470772395,
+   "field_V_deg": 21.54063674320928,
+   "housing_side_deg": 35.678347034107894,
+   "px_per_deg_mean": 54.90103314178427,
+   "px_per_deg_center": 47.90747646579048,
+   "px_per_deg_at_15": 51.34707852168629,
+   "arcmin_per_px_center": 1.2524141204315882,
+   "bottom_edge_active_deg": 21.54063674320928,
+   "bottom_edge_housing_deg": 22.440625269783485,
+   "margin_for_15deg_V": 6.54063674320928,
+   "shows_15deg": true,
+   "camera_floor_deg": 24.440625269783485,
+   "led_floor_deg": 24.440625269783485,
+   "camera_p4_centered_min_deg": 34.44062526978348,
+   "paper_35_25_fits": true,
+   "accommodation_D": 2.0
+  },
+  {
+   "panel": "32",
+   "D_cm": 57.0,
+   "field_H_deg": 31.532402021045876,
+   "field_V_deg": 19.098635965610647,
+   "housing_side_deg": 32.20373129838622,
+   "px_per_deg_mean": 60.88974759101834,
+   "px_per_deg_center": 54.614523171001146,
+   "px_per_deg_at_15": 58.53566951472238,
+   "arcmin_per_px_center": 1.0986088775715688,
+   "bottom_edge_active_deg": 19.098635965610647,
+   "bottom_edge_housing_deg": 19.914474349841292,
+   "margin_for_15deg_V": 4.098635965610647,
+   "shows_15deg": true,
+   "camera_floor_deg": 21.914474349841292,
+   "led_floor_deg": 21.914474349841292,
+   "camera_p4_centered_min_deg": 31.914474349841292,
+   "paper_35_25_fits": true,
+   "accommodation_D": 1.7543859649122806
+  },
+  {
+   "panel": "32",
+   "D_cm": 65.0,
+   "field_H_deg": 28.28298585134678,
+   "field_V_deg": 16.890307687418847,
+   "housing_side_deg": 28.912208079532387,
+   "px_per_deg_mean": 67.8853360847887,
+   "px_per_deg_center": 62.279719405527636,
+   "px_per_deg_at_15": 66.7512020781922,
+   "arcmin_per_px_center": 0.9633954772550677,
+   "bottom_edge_active_deg": 16.890307687418847,
+   "bottom_edge_housing_deg": 17.624652152979657,
+   "margin_for_15deg_V": 1.8903076874188471,
+   "shows_15deg": true,
+   "camera_floor_deg": 19.624652152979657,
+   "led_floor_deg": 19.624652152979657,
+   "camera_p4_centered_min_deg": 29.624652152979657,
+   "paper_35_25_fits": true,
+   "accommodation_D": 1.5384615384615385
+  },
+  {
+   "panel": "32",
+   "D_cm": 75.0,
+   "field_H_deg": 25.000580834079912,
+   "field_V_deg": 14.74331841378633,
+   "housing_side_deg": 25.57888448132023,
+   "px_per_deg_mean": 76.79821571916135,
+   "px_per_deg_center": 71.86121469868573,
+   "px_per_deg_at_15": 77.02061778252944,
+   "arcmin_per_px_center": 0.8349427469543921,
+   "bottom_edge_active_deg": 14.74331841378633,
+   "bottom_edge_housing_deg": 15.394005545242292,
+   "margin_for_15deg_V": -0.25668158621367,
+   "shows_15deg": false,
+   "camera_floor_deg": 17.394005545242294,
+   "led_floor_deg": 17.394005545242294,
+   "camera_p4_centered_min_deg": 27.394005545242294,
+   "paper_35_25_fits": true,
+   "accommodation_D": 1.3333333333333333
+  },
+  {
+   "panel": "27",
+   "D_cm": 45.0,
+   "field_H_deg": 33.24573193231613,
+   "field_V_deg": 20.300553883059628,
+   "housing_side_deg": 34.141631809525435,
+   "px_per_deg_mean": 57.75177408964445,
+   "px_per_deg_center": 51.120039111246356,
+   "px_per_deg_at_15": 54.79029278762348,
+   "arcmin_per_px_center": 1.1737080221990688,
+   "bottom_edge_active_deg": 20.300553883059628,
+   "bottom_edge_housing_deg": 22.304528399700846,
+   "margin_for_15deg_V": 5.300553883059628,
+   "shows_15deg": true,
+   "camera_floor_deg": 24.304528399700846,
+   "led_floor_deg": 24.304528399700846,
+   "camera_p4_centered_min_deg": 34.30452839970084,
+   "paper_35_25_fits": true,
+   "accommodation_D": 2.2222222222222223
+  },
+  {
+   "panel": "27",
+   "D_cm": 50.0,
+   "field_H_deg": 30.53932979890373,
+   "field_V_deg": 18.414147938965552,
+   "housing_side_deg": 31.395716704188313,
+   "px_per_deg_mean": 62.869749029951606,
+   "px_per_deg_center": 56.8000434569404,
+   "px_per_deg_at_15": 60.878103097359414,
+   "arcmin_per_px_center": 1.0563372199791619,
+   "bottom_edge_active_deg": 18.414147938965552,
+   "bottom_edge_housing_deg": 20.264146017957582,
+   "margin_for_15deg_V": 3.4141479389655522,
+   "shows_15deg": true,
+   "camera_floor_deg": 22.264146017957582,
+   "led_floor_deg": 22.264146017957582,
+   "camera_p4_centered_min_deg": 32.264146017957586,
+   "paper_35_25_fits": true,
+   "accommodation_D": 2.0
+  },
+  {
+   "panel": "27",
+   "D_cm": 57.0,
+   "field_H_deg": 27.36235767163586,
+   "field_V_deg": 16.280119907503973,
+   "housing_side_deg": 28.162408999423878,
+   "px_per_deg_mean": 70.16939194498924,
+   "px_per_deg_center": 64.75204954091205,
+   "px_per_deg_at_15": 69.40103753098973,
+   "arcmin_per_px_center": 0.926611596472949,
+   "bottom_edge_active_deg": 16.280119907503973,
+   "bottom_edge_housing_deg": 17.945046464573355,
+   "margin_for_15deg_V": 1.2801199075039733,
+   "shows_15deg": true,
+   "camera_floor_deg": 19.945046464573355,
+   "led_floor_deg": 19.945046464573355,
+   "camera_p4_centered_min_deg": 29.945046464573355,
+   "paper_35_25_fits": true,
+   "accommodation_D": 1.7543859649122806
+  },
+  {
+   "panel": "27",
+   "D_cm": 65.0,
+   "field_H_deg": 24.409643448340066,
+   "field_V_deg": 14.364713594181952,
+   "housing_side_deg": 25.148249753423528,
+   "px_per_deg_mean": 78.6574373387894,
+   "px_per_deg_center": 73.84005649402252,
+   "px_per_deg_at_15": 79.14153402656724,
+   "arcmin_per_px_center": 0.8125670922916629,
+   "bottom_edge_active_deg": 14.364713594181952,
+   "bottom_edge_housing_deg": 15.854546432378314,
+   "margin_for_15deg_V": -0.6352864058180483,
+   "shows_15deg": false,
+   "camera_floor_deg": 17.854546432378314,
+   "led_floor_deg": 17.854546432378314,
+   "camera_p4_centered_min_deg": 27.854546432378314,
+   "paper_35_25_fits": true,
+   "accommodation_D": 1.5384615384615385
+  },
+  {
+   "panel": "27",
+   "D_cm": 75.0,
+   "field_H_deg": 21.470375934228628,
+   "field_V_deg": 12.514125672545182,
+   "housing_side_deg": 22.139769042205934,
+   "px_per_deg_mean": 89.4255417735414,
+   "px_per_deg_center": 85.2000651854106,
+   "px_per_deg_at_15": 91.31715464603913,
+   "arcmin_per_px_center": 0.7042248133194412,
+   "bottom_edge_active_deg": 12.514125672545182,
+   "bottom_edge_housing_deg": 13.827542813863605,
+   "margin_for_15deg_V": -2.485874327454818,
+   "shows_15deg": false,
+   "camera_floor_deg": 15.827542813863605,
+   "led_floor_deg": 15.827542813863605,
+   "camera_p4_centered_min_deg": 25.827542813863605,
+   "paper_35_25_fits": true,
+   "accommodation_D": 1.3333333333333333
+  }
+ ],
+ "hot_mirror": {
+  "32 @ 57, full screen, d=6": {
+   "d_cm": 6.0,
+   "length_along_tilt_cm": 6.676603837571773,
+   "width_far_edge_cm": 14.462710158734417,
+   "width_near_edge_cm": 8.669209567806714,
+   "aoi_range_deg": [
+    25.901364034389353,
+    64.09863596561064
+   ],
+   "aoi_at_side_deg": 52.93658341143422
+  },
+  "32 @ 57, full screen, d=8": {
+   "d_cm": 8.0,
+   "length_along_tilt_cm": 8.902138450095697,
+   "width_far_edge_cm": 18.21694687831256,
+   "width_near_edge_cm": 10.492279423742286,
+   "aoi_range_deg": [
+    25.901364034389353,
+    64.09863596561064
+   ],
+   "aoi_at_side_deg": 52.93658341143422
+  },
+  "32 @ 57, full screen, d=10": {
+   "d_cm": 10.0,
+   "length_along_tilt_cm": 11.127673062619621,
+   "width_far_edge_cm": 21.971183597890697,
+   "width_near_edge_cm": 12.315349279677857,
+   "aoi_range_deg": [
+    25.901364034389353,
+    64.09863596561064
+   ],
+   "aoi_at_side_deg": 52.93658341143422
+  },
+  "32 @ 57, +/-17 deg, d=6": {
+   "d_cm": 6.0,
+   "length_along_tilt_cm": 5.723394554728327,
+   "width_far_edge_cm": 8.484358792077995,
+   "width_near_edge_cm": 6.0097434100311276,
+   "aoi_range_deg": [
+    28.0,
+    62.0
+   ],
+   "aoi_at_side_deg": 47.45184855059514
+  },
+  "32 @ 57, +/-17 deg, d=8": {
+   "d_cm": 8.0,
+   "length_along_tilt_cm": 7.631192739637769,
+   "width_far_edge_cm": 10.245811722770657,
+   "width_near_edge_cm": 6.94632454670817,
+   "aoi_range_deg": [
+    28.0,
+    62.0
+   ],
+   "aoi_at_side_deg": 47.45184855059514
+  },
+  "32 @ 57, +/-17 deg, d=10": {
+   "d_cm": 10.0,
+   "length_along_tilt_cm": 9.538990924547212,
+   "width_far_edge_cm": 12.007264653463324,
+   "width_near_edge_cm": 7.882905683385213,
+   "aoi_range_deg": [
+    28.0,
+    62.0
+   ],
+   "aoi_at_side_deg": 47.45184855059514
+  },
+  "27 @ 57, full screen, d=6": {
+   "d_cm": 6.0,
+   "length_along_tilt_cm": 5.418270888744412,
+   "width_far_edge_cm": 11.972027209535728,
+   "width_near_edge_cm": 8.00650132728643,
+   "aoi_range_deg": [
+    28.719880092496027,
+    61.28011990750397
+   ],
+   "aoi_at_side_deg": 51.09772688022107
+  },
+  "27 @ 57, full screen, d=8": {
+   "d_cm": 8.0,
+   "length_along_tilt_cm": 7.224361184992549,
+   "width_far_edge_cm": 14.896036279380972,
+   "width_near_edge_cm": 9.608668436381905,
+   "aoi_range_deg": [
+    28.719880092496027,
+    61.28011990750397
+   ],
+   "aoi_at_side_deg": 51.09772688022107
+  },
+  "27 @ 57, full screen, d=10": {
+   "d_cm": 10.0,
+   "length_along_tilt_cm": 9.030451481240686,
+   "width_far_edge_cm": 17.820045349226213,
+   "width_near_edge_cm": 11.21083554547738,
+   "aoi_range_deg": [
+    28.719880092496027,
+    61.28011990750397
+   ],
+   "aoi_at_side_deg": 51.09772688022107
+  },
+  "27 @ 57, +/-17 deg, d=6": {
+   "d_cm": 6.0,
+   "length_along_tilt_cm": 5.723394554728327,
+   "width_far_edge_cm": 8.484358792077995,
+   "width_near_edge_cm": 6.0097434100311276,
+   "aoi_range_deg": [
+    28.0,
+    62.0
+   ],
+   "aoi_at_side_deg": 47.45184855059514
+  },
+  "27 @ 57, +/-17 deg, d=8": {
+   "d_cm": 8.0,
+   "length_along_tilt_cm": 7.631192739637769,
+   "width_far_edge_cm": 10.245811722770657,
+   "width_near_edge_cm": 6.94632454670817,
+   "aoi_range_deg": [
+    28.0,
+    62.0
+   ],
+   "aoi_at_side_deg": 47.45184855059514
+  },
+  "27 @ 57, +/-17 deg, d=10": {
+   "d_cm": 10.0,
+   "length_along_tilt_cm": 9.538990924547212,
+   "width_far_edge_cm": 12.007264653463324,
+   "width_near_edge_cm": 7.882905683385213,
+   "aoi_range_deg": [
+    28.0,
+    62.0
+   ],
+   "aoi_at_side_deg": 47.45184855059514
+  }
+ },
+ "plate_shift_mm": {
+  "26": 0.5199594274686027,
+  "30": 0.6162974307750451,
+  "45": 1.0531510331119975,
+  "60": 1.65488152828963,
+  "64": 1.848241023206731
+ }
+}
