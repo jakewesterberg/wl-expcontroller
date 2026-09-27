@@ -352,8 +352,10 @@ A reasoned list for the PI, who owns procurement. It is not an order.
 
 **Edmund Optics first** (PI, 2026-09-27): every optics, lighting and mounting line is checked
 at Edmund first, and Edmund is preferred where it meets the requirement. Each row notes when
-Edmund had nothing suitable. So far only rows 5b–5c and §7.10 have had that check; the other
-rows get a later pass.
+Edmund had nothing suitable. **Every optics, lighting, filter and mounting row has now had that
+check**: rows 5b–5c and §7.10 on 2026-09-27, the rest on 2026-09-28 (§7.11). Edmund's USB3
+cards and cables were checked too. The computers, GPU, drives, motherboard, RAM, power supply,
+case, cooler and the ACCES box were not checked at Edmund, because they are outside its range.
 
 **Revised after the PI went through the first version row by row** (2026-09-27, 38 rows).
 The rows keep the walkthrough's numbers: 7.1-1 to 7.1-16 and C1 to C22. **The PI's
@@ -362,7 +364,8 @@ decisions bind.** What is still open says what it waits on.
 - **Sources.** Every part fact (model, spec, price, compatibility) comes from the maker's or a
   distributor's own page, read 2026-09-27, or is marked **UNVERIFIED**. Links are in the
   tables. Two retailers, Micro Center and B&H, served a bot check on the power supply's page.
-  It was not bypassed, and neither is used. 8020.net did the same in the first version.
+  It was not bypassed, and neither is used. 8020.net did the same in the first version. What
+  the Edmund pass changed cites Edmund's pages read 2026-09-28.
 - **Prices** are what each page showed that day, in US dollars unless marked €. Sale prices
   are marked. None is a quote.
 - **Status** is one of: *decided*; *waits on* a named measurement or design; or *PI's call*.
@@ -408,23 +411,23 @@ the list touches P10's method, which stays clean-room
 
 | # | Role | Requirement | Candidate (maker, model) | Qty | Source, read 2026-09-27 | Price (USD) | PI's decision; status |
 |---|---|---|---|---|---|---|---|
-| 1 | Tracker cameras | OpenIrisDPI's own frames: same sensor, 500 Hz at the paper's 720 × 450 ROI | Teledyne FLIR Blackfly S **BFS-U3-16S2M-CS** | 2 | [Teledyne product page](https://www.teledynevisionsolutions.com/products/blackfly-s-usb3/?model=BFS-U3-16S2M-CS&vertical=machine%20vision&segment=iis) | 556.50 each | **Kept.** It is also P9's body, so the rig has one camera model. *Decided* |
+| 1 | Tracker cameras | OpenIrisDPI's own frames: same sensor, 500 Hz at the paper's 720 × 450 ROI | Teledyne FLIR Blackfly S **BFS-U3-16S2M-CS**, bought from Edmund as **#11-507** | 2 | [Edmund #11-507](https://www.edmundoptics.com/p/bfs-u3-16s2m-cs-usb3-blackflyreg-s-monochrome-camera/40163/) (read 2026-09-28; 14 in stock); [Teledyne product page](https://www.teledynevisionsolutions.com/products/blackfly-s-usb3/?model=BFS-U3-16S2M-CS&vertical=machine%20vision&segment=iis) | 556.50 each (Edmund and Teledyne) | **Kept.** It is also P9's body, so the rig has one camera model. *Decided*. **Source: Edmund**, the same part at the same price |
 | 2 | Lenses | A C-mount machine-vision lens, NIR-coated, at about the reference's magnification (0.2×), focusing at the working distance, with a ring if needed (§7.1.1) | For about 45–50 cm: Edmund Optics **#74-054**, 75 mm C VIS-NIR. It has f/2.0–16, a 425–1000 nm BBAR coating, a 2/3" format, a 500 mm–∞ working distance, a **M43 × 0.75** filter thread, and measures Ø48 × 98.8 mm. For about 57–60 cm: Edmund **#27-555**, 100 mm C VIS-NIR. It has f/2.8–22, the same coating, a 4/3" format, 750 mm–∞, a **M46 × 0.75** thread, and measures Ø52 × 92.1 mm | 2 | [#74-054](https://www.edmundoptics.com/p/75mm-c-vis-nir-series-fixed-focal-length-lens/56588/); [#27-555](https://www.edmundoptics.com/p/100mm-c-vis-nir-series-fixed-focal-length-lens/53829/) | 690.00 each (9 in stock); 760.00 each ("contact us") | **Changed** from the Laowa macro to a C-mount lens. Which focal length *waits on* the direct-view working distance (§7.1.1) |
-| 3 | Spacer and ring | Put the C-mount lens on the CS body, and focus closer than the lens's minimum | Teledyne **ACC-01-5004** CS-to-C 5 mm spacer. It is needed: the C-mount flange distance is 17.526 mm and CS is 12.526 mm (Edmund). Plus a C-mount extension ring where the eye is inside the lens's minimum working distance (§7.1.1): Edmund **#54-628** (5 mm), or the **#54-261** kit (0.5, 1, 2 × 5, 10, 15 and 40 mm) to fit it on the bench | 2 + 0–2 | [spacer](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/); [Edmund, lens mounts](https://www.edmundoptics.com/knowledge-center/application-notes/imaging/lens-mounts/); [#54-628](https://www.edmundoptics.com/p/5mm-length-c-mount-extension-tube/11303/); [#54-261](https://www.edmundoptics.com/p/c-mount-extension-tube-kit/11115/) | 11.80 each; 33.25; 133.00 (kit, "contact us") | **The spacer is needed**; the EF adapter is gone. The ring *waits on* the working distance |
-| 4 | IR filter | 940 ± 25 nm band-pass, threaded straight onto the lens, no adapter | MidOpt **BN940**: useful range 928–955 nm, FWHM 55 nm, peak transmission 85% or more. **BN940-43** (M43 × 0.75) on #74-054; **BN940-46** (M46 × 0.75) on #27-555 | 2 | [MidOpt BN940](https://midopt.com/filters/bn940/); [MidOpt threads](https://midopt.com/mounting-solutions/threaded-mount/); Machine Vision Direct [BN940-43](https://machinevisiondirect.com/products/midopt-bn940-43), [BN940-46](https://machinevisiondirect.com/products/midopt-bn940-46) | 231.00 / 252.00 each (built to order, 15 business days) | **Changed** from the long-pass sheet. *Decided*; the size follows row 2. MidOpt's 55 nm FWHM is slightly wider than ±25 nm, and its useful range sits inside ±25 nm |
-| 5 | Light, per eye | One compact collimated 940 nm source per eye, riding on the IPD carriage. It sits 10° shallower than its camera (the paper's rule), with its current capped for eye safety (§7.1.2) | Thorlabs **M940L3** (940 nm; 800 mW minimum at 1000 mA; FWHM 37 nm) with a **SM1U25-B** adjustable collimation adapter, which has a Ø1" asphere, AR-coated 650–1050 nm. It replaces the reference's Ø2" SM2F + ACL50832U. Alternative: Mightex **LCS-0940-02-22**, an integrated collimator: 200 mW typical at 1000 mA, 22 mm aperture, 3.4° half-divergence | 2 | [Thorlabs mounted LEDs](https://www.thorlabs.com/mounted-leds?pn=M940L3); [SM1U25-B](https://www.thorlabs.com/item/SM1U25-B); [Mightex](https://www.mightexsystems.com/product/high-power-led-collimator-sources-22-mm-clear-aperture/) | 274.55 (lead time) + 338.29 = **612.84 per eye**; Mightex's price is not published | **Changed** (PI): one light per eye, on the IPD system. Edmund has no compact collimated 940 nm source (§7.1.2). Thorlabs or Mightex is the *PI's call* |
+| 3 | Spacer and ring | Put the C-mount lens on the CS body, and focus closer than the lens's minimum | Edmund **#03-618**, a 5 mm spacer (male CS, female C) that Edmund lists under Teledyne FLIR. It is needed: the C-mount flange distance is 17.526 mm and CS is 12.526 mm (Edmund). Alternative: Teledyne **ACC-01-5004** direct. Plus a C-mount extension ring where the eye is inside the lens's minimum working distance (§7.1.1): Edmund **#54-628** (5 mm), or the **#54-261** kit (0.5, 1, 2 × 5, 10, 15 and 40 mm) to fit it on the bench | 2 + 0–2 | [#03-618](https://www.edmundoptics.com/p/5mm-spacer-to-convert-cs-mount-cameras-to-c-mount/90/) (read 2026-09-28; 20+ in stock); [Teledyne spacer](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/); [Edmund, lens mounts](https://www.edmundoptics.com/knowledge-center/application-notes/imaging/lens-mounts/); [#54-628](https://www.edmundoptics.com/p/5mm-length-c-mount-extension-tube/11303/); [#54-261](https://www.edmundoptics.com/p/c-mount-extension-tube-kit/11115/) | 29.00 each (Teledyne direct: 11.80); 33.25; 133.00 (kit, "contact us") | **The spacer is needed**; the EF adapter is gone. **Swapped to Edmund** (PI preference), at $17.20 more each. Edmund names no Teledyne part number, so that #03-618 is the ACC-01-5004 is INFERENCE. The ring *waits on* the working distance |
+| 4 | IR filter | 940 ± 25 nm band-pass, threaded straight onto the lens, no adapter | Edmund mounted machine-vision band-pass: **#28-792** (M43 × 0.75) on #74-054; **#28-793** (M46 × 0.75) on #27-555. 940 nm center, FWHM 55 nm, transmission 90% or more, blocking 350–900 and 1000–1100 nm; 7 mm thick with its thread. Alternative: MidOpt **BN940-43 / BN940-46** (useful range 928–955 nm, FWHM 55 nm, peak transmission 85% or more) | 2 | [#28-792](https://www.edmundoptics.com/p/bandpass-filter-940nm-m43-thread/52504/), [#28-793](https://www.edmundoptics.com/p/bandpass-filter-940nm-m46-thread/52505/) (read 2026-09-28); [MidOpt BN940](https://midopt.com/filters/bn940/); [MidOpt threads](https://midopt.com/mounting-solutions/threaded-mount/); Machine Vision Direct [BN940-43](https://machinevisiondirect.com/products/midopt-bn940-43), [BN940-46](https://machinevisiondirect.com/products/midopt-bn940-46) | 231.00 (3 in stock) / 252.00 (1 in stock). MidOpt through Machine Vision Direct: the same prices, built to order in 15 business days | **Changed** from the long-pass sheet. *Decided*; the size follows row 2. **Swapped to Edmund** (PI preference). Edmund's site finds no "MidOpt" or "BN940" and names no maker for these. Their center, width, threads and prices match MidOpt's BN940, so they may be MidOpt's (INFERENCE). The 55 nm FWHM is slightly wider than ±25 nm. Edmund's stated blocking covers the behavior lamps' 850 nm |
+| 5 | Light, per eye | One compact collimated 940 nm source per eye, riding on the IPD carriage. It sits 10° shallower than its camera (the paper's rule), with its current capped for eye safety (§7.1.2) | Thorlabs **M940L3** (940 nm; 800 mW minimum at 1000 mA; FWHM 37 nm) with a **SM1U25-B** adjustable collimation adapter, which has a Ø1" asphere, AR-coated 650–1050 nm. It replaces the reference's Ø2" SM2F + ACL50832U. Alternative: Mightex **LCS-0940-02-22**, an integrated collimator: 200 mW typical at 1000 mA, 22 mm aperture, 3.4° half-divergence | 2 | [Thorlabs mounted LEDs](https://www.thorlabs.com/mounted-leds?pn=M940L3); [SM1U25-B](https://www.thorlabs.com/item/SM1U25-B); [Mightex](https://www.mightexsystems.com/product/high-power-led-collimator-sources-22-mm-clear-aperture/) | 274.55 (lead time) + 338.29 = **612.84 per eye**; Mightex's price is not published | **Changed** (PI): one light per eye, on the IPD system. Edmund has no compact collimated 940 nm source (§7.1.2; rechecked 2026-09-28). Thorlabs or Mightex is the *PI's call* |
 | 5b | Light driver | Constant current, a modulation input (so the lights can later strobe with the exposures), and a current cap the operator cannot turn past | Thorlabs **LEDD1B** T-Cube: up to 1200 mA; modulation to 5 kHz; trigger mode to 1 kHz; a current limit adjustable from **0.2 to 1.2 A** by a trim pot. With a **KPS201** supply. One per eye | 2 + 2 | [LEDD1B family page](https://www.thorlabs.com/t-cube-tm-led-driver?pn=LEDD1B); [LEDD1B](https://www.thorlabs.com/item/LEDD1B); [KPS201](https://www.thorlabs.com/item/KPS201) | 380.04 + 43.15 each | **Two single-channel drivers, one per eye.** No two-channel driver with a modulation input was sensible (§7.1.2). **The LEDD1B's limit does not go below 200 mA**; the alternatives are compared in §7.10, and it stays the recommendation there with row 5c behind it. *PI's call*. Edmund has no constant-current driver for this LED (§7.10) |
 | 5c | Fixed attenuator, per eye | A physical cap on the light at the eye, whatever the driver does: sized at bring-up so the eye stays under the limit at the highest current the driver can deliver (§7.10) | Edmund Optics **TECHSPEC NIR ND**, Ø25 mm, reflective (metallic on fused silica), flat 700–1100 nm, OD tolerance ±10%, 3.00 mm thick; **#47-530** is OD 1.0, and the OD is chosen at bring-up. Held in the collimator's output by a Thorlabs **SM1A38** (external M34 × 0.5, internal SM1) and an Edmund **#35-763** SM1 retainer ring | 2 + 2 + 2 | [Edmund NIR ND family](https://www.edmundoptics.com/f/near-ir-nir-neutral-density-nd-filters/13025/); [#47-530](https://www.edmundoptics.com/p/10-od-25mm-dia-nir-nd-filter-/7611/); [SM1A38](https://www.thorlabs.com/item/SM1A38); [#35-763 (listed as an accessory)](https://www.edmundoptics.com/p/5mm-id1-lens-tube/33305/) | 126.00 (OD 1.0; other ODs not read) + 31.62 + 5.25 | **New; decided** (PI, 2026-09-28, §7.10). The OD is set at bring-up. Whether the SM1A38 is deep enough for a 3 mm filter and a ring is **UNVERIFIED** |
 | 6 | Lens clamps | — | Thorlabs VG100/M | — | — | — | **Dropped** (PI). A C-mount lens is held by the camera |
-| 7 | IPD adjustment system | Per-animal eye spacing. It carries both cameras and both lights, on the rig's existing frame, with 3D-printed brackets | Requirements are in §7.1.3. An off-the-shelf slide: Thorlabs **DTS25/M** dovetail stage (25 mm travel, 1 mm per turn, a locking screw, ±250 µrad angular deviation, 68 × 99 × 20 mm), one per side | 2 | [Thorlabs DTS25](https://www.thorlabs.com/1-inch-25-mm-travel-dovetail-translation-stages?pn=DTS25/M); [DTS25/M](https://www.thorlabs.com/item/DTS25_M) | 233.88 each | **Changed** (PI) from 80/20 framing. Its design *waits on* rig geometry. Symmetric or independent carriages is the *PI's call* (§7.1.3) |
+| 7 | IPD adjustment system | Per-animal eye spacing. It carries both cameras and both lights, on the rig's existing frame, with 3D-printed brackets | Requirements are in §7.1.3. An off-the-shelf slide, one per side: Edmund TECHSPEC **#16-716** metric dovetail stage: 65 × 65 mm; 25 mm travel; 0.5 mm lead-screw pitch, hex-driven; an external plate lock included; brass, 15 kg load; 10 µm straight-line accuracy. Its angular deviation is not published (**UNVERIFIED**). Alternative: Thorlabs **DTS25/M** (25 mm travel, 1 mm per turn, a locking screw, ±250 µrad angular deviation, 68 × 99 × 20 mm) | 2 | [#16-716](https://www.edmundoptics.com/p/dovetail-stage-65mm-sq-metric/44117/) (read 2026-09-28; 20+ in stock); [Thorlabs DTS25](https://www.thorlabs.com/1-inch-25-mm-travel-dovetail-translation-stages?pn=DTS25/M); [DTS25/M](https://www.thorlabs.com/item/DTS25_M) | 212.00 each (DTS25/M: 233.88) | **Changed** (PI) from 80/20 framing. **Swapped to Edmund** (PI preference): the same travel, a lock, a smaller footprint, $21.88 less each. Edmund's 40 mm stage (#16-715) has only 14 mm of travel, the bare ±7 mm. Its design *waits on* rig geometry. Symmetric or independent carriages is the *PI's call* (§7.1.3) |
 | 8 | Direct-view camera mount (primary) | The cameras and lights sit on the head-post frame, **independent of the monitor**, below the screen at about 30–35° (panel comparison §4.2) | The IPD system (row 7) on a 3D-printed bracket from the frame | 1 | panel comparison | — | **Changed** (PI). At the paper's 57 cm and 35°, the camera is 46.7 cm forward of the eyes and 32.7 cm below them (panel comparison §4.2). *Waits on* the direct-view working distance |
-| 8b | Monitor arm or stand | The PG27UCDM (VESA 100 × 100; 4.97 kg without its stand, §5.1) goes on its own arm or stand, off the camera frame | Ergotron **LX Desk Monitor Arm, 45-241-224**: VESA 75 and 100; 3.2–11.3 kg; a clamp or grommet | 1 | [Ergotron](https://www.ergotron.com/en-us/products/product-details/45-241) | 219.00 | **New** (PI). A spring arm can be moved, so the viewing distance is re-measured each session or the arm is locked in place (INFERENCE; V9). Arm or fixed stand is the *PI's call* |
+| 8b | Monitor arm or stand | The PG27UCDM (VESA 100 × 100; 4.97 kg without its stand, §5.1) goes on its own arm or stand, off the camera frame | Ergotron **LX Desk Monitor Arm, 45-241-224**: VESA 75 and 100; 3.2–11.3 kg; a clamp or grommet | 1 | [Ergotron](https://www.ergotron.com/en-us/products/product-details/45-241) | 219.00 | **New** (PI). A spring arm can be moved, so the viewing distance is re-measured each session or the arm is locked in place (INFERENCE; V9). Arm or fixed stand is the *PI's call*. Edmund has nothing suitable: its site finds no VESA mount, only lab articulating arms |
 | 9 | Stereoscope mount (secondary, ±10°) | The same camera-to-eye geometry, below M1 | — | — | panel comparison §9 | — | **Decided with the layout** (PI): either the one carriage moves, or there is a second fixed position |
-| 10 | Camera USB cables | Camera to tracker PC | Teledyne **ACC-01-2301** USB3 Micro-B, locking, 5 m. Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16**, active | 2 | [Teledyne cables](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Teledyne app note](https://www.teledynevisionsolutions.com/support/support-center/application-note/iis/extending-the-working-distance-of-usb-3.1-cameras); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 37.50 each; Newnex's price is not published | **Kept** (PI). The length is chosen with the layout, and §7.8 covers a passthrough panel |
-| 11 | GPIO cables | Camera GPIO to the sync box | Teledyne **ACC-01-3009** (Hirose HR10 6-pin, 1 m) or **ACC-01-3010** (4.5 m) | 2 | [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 37.50 / 43.90 | **Kept** (PI). The length is chosen with the layout |
+| 10 | Camera USB cables | Camera to tracker PC | Teledyne FLIR's USB 3.1 Micro-B locking cable, 5 m, bought from Edmund as **#88-058** (Teledyne's **ACC-01-2301**). Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16**, active. Edmund's 8–20 m USB3 locking cables (#34-212 is 8 m, $276) do not say they are active, so they are not used | 2 | [#88-058](https://www.edmundoptics.com/p/usb-30-locking-cable-5m/30343/) (read 2026-09-28); [Teledyne cables](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Teledyne app note](https://www.teledynevisionsolutions.com/support/support-center/application-note/iis/extending-the-working-distance-of-usb-3.1-cameras); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 61.00 each (Teledyne direct: 37.50); Newnex's price is not published | **Kept** (PI). **Source: Edmund**, the same Teledyne cable, at $23.50 more each. The length is chosen with the layout, and §7.8 covers a passthrough panel |
+| 11 | GPIO cables | Camera GPIO to the sync box | Teledyne FLIR's Hirose HR10 6-pin GPIO cable, bought from Edmund: **#88-064** (1 m) or **#88-065** (4.5 m). Teledyne's numbers are **ACC-01-3009** and **ACC-01-3010** | 2 | [#88-064](https://www.edmundoptics.com/p/blackflyreg-6-pin-gpio-hirose-connector-1m-cable/30349/), [#88-065](https://www.edmundoptics.com/p/blackflyreg-6-pin-gpio-hirose-connector-45m-cable/30350/) (read 2026-09-28); [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 38.00 / 71.00 (Teledyne direct: 37.50 / 43.90) | **Kept** (PI). **Source: Edmund**, the same Teledyne cables. The length is chosen with the layout |
 | 12 | Eye-group sync wiring | wl-sync's eye barcode BNC (`CAM_SYNC_EYE`) goes into each camera's opto input, Line 0. The left camera's ExposureActive leaves by its opto output, Line 1, into wl-sync J17B, which is GPIO26. That front end supplies its own 1 kΩ pull-up to 5 V (wl-sync `hardware/breakout/frame-time-inputs.md`) | wiring | — | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm); wl-sync at `92714ce` | — | **Decided** (PI, 2026-09-27): only the left camera's ExposureActive goes to GPIO26, so there is no wire-OR and no sync-box change. The right camera is aligned by the barcode it samples every frame |
 | 13 | Tracker PC | **One PC: Windows 11 now** (OpenIrisDPI), **Linux later** (P10). Reference class (the reference used an i9-12900K). A free PCIe slot that is **x4 electrical** for row 14, a PCIe 2.0 x4 card. A free M.2 slot for row 15. Neither slot may disable the other. PCIe ASPM on the bring-up list (§7.6) | requirements, not a model | 1 | the reference build; row 14's card page | — | **Changed** (PI): one PC, and no second purchase at P10. The model is the *PI's call* |
-| 14 | One USB3 controller per camera | 2 × 162 MB/s (arithmetic, §7.1.4) | Teledyne **ACC-01-1205**: four independent Fresco FL1100 host controllers on PCIe 2.0 x4 | 1 | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis) | 148.00 | **Always added** (PI). *Decided* |
+| 14 | One USB3 controller per camera | 2 × 162 MB/s (arithmetic, §7.1.4) | Teledyne **ACC-01-1205**: four independent Fresco FL1100 host controllers on PCIe 2.0 x4 | 1 | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis) | 148.00 | **Always added** (PI). *Decided*. Edmund has nothing suitable: its USB3 cards are PCIe 2.0 x1, and the four-port [#89-539](https://www.edmundoptics.com/p/4-port-usb-30-pcie-card-20-x-1/32010/) puts all four ports on one Fresco FL1100 ($80; read 2026-09-28) |
 | 15 | Raw validation video (P10) | Raw video from both cameras, at 324 MB/s sustained | Samsung **990 PRO 4 TB** (MZ-V9P4T0B/AM; PCIe 4.0; 5 years or 2,400 TBW) | 1 | [Samsung](https://www.samsung.com/us/memory-storage/nvme-ssd/990-pro-pcie-4-0-nvme-ssd-4tb-sku-mz-v9p4t0b-am/) | 1,099.99 | **Kept** (PI). Whether OpenIris writes raw or compressed video is **UNVERIFIED**, and is confirmed first. The drive's sustained write rate after its cache is unpublished, so it is measured |
 | 16 | Analog backup | Analog eye into SpikeGLX | ACCES I/O **USB-AO16-8A** (16-bit, 8 analog outputs, 2 analog inputs) | 1 | [ACCES family page](https://accesio.com/product/usb-ao16-16a/) | 604.00 | **Kept** (PI), the 8A and not the 8E. *Decided* |
 
@@ -498,6 +501,10 @@ about a smaller LED with a collimator):
     [Edmund](https://www.edmundoptics.com/p/ir-940nm-microbrite-led-spot-light/45702/)).
   - **Among what was found, Edmund has nothing compact and collimated with current
     control.**
+  - **Rechecked 2026-09-28.** The smallest 940 nm collimated source Edmund lists is Advanced
+    Illumination's 2" × 2" collimated backlight,
+    [#73-833](https://www.edmundoptics.com/p/2-x-2-940nm-collimated-backlight/56357/): its
+    housing is 106.7 × 106.7 × 19.1 mm, it runs in constant mode only, and it costs $670.
 - **Thorlabs.** The smaller collimator is the Ø1" SM1U25-B on the reference's own M940L3,
   replacing the Ø2" SM2F. Thorlabs' ready-collimated M940L3-C versions fit microscope ports.
   The M940L3's housing diameter was not read: Thorlabs uses Ø30.5 mm and Ø57.0 mm housings
@@ -562,8 +569,8 @@ enforces a cap, are compared in §7.10.
   midline, ±2 mm about 34 mm.
   - Each carriage needs that ±2 mm, plus margin for a head that is not centered on the frame
     (ASSUMED ±5 mm). That is at least ±7 mm per side.
-  - The DTS25/M's 25 mm of travel covers it, and the ROI adds ±6.2 mm of fine positioning
-    (§7.1.1).
+  - The #16-716's 25 mm of travel covers it, as the DTS25/M's would, and the ROI adds ±6.2 mm
+    of fine positioning (§7.1.1).
 - **Independent carriages are recommended** over a symmetric slide.
   - The head post sets where the eyes are, and nothing guarantees they are centered on the
     frame.
@@ -573,7 +580,7 @@ enforces a cap, are compared in §7.10.
     opposite directions, with an optional clamp. Its price is not published.
   - Which kind is the *PI's call*.
 - **Locked after adjustment.** A clamp holds the carriage without relying on the lead screw.
-  The DTS25/M has a locking screw.
+  The #16-716 comes with an external plate lock; the DTS25/M has a locking screw.
 - **The cameras and lights ride together.** Each carriage carries its camera and its eye's
   light, so re-positioning for an animal does not change the paper's 10° between them.
 - **Rotation stability matters.**
@@ -582,7 +589,8 @@ enforces a cap, are compared in §7.10.
     as an eye rotation would (INFERENCE).
   - So the brackets hold angle: stiff sections, short lever arms, and two fasteners or a keyed
     face at each joint, with no single-screw pivots.
-  - The DTS25/M's angular deviation over its travel is ±250 µrad (Thorlabs).
+  - Edmund publishes no angular deviation for the #16-716 (**UNVERIFIED**). The DTS25/M's is
+    ±250 µrad over its travel (Thorlabs).
 - **Filament: stiff and creep-resistant.** The recommendation is **carbon-fiber-filled
   high-temperature nylon (PAHT-CF)**, or polycarbonate (PC). **Not PLA.**
   - The reason: a comparison of FDM-printed PLA, PC and PAHT-CF ranked PAHT-CF highest in
@@ -593,7 +601,8 @@ enforces a cap, are compared in §7.10.
   - Whether the lab's printer can print either is the lab's check.
 - **Metal threaded inserts.** Every screwed joint that is adjusted, or that carries a camera
   or a light, goes into a heat-set or press-fit brass insert, never into printed thread.
-- **The camera interface** is Teledyne's ACC-01-0003 tripod adapter (1/4"-20), as for C21.
+- **The camera interface** is Teledyne FLIR's Blackfly S (30 mm) 1/4"-20 tripod adapter, bought
+  from Edmund as #88-210 (Teledyne's ACC-01-0003), as for C21.
 
 #### 7.1.4 Raw validation video: the arithmetic
 
@@ -612,15 +621,15 @@ enforces a cap, are compared in §7.10.
 
 | # | Role | Requirement | Candidate (maker, model) | Qty | Source, read 2026-09-27 | Price (USD) | PI's decision; status |
 |---|---|---|---|---|---|---|---|
-| C1 | Cameras | 1–2 on the face (blinks, eyelids, licking) and 1–2 on the body (hands, arms, posture); 200 fps; 8 at most | Teledyne FLIR **BFS-U3-16S2M-CS**: Sony IMX273, 1/2.9", 1440 × 1080, 226 fps, 3.45 µm, CS-mount, USB 3.1 Gen 1, 3 W maximum | 2–4 (8 max) | [Teledyne](https://www.teledynevisionsolutions.com/products/blackfly-s-usb3/?model=BFS-U3-16S2M-CS&vertical=machine%20vision&segment=iis) | 556.50 each | **Kept.** *Decided* |
+| C1 | Cameras | 1–2 on the face (blinks, eyelids, licking) and 1–2 on the body (hands, arms, posture); 200 fps; 8 at most | Teledyne FLIR **BFS-U3-16S2M-CS**: Sony IMX273, 1/2.9", 1440 × 1080, 226 fps, 3.45 µm, CS-mount, USB 3.1 Gen 1, 3 W maximum. Bought from Edmund as **#11-507** | 2–4 (8 max) | [Edmund #11-507](https://www.edmundoptics.com/p/bfs-u3-16s2m-cs-usb3-blackflyreg-s-monochrome-camera/40163/) (read 2026-09-28; 14 in stock); [Teledyne](https://www.teledynevisionsolutions.com/products/blackfly-s-usb3/?model=BFS-U3-16S2M-CS&vertical=machine%20vision&segment=iis) | 556.50 each (Edmund and Teledyne) | **Kept.** *Decided*. **Source: Edmund**, the same part at the same price |
 | C2 | Face lens | About 15 cm of field at about 40 cm (ASSUMED), so f ≈ 12.8 mm (§7.3). NIR-coated; a filter thread of its own | Edmund Optics **#27-554**, 12 mm C VIS-NIR: 425–1000 nm BBAR; 2/3"; f/1.8–16; 100 mm–∞; filter thread **M25.5 × 0.50**; Ø32 × 27.9 mm | 1–2 | [Edmund](https://www.edmundoptics.com/p/12mm-c-vis-nir-series-fixed-focal-length-lens/53828/) | 635.00 (20+ in stock) | **Fixed lens now** (PI). *Decided.* Edmund was the fallback, and it is the best-value NIR-coated lens found (§7.3) |
 | C3 | Body lens | About 60 cm of field at about 80 cm (ASSUMED), so f ≈ 6.6 mm (§7.3). NIR-coated; a filter thread of its own | Edmund Optics **#39-939**, 6 mm C VIS-NIR: the same coating; up to 1/1.8"; f/1.4–16; 75 mm–∞; distortion up to −6.84%; Ø36 × 48.9 mm. It has a **front thread, M34 × 0.5 (female)**. Its listed filter thread is M43 × 0.50, through adapter #85-308 ("Required") | 1–2 | [Edmund](https://www.edmundoptics.com/p/6mm-c-series-vis-nir-fixed-focal-length-lens/40554/) | 725.00 ("contact us") | **Fixed lens now** (PI). *Decided*. The filter goes in the front M34 thread, with no adapter. Whether a filter there touches the front glass or vignettes is **UNVERIFIED**: ask Edmund before buying |
 | C4 | Filter adapter | — | Edmund #85-308 | — | — | — | **Dropped** (PI: no adapters) |
-| C5 | 850 ± 25 nm band-pass filter | Passes the behavior lamps and rejects the tracker's 940 nm; threads straight onto the lens | MidOpt **BN850**: useful range 840–865 nm, FWHM 52 nm, peak transmission 85% or more, tolerance ±10 nm. **BN850-25.5** on the 12 mm; **BN850-34** in the 6 mm's front thread. MidOpt's BP850 is not used: its FWHM is 160 nm | 1 per camera | [MidOpt BN850](https://midopt.com/filters/bn850/); [MidOpt BP850](https://midopt.com/filters/bp850/); Graftek [BN850-25.5](https://graftek.com/product/bn850-25-5/), [BN850-34](https://graftek.com/product/bn850-34/) | 168.00 / 197.00 each (lead time on request) | **Kept, at 850 nm** (PI's bands). *Decided* |
-| C6 | CS-to-C spacer | A C-mount lens on the CS body | Teledyne **ACC-01-5004** | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/) | 11.80 | **Kept.** *Decided* |
-| C7 | USB host card | One controller per camera (P9 §2). Four cameras are 1.24 GB/s through one PCIe 2.0 x4 card (arithmetic) | Teledyne **ACC-01-1205** (§7.1 row 14) | 1 (2 for 8 cameras) | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis) | 148.00 | **Kept.** *Decided.* Whether one card sustains four cameras is P9 bring-up check 2 |
-| C8 | USB cables | Passive runs of 5 m or less (Teledyne); active beyond that | Teledyne **ACC-01-2300** (3 m) or **ACC-01-2301** (5 m), locking. Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16** | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 24.60 / 37.50; Newnex's price is not published | **Waits** (PI) on the layout and a possible passthrough panel (§7.8) |
-| C9 | GPIO cables | Camera GPIO to the fan-out board and the sync box | Teledyne **ACC-01-3009** (1 m) or **ACC-01-3010** (4.5 m) | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 37.50 / 43.90 | **Waits** (PI), as C8 |
+| C5 | 850 ± 25 nm band-pass filter | Passes the behavior lamps and rejects the tracker's 940 nm; threads straight onto the lens | MidOpt **BN850**: useful range 840–865 nm, FWHM 52 nm, peak transmission 85% or more, tolerance ±10 nm. **BN850-25.5** on the 12 mm; **BN850-34** in the 6 mm's front thread. MidOpt's BP850 is not used: its FWHM is 160 nm | 1 per camera | [MidOpt BN850](https://midopt.com/filters/bn850/); [MidOpt BP850](https://midopt.com/filters/bp850/); Graftek [BN850-25.5](https://graftek.com/product/bn850-25-5/), [BN850-34](https://graftek.com/product/bn850-34/) | 168.00 / 197.00 each (lead time on request) | **Kept, at 850 nm** (PI's bands). *Decided*. **Edmund has nothing suitable** (read 2026-09-28): its site finds no "MidOpt" or "BN850". Its front-threaded 850 nm filters have a 160 nm FWHM ([#21-748](https://www.edmundoptics.com/p/ir-m255-x-050-mounted-machine-vision-filter/48643/), M25.5, $141; [#21-714](https://www.edmundoptics.com/p/ir-m34-x-050-mounted-machine-vision-filter/48625/), M34, $166), as the BP850 does. Its TECHSPEC high-performance NIR filter is 880 nm with a 135 nm FWHM. Their half-maximum edges sit at 930 and 947.5 nm (arithmetic), too near 940 nm to reject the tracker. A behind-the-lens Edmund filter needs the PI (§7.11) |
+| C6 | CS-to-C spacer | A C-mount lens on the CS body | Edmund **#03-618** (§7.1 row 3). Alternative: Teledyne **ACC-01-5004** direct | 1 per camera | [#03-618](https://www.edmundoptics.com/p/5mm-spacer-to-convert-cs-mount-cameras-to-c-mount/90/) (read 2026-09-28); [Teledyne](https://www.teledynevisionsolutions.com/products/cs-to-c-mount-5mm-spacer-adapter/) | 29.00 (Teledyne direct: 11.80) | **Kept.** *Decided*. **Swapped to Edmund** (PI preference), at $17.20 more each |
+| C7 | USB host card | One controller per camera (P9 §2). Four cameras are 1.24 GB/s through one PCIe 2.0 x4 card (arithmetic) | Teledyne **ACC-01-1205** (§7.1 row 14) | 1 (2 for 8 cameras) | [card page](https://www.teledynevisionsolutions.com/products/usb-3.1-host-controller-card?model=ACC-01-1205&vertical=machine%20vision&segment=iis) | 148.00 | **Kept.** *Decided.* Whether one card sustains four cameras is P9 bring-up check 2. Edmund has nothing suitable: its cards are PCIe 2.0 x1 (§7.1 row 14) |
+| C8 | USB cables | Passive runs of 5 m or less (Teledyne); active beyond that | Teledyne FLIR's locking USB 3.1 cables, bought from Edmund: **#86-770** (3 m) or **#88-058** (5 m). Teledyne's numbers are **ACC-01-2300** and **ACC-01-2301**. Beyond 5 m: Newnex **FIRENEX-ULS-08 / -12 / -16** (Edmund's longer cables do not say they are active, §7.1 row 10) | 1 per camera | [#86-770](https://www.edmundoptics.com/p/usb-30-locking-cable-3m-length/29172/), [#88-058](https://www.edmundoptics.com/p/usb-30-locking-cable-5m/30343/) (read 2026-09-28); [Teledyne](https://www.teledynevisionsolutions.com/products/usb-3.1-locking-cable); [Newnex](https://newnex.com/usb-3-active-cable-a-to-micro-b.php) | 41.00 / 61.00 (Teledyne direct: 24.60 / 37.50); Newnex's price is not published | **Waits** (PI) on the layout and a possible passthrough panel (§7.8). **Source: Edmund**, the same Teledyne cables |
+| C9 | GPIO cables | Camera GPIO to the fan-out board and the sync box | Edmund **#88-064** (1 m) or **#88-065** (4.5 m), as §7.1 row 11. Teledyne's numbers are **ACC-01-3009** and **ACC-01-3010** | 1 per camera | [#88-064](https://www.edmundoptics.com/p/blackflyreg-6-pin-gpio-hirose-connector-1m-cable/30349/), [#88-065](https://www.edmundoptics.com/p/blackflyreg-6-pin-gpio-hirose-connector-45m-cable/30350/) (read 2026-09-28); [Teledyne](https://www.teledynevisionsolutions.com/products/hirose-hr10-6-pin-circular-connector/) | 38.00 / 71.00 (Teledyne direct: 37.50 / 43.90) | **Waits** (PI), as C8. **Source: Edmund**, the same Teledyne cables |
 | C10 | Trigger fan-out board | The primary's exposure drives up to 7 secondaries' opto inputs (3.5–7 mA at 2.6 V or more), plus the two lamps' strobe inputs | **Custom** (§7.4): wl-sync's comparator front end, then one SN74AHCT541 channel and one 47 Ω series resistor per secondary, plus a lamp-strobe stage per lamp, checked against the LM75-850-W's strobe input | 1 | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm); wl-sync at `92714ce`; [TI SN74AHCT541, SCLS269Q](https://www.ti.com/lit/ds/symlink/sn74ahct541.pdf); [SVL LM75 datasheet](https://smartvisionlights.com/wp-content/uploads/LM75_Datasheet.pdf) | parts only, not priced | **Custom board after all** (PI, 2026-09-27), not the PRL-4110 ($1,850 with its supply). **Needs a design check** (§7.4). *Waits on* measuring the primary's Line 2 low level |
 | C11 | Behavior-group sync wiring | The primary samples the barcode every frame. The group's ExposureActive goes to GPIO27 (P9 §2; S3 §8) | Barcode from wl-sync's `CAM_SYNC_BEH1` BNC into the primary's Line 0. The primary's Line 1 (opto output) goes to wl-sync J6B, which is GPIO27. The primary's Line 2 goes to the fan-out board's input, pulled up to 5 V on the board (§7.4) | wiring | [FLIR I/O table](https://softwareservices.flir.com/BFS-U3-16S2/latest/40-Installation/InputOutputControl.htm) | — | **Kept.** *Decided.* **Line 3 must not take the barcode**: its input high is 3.6 V at most, and the barcode is 5 V logic. Driving ExposureActive on Lines 1 and 2 at once is **UNVERIFIED** in Spinnaker |
 | C12 | Camera box: CPU | Acquisition and file writing for 4–8 streams | AMD **Ryzen 7 9700X**: 8 cores and 16 threads; 3.8 GHz base, 5.5 GHz boost; 65 W; AM5; PCIe 5.0, 28 lanes (24 usable); DDR5 to DDR5-5600 (2 × 1R); no cooler in the box, and AMD recommends a premium air cooler | 1 | [AMD](https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-7-9700x.html); [Newegg](https://www.newegg.com/amd-ryzen-7-9000-series-ryzen-7-9700x-granite-ridge-socket-am5-desktop-cpu-processor/p/N82E16819113843) | 339.00 (Newegg, new) | **AMD** (PI). *Decided* |
@@ -631,8 +640,8 @@ enforces a cap, are compared in §7.10.
 | C17 | Power supply | 750 W or more (NVIDIA) | Seasonic **CORE GX ATX 3.1 (2024), 850 W**: 80 PLUS Gold; fully modular; a native 12V-2x6 cable (up to 600 W); ATX 3.1 and PCIe 5.1; 140 × 150 × 86 mm; 7-year warranty. Retailers name it **CORE GX-850 ATX3** | 1 | [Seasonic](https://seasonic.com/core-gx-atx-3-2024/); [Newegg (the 1000 W sibling)](https://www.newegg.com/seasonic-usa-atx-3-1-1000-w-80-plus-gold-certified-power-supply-core-gx-1000-atx3/p/N82E16817151283) | **UNVERIFIED**. Newegg offered the 750 W at 114.99 and the 1000 W at 159.99, not the 850 W. Micro Center and B&H served bot checks | **Seasonic, decided** (PI). The model name is "CORE GX ATX 3.1" at 850 W. "Core" is the series and "Gold" its rating; no model is called "Core Gold" |
 | C18 | Case | Rack-mount | not chosen; constraints in §7.6 | 1 | — | — | **Rack-mount** (PI). The model is the *PI's call* |
 | C19 | CPU cooler | AM5; its height fits the case | a Noctua, not chosen; constraints in §7.6 | 1 | — | — | **Noctua** (PI), chosen with the case |
-| C20 | Behavior lamps | **Required**, 850 nm, one per view (face, body). A diffuse flood, placed outside the animal's view. A visible-cut filter on each emitter. A driver with a strobe input, so the lamps flash only during behavior exposures (§7.7) | Smart Vision Lights **LM75-850-W**: 850 nm; 80° lens; 8 LEDs; 80 × 34 × 26 mm; a built-in Multi-Drive driver; PNP (above 4 V) or NPN strobe input; 24 VDC; 6.6 W maximum continuous; IEC 62471 Exempt Group at 850 nm (SVL's datasheet). Add a MidOpt **LP830** long-pass (50% cut-on at 830 nm), cut to the emitter window, and a diffuser, both held in the lamp's bracket | 2 (1 per view) | [SVL LM75](https://smartvisionlights.com/products/lm75/); [SVL datasheet, rev. 09/25/26](https://smartvisionlights.com/wp-content/uploads/LM75_Datasheet.pdf); [Machine Vision Direct](https://machinevisiondirect.com/products/lm75-850-w); [MidOpt LP830](https://midopt.com/filters/lp830/) | 511.00 each. LP830 is priced by quote (**UNVERIFIED**). The diffuser and the 24 V supply are not chosen | **Required** (PI). *Decided* for the list. The darkness check is required (§7.7) |
-| C21 | Camera mounts | Face and body views from several angles (3D) | 3D-printed brackets on the existing frame, with the filament and insert rules of §7.1.3. Per camera, a Teledyne **ACC-01-0003** tripod adapter (1/4"-20) is the interface | 1 per camera | [Teledyne](https://www.teledynevisionsolutions.com/products/tripod-adapter-for-bfs-30mm-bfly-cmln-cm3-ffmv-fl2-fl3-fmvu/) | 11.80 each | **Changed** (PI) from 80/20 rails and ball heads. The positions *wait on* rig geometry |
+| C20 | Behavior lamps | **Required**, 850 nm, one per view (face, body). A diffuse flood, placed outside the animal's view. A visible-cut filter on each emitter. A driver with a strobe input, so the lamps flash only during behavior exposures (§7.7) | Smart Vision Lights **LM75-850-W**: 850 nm; 80° lens; 8 LEDs; 80 × 34 × 26 mm; a built-in Multi-Drive driver; PNP (above 4 V) or NPN strobe input; 24 VDC; 6.6 W maximum continuous; IEC 62471 Exempt Group at 850 nm (SVL's datasheet). Bought from Edmund as **#90-436**, which lists a 71.00 × 25.5 mm active area. Add a MidOpt **LP830** long-pass (50% cut-on at 830 nm, useful range 845–1100 nm), cut to the emitter window, and Edmund's **#27-110** light-diffusing film, cut to the same window. Both are held in the lamp's bracket (§7.7) | 2 (1 per view) | [Edmund #90-436](https://www.edmundoptics.com/p/smart-vision-lights-75mm-850nm-bar-light/57261/), [#27-110](https://www.edmundoptics.com/p/75-x-75mm-light-diffusing-film/52184/) (read 2026-09-28); [SVL LM75](https://smartvisionlights.com/products/lm75/); [SVL datasheet, rev. 09/25/26](https://smartvisionlights.com/wp-content/uploads/LM75_Datasheet.pdf); [Machine Vision Direct](https://machinevisiondirect.com/products/lm75-850-w); [MidOpt LP830](https://midopt.com/filters/lp830/) | 510.00 each (Edmund, 1 in stock; Machine Vision Direct: 511.00). LP830 is priced by quote (**UNVERIFIED**). One 75 × 75 mm film, 22.75, gives both lamps' pieces (arithmetic). The 24 V supply is not chosen (§7.7) | **Required** (PI). *Decided* for the list. The darkness check is required (§7.7). **Lamp: source Edmund**, the same part. **Diffuser: Edmund** (it was unchosen). **LP830: Edmund has nothing suitable**: its site finds no "LP830", and its SCHOTT RG830 ([#14-536](https://www.edmundoptics.com/p/schott-rg830-50mm-sq-2mm-thick-colored-glass-longpass-filter/42561/), 50 × 50 × 2 mm, $92.50) shares the 830 nm cut-on but lists its passband from 950 nm, so it would dim the 850 nm lamp more than LP830 (INFERENCE), and it is smaller than the window |
+| C21 | Camera mounts | Face and body views from several angles (3D) | 3D-printed brackets on the existing frame, with the filament and insert rules of §7.1.3. Per camera, Teledyne FLIR's Blackfly S (30 mm) 1/4"-20 tripod adapter is the interface, bought from Edmund as **#88-210** (Teledyne's **ACC-01-0003**) | 1 per camera | [#88-210](https://www.edmundoptics.com/p/blackflyreg-frac14-20-tripod-adapter/30486/) (read 2026-09-28); [Teledyne](https://www.teledynevisionsolutions.com/products/tripod-adapter-for-bfs-30mm-bfly-cmln-cm3-ffmv-fl2-fl3-fmvu/) | 18.00 each (Teledyne direct: 11.80) | **Changed** (PI) from 80/20 rails and ball heads. The positions *wait on* rig geometry. **Source: Edmund**, at $6.20 more each. Edmund's mounts and posts are not needed: the brackets are printed (PI) |
 | C22 | Interim offload | Where the video goes before wl-nas | — | — | — | — | **Wait for wl-nas** (PI). The cameras do not go into regular use until it exists. Until then, video stays on the box for bring-up only, and is never deleted before a checksummed copy exists (P9 §5) |
 
 ### 7.3 Lenses: the focal lengths
@@ -950,13 +959,14 @@ The demand, as arithmetic:
 - **Outside the budget:** the cameras, lenses, filters, lamps, cables and the fan-out board. So
   is a separate OS drive: the OS shares drive 1 here.
 - **Not sized here:** P10's tracker running on this box later (the spike's §9 item 7).
+- **The Edmund pass changes nothing here** (§7.11): every part it moved is outside this budget.
 
 ### 7.7 The behavior lamps (850 nm)
 
 - **What they are** (PI): one per view (face and body), 850 nm, a diffuse flood, and outside
   the animal's view.
-- **The pick: Smart Vision Lights LM75-850-W** (C20). It has a built-in driver, so there is no
-  separate driver to buy. From SVL's datasheet (rev. 09/25/26):
+- **The pick: Smart Vision Lights LM75-850-W** (C20), bought from Edmund as #90-436. It has a
+  built-in driver, so there is no separate driver to buy. From SVL's datasheet (rev. 09/25/26):
   - **Continuous-mode wiring**:
     - the light follows its trigger for as long as the trigger is held, from 30 µs with no
       upper limit;
@@ -978,10 +988,22 @@ The demand, as arithmetic:
   emitting area (71 × 25.5 mm) and held in the lamp's bracket. It cuts the LED's shorter
   wavelengths, which is where a faint red glow comes from (INFERENCE).
   - Whether 850 nm light is visible to rhesus monkeys at these levels is **UNVERIFIED**.
-- **The diffuser** is a diffusing sheet in the bracket. It is not chosen. SVL lists diffusers
-  among its accessories, but none for the LM75.
-- **Power.** Each lamp needs 24 VDC. SVL's 5PM12-5 is a 5 m cable. The 24 V supply is not
-  chosen.
+  - Edmund has no equivalent (C20). SVL's 75 mm bar-light mount is Edmund
+    [#90-438](https://www.edmundoptics.com/p/smart-vision-lights-75mm-bar-light-mount/57263/)
+    ($77), but it holds neither the filter nor the diffuser, so the bracket stays custom.
+- **The diffuser** is Edmund's light-diffusing film,
+  [#27-110](https://www.edmundoptics.com/p/75-x-75mm-light-diffusing-film/52184/): 75 × 75 mm,
+  0.13 mm TAC polymer, 300–1100 nm, made to be cut to size ($22.75). It sits in the bracket with
+  the filter. One sheet gives both lamps' 71 × 25.5 mm pieces (arithmetic). Its transmission at
+  850 nm is not published (**UNVERIFIED**). SVL lists diffusers among its accessories, but none
+  for the LM75.
+- **Power.** Each lamp needs 24 VDC, 275 mA at most. SVL's 5PM12-5 5 m cable is Edmund
+  [#23-951](https://www.edmundoptics.com/p/svl-5-pin-5-meter-cable-164-feet/49639/) ($60.50).
+  Edmund names SVL's T2 supply as the LM75's US supply:
+  [#75-577](https://www.edmundoptics.com/p/5-pin-m12-24v-92a-power-supply-us/56772/), 24 V at
+  9.2 A, flying leads and a 5-pin M12, $365. That current covers both lamps (arithmetic:
+  0.55 A). Whether one supply serves both, with the fan-out board's strobe wired in, is the
+  design check's (§7.4), so the supply is still not chosen.
 - **Eye safety.** SVL rates the LM75 at 850 nm as Exempt Group under IEC 62471:2006, with no
   photobiological hazard even in continuous use. That is SVL's own test, stated on its
   datasheet.
@@ -1167,6 +1189,69 @@ The agent's recommendation had been to keep the LEDD1B with the ND behind it. Pe
     safe current is 100 mA or less. It is then a fallback at €262.40 per eye, plus a
     CON8ML-4 and a 9–24 V supply.
 - **The ND works with whichever driver is bought.**
+
+### 7.11 The Edmund pass (2026-09-28)
+
+The PI's standing request (2026-09-27): "the more stuff we can source from edmund optics, the
+better". Every optics, lighting, filter and mounting row in §7.1 and §7.2, and every other part
+Edmund plausibly sells, was checked on Edmund's own pages, read in a browser on 2026-09-28. No
+bot check was served. Each row carries its finding; this is the summary.
+
+**Moved to Edmund.** The old part stays in its row as the alternative.
+
+| Row | Edmund part | Replaces | Kind | Price change each (USD) |
+|---|---|---|---|---|
+| 7.1-1, C1 | #11-507, the BFS-U3-16S2M-CS | Teledyne direct | the same part | 0 |
+| 7.1-4 | #28-792 (M43) / #28-793 (M46), 940 nm, FWHM 55 nm | MidOpt BN940-43 / -46 | swapped (PI preference) | 0; in stock rather than built to order |
+| 7.1-7 | #16-716 dovetail stage, 25 mm travel, plate lock | Thorlabs DTS25/M | swapped (PI preference) | −21.88 |
+| 7.1-3, C6 | #03-618 CS-to-C spacer, listed under Teledyne FLIR | Teledyne ACC-01-5004 | swapped; the same part is INFERENCE | +17.20 |
+| 7.1-10, C8 | #86-770 (3 m) / #88-058 (5 m) USB 3.1 locking cables | Teledyne ACC-01-2300 / -2301 | the same part | +16.40 / +23.50 |
+| 7.1-11, C9 | #88-064 (1 m) / #88-065 (4.5 m) GPIO cables | Teledyne ACC-01-3009 / -3010 | the same part | +0.50 / +27.10 |
+| §7.1.3, C21 | #88-210 tripod adapter | Teledyne ACC-01-0003 | the same part | +6.20 |
+| C20 | #90-436, the LM75-850-W | Machine Vision Direct | the same part | −1.00 |
+| C20, §7.7 | #27-110 light-diffusing film | nothing (not chosen) | new | 22.75 for both lamps |
+| §7.7 | #23-951, SVL's 5PM12-5 cable | SVL, unpriced | the same part | 60.50, not priced before |
+
+**Edmund had nothing suitable:**
+
+- **7.1-5, the collimated 940 nm light:** the smallest found is a 106.7 mm backlight in
+  constant mode (§7.1.2).
+- **7.1-14 and C7, the USB card:** its cards are PCIe 2.0 x1, with four ports on one controller.
+- **C5, the 850 nm band-pass:** its 850 nm filters are 160 nm wide, and its 880 nm one 135 nm.
+- **C20, the visible-cut filter:** its RG830 lists its passband from 950 nm and is 50 mm square.
+- **7.1-8b, the monitor arm:** it sells no VESA mount.
+- **Cables beyond 5 m:** its 8–20 m USB3 cables do not say they are active; Newnex stays.
+- **7.1-5b, the driver:** none (§7.10). **7.1-5c's SM1A38** stays Thorlabs: a search for an
+  M34 × 0.5-to-SM1 adapter found none at Edmund.
+- **Already Edmund:** the lenses (7.1-2, C2, C3), the extension rings (7.1-3), and the ND and
+  its retainer ring (7.1-5c).
+- **Mounts and posts:** none needed; the brackets are printed (PI).
+
+**For the PI** (an Edmund option that would change a decision):
+
+1. **A band-pass behind the lens for the behavior cameras.** Edmund's C-mount camera filter
+   [#73-321](https://www.edmundoptics.com/p/narrow-nir-850nm-c-mount-bandpass-filter/54809/)
+   (845–860 nm, FWHM 33 nm, 88% or more, $292, 9 in stock) threads into the camera, between
+   the lens and the sensor. Edmund recommends it for wide-angle lenses.
+   - For: one Edmund part fits both lenses, replaces MidOpt's BN850, and sidesteps the 6 mm
+     lens's front-thread question (C3).
+   - Against: it is not threaded onto the lens, as the PI decided. Its 33 nm band is narrower
+     than ±25 nm. Whether it fits in the CS body behind the 5 mm spacer is **UNVERIFIED**.
+   - The 940 nm twin, [#73-322](https://www.edmundoptics.com/p/narrow-nir-940nm-c-mount-bandpass-filter/54810/),
+     is not needed: row 4 already has an Edmund filter for the lens thread.
+
+**The price effect** (arithmetic): one rig with 2 tracker and 4 behavior cameras, 2 stages and
+2 lamps.
+
+- **Teledyne's accessories through Edmund** cost more:
+  - spacers 6 × $17.20 = $103.20, and tripod adapters 6 × $6.20 = $37.20;
+  - USB cables $112.60 (5 m to the tracker, 3 m to the behavior cameras) or $141.00 (all 5 m);
+  - GPIO cables $3.00 (all 1 m) or $162.60 (all 4.5 m);
+  - so **+$256.00 to +$444.00**.
+- The stages save $43.76 and the lamps $2.00.
+- **Net: +$210.24 to +$398.24 a rig**, plus $22.75 for the diffuser, which was not priced
+  before. Buying those accessories from Teledyne direct instead is a per-row choice.
+- **The camera-box budget (§7.6) is unchanged**: nothing it counts moved.
 
 ---
 

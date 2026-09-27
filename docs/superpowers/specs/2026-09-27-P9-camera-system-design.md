@@ -92,8 +92,8 @@
     BN850, useful range 840–865 nm).
     - The cameras are lit by **their own 850 nm lamps, one per view** (face, body): a diffuse
       flood, placed outside the animal's view (S0 §7.7).
-  - **The eye tracker: 940 ± 25 nm**, through its own band-pass (MidOpt BN940, useful range
-    928–955 nm) and its own collimated light per eye (S0 §7.1).
+  - **The eye tracker: 940 ± 25 nm**, through its own band-pass (Edmund #28-792 or #28-793:
+    940 nm center, 55 nm FWHM; S0 §7.1 row 4) and its own collimated light per eye (S0 §7.1).
   - **Each band-pass rejects the other group's light.** So the tracker and the cameras need
     no shared clock to keep out of each other's images, which the interference check below
     confirms.

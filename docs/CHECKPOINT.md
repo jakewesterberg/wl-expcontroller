@@ -415,20 +415,23 @@ is now `main`'s). Then execute it subagent-driven, as b1 was.
   the fan-out and the budget** (branch `s0-parts-drivers`; S0 §7.4, §7.6, §7.10). Every
   decision on the 38 rows is applied, and the open picks were researched on makers' and
   distributors' pages the same day. What would cost a session to rediscover:
-  - **Edmund Optics first** (PI, 2026-09-27): every optics, lighting and mounting line is
-    checked at Edmund first and Edmund preferred where it fits. Only rows 7.1-5b/5c and
-    §7.10 have had that check; **the other rows still need their Edmund pass.**
+  - **Edmund Optics first** (PI, 2026-09-27): **every optics, lighting and mounting row has now
+    had the Edmund check** (2026-09-28, branch `s0-parts-edmund`, S0 §7.11): the cameras, BN940
+    (now #28-792/-793), stages, Teledyne cables, spacers, tripod adapters, LM75 and a diffuser
+    moved to Edmund, net +$210–398 a rig (Teledyne's accessories cost more there); BN850,
+    LP830, the USB card, the 940 nm light and the monitor arm had no Edmund fit; a
+    behind-the-lens 850 nm filter (#73-321) is the PI's call.
   - **Two IR bands.** The behavior cameras use 850 ± 25 nm (MidOpt BN850) with their own
-    850 nm lamps, strobed only during exposures. The tracker uses 940 ± 25 nm (BN940). P9's
-    plan of lighting the cameras passively by the tracker's 940 nm is gone.
+    850 nm lamps, strobed only during exposures. The tracker uses 940 ± 25 nm (Edmund #28-792
+    or #28-793). P9's plan of lighting the cameras passively by the tracker's 940 nm is gone.
   - **The tracker lens** is an Edmund C VIS-NIR C-mount: the 75 mm #74-054 for about 45–50 cm,
     or the 100 mm #27-555 for about 57–60 cm. The working distance picks, and the CS-to-C
     spacer is needed.
     - The 0.2× comes from a 200 px pupil and an ASSUMED 3.4 mm pupil.
     - Both lenses (Ø48 and Ø52 mm) are wider than the eyes are apart, so the two cameras toe
       in by about 1°.
-  - **One Thorlabs M940L3 with a Ø1" collimator per eye**, on an IPD system: two DTS25/M
-    slides and PAHT-CF brackets, the filament chosen from a cited creep comparison. The
+  - **One Thorlabs M940L3 with a Ø1" collimator per eye**, on an IPD system: two Edmund
+    #16-716 dovetail stages (the DTS25/M is the alternative) and PAHT-CF brackets, the filament chosen from a cited creep comparison. The
     drivers are two LEDD1Bs.
     - **The LEDD1B's current limit stops at 200 mA** (trim pot, a true hardware cap). Its MOD
       input scales 0–5 V onto 0 mA to that limit, so it reaches zero, but only as a software
