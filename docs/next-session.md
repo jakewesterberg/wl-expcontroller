@@ -95,7 +95,7 @@ closed, verified 2026-09-06 by reading the runs.
 
 ---
 
-## 1. The thing that needs a person, not a session — P4d-2b b1, approved 2026-09-27
+## 1. The thing that needed a person — P4d-2b b1, approved and merged 2026-09-27
 
 **The PI approved all three questions put to him on 2026-09-27**, asked in plain terms
 through the question UI. They were item 1, "approve, merge after checks" -- b1
