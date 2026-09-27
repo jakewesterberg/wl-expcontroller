@@ -128,12 +128,21 @@ jobs:
         # contract tests skipped is a baseline that proves less than it appears to.
         env:
           WLX_REQUIRE_PREPROC: "1"
+        # A new branch's first push carries an all-zero `before`, and a force-push can
+        # carry one that is no longer in history. The gate cannot diff against either
+        # and, rightly, will not guess: it sweeps everything, in one job, for hours.
+        # So hand it `origin/main` instead -- what the branch will be merged into --
+        # and let it diff for real (2026-09-27).
         run: |
           if [ -n "${{ github.base_ref }}" ]; then
-            python tools/mutation_gate.py --changed-only --base "origin/${{ github.base_ref }}"
+            base="origin/${{ github.base_ref }}"
           else
-            python tools/mutation_gate.py --changed-only --base "${{ github.event.before }}"
+            base="${{ github.event.before }}"
+            if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+              base="origin/main"
+            fi
           fi
+          python tools/mutation_gate.py --changed-only --base "$base"
 
   mutation-full:
     # The full sweep -- every module in RETURNS, nothing left out by a diff -- split
