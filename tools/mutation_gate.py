@@ -108,10 +108,21 @@ def select(changed: list[str], *, changed_only: bool = False) -> tuple[list[str]
     `changed_only=True` is what `--changed-only` passes -- a push or pull request.
     A full sweep is now roughly six hours (2026-09-27; see docs/CHECKPOINT.md's CI
     row), so a push runs only what its own diff can have affected and **never
-    escalates on GLOBAL**; the sharded nightly `--all` sweep covers that case
-    instead. When a GLOBAL path would have escalated, this says exactly that and
-    that the nightly sweep covers it, so the log does not read like a full check
-    when it actually selected nothing.
+    escalates at all** (the controller's ruling, 2026-09-27, on the PI's intent:
+    "the full check nightly only"); the sharded nightly `--all` sweep covers every
+    escalation case instead.
+
+    There are exactly two ways below that this function would otherwise escalate
+    to every module -- a GLOBAL path, and a `tasks/` path, since reference tasks
+    are inputs to many tests just as a GLOBAL file changes what every test sees --
+    and `changed_only` is checked in both, not in one and forgotten in the other.
+    Each says, when it would have escalated, that it did not and that the nightly
+    sweep covers it, so the log does not read like a full check that happened to
+    select nothing. **If a third escalation path is ever added here, it must get
+    the same `if changed_only` treatment**, or `--changed-only` silently stops
+    meaning "never escalates" for that one path -- `tests/test_mutation_gate.py`'s
+    `test_every_escalation_path_in_select_is_covered_by_changed_only` is what would
+    need a new case added alongside the new path.
     """
     if any(path in GLOBAL for path in changed):
         hit = next(path for path in changed if path in GLOBAL)
@@ -122,6 +133,11 @@ def select(changed: list[str], *, changed_only: bool = False) -> tuple[list[str]
             )
         return sorted(RETURNS), f"{hit} changed; it alters what every test sees"
     if any(path.startswith("tasks/") for path in changed):
+        if changed_only:
+            return [], (
+                "tasks/ changed; --changed-only does not escalate on it -- "
+                "the nightly full sweep covers it"
+            )
         return sorted(RETURNS), "tasks/ changed; reference tasks are inputs to many tests"
 
     chosen: set[str] = set()
@@ -307,6 +323,10 @@ def main() -> int:
     print(f"mutation gate: {len(modules)} module(s) -- {why}")
     print(f"  selected: {', '.join(modules) if modules else '(none)'}")
 
+    # --shard is literal: it partitions whatever `modules` already is, never
+    # re-expanding it. `ci.yml` only ever pairs it with `--all`, but nothing stops
+    # `--changed-only --shard` too -- a small selection sharded N ways is mostly
+    # empty shards, which `shard_groups` already handles.
     if args.shard and modules:
         k, n = args.shard
         total = len(modules)

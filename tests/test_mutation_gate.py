@@ -257,6 +257,57 @@ def test_without_changed_only_a_global_change_still_escalates():
     assert "pyproject.toml" in why
 
 
+def test_changed_only_does_not_escalate_on_a_tasks_change_and_says_so():
+    """The controller's ruling (2026-09-27): `--changed-only` must never escalate
+    at all, and `tasks/` is the other path in `select()` that normally does --
+    reference tasks are inputs to many tests, same as a GLOBAL file changing what
+    every test sees. Treated identically to GLOBAL: select nothing extra, and say
+    that escalating would have selected everything and that the nightly covers it."""
+    modules, why = gate.select(["tasks/visual_search.py"], changed_only=True)
+    assert modules == [], "tasks/ must not blow up a push's sweep under --changed-only"
+    assert "does not escalate" in why
+    assert "nightly" in why
+
+
+def test_every_escalation_path_in_select_is_covered_by_changed_only():
+    """`select()` has exactly two ways to escalate to every module: a GLOBAL path,
+    and a `tasks/` path. This pins that count so a third escalation path added later
+    cannot silently bypass `--changed-only` the way `tasks/` briefly did -- if
+    someone adds a new `if ...: return sorted(RETURNS), ...` branch to `select()`
+    without also teaching it about `changed_only`, this test will not catch the
+    *new* branch by name, but the two branches it already knows about are the
+    complete set as of 2026-09-27 (verified by reading `select()`, not guessed)."""
+    for changed in (["pyproject.toml"], ["tasks/calibration.py"]):
+        modules, why = gate.select(changed, changed_only=True)
+        assert modules == []
+        assert "does not escalate" in why
+        assert "nightly" in why
+
+
+# ---------------------------------------------------------------------------
+# --shard combined with --changed-only
+# ---------------------------------------------------------------------------
+
+
+def test_shard_combined_with_changed_only_slices_only_the_smaller_selection():
+    """The chosen behaviour, and why: `--shard` stays literal -- it always
+    partitions whatever module list was already selected, never re-expanding it
+    back to the full `RETURNS` set. `ci.yml` never pairs `--shard` with
+    `--changed-only` (the push job uses `--changed-only` alone; the sharded job
+    uses `--all` alone), so this combination has no real caller today, but the
+    simplest correct rule is "shard whatever you were given," not a special case
+    that would have to be justified and tested on its own. A --changed-only
+    selection of two modules, sharded six ways, is mostly empty shards -- expected,
+    and covered by `shard_groups`'s own emptiness tests."""
+    modules, _ = gate.select(
+        ["wl_expcontroller/dio.py", "wl_expcontroller/eye.py"], changed_only=True
+    )
+    assert modules == ["dio", "eye"]
+    groups = gate.shard_groups(modules, 6)
+    assert sorted(m for group in groups for m in group) == ["dio", "eye"]
+    assert sum(1 for group in groups if group) == 2
+
+
 # ---------------------------------------------------------------------------
 # --shard wired into main(): --dry-run so a test never launches a real sweep
 # ---------------------------------------------------------------------------
