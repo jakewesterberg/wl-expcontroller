@@ -15,6 +15,11 @@ from wl_expcontroller.link import SCHEMA, ParamRow, Telemetry
 from wl_expcontroller.web import View
 
 
+#: The PUB endpoint `view()` says this console reads, and the one `test_serve.py`'s hubs
+#: are built with.
+ENDPOINT = "tcp://127.0.0.1:5571"
+
+
 def frame(**overrides) -> Telemetry:
     """A running rig session, forty trials in. Distinctive numbers: 5025 s out of the
     cage is `1:23:45`, 4321 s in session is `1:12:01`, the last reward was charged at
@@ -61,7 +66,8 @@ def frame(**overrides) -> Telemetry:
 
 def view(**overrides) -> View:
     """A box viewer, alone, half a second after the frame arrived -- forty-two seconds
-    after `frame()`'s last reward -- with a derived rate of twelve trials a minute."""
+    after `frame()`'s last reward -- with a derived rate of twelve trials a minute, on
+    a console reading `ENDPOINT`."""
     base = View(
         frame_age_s=0.5,
         stale_after_s=30.0,
@@ -69,5 +75,6 @@ def view(**overrides) -> View:
         on_box=True,
         lan_viewers=0,
         rejected=None,
+        endpoint=ENDPOINT,
     )
     return replace(base, **overrides) if overrides else base

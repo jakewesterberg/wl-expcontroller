@@ -15,7 +15,7 @@ import os
 
 import pytest
 
-from _frames import frame
+from _frames import ENDPOINT, frame
 from wl_expcontroller.health import (
     HEALTH_SCHEMA,
     ago,
@@ -125,7 +125,9 @@ def _readings(case: str) -> dict:
     found, age = CASES[case]
     return {
         r["key"]: r
-        for r in readings(found, frame_age_s=age, stale_after_s=30.0, rejected=None)
+        for r in readings(
+            found, frame_age_s=age, stale_after_s=30.0, rejected=None, endpoint=ENDPOINT
+        )
     }
 
 
@@ -224,6 +226,7 @@ def test_the_readings_come_in_the_specs_order():
             frame_age_s=2.0,
             stale_after_s=30.0,
             rejected=None,
+            endpoint=ENDPOINT,
         )
     ]
 
@@ -245,7 +248,13 @@ def test_the_readings_come_in_the_specs_order():
 def test_the_readings_say_what_a_person_needs_to_know():
     values = {
         r["key"]: r["value"]
-        for r in readings(frame(), frame_age_s=3.0, stale_after_s=30.0, rejected=None)
+        for r in readings(
+            frame(),
+            frame_age_s=3.0,
+            stale_after_s=30.0,
+            rejected=None,
+            endpoint=ENDPOINT,
+        )
     }
 
     assert values["session"] == "2027-01-14_01 · A · tasks/fixation_detection.py"
@@ -265,7 +274,13 @@ def test_an_ended_session_gives_its_reason_and_where_the_animal_is():
         found = frame(stop_kind="completed", stopped_because="every block is finished", **overrides)
         return {
             r["key"]: r["value"]
-            for r in readings(found, frame_age_s=1.0, stale_after_s=30.0, rejected=None)
+            for r in readings(
+                found,
+                frame_age_s=1.0,
+                stale_after_s=30.0,
+                rejected=None,
+                endpoint=ENDPOINT,
+            )
         }["state"]
 
     assert state() == "ended (completed): every block is finished"
@@ -286,7 +301,13 @@ def test_absences_are_sentences_never_zeros():
     )
     values = {
         r["key"]: r["value"]
-        for r in readings(found, frame_age_s=None, stale_after_s=30.0, rejected=None)
+        for r in readings(
+            found,
+            frame_age_s=None,
+            stale_after_s=30.0,
+            rejected=None,
+            endpoint=ENDPOINT,
+        )
     }
 
     assert values["out_of_cage"] == "cage-side, no limit"
@@ -297,11 +318,13 @@ def test_absences_are_sentences_never_zeros():
 def test_with_no_session_it_says_so():
     values = {
         r["key"]: r["value"]
-        for r in readings(None, frame_age_s=None, stale_after_s=30.0, rejected=None)
+        for r in readings(
+            None, frame_age_s=None, stale_after_s=30.0, rejected=None, endpoint=ENDPOINT
+        )
     }
 
     assert values == {
-        "session": "none attached",
+        "session": "none attached · no frame has arrived on tcp://127.0.0.1:5571",
         "state": "waiting for the session's telemetry",
         "last_frame": "none received",
     }
@@ -328,7 +351,9 @@ def test_a_refusal_degrades_the_verdict_at_once_unless_the_held_frame_faulted(ca
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_with_a_refusal_exactly_one_reading_is_still_featured(case):
     found, age = CASES[case]
-    rows = readings(found, frame_age_s=age, stale_after_s=30.0, rejected=REFUSED)
+    rows = readings(
+        found, frame_age_s=age, stale_after_s=30.0, rejected=REFUSED, endpoint=ENDPOINT
+    )
 
     assert sum(r["featured"] for r in rows) == 1
 
@@ -357,7 +382,13 @@ def test_a_refusal_is_featured_after_the_warning_and_the_unreturned_state(case, 
     found, age = CASES[case]
     featured = [
         r["key"]
-        for r in readings(found, frame_age_s=age, stale_after_s=30.0, rejected=REFUSED)
+        for r in readings(
+            found,
+            frame_age_s=age,
+            stale_after_s=30.0,
+            rejected=REFUSED,
+            endpoint=ENDPOINT,
+        )
         if r["featured"]
     ]
 
@@ -365,9 +396,20 @@ def test_a_refusal_is_featured_after_the_warning_and_the_unreturned_state(case, 
 
 
 def test_a_refusal_is_a_reading_after_the_state_in_plain_text():
-    rows = readings(frame(), frame_age_s=1.0, stale_after_s=30.0, rejected=REFUSED)
+    rows = readings(
+        frame(),
+        frame_age_s=1.0,
+        stale_after_s=30.0,
+        rejected=REFUSED,
+        endpoint=ENDPOINT,
+    )
 
-    assert [r["key"] for r in rows][:4] == ["session", "state", "refused", "out_of_cage"]
+    assert [r["key"] for r in rows][:4] == [
+        "session",
+        "state",
+        "refused",
+        "out_of_cage",
+    ]
     refused = next(r for r in rows if r["key"] == "refused")
     assert refused["label"] == "Refused"
     assert refused["value"] == "a telemetry frame carried schema 6 (lt)b(gt)(amp)"
@@ -377,7 +419,13 @@ def test_without_a_refusal_there_is_no_refused_reading():
     for found, age in CASES.values():
         keys = {
             r["key"]
-            for r in readings(found, frame_age_s=age, stale_after_s=30.0, rejected=None)
+            for r in readings(
+                found,
+                frame_age_s=age,
+                stale_after_s=30.0,
+                rejected=None,
+                endpoint=ENDPOINT,
+            )
         }
         assert "refused" not in keys
 
@@ -387,12 +435,58 @@ def test_without_a_refusal_there_is_no_refused_reading():
 def test_a_body_with_a_refusal_is_wl_preprocs_health_response(case):
     found, age = CASES[case]
     body = json.dumps(
-        response(found, frame_age_s=age, stale_after_s=30.0, rejected=REFUSED)
+        response(
+            found,
+            frame_age_s=age,
+            stale_after_s=30.0,
+            rejected=REFUSED,
+            endpoint=ENDPOINT,
+        )
     )
 
     parsed = HealthResponse.model_validate_json(body)
 
     assert parsed.verdict == ("down" if EXPECTED[case] == "down" else "degraded")
+
+
+def test_with_no_frame_the_session_reading_names_the_endpoint_it_reads():
+    """m4: "none attached" alone could be read as "nothing is publishing", which this
+    console cannot know; it names the PUB endpoint nothing has arrived on, in plain
+    text like every other value."""
+    values = {
+        r["key"]: r["value"]
+        for r in readings(
+            None,
+            frame_age_s=None,
+            stale_after_s=30.0,
+            rejected=None,
+            endpoint="tcp://<box>&:5571",
+        )
+    }
+
+    assert values["session"] == (
+        "none attached · no frame has arrived on tcp://(lt)box(gt)(amp):5571"
+    )
+
+
+def test_with_a_refusal_and_no_frame_it_never_says_nothing_arrived():
+    """Something did arrive: a frame this console could not read (Ruling 11)."""
+    values = {
+        r["key"]: r["value"]
+        for r in readings(
+            None,
+            frame_age_s=None,
+            stale_after_s=30.0,
+            rejected=REFUSED,
+            endpoint="tcp://127.0.0.1:5571",
+        )
+    }
+
+    assert values["session"] == (
+        "none attached · no frame this console can read has arrived on "
+        "tcp://127.0.0.1:5571"
+    )
+    assert values["state"] == "waiting for a frame this console can read"
 
 
 def test_markup_in_a_value_is_spelled_out_as_wl_preproc_does():
@@ -433,6 +527,7 @@ def test_the_strips_rollup_never_reaches_health():
             frame_age_s=1.0,
             stale_after_s=30.0,
             rejected=None,
+            endpoint=ENDPOINT,
         )
     }
 
@@ -468,7 +563,13 @@ def test_no_action_is_ever_offered(case, rejected):
     found, age = CASES[case]
 
     assert (
-        response(found, frame_age_s=age, stale_after_s=30.0, rejected=rejected)[
+        response(
+            found,
+            frame_age_s=age,
+            stale_after_s=30.0,
+            rejected=rejected,
+            endpoint=ENDPOINT,
+        )[
             "actions"
         ]
         == []
@@ -483,7 +584,9 @@ def test_no_action_is_ever_offered(case, rejected):
 def test_the_body_is_wl_preprocs_health_response(case):
     found, age = CASES[case]
     body = json.dumps(
-        response(found, frame_age_s=age, stale_after_s=30.0, rejected=None)
+        response(
+            found, frame_age_s=age, stale_after_s=30.0, rejected=None, endpoint=ENDPOINT
+        )
     )
 
     parsed = HealthResponse.model_validate_json(body)

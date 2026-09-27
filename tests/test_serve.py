@@ -25,7 +25,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from _frames import frame
+from _frames import ENDPOINT, frame
 from wl_expcontroller import serve
 from wl_expcontroller.cli import main
 from wl_expcontroller.link import Stop, ZmqConsole, ZmqLink
@@ -61,7 +61,7 @@ class _Clock:
 
 
 def _hub(steady: _Clock | None = None) -> Hub:
-    return Hub(steady=steady or _Clock(0.0))
+    return Hub(steady=steady or _Clock(0.0), endpoint=ENDPOINT)
 
 
 @pytest.fixture(autouse=True)
@@ -787,6 +787,33 @@ def test_an_accepted_frame_after_a_refusal_returns_health_to_ok():
         assert _health_body(port)["verdict"] == "ok"
 
 
+def test_health_with_no_frame_names_the_endpoint_its_hub_reads():
+    """m4, over the wire: the session reading names the PUB endpoint rather than
+    implying that nothing publishes."""
+    hub = Hub(steady=_Clock(0.0), endpoint="tcp://10.0.0.7:5571")
+    with _served(hub) as port:
+        body = _health_body(port)
+
+    session = next(r for r in body["readings"] if r["key"] == "session")
+    assert session["value"] == (
+        "none attached · no frame has arrived on tcp://10.0.0.7:5571"
+    )
+
+
+def test_a_servers_hub_names_the_sub_endpoint_it_reads():
+    """m4: the endpoint the page and `/health` name is the one `--link` gave the
+    telemetry thread, not a guess."""
+    server = Server(
+        sub="tcp://127.0.0.1:5571",
+        req="tcp://127.0.0.1:5572",
+        http=("127.0.0.1", 0),
+        token=TOKEN,
+    )
+
+    view = server.hub.snapshot(on_box=True, stale_after_s=30.0)[1]
+    assert view.endpoint == "tcp://127.0.0.1:5571"
+
+
 # --- fix round 1: the security review's four findings ----------------------------
 
 
@@ -800,7 +827,7 @@ class _StaleTakeHub(Hub):
     newer) view."""
 
     def __init__(self, stale_frame) -> None:
-        super().__init__(steady=_Clock(0.0))
+        super().__init__(steady=_Clock(0.0), endpoint=ENDPOINT)
         self._stale_frame = stale_frame
 
     def take(self, subscriber, timeout):

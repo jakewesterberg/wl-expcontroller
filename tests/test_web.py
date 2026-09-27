@@ -285,6 +285,32 @@ def test_with_no_frame_every_pane_says_so():
         assert "no session" in parts[pane], pane
 
 
+def test_with_no_frame_and_no_refusal_the_page_names_the_endpoint_it_reads():
+    """m4: *Waiting* used to assert that no session was publishing on the link, which
+    this console cannot know. What it knows is that nothing has arrived on the PUB
+    endpoint it reads, so that is what it says -- and *wl-works sees* says the same."""
+    parts = fragments(None, view(frame_age_s=None, endpoint="tcp://10.0.0.7:5571"))
+
+    assert (
+        "no telemetry yet: no frame has arrived on tcp://10.0.0.7:5571"
+        in parts["banners"]
+    )
+    assert "no session is publishing" not in parts["banners"]
+    assert (
+        "none attached · no frame has arrived on tcp://10.0.0.7:5571"
+        in parts["rt-health"]
+    )
+
+
+def test_the_endpoint_is_escaped_wherever_the_page_names_it():
+    parts = fragments(None, view(frame_age_s=None, endpoint=EVIL))
+
+    text = "".join(parts.values())
+    assert "<script" not in text
+    assert EVIL not in text
+    assert html.escape(EVIL, quote=True) in parts["banners"]
+
+
 def test_the_header_carries_the_session_and_the_trial():
     head = fragments(frame(trial_index=41), view())["head-id"]
 

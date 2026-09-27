@@ -104,8 +104,13 @@ class Hub:
     def __init__(
         self,
         *,
+        endpoint: str,
         steady: Callable[[], float] = _welfare.steady_seconds,
     ) -> None:
+        #: The PUB endpoint the telemetry thread reads, handed to every `View` so a
+        #: page with no frame names where it is listening (m4). No default: a hub
+        #: that did not know it would have the page guess.
+        self._endpoint = endpoint
         self._steady = steady
         self._lock = threading.Lock()
         self._frame: _link.Telemetry | None = None
@@ -193,6 +198,7 @@ class Hub:
             on_box=on_box,
             lan_viewers=lan,
             rejected=rejected,
+            endpoint=self._endpoint,
         )
 
     def subscribe(self, *, on_box: bool) -> queue.Queue:
@@ -454,6 +460,7 @@ def make_handler(
                     frame_age_s=view.frame_age_s,
                     stale_after_s=view.stale_after_s,
                     rejected=view.rejected,
+                    endpoint=view.endpoint,
                 ),
             )
 
@@ -542,7 +549,7 @@ class Server:
         keepalive_s: float = KEEPALIVE_S,
         receive_timeout_s: float = RECEIVE_TIMEOUT_S,
     ) -> None:
-        self.hub = Hub()
+        self.hub = Hub(endpoint=sub)
         self._sub = sub
         self._req = req
         self._receive_timeout_s = receive_timeout_s

@@ -3,7 +3,8 @@
 The body is `wl_preproc.contracts.protocol.HealthResponse`, schema version 1 --
 `verdict`, `readings`, `actions` -- built here as plain data and contract-tested
 against their model with `WLX_REQUIRE_PREPROC=1` (`tests/test_health.py`). **Pure**: a
-frame and two numbers in, a dict out. `wlx serve` supplies how old the frame is.
+frame, two numbers, a refusal and an endpoint in, a dict out. `wlx serve` supplies how
+old the frame is, why the last one was refused if it was, and where it reads them.
 
 **The rules are wl-preproc's, read from their source on 2026-09-26**
 (`wl_preproc/contracts/protocol.py`, `docs/ops/lab-host-protocol.md`):
@@ -211,16 +212,34 @@ def readings(
     frame_age_s: float | None,
     stale_after_s: float,
     rejected: str | None,
+    endpoint: str,
 ) -> list[dict]:
     """The readings, in spec §3's order: session, state, the refused frame's reason
     when there is one (Ruling 11), time out of cage, the duration warning when
     active, fluid this session, supplement owed, the behavioral counts, and the last
-    frame's age. Every value through `plain_text`."""
+    frame's age. Every value through `plain_text`.
+
+    **With no frame, the session reading names `endpoint`**, the PUB endpoint this
+    console reads (m4): that nothing has arrived there is what it knows, and that
+    nothing is publishing is not. Beside a refusal it says no frame it *can read*
+    has arrived, since one did."""
     refused = [("refused", "Refused", rejected)] if rejected else []
     if frame is None:
+        readable, waiting = (
+            (
+                "no frame this console can read",
+                "waiting for a frame this console can read",
+            )
+            if rejected
+            else ("no frame", "waiting for the session's telemetry")
+        )
         rows = [
-            ("session", "Session", "none attached"),
-            ("state", "State", "waiting for the session's telemetry"),
+            (
+                "session",
+                "Session",
+                f"none attached · {readable} has arrived on {endpoint}",
+            ),
+            ("state", "State", waiting),
             *refused,
             ("last_frame", "Last frame", _age_text(frame_age_s)),
         ]
@@ -273,6 +292,7 @@ def response(
     frame_age_s: float | None,
     stale_after_s: float,
     rejected: str | None,
+    endpoint: str,
 ) -> dict:
     """The whole `/health` body: `HealthResponse`'s three fields, `actions` always
     empty."""
@@ -283,6 +303,6 @@ def response(
     }
     return {
         "verdict": verdict(frame, **seen),
-        "readings": readings(frame, **seen),
+        "readings": readings(frame, **seen, endpoint=endpoint),
         "actions": [],
     }

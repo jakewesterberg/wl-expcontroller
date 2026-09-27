@@ -67,6 +67,10 @@ class View:
     lan_viewers: int
     #: Why the last frame `wlx serve` received could not be used, or `None`.
     rejected: str | None
+    #: The PUB endpoint this console reads, `--link`'s first half (`serve.Hub`). With
+    #: no frame and no refusal, what the page and `/health` can truthfully say is
+    #: that nothing has arrived *here* -- never that nothing is publishing (m4).
+    endpoint: str
 
 
 #: Every fragment `fragments` renders, in page order. Each is the inner HTML of the
@@ -313,7 +317,7 @@ def _banners(frame: Telemetry | None, view: View) -> str:
             _banner(
                 "info",
                 "Waiting",
-                "no telemetry yet: no session is publishing on the link this console reads",
+                f"no telemetry yet: no frame has arrived on {_e(view.endpoint)}",
             )
         )
         return "".join(out)
@@ -422,6 +426,7 @@ def _health_pane(frame: Telemetry | None, view: View) -> str:
         frame_age_s=view.frame_age_s,
         stale_after_s=view.stale_after_s,
         rejected=view.rejected,
+        endpoint=view.endpoint,
     )
     verdict = body["verdict"]
     rows = "".join(

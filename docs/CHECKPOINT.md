@@ -349,7 +349,9 @@ approval of the welfare item below. Start b2 next, from the P4d-2b spec §2 and 
   *Refused* reading featured after the duration warning and the unreturned-limit or fault
   state and before the last frame's age, until the next frame this console can read; a
   held fault stays `down`. With no frame held, the *Waiting* banner is dropped beside a
-  refusal. Before this, a console refusing every frame told wl-works `ok`.
+  refusal. Before this, a console refusing every frame told wl-works `ok`. With no frame
+  and no refusal, the banner and `/health`'s session reading name the PUB endpoint
+  nothing has arrived on (`View.endpoint`), rather than asserting that nothing publishes.
 - **The telemetry thread's failure ends `wlx serve` (Ruling 9).** A bad `--link`, or any
   exception that escapes the telemetry thread, ends the process. It exits 1, prints a
   sentence and the traceback on stderr, and says the session is unaffected. A console that
