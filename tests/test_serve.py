@@ -8,12 +8,38 @@ seconds rather than hanging the suite (and the mutation sweep) for 300.
 
 from __future__ import annotations
 
+import http.client
+import json
+import os
 import queue
+import socket
+import threading
+import time
+from contextlib import contextmanager
+from http.server import ThreadingHTTPServer
 
 import pytest
 
 from _frames import frame
-from wl_expcontroller.serve import CLOSED, QUEUE_DEPTH, Hub
+from wl_expcontroller.serve import CLOSED, QUEUE_DEPTH, Hub, make_handler, on_box
+from wl_expcontroller.web import FONTS, FRAGMENT_IDS, font_bytes
+
+_REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
+try:
+    from wl_preproc.contracts.protocol import HealthResponse
+except ImportError as exc:  # pragma: no cover - exercised by the CI job
+    if _REQUIRED:
+        raise AssertionError(
+            f"WLX_REQUIRE_PREPROC=1 but wl-preproc is not importable ({exc}); the "
+            f"/health served over HTTP is checked against their HealthResponse"
+        ) from exc
+    HealthResponse = None
+
+_contract = pytest.mark.skipif(
+    HealthResponse is None, reason="wl-preproc checkout not beside this repo"
+)
+
+TOKEN = "t0ken-for-tests"
 
 
 class _Clock:
@@ -275,3 +301,308 @@ def test_a_host_clock_stepped_back_between_two_frames_leaves_the_reward_age_righ
         '<span class="lab">Since last reward</span><span class="val">62 s</span>'
         in strip
     )
+
+
+# --- the HTTP surface (Task 10) ---------------------------------------------------
+
+
+@contextmanager
+def _served(hub: Hub, *, keepalive_s: float = 15.0, stale_after_s: float = 30.0):
+    """The handler on a real loopback socket, with no ZMQ anywhere."""
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        make_handler(
+            hub, token=TOKEN, stale_after_s=stale_after_s, keepalive_s=keepalive_s
+        ),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server.server_address[1]
+    finally:
+        hub.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _request(port: int, method: str, path: str, headers: dict | None = None):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.request(method, path, headers=headers or {})
+        response = connection.getresponse()
+        return response.status, dict(response.getheaders()), response.read()
+    finally:
+        connection.close()
+
+
+def _raw(port: int, data: bytes) -> bytes:
+    """Bytes a browser would never send, and everything the server says back."""
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+        sock.sendall(data)
+        chunks = []
+        while chunk := sock.recv(4096):
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _events(response):
+    """Each `frame` event's payload, as a browser's `EventSource` would dispatch it:
+    comments and the `retry:` line are skipped."""
+    name, data = None, None
+    while True:
+        line = response.readline()
+        if not line:
+            return
+        line = line.decode("utf-8").rstrip("\n")
+        if line == "":
+            if name == "frame" and data is not None:
+                yield json.loads(data)
+            name, data = None, None
+        elif line.startswith("event: "):
+            name = line[len("event: ") :]
+        elif line.startswith("data: "):
+            data = line[len("data: ") :]
+
+
+@contextmanager
+def _stream(port: int):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    connection.request("GET", "/events")
+    response = connection.getresponse()
+    try:
+        yield response
+    finally:
+        response.close()
+        connection.close()
+
+
+def test_the_page_is_served_with_every_pane_and_its_own_nonce():
+    hub = _hub()
+    hub.offer(frame())
+    with _served(hub) as port:
+        status, headers, body = _request(port, "GET", "/")
+
+    assert status == 200
+    assert headers["Content-Type"] == "text/html; charset=utf-8"
+    policy = headers["Content-Security-Policy"]
+    nonce = policy.split("'nonce-", 1)[1].split("'", 1)[0]
+    assert f'<script nonce="{nonce}">'.encode() in body
+    assert "default-src 'none'" in policy and "connect-src 'self'" in policy
+    assert "font-src 'self'" in policy
+    assert b'id="strip"' in body and b"2027-01-14_01" in body
+    assert b"http://" not in body and b"https://" not in body
+
+
+def test_every_bundled_font_is_served_with_its_type():
+    """The page's fonts come from this box (PI, 2026-09-26): each face `web.FONTS`
+    declares, as `font/woff2`, byte for byte the file the package carries."""
+    hub = _hub()
+    with _served(hub) as port:
+        for font in FONTS:
+            status, headers, body = _request(port, "GET", f"/fonts/{font.file}")
+            assert status == 200, font.file
+            assert headers["Content-Type"] == "font/woff2", font.file
+            assert body == font_bytes(font), font.file
+
+
+def test_a_font_path_that_is_not_a_bundled_name_is_404():
+    """Exact names from a fixed table: nothing is joined onto a directory, so a `..`
+    has nowhere to go, and a license file or a module beside the fonts is not served."""
+    hub = _hub()
+    with _served(hub) as port:
+        for path in (
+            "/fonts/../web.py",
+            "/fonts/../../pyproject.toml",
+            "/fonts/%2e%2e/web.py",
+            "/fonts/ibm-plex-sans/OFL.txt",
+            f"/fonts/ibm-plex-sans/{FONTS[0].file}",
+            "/fonts/Unknown.woff2",
+            f"/fonts/{FONTS[0].file}?v=1",
+            "/fonts/",
+            "/fonts",
+        ):
+            assert _request(port, "GET", path)[::2] == (
+                404,
+                b'{"error": "not found"}',
+            ), path
+        assert _request(port, "POST", f"/fonts/{FONTS[0].file}")[0] == 405
+
+
+def test_health_needs_the_token_and_every_failure_looks_the_same():
+    """wl-preproc's rule: missing, malformed and wrong are one path to one `401`, so
+    which part was wrong cannot be read off the response."""
+    hub = _hub()
+    with _served(hub) as port:
+        answers = {
+            _request(port, "GET", "/health", headers)[::2]
+            for headers in (
+                {},
+                {"Authorization": "Bearer wrong"},
+                {"Authorization": f"Basic {TOKEN}"},
+                {"Authorization": "Bearer"},
+                {"Authorization": "Bearer "},
+            )
+        }
+
+    assert answers == {(401, b'{"error": "unauthorized"}')}
+
+
+def test_health_answers_the_token_whatever_the_schemes_case():
+    hub = _hub()
+    hub.offer(frame())
+    with _served(hub) as port:
+        for scheme in ("Bearer", "bearer"):
+            status, headers, body = _request(
+                port, "GET", "/health", {"Authorization": f"{scheme} {TOKEN}"}
+            )
+            assert status == 200, scheme
+            assert headers["Content-Type"] == "application/json"
+            assert set(json.loads(body)) == {"verdict", "readings", "actions"}
+
+
+def test_an_unknown_path_is_404_as_json():
+    hub = _hub()
+    with _served(hub) as port:
+        for path in ("/nope", "/favicon.ico", "/health/", "/events/x"):
+            assert _request(port, "GET", path)[::2] == (
+                404,
+                b'{"error": "not found"}',
+            ), path
+
+
+def test_a_known_path_with_the_wrong_method_is_405_and_b1_takes_no_post():
+    hub = _hub()
+    with _served(hub) as port:
+        assert _request(port, "POST", "/")[0] == 405
+        assert _request(port, "POST", "/events")[0] == 405
+        assert _request(port, "PUT", "/health")[0] == 405
+        assert _request(port, "DELETE", "/")[0] == 405
+        assert _request(port, "POST", "/commands")[0] == 404
+
+
+def test_a_method_the_stdlib_does_not_know_gets_json_not_its_html_page():
+    hub = _hub()
+    with _served(hub) as port:
+        known = _raw(port, b"BREW / HTTP/1.0\r\n\r\n")
+        unknown = _raw(port, b"BREW /nope HTTP/1.0\r\n\r\n")
+
+    assert known.startswith(b"HTTP/1.0 405")
+    assert known.endswith(b'{"error": "method not allowed"}')
+    assert unknown.startswith(b"HTTP/1.0 404")
+    assert b"<" not in known + unknown
+
+
+def test_a_malformed_request_gets_no_html_and_no_echo():
+    hub = _hub()
+    with _served(hub) as port:
+        answer = _raw(port, b"GARBAGE\r\n\r\n")
+
+    assert b'"bad request"' in answer
+    assert b"<" not in answer
+    assert b"GARBAGE" not in answer
+
+
+def test_no_response_names_the_interpreter():
+    hub = _hub()
+    with _served(hub) as port:
+        for path in ("/", "/nope", "/health"):
+            server = _request(port, "GET", path)[1].get("Server", "")
+            assert "Python" not in server and "BaseHTTP" not in server, path
+
+
+def test_a_stream_opens_with_a_full_render_then_sends_what_changed():
+    """Spec §4.3: one full render on connect, then a fragment per frame -- here, only
+    the fragments that differ from what this browser already holds."""
+    hub = _hub()
+    with _served(hub) as port, _stream(port) as response:
+        assert response.getheader("Content-Type") == "text/event-stream"
+        events = _events(response)
+
+        first = next(events)
+        assert tuple(first["frags"]) == FRAGMENT_IDS
+        assert first["live"] is False
+        assert 'data-state="none"' in first["frags"]["state"]
+
+        hub.offer(frame(trial_index=5))
+        second = next(events)
+        assert second["live"] is True
+        assert 'data-trial="5"' in second["frags"]["head-id"]
+
+        hub.offer(frame(trial_index=6))
+        third = next(events)
+        assert 'data-trial="6"' in third["frags"]["head-id"]
+        assert "setup" not in third["frags"], "an unchanged pane was sent again"
+
+
+def test_a_stream_on_the_box_says_so():
+    hub = _hub()
+    with _served(hub) as port, _stream(port) as response:
+        first = next(_events(response))
+
+    assert first["frags"]["presence"].startswith("<b>this box</b>")
+
+
+def test_a_quiet_stream_sends_keepalives():
+    hub = _hub()
+    with _served(hub, keepalive_s=0.05) as port, _stream(port) as response:
+        lines = [response.readline() for _ in range(40)]
+
+    assert b": keepalive\n" in lines
+
+
+def test_closing_the_hub_ends_an_open_stream():
+    hub = _hub()
+    with _served(hub, keepalive_s=60.0) as port, _stream(port) as response:
+        next(_events(response))
+        hub.close()
+        tail = [response.readline() for _ in range(5)]
+
+    assert tail[-1] == b"", "the stream stayed open after the hub closed"
+
+
+def test_a_browser_that_goes_away_is_forgotten():
+    """Review Focus 4: a closed tab is noticed at the next write, and its queue goes."""
+    hub = _hub()
+    with _served(hub) as port:
+        with _stream(port) as response:
+            next(_events(response))
+            assert hub.viewers() == (1, 0)
+        for n in range(250):
+            hub.offer(frame(trial_index=n))
+            if hub.viewers() == (0, 0):
+                break
+            time.sleep(0.02)
+
+        assert hub.viewers() == (0, 0)
+
+
+def test_the_box_is_a_loopback_peer_and_nothing_else():
+    for host in ("127.0.0.1", "127.8.9.10", "::1", "::ffff:127.0.0.1"):
+        assert on_box(host), host
+    for host in ("192.168.1.50", "10.0.0.7", "::ffff:10.0.0.7", "not an address", ""):
+        assert not on_box(host), host
+
+
+def test_a_handler_refuses_a_token_it_could_not_compare():
+    """wl-preproc's `make_handler` refuses a non-ASCII token for its reason:
+    `hmac.compare_digest` cannot compare one, so every request would fail, the
+    correct one included."""
+    for token in ("", "tök"):
+        with pytest.raises(ValueError):
+            make_handler(_hub(), token=token, stale_after_s=30.0)
+
+
+@_contract
+def test_health_over_http_is_wl_preprocs_health_response():
+    """The body as it crosses the wire -- JSON encoding included -- against their
+    model, with markup in the frame."""
+    hub = _hub()
+    hub.offer(frame(session_id="<b>&", stop_kind="operator", stopped_because="<script>"))
+    with _served(hub) as port:
+        status, _, body = _request(
+            port, "GET", "/health", {"Authorization": f"Bearer {TOKEN}"}
+        )
+
+    assert status == 200
+    assert HealthResponse.model_validate_json(body).verdict == "ok"

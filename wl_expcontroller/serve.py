@@ -32,12 +32,18 @@ timeout are housekeeping. None is a measurement of this system.
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
+import json
 import queue
+import secrets
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
+from http.server import BaseHTTPRequestHandler
 
+from wl_expcontroller import health as _health
 from wl_expcontroller import link as _link
 from wl_expcontroller import web as _web
 from wl_expcontroller import welfare as _welfare
@@ -231,3 +237,255 @@ class Hub:
             self._subscribers.clear()
         for subscriber in subscribers:
             _put_dropping_oldest(subscriber, CLOSED)
+
+
+#: Seconds between comment lines on a stream with no frame to send. Housekeeping: a
+#: browser that went away is found at the next write rather than never.
+KEEPALIVE_S = 15.0
+#: The reconnection delay the page's `EventSource` is told, in milliseconds.
+RETRY_MS = 3000
+#: Socket timeout for every request -- wl-preproc's `_REQUEST_TIMEOUT_S`, for its
+#: reason: a request that never finishes must not park a thread for good.
+REQUEST_TIMEOUT_S = 30.0
+
+#: Each bundled font by the exact path the page asks for it at (`web.FONTS`). A request
+#: is looked up here, never joined onto a directory, so there is no path to traverse.
+_FONTS = {f"/fonts/{font.file}": font for font in _web.FONTS}
+_ROUTES = frozenset({"/", "/events", "/health", *_FONTS})
+_UNAUTHORIZED = {"error": "unauthorized"}
+#: Fixed bodies, keyed on the status alone and echoing nothing a caller sent
+#: (wl-preproc's `_SEND_ERROR_BODIES`).
+_ERRORS = {
+    400: {"error": "bad request"},
+    404: {"error": "not found"},
+    405: {"error": "method not allowed"},
+    414: {"error": "request line too long"},
+    431: {"error": "request header fields too large"},
+    505: {"error": "http version not supported"},
+}
+_FALLBACK = {"error": "request rejected"}
+
+
+def on_box(host: str) -> bool:
+    """Whether a peer is this machine: loopback in either family, or an IPv4 loopback
+    mapped into IPv6. Anything that does not parse is the LAN."""
+    try:
+        address = ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return False
+    mapped = getattr(address, "ipv4_mapped", None)
+    return (mapped or address).is_loopback
+
+
+def event(payload: dict) -> bytes:
+    """One server-sent event named `frame`. `json.dumps` escapes every newline and
+    control character, so the payload is one `data:` line whatever telemetry held."""
+    return b"event: frame\ndata: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+
+
+def _csp(nonce: str) -> str:
+    """The page's Content-Security-Policy: its one script by nonce, inline styles (the
+    bar widths), its bundled fonts and the event stream from this origin, and nothing
+    else -- no request leaves the box from this page. Defense beneath `web._e`, not
+    instead of it."""
+    return (
+        f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'unsafe-inline'; "
+        f"font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; "
+        f"frame-ancestors 'none'"
+    )
+
+
+def make_handler(
+    hub: Hub,
+    *,
+    token: str,
+    stale_after_s: float,
+    keepalive_s: float = KEEPALIVE_S,
+) -> type[BaseHTTPRequestHandler]:
+    """A handler class closing over `hub` and the token, built the way wl-preproc's
+    `make_handler` is and for its reason: `BaseHTTPRequestHandler` handles the whole
+    request inside `__init__`, so all it needs must already be class attributes.
+
+    Refuses an empty or non-ASCII token before building anything: `hmac.compare_digest`
+    cannot compare a non-ASCII `str`, and a handler built from one would refuse every
+    request, the correct one included (wl-preproc, review round 2's Minor 7).
+    """
+    if not token or not token.isascii():
+        raise ValueError(
+            "the /health bearer token must be non-empty ASCII: hmac.compare_digest "
+            "cannot compare anything else, and a handler built from one would refuse "
+            "every request, the correct one included"
+        )
+
+    class ConsoleHandler(BaseHTTPRequestHandler):
+        _hub = hub
+        _token = token
+        _stale_after_s = stale_after_s
+        _keepalive_s = keepalive_s
+        # No interpreter version in any `Server` header (wl-preproc's Important 5).
+        server_version = ""
+        sys_version = ""
+        timeout = REQUEST_TIMEOUT_S
+
+        def _authorized(self) -> bool:
+            """`Authorization: Bearer <token>`, the scheme matched case-insensitively
+            (RFC 7235 §2.1), the token by `hmac.compare_digest` on UTF-8 bytes --
+            wl-preproc's `_authorized`. Missing, malformed and wrong take one path."""
+            value = self.headers.get("Authorization")
+            if value is None:
+                return False
+            scheme, _, candidate = value.partition(" ")
+            if scheme.lower() != "bearer" or not candidate:
+                return False
+            return hmac.compare_digest(
+                candidate.encode("utf-8"), self._token.encode("utf-8")
+            )
+
+        def _write(
+            self,
+            status: int,
+            body: bytes,
+            content_type: str,
+            headers: tuple = (),
+            cache: str = "no-store",
+        ) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", cache)
+            self.send_header("X-Content-Type-Options", "nosniff")
+            for name, value in headers:
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _send_json(self, status: int, payload: dict) -> None:
+            self._write(status, json.dumps(payload).encode("utf-8"), "application/json")
+
+        def send_error(self, code, message=None, explain=None) -> None:
+            """Every error the stdlib raises on its own, as JSON and never its HTML
+            page (wl-preproc's `send_error`, read 2026-09-26). `message` and `explain`
+            are discarded: the stdlib formats the caller's own bytes into them.
+
+            **An unknown method is 405 on a known path and 404 elsewhere**, where
+            wl-preproc answers 401: every one of its paths needs the token, and here
+            only `GET /health` does -- the pages are open to the LAN (spec §2).
+            """
+            if code == 501:
+                code = 405 if getattr(self, "path", None) in _ROUTES else 404
+            self._send_json(code, _ERRORS.get(code, _FALLBACK))
+
+        def _refuse_method(self) -> None:
+            code = 405 if self.path in _ROUTES else 404
+            self._send_json(code, _ERRORS[code])
+
+        # Every verb a client commonly sends besides GET. b1 takes no POST at all:
+        # nothing on the page writes (spec §4.2).
+        do_POST = _refuse_method
+        do_PUT = _refuse_method
+        do_DELETE = _refuse_method
+        do_PATCH = _refuse_method
+        do_OPTIONS = _refuse_method
+        do_HEAD = _refuse_method
+        do_TRACE = _refuse_method
+
+        def do_GET(self) -> None:
+            if self.path == "/":
+                self._page()
+            elif self.path == "/events":
+                self._events()
+            elif self.path == "/health":
+                if not self._authorized():
+                    self._send_json(401, _UNAUTHORIZED)
+                    return
+                self._health()
+            elif self.path in _FONTS:
+                self._font(_FONTS[self.path])
+            else:
+                self._send_json(404, _ERRORS[404])
+
+        def _font(self, font) -> None:
+            """A bundled font (PI, 2026-09-26: "bundle the fonts"). Cached a day: the
+            files change only with the package."""
+            self._write(
+                200, _web.font_bytes(font), "font/woff2", cache="max-age=86400"
+            )
+
+        def _page(self) -> None:
+            latest, view = self._hub.snapshot(
+                on_box=on_box(self.client_address[0]),
+                stale_after_s=self._stale_after_s,
+            )
+            nonce = secrets.token_urlsafe(16)
+            body = _web.page(
+                _web.fragments(latest, view),
+                stale_after_s=self._stale_after_s,
+                nonce=nonce,
+            )
+            self._write(
+                200,
+                body.encode("utf-8"),
+                "text/html; charset=utf-8",
+                (("Content-Security-Policy", _csp(nonce)),),
+            )
+
+        def _health(self) -> None:
+            latest, view = self._hub.snapshot(
+                on_box=False, stale_after_s=self._stale_after_s
+            )
+            self._send_json(
+                200,
+                _health.response(
+                    latest,
+                    frame_age_s=view.frame_age_s,
+                    stale_after_s=self._stale_after_s,
+                ),
+            )
+
+        def _events(self) -> None:
+            """One browser's stream (spec §4.3): a full render on connect, then an
+            event per frame it keeps up with, until the hub closes or the browser
+            goes away."""
+            box = on_box(self.client_address[0])
+            subscriber = self._hub.subscribe(on_box=box)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(f"retry: {RETRY_MS}\n\n".encode("ascii"))
+                sent: dict[str, str] = {}
+                latest, _ = self._hub.snapshot(
+                    on_box=box, stale_after_s=self._stale_after_s
+                )
+                self._send_frame(latest, box, sent)
+                while True:
+                    try:
+                        item = self._hub.take(subscriber, timeout=self._keepalive_s)
+                    except queue.Empty:
+                        self.wfile.write(b": keepalive\n\n")
+                        continue
+                    if item is CLOSED:
+                        return
+                    self._send_frame(item, box, sent)
+            except OSError:
+                # A broken pipe, a reset, or a write that timed out: the browser went
+                # away. There is nobody to tell; `finally` forgets it.
+                return
+            finally:
+                self._hub.unsubscribe(subscriber)
+
+        def _send_frame(self, latest, box: bool, sent: dict) -> None:
+            """One event: the fragments that differ from what this browser holds --
+            all of them on connect -- and whether more frames are due, which is when
+            the page's stale timer runs."""
+            _, view = self._hub.snapshot(on_box=box, stale_after_s=self._stale_after_s)
+            parts = _web.fragments(latest, view)
+            changed = {key: html for key, html in parts.items() if sent.get(key) != html}
+            sent.update(changed)
+            self.wfile.write(
+                event({"frags": changed, "live": _health.expects_frames(latest)})
+            )
+
+    return ConsoleHandler
