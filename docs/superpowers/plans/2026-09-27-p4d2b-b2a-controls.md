@@ -63,7 +63,7 @@ Spec §5 left these to the plan. Each is taken here, with its reason; the code i
 - **Writes come from the box alone** (spec §2): a loopback peer, a `Host` naming loopback, the page's own `Origin`, and `Content-Type: application/json`. **Every request is answered only when its `Host` names this console** (spec §5.3). The actor is `NAME (box, unverified)`.
 - **Every telemetry string reaches the page through `web._e`**, in elements and attributes alike; the page's script writes only rendered fragments (`innerHTML`) and its own words (`textContent`).
 - **Tests that open a socket set a client timeout and bind loopback only**, register every `ZmqLink`/`ZmqConsole`/`ZmqCommands`/`ZmqMarks` they build with `zmq_cleanup`, and rely on `tests/_zmq_release.py`'s autouse fixture (extended in Tasks 3 and 4) for those built inside `main()` or a server thread.
-- **Tests that start a `wlx run` follow P4d-2a's two rules**: a trial budget (Ruling 10) — `_trial_budget` in `test_serve.py`, and for a paused session `_Scripted`'s wait budget in `test_taskd.py` — and `_main_uninterrupted` for every `main(...)` call on a thread (M3).
+- **Tests that start a `wlx run` follow P4d-2a's two rules**: a trial budget (Ruling 10) — `_trial_budget` in `test_serve.py`, sized to the session it bounds (`CONTROL_TRIAL_BUDGET` for Task 12's, which have a mark socket and so run fewer trials a second than b1's), and for a paused session `_Scripted`'s wait budget in `test_taskd.py` — and `_main_uninterrupted` for every `main(...)` call on a thread (M3). **A mutation that prints `caught … timed out` is a missing bound, not a catch** (`docs/next-session.md`: *the fix is a bound, not a shrug*): fix the bound in the owning task.
 - **Do not edit `tests/conftest.py`.** Shared frames live in `tests/_frames.py`.
 - **Prove each new test can fail** (CLAUDE.md): Task 15 runs the mutation gate and reads it line by line — `N failed` is a test noticing; `N errors in 0.8s` is not.
 - **Never run the suite, edit a test, or `git add` while a mutation sweep is in flight.**
@@ -7329,6 +7329,8 @@ git commit -m "Put the controls on the page: settings, pause, mark, stop and a s
 
 **Why:** spec §2 and §5.3. `POST /commands` takes one JSON command, accepted only under §2's four checks and validated before anything is queued; a command thread alone owns the REQ socket and takes commands from a bounded queue; the page is told *sent* only when `taskd` acknowledged it, *not delivered* when the exchange times out (and the socket resets), *busy* when the queue is full; the mark's signal goes on its own path ahead of the queue; and every request's `Host` must name this console, `--allow-host` adding names (Plan decisions 3, 10, 11). `--link` takes the mark endpoint (Plan decision 2).
 
+**The `Outbox` tests call `submit` through `_submitted`**, on a thread of their own with a 10 s join. `submit` waits for as long as the outbox's thread lives, so a job that thread never answers — the defect those tests exist to catch — would otherwise hang the test instead of failing it: in the plan's pre-flight, `Outbox._answer` neutered ran the mutation harness out to its 300 s and printed `caught … timed out`, which no test noticed. With `_submitted`, the same mutant is `20 failed`.
+
 **Files:**
 - Modify: `wl_expcontroller/serve.py` (the module docstring; imports; `Hub`'s `marks` and `snapshot`'s `can_write`; `_ROUTES`, `_MISDIRECTED`; `LOOPBACK_NAMES`, `host_name`, `names_loopback`, `box_names`; `BODY_LIMIT`, `NAME_LIMIT`, `MARK_ID_LIMIT`, `MARKS_REMEMBERED`, `COMMAND_QUEUE_DEPTH`, `MARK_QUEUE_DEPTH`, `OUTBOX_POLL_S`, `SENT`, `BUSY`; `BadCommand`, `MarkSignal`, `MarkNote`, `_SHAPES`, `_person`, `parse_command`, `not_delivered`, `_Job`, `Outbox`, `_delivered`; `make_handler`; `Server`; `parse_link`; `run`)
 - Modify: `wl_expcontroller/cli.py` (`serve`'s `--link` and `--allow-host`)
@@ -7343,7 +7345,7 @@ git commit -m "Put the controls on the page: settings, pause, mark, stop and a s
   - `serve.make_handler(hub, *, token, stale_after_s, keepalive_s=KEEPALIVE_S, hosts=LOOPBACK_NAMES, dispatch=None)`.
   - `serve.Server(..., mark: str | None = None, allow_hosts: tuple[str, ...] = (), reply_timeout_s=..., connect_timeout_s=...)`, `.dispatch(request) -> tuple[int, dict]`, `._commands`, `._marks`.
   - `serve.parse_link(text) -> tuple[str, str, str | None]`; `wlx serve --link PUB,REP[,MARK] --allow-host NAME`.
-  - Test helpers Task 12 uses: `_post`, `_rig`, `_drained_any`, `_Dispatch`, `LOOPBACK_NAMES` from `serve`.
+  - Test helpers: `_outbox` and `_submitted`, for this task's `Outbox` tests; and for Task 12, `_post`, `_rig`, `_drained_any`, `_Dispatch`, `LOOPBACK_NAMES` from `serve`.
 
 - [ ] **Step 1: Write the failing tests, and move b1's to the new surfaces**
 
@@ -7934,6 +7936,23 @@ def _outbox(build, depth: int = 2) -> tuple[Outbox, threading.Event]:
     return outbox, stop
 
 
+def _submitted(outbox: Outbox, work, seconds: float = 10.0) -> tuple[int, dict]:
+    """`outbox.submit(work)` on a thread of its own, and its answer within `seconds`;
+    fails the test otherwise. `submit` waits for as long as the outbox's thread
+    lives, so a job that thread never answers -- the defect these tests exist to
+    catch -- would hang the test on its own thread rather than fail it: with
+    `Outbox._answer` neutered, the mutation harness ran out its 300 s and printed
+    `timed out`, which no test noticed (`docs/next-session.md`: the fix is a bound)."""
+    answers: list = []
+    thread = threading.Thread(
+        target=lambda: answers.append(outbox.submit(work)), daemon=True
+    )
+    thread.start()
+    thread.join(timeout=seconds)
+    assert answers, f"the outbox did not answer within {seconds} s"
+    return answers[0]
+
+
 def test_an_outbox_builds_its_sender_on_its_own_thread_and_answers_each_job():
     sender = _Sender()
 
@@ -7943,7 +7962,9 @@ def test_an_outbox_builds_its_sender_on_its_own_thread_and_answers_each_job():
 
     outbox, stop = _outbox(build)
     try:
-        answer = outbox.submit(lambda built: (200, {"status": "sent", "said": built.thread}))
+        answer = _submitted(
+            outbox, lambda built: (200, {"status": "sent", "said": built.thread})
+        )
     finally:
         stop.set()
         outbox.thread.join(timeout=5)
@@ -8002,7 +8023,7 @@ def test_an_outbox_whose_sender_cannot_be_built_says_so_to_every_job():
 
     outbox, stop = _outbox(build)
     try:
-        answer = outbox.submit(lambda built: (200, {}))
+        answer = _submitted(outbox, lambda built: (200, {}))
     finally:
         stop.set()
         outbox.thread.join(timeout=5)
@@ -8023,7 +8044,7 @@ def test_work_that_raises_is_answered_not_delivered():
         def raises(built):
             raise ValueError("socket gone")
 
-        answer = outbox.submit(raises)
+        answer = _submitted(outbox, raises)
     finally:
         stop.set()
         outbox.thread.join(timeout=5)
@@ -8036,7 +8057,7 @@ def test_a_job_submitted_to_a_stopped_outbox_is_answered_not_delivered():
     stop.set()
     outbox.thread.join(timeout=5)
 
-    assert outbox.submit(lambda built: (200, {}))[1]["said"] == (
+    assert _submitted(outbox, lambda built: (200, {}))[1]["said"] == (
         "not delivered: wlx serve is closing"
     )
 
@@ -9690,16 +9711,32 @@ git commit -m "Take commands from the box's own page, answer every request only 
 
 **Why:** spec §5.4, sim first: a real `wlx run --link` in the simulator and a real `wlx serve`, on loopback, driven through `POST /commands` the way the page drives it — a setting staged then applied; a malformed setting (M8) refused on the feed while the session runs on; pause holding `trial_index` while the out-of-cage clock runs, resume continuing, and the limit ending a session mid-pause; a mark in the recorded event stream where its stamp says, with its three instants and its note; each kind of scheduled stop ending the session with its reason, and cancel removing one; a write from elsewhere refused before the rig sees it; *not delivered* with `taskd` gone; and `wlx serve` restarted while paused (Review Focus 5). **Test the path, not the piece** (CLAUDE.md): every link of this chain has its own test by now, and this is what shows the chain holds.
 
-The clock kind's next occurrence is made a second away inside the test (`taskd._next_occurrence`, in this process, where `wlx run` runs), because a real minute is too long for the suite; what that function computes is pinned by Task 7.
+The clock kind's next occurrence is made a quarter second away inside the test (`taskd._next_occurrence`, in this process, where `wlx run` runs), because a real minute is too long for the suite; what that function computes is pinned by Task 7.
+
+**These sessions have their own trial budget, and a frame wait that ends with the session** (Ruling 10; `docs/next-session.md`: *if a sweep prints `timed out`, the fix is a bound, not a shrug*). b1's `E2E_TRIAL_BUDGET` of 20,000 is sized for b1's session, which has no mark socket; a session with one runs fewer trials a second in the simulator, since every frame pays for the mark check Task 13 measures — b1's 20,000 took about 20 s without one, and 1,000 took a few seconds with one (scratch readings on one loaded machine). In the plan's pre-flight, `tools/mutate.py --returns None wl_expcontroller/taskd.py _command` under b1's budget ran each of these tests past 50 s — its 20 s frame wait, then its 30 s join with the session still short of the budget — and the suite past the harness's 300 s, which the harness prints as `caught … timed out` and no test noticed. `CONTROL_TRIAL_BUDGET` is 1,000, against 27 to 84 trials per test over three pre-flight runs (a scratch count), and `_Session.frame` gives up `LAST_FRAME_S` after `wlx run` ends, so the same mutant fails all twelve in about 100 s.
 
 **Files:**
 - Test: `tests/test_serve.py`
 
 **Interfaces:**
-- Consumes: everything above; b1's `_trial_budget`, `_main_uninterrupted`, `_stream`, `_events`, `E2E_TRIAL_BUDGET`, `GOOD`, `ALLOCATION`, `TWELVE_HOURS`, `_TASK_SETS`; Task 11's `_post`, `_rig`.
-- Produces: `_three_endpoints`, `_Session` (a real session and console, the card `wlx run` strobed onto, and the record) — for this file only.
+- Consumes: everything above; b1's `_trial_budget`, `_main_uninterrupted`, `_stream`, `_events`, `GOOD`, `ALLOCATION`, `TWELVE_HOURS`, `_TASK_SETS`; Task 11's `_post`, `_rig`.
+- Produces: `CONTROL_TRIAL_BUDGET`, `LAST_FRAME_S`, `_three_endpoints`, `_Session` (a real session and console, the card `wlx run` strobed onto, and the record) — for this file only.
 
 - [ ] **Step 1: Write the tests**
+
+In `tests/test_serve.py`, in `_trial_budget`, replace:
+
+```python
+    `run_trial` raises past that, so the session faults, publishes that it did, and
+    `wlx run` ends -- `tests/test_cli.py`'s budget, for the one test here that runs a
+```
+
+with:
+
+```python
+    `run_trial` raises past that, so the session faults, publishes that it did, and
+    `wlx run` ends -- `tests/test_cli.py`'s budget, for the tests here that run a
+```
 
 Append to `tests/test_serve.py`:
 
@@ -9714,6 +9751,23 @@ Append to `tests/test_serve.py`:
 PAUSE_CODE, RESUME_CODE, MARK_CODE, FIX_ON = 4131, 4132, 4133, 4096
 #: `fixation_detection`'s trial-ending markers (`codes._standing_outcomes`).
 MARKERS = {34, 35, 36, 37, 38}
+
+#: **Ruling 10, sized for these sessions.** Each one below is ended by the page's
+#: `stop`, its schedule or its limit within about a hundred trials: 27 to 84 over three
+#: runs of these twelve tests in the plan's pre-flight, 2026-09-27. b1's
+#: `E2E_TRIAL_BUDGET` is sized for b1's session, which has no mark socket; a session
+#: with one runs fewer trials a second in the simulator, every frame paying for the
+#: mark check Task 13 measures. There, b1's 20,000 trials took about 20 s without one,
+#: and 1,000 took a few seconds with one (scratch readings on one loaded machine, not
+#: claims about this system). Under b1's budget, a mutant that breaks the command path
+#: -- `taskd.Session._command` neutered -- held each of these tests past 50 s, its 20 s
+#: frame wait and then its 30 s join, and the suite past the mutation harness's 300 s:
+#: a timeout, which no test noticed.
+CONTROL_TRIAL_BUDGET = 1_000
+
+#: How long `_Session.frame` still waits once `wlx run` has ended, for the last frame
+#: it published to reach the console.
+LAST_FRAME_S = 2.0
 
 
 def _three_endpoints(zmq_cleanup) -> tuple[str, str, str]:
@@ -9733,7 +9787,7 @@ class _Session:
                  session_id="2027-01-14_21", cleanup=None):
         from wl_expcontroller import dio
 
-        _trial_budget(monkeypatch, E2E_TRIAL_BUDGET)
+        _trial_budget(monkeypatch, CONTROL_TRIAL_BUDGET)
         self.cards: list = []
         cards = self.cards
 
@@ -9800,14 +9854,19 @@ class _Session:
 
     def frame(self, predicate, seconds: float = 20.0):
         """The first frame this console holds for which `predicate` is true, within
-        `seconds`; fails the test otherwise."""
+        `seconds`; fails the test otherwise -- and within `LAST_FRAME_S` once `wlx
+        run` has ended, since no frame comes after that: a session a mutant ended
+        early fails its test then, rather than after the full wait."""
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             latest = self.server.hub.snapshot(on_box=True, stale_after_s=30.0)[0]
             if latest is not None and predicate(latest):
                 return latest
+            if not self.runner.is_alive():
+                deadline = min(deadline, time.monotonic() + LAST_FRAME_S)
             time.sleep(0.01)
-        raise AssertionError(f"no frame within {seconds} s satisfied {predicate}")
+        ended = "" if self.runner.is_alive() else "; wlx run had ended"
+        raise AssertionError(f"no frame within {seconds} s satisfied {predicate}{ended}")
 
     def ended(self):
         return self.frame(lambda f: f.stop_kind is not None)
@@ -9971,14 +10030,14 @@ def test_e2e_a_mark_is_strobed_in_its_trial_and_recorded_with_three_instants_and
 def test_e2e_each_kind_of_scheduled_stop_ends_the_session_with_its_reason(
     tmp_path, monkeypatch, zmq_cleanup, server_cleanup, body, reason
 ):
-    """Spec §5.4. The clock kind's next occurrence is made a second away
+    """Spec §5.4. The clock kind's next occurrence is made a quarter second away
     (`taskd._next_occurrence`, in this process, where `wlx run` runs): a real minute
     is too long for the suite, and what that function computes is pinned on its own
     in `tests/test_taskd.py`. Everything else is real -- the page's POST, `wlx
     serve`'s command thread, the wire, and the session's anchored clock."""
     from wl_expcontroller import taskd
 
-    monkeypatch.setattr(taskd, "_next_occurrence", lambda hhmm, wall: wall + 1.0)
+    monkeypatch.setattr(taskd, "_next_occurrence", lambda hhmm, wall: wall + 0.25)
     with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
         running = run.frame(lambda f: f.trial_index >= 1)
         assert run.post({"kind": "schedule", "by": "jake", **body})[0] == 200
@@ -10110,6 +10169,11 @@ Run: `for i in 1 2 3; do WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cachepr
 Expected: 12 passed each time.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
 Expected: **1326 passed**.
+
+Then the mutation that once ran these tests past the harness's limit, read by its line. Do nothing else in the worktree while it runs:
+
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/taskd.py _command`
+Expected: `baseline: 1326 passed`; then `caught    _command    68 failed, 1258 passed … <- tests/…`, naming tests — **not** `caught … timed out after 300s (mutation hangs)`, which the harness also prints as caught and which is no test noticing; then `restored: 1326 passed`.
 
 - [ ] **Step 4: Commit**
 
@@ -10865,6 +10929,14 @@ sign-in through wl-works, designed in full from the P4d-2b spec §5.7 once b2a h
   rig exists; a note typed after the session ended is refused with the post-loop sentence,
   so it is lost from the record (the stamp is kept); the page's script is checked by
   `node --check` and by eye (Task 15 Step 4), never by pytest.
+- **Two bounds a test here needs, found by the plan's pre-flight sweep printing `timed
+  out`:** a simulated session with a mark socket runs fewer trials a second than one
+  without (every frame pays for the check), so a trial budget sized for b1's session held
+  each of b2a's end to end tests past 50 s under a broken command path —
+  `tests/test_serve.py`'s `CONTROL_TRIAL_BUDGET` is theirs, and `_Session.frame` stops
+  waiting once `wlx run` has ended; and `Outbox.submit` waits as long as its thread lives,
+  so a test calling it on its own thread hangs rather than fails when a job goes
+  unanswered — call it through `_submitted`.
 
 The gate's result and the test count are added here in the plan's Task 15 Step 3.
 
