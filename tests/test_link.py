@@ -9,7 +9,11 @@ telemetry message and would still pass every other test in this suite.
 
 from __future__ import annotations
 
+import gc
+import threading
 import time
+import weakref
+from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -774,6 +778,160 @@ def test_close_releases_both_sockets(zmq_cleanup):
 
     assert link._pub.closed and link._rep.closed
     assert console._sub.closed and console._req.closed
+
+
+def test_close_terminates_the_context_and_a_second_close_is_harmless(zmq_cleanup):
+    """`close()` now runs the same release the collector would (`link._release`,
+    Ruling 18), so this pins what it owes on the ordinary path: the context is
+    terminated, not only the sockets closed, and calling it again does nothing and
+    raises nothing -- `with` plus an explicit `close()` inside it is an ordinary way
+    to call it twice."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0))
+
+    link.close()
+    console.close()
+
+    assert link._ctx.closed, "close() left the link's context unterminated"
+    assert console._ctx.closed, "close() left the console's context unterminated"
+
+    link.close()
+    console.close()
+
+    assert link._pub.closed and link._rep.closed and link._ctx.closed
+    assert console._sub.closed and console._req.closed and console._ctx.closed
+
+
+@contextmanager
+def _collector_paused():
+    """No automatic collection runs inside this block, so the only one that can free
+    what a test drops is the one the test starts itself, on its own thread. Without
+    this, an allocation after the drop could trigger a collection on the test's own
+    thread -- and under the deadlock these tests exist for, that would hang the suite
+    instead of failing a test."""
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
+
+
+def _collected_within(seconds: float) -> bool:
+    """Run one full cyclic collection on a daemon thread, and say whether it returned
+    within `seconds`.
+
+    **A daemon thread and a bounded join, so the deadlock is a failure and not a
+    hang.** Before Ruling 18 this collection never returned: `pyzmq`'s `Context._term`
+    waits in `zmq_ctx_destroy` with the GIL released, so this thread could sit there
+    while the join below timed out and the test failed. A stuck thread keeps the
+    collector marked busy for the rest of the process, so a later `gc.collect()`
+    returns at once having collected nothing; the tests after a failure here fail
+    too, loudly, rather than hanging."""
+    collector = threading.Thread(target=gc.collect, name="wlx-test-collector", daemon=True)
+    collector.start()
+    collector.join(timeout=seconds)
+    return not collector.is_alive()
+
+
+# **None of the three tests below registers its cyclic object with `zmq_cleanup`, on
+# purpose.** That fixture's teardown calls `destroy` on the context. If the collector
+# thread is stuck in `term()` on that context, which is the failure these tests
+# exist to catch, a second `term()` from the teardown blocks too, and a bounded failure
+# becomes a hung suite. When the tests pass, the collector has already terminated the
+# context. `tests/_zmq_release.py`'s autouse fixture, which holds every object a test
+# builds, is imported only by `test_serve.py` and `test_cli.py`, so it holds nothing
+# here. If it ever did, the object would never become garbage, and these tests would
+# fail on `ctx.closed` instead of exercising the collector. They could not pass by it.
+#
+# **What each test holds, and why it cannot change the outcome.** It holds the
+# context strongly, and the sockets only through `weakref`s. A context refers to its
+# sockets only through its own `WeakSet`, so holding it keeps no socket reachable.
+# A strong reference to a socket would keep it in that `WeakSet`, and the old
+# `destroy` would then have closed it, so that kind of reference would hide the bug.
+# `ctx.closed` stands for the sockets: libzmq's `zmq_ctx_term` returns only once every
+# socket in the context is closed, and pyzmq sets `closed` only after it returns. The
+# `weakref`s then show that the net let go of the sockets once it ran, and did not
+# keep them alive.
+
+
+def test_an_unclosed_link_in_a_reference_cycle_is_released_by_the_collector():
+    """**Ruling 18.** `wlx run --link`'s `ZmqLink` sits in a reference cycle,
+    `Session -> Rig -> Session.wall_now -> Session`. If `close()` never ran, only the
+    cyclic collector frees it, and the finalizer is the only thing that releases its
+    sockets and context. That finalizer used to be `ctx.destroy`. It found no sockets
+    in the context's `WeakSet`, because the collector had already cleared them, and
+    `term()` then waited forever for sockets that were still open, on the collecting
+    thread, which in `wlx run` is the trial process. Reproduced 2026-09-27, in a bare
+    script and in this suite. The link here is put in a cycle of its own, which is the
+    same situation without building a `Session`."""
+    with _collector_paused():
+        link = ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+        link._cycle = link
+        ctx = link._ctx
+        sockets = [weakref.ref(link._pub), weakref.ref(link._rep)]
+        del link
+
+        returned = _collected_within(10.0)
+
+    assert returned, "collecting an unclosed ZmqLink in a reference cycle hung for 10 s"
+    assert ctx.closed, "the collector freed the link without terminating its context"
+    assert all(ref() is None for ref in sockets), "the finalizer kept the link's sockets alive"
+
+
+def test_an_unclosed_console_in_a_reference_cycle_is_released_by_the_collector(zmq_cleanup):
+    """The console side of the test above. The link it connects to is an ordinary
+    one, registered with `zmq_cleanup`. Only the console is dropped in a cycle."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    with _collector_paused():
+        console = ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0)
+        console._cycle = console
+        ctx = console._ctx
+        sockets = [weakref.ref(console._sub), weakref.ref(console._req)]
+        del console
+
+        returned = _collected_within(10.0)
+
+    assert returned, "collecting an unclosed ZmqConsole in a reference cycle hung for 10 s"
+    assert ctx.closed, "the collector freed the console without terminating its context"
+    assert all(ref() is None for ref in sockets), "the finalizer kept the console's sockets alive"
+
+
+def test_a_console_that_failed_to_connect_is_released_by_the_collector_too():
+    """A `ZmqConsole` whose `connect` raises is half-built: its context and its SUB
+    socket exist, and the REQ socket does not. Nothing ever calls `close()` on it,
+    because no caller ever had a handle. So the finalizer has to release exactly the
+    sockets that got made, and from inside a cycle as well. The subclass plants the
+    cycle before the constructor runs, and records the context and a `weakref` to
+    the socket even though the constructor raises. That is the only way to reach an
+    object whose construction failed."""
+    import zmq
+
+    planted: dict = {}
+
+    class _Cyclic(ZmqConsole):
+        def __init__(self, *args, **kwargs):
+            self._cycle = self
+            try:
+                super().__init__(*args, **kwargs)
+            finally:
+                planted["ctx"] = self._ctx
+                planted["sub"] = weakref.ref(self._sub)
+
+    with _collector_paused():
+        try:
+            _Cyclic("tcp://a b:5571", "tcp://127.0.0.1:1", settle_s=0)
+        except zmq.ZMQError:
+            pass
+        else:  # pragma: no cover -- libzmq accepted a host with a space in it
+            raise AssertionError("connect accepted 'tcp://a b:5571'")
+
+        returned = _collected_within(10.0)
+
+    assert returned, "collecting a half-built ZmqConsole in a reference cycle hung for 10 s"
+    assert planted["ctx"].closed, "the collector freed the console without terminating its context"
+    assert planted["sub"]() is None, "the finalizer kept the console's SUB socket alive"
 
 
 def test_the_phase_and_the_kind_of_stop_survive_the_wire():

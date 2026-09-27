@@ -37,6 +37,13 @@ measured in scratchpad probes:
    deleted, and then `gc.collect()`. **So an explicit `gc.collect()` is not the safe
    path that earlier comments here described. It is where the deadlock happens.**
 
+**The deadlock itself was fixed in `link.py` in the commit after this file's (Ruling
+18, 2026-09-27), and the list above is now history.** The finalizer runs
+`link._release` with the sockets held strongly, so a cyclic collection of an unclosed
+link or console closes them, terminates the context, and returns. `tests/test_link.py`'s `*_released_by_the_collector*` tests
+pin that. This fixture stays, for the reason in the next paragraph: it does not
+depend on a collection ever coming.
+
 A fixture's teardown does not wait for the collector, and it does not call the
 functions a mutation neuters. Holding each object keeps it reachable, and so out of the
 collector's hands, until teardown. Teardown destroys each context while its sockets are

@@ -860,6 +860,84 @@ def _binds_beyond_this_machine(endpoint: str) -> bool:
         return True
 
 
+def _release(ctx, sockets) -> None:
+    """Close each of `sockets` with `linger=0`, then terminate `ctx`.
+
+    This is how a `ZmqLink` or a `ZmqConsole` lets go of ZeroMQ, and it is the only
+    way. Each object registers it with `weakref.finalize` before opening its first
+    socket, and passes the context and its own list of sockets, which the constructor
+    appends to as each one opens. Three callers reach it through that finalizer, which
+    runs it at most once: `close()`, a constructor that raised partway, and the cyclic
+    collector freeing an object whose `close()` never ran. Nothing here runs per
+    frame.
+
+    **Why it holds the sockets itself (Ruling 18, 2026-09-27).** The net used to be
+    `weakref.finalize(self, self._ctx.destroy, 0)`, and when the cyclic collector freed
+    an unclosed object, that net deadlocked the collecting thread:
+
+    - pyzmq's `Context.destroy` closes the sockets it finds in `Context._sockets`, a
+      `WeakSet`, then calls `term()`. `term()` blocks until every socket in the context
+      is closed.
+    - The collector clears every weak reference to the objects it is about to free
+      before it invokes any weakref callback. So by the time the finalizer ran, the
+      sockets were already gone from that set. `destroy` closed nothing, and `term()`
+      waited for two sockets that were still open.
+    - Each socket's `Socket.__del__` would have closed it, but the collector runs
+      `__del__` only after the callbacks return, on the same thread. So `term()` never
+      returned.
+
+    Measured: freed by reference counting, the old finalizer's `destroy` found 2 live
+    sockets, and the process went on. Freed through a cycle, it found 0, and the
+    process hung in `term` <- `destroy` <- `weakref.__call__`. That happened in a bare
+    script with no pytest, and in this suite. The `*_released_by_the_collector*` tests
+    in `tests/test_link.py` are that reproduction. The cycle is real: `taskd.Session`
+    holds its `Rig`, the `Rig`'s `wall_clock` is a method bound to that session, and a
+    `wlx run --link` session holds its `ZmqLink`. Every production construction uses
+    `with`, so `close()` runs. But the net exists for the case where it did not, and
+    in that case it hung the trial process.
+
+    Sources: pyzmq 27.2.0, as installed in this repo's venv, read 2026-09-27.
+    `zmq/sugar/context.py` has `Context.destroy`, which iterates `_sockets`, then
+    `term()`, and its docstring's thread warning. `zmq/sugar/socket.py` has
+    `Socket.__del__`, which calls `close()` if the socket is not closed.
+    `zmq/backend/cython/_zmq.py` has `Context._term`, which calls `zmq_ctx_destroy`
+    with the GIL released and does nothing on a closed context, and `Socket.close`,
+    which does nothing on a closed socket. The collector's order is CPython 3.12.13's
+    `Modules/gcmodule.c`: `handle_weakrefs` clears, then calls back, and
+    `gc_collect_main` runs `finalize_garbage` after it. Read 2026-09-27.
+
+    **What changed.** The finalizer's arguments are the context and the list of
+    sockets. Never the object, and never a bound method of it: either would keep the
+    object alive forever. The finalizer registry references the list, so the sockets
+    stay reachable, the collector leaves them out of what it frees, and they are
+    closed here from the list instead of looked up through the `WeakSet`. `destroy`
+    then terminates the context. It is `destroy` rather than a bare `term()` for two
+    reasons. On the `close()` path, where the object is alive and the `WeakSet` is
+    whole, it still closes a socket that a later edit opened without adding it to the
+    list. And it returns at once on a context that is already closed, as one is after
+    a test fixture destroyed it first.
+
+    **Threads.** pyzmq's `destroy` docstring says it must not be called while sockets
+    are active in other threads, because `Socket.close` is not threadsafe. Each
+    caller runs on a thread where that holds:
+
+    - `close()` runs it on the thread that called `close()`, where `destroy` ran
+      before.
+    - A failed constructor runs it on the constructing thread, before any caller has a
+      handle.
+    - The collector runs it on whichever thread collected, but only once the object
+      is unreachable. Nothing holds the object, so nothing can be using its sockets.
+      Closing them on that thread is what each socket's own `__del__` would have done,
+      on that same thread.
+    - `weakref.finalize` also runs a still-live finalizer at interpreter exit, on
+      the main thread, as it did for the old net.
+    """
+    for sock in sockets:
+        if not sock.closed:
+            sock.close(linger=0)
+    ctx.destroy(linger=0)
+
+
 class ZmqLink:
     """The `taskd` side of the console link, live on a real socket (S9a §7:
     `taskd ── ZMQ REQ/REP (commands) / ZMQ PUB (telemetry) ──> console`, ADR-0003's
@@ -933,22 +1011,28 @@ class ZmqLink:
                     )
 
         self._ctx = zmq.Context()
-        # A cleanup path that does not go through close() at all -- see close()'s
-        # own docstring for why that matters and what it replaced.
-        weakref.finalize(self, self._ctx.destroy, 0)
+        #: Every socket this link opens, appended the moment it exists. The finalizer
+        #: below holds this list, not `self`, so what it releases stays reachable
+        #: however this object is freed. See `_release`.
+        self._sockets: list = []
+        # Registered before the first socket, so a constructor that raises partway
+        # is covered too. `close()` calls it, and so does the `except` below. It runs
+        # `_release` at most once, and never needs `close()` to have run.
+        self._finalizer = weakref.finalize(self, _release, self._ctx, self._sockets)
 
         # **Everything from here to the end of the binds is inside the `try`, and
         # that is not tidiness.** `bind` fails for ordinary reasons -- a port already
         # in use, an address this host has not configured -- and until this was here,
         # such a failure raised out of the constructor *after* the context and the
         # PUB socket existed and *before* any caller had a handle to close. The
-        # context was then abandoned mid-construction, which is exactly the state
-        # `close()`'s docstring says makes pytest's cyclic collector stop
-        # terminating. Found by doing it: `tcp://127.0.0.2:0` is inside the loopback
-        # block, so the `allow_remote` guard above lets it through, and a stock macOS
-        # loopback has no such address -- the suite hung past 600 s.
+        # context was then abandoned mid-construction, left to whatever freed the
+        # object, which before `_release` could deadlock (see its docstring). Found
+        # by doing it: `tcp://127.0.0.2:0` is inside the loopback block, so the
+        # `allow_remote` guard above lets it through, and a stock macOS loopback has
+        # no such address -- the suite hung past 600 s.
         try:
             self._pub = self._ctx.socket(zmq.PUB)
+            self._sockets.append(self._pub)
             # LINGER=0 from creation, not only passed at close time: whenever this
             # socket is closed -- by close(), or by the finalizer above -- it cannot
             # block flushing a queued message, regardless of which path closed it.
@@ -957,14 +1041,14 @@ class ZmqLink:
             self.pub_endpoint = self._pub.getsockopt_string(zmq.LAST_ENDPOINT)
 
             self._rep = self._ctx.socket(zmq.REP)
+            self._sockets.append(self._rep)
             self._rep.setsockopt(zmq.LINGER, 0)
             self._rep.bind(rep_endpoint)
             self.rep_endpoint = self._rep.getsockopt_string(zmq.LAST_ENDPOINT)
         except BaseException:
-            # `destroy(linger=0)`, the same call `close()` makes and for the same
-            # reason -- it force-closes whichever sockets exist rather than needing
-            # to know which ones got that far.
-            self._ctx.destroy(linger=0)
+            # The same release `close()` runs, now, rather than when this half-built
+            # object is freed: it closes whichever sockets got that far.
+            self._finalizer()
             raise
 
         #: Wire packets `drain()` could not turn into a `Command`, as `Refused`
@@ -1066,36 +1150,30 @@ class ZmqLink:
     def close(self) -> None:
         """Release both sockets and this link's own `Context`, promptly.
 
-        `Context.destroy(linger=0)`, not `.term()` plus two manual `.close()` calls
-        -- fix round 1, measured: `ctx.term()` blocks on ANY socket under that
-        context that is not yet closed (a bare probe script, this session's
-        scratchpad: an unclosed socket makes `term()` hang indefinitely), while
-        `destroy(linger=0)`, called the same way from ordinary application code,
-        force-closes every socket the context owns and returns immediately
-        (measured: 0.0001 s against the identical unclosed socket) -- so this stays
-        correct even if a future edit adds a third socket here and forgets to list
-        it explicitly, which the old three-line version could not say.
+        Runs this link's finalizer, which runs `_release` once: each socket is
+        closed with `linger=0`, then `Context.destroy(linger=0)` terminates the
+        context. A second call does nothing. **`destroy`, not a bare `.term()`** --
+        fix round 1, measured: `ctx.term()` blocks on ANY socket under that context
+        that is not yet closed (a bare probe script, this session's scratchpad: an
+        unclosed socket makes `term()` hang indefinitely), while `destroy(linger=0)`,
+        called the same way from ordinary application code, force-closes every
+        socket the context still lists and returns immediately (measured: 0.0001 s
+        against the identical unclosed socket) -- so this stays correct even if a
+        future edit adds a third socket here and forgets to append it to
+        `self._sockets`.
 
-        **An open item, recorded rather than papered over.** `__init__` also
-        registers a `weakref.finalize(self, self._ctx.destroy, 0)` -- confirmed, by
-        sampling the stuck process, to actually run (a mutated, do-nothing `close()`
-        no longer leaves the callback un-invoked) -- but neutering `close()`
-        (`tools/mutate.py --all`, proving it is covered) still hangs the full suite
-        past 300 s. The same `destroy(linger=0)` call that returns in 0.0001 s from
-        this method, from a bare script, and even from an explicit `gc.collect()` in
-        a bare script with several abandoned link/console pairs, blocks in
-        `ctx_t::terminate()` specifically when invoked as a `weakref.finalize`
-        callback from *pytest's* cyclic collector (`gc_collect_main`) -- narrowed
-        that far and no further before running out of budget for this round. Ruled
-        out by direct measurement, not assumption: an unread `drain()` reply left on
-        the REQ socket; the number of accumulated abandoned pairs; and a live peer
-        connection on the socket being destroyed -- none of these reproduce it
-        outside pytest. `tools/mutate.py`'s own docstring calls a hung mutation
-        caught, since a suite that stops terminating has certainly noticed the
-        change, and every other function in this file is caught by a fast,
-        conventional assertion failure -- only this one costs the full 300 s. Left
-        for a future session with a `sample`/`py-spy` trace of pytest's own object
-        graph at the point of collection, which this round did not have time for.
+        **The open item this docstring carried until 2026-09-27 is closed (Ruling
+        18).** It recorded that neutering `close()` hung the suite past 300 s inside
+        the `weakref.finalize(self, self._ctx.destroy, 0)` callback `__init__` used
+        to register, and it concluded that only *pytest's* cyclic collector did
+        that, because an explicit `gc.collect()` in a bare script returned. Both
+        halves were wrong. Any cyclic collection of an unclosed link hung that way,
+        in a bare script too, and the bare scripts that returned had freed their
+        objects by reference counting instead. The cause was the old finalizer:
+        `destroy` looked for the sockets in a `WeakSet` the collector had already
+        emptied, closed nothing, and `term()` waited on them forever. `_release`'s
+        docstring has the mechanism, the pyzmq and CPython source it was read from,
+        and the fix. The finalizer now holds the sockets itself.
 
         Not part of the `Link` protocol. **Resolved 2026-09-19 (Task 6):** this
         paragraph used to name `wlx run --link` as the "not yet" nothing called
@@ -1107,29 +1185,21 @@ class ZmqLink:
         on every exit from that command, a normal return or an exception out of
         `session.run()` alike.
 
-        **The open item above is not "unrelated", the way this paragraph first
-        said -- Task 6's own fix round 1 reproduced it, by hand, one file over,**
-        which is why that claim is corrected here rather than left standing.
+        **Task 6's own fix round 1 met the same hang one file over.**
         `tests/test_cli.py`'s first end-to-end `--link` test built its own
         `ZmqLink`/`ZmqConsole` instances without `test_link.py`'s `zmq_cleanup`
         fixture, module-local at the time, and `tools/mutate.py --returns None
-        wl_expcontroller/link.py close` hung past 300 s again -- measured, same
-        command, only that test file differing from the commit one before it.
-        That is independent confirmation the open item is a property of *any*
-        unregistered `ZmqLink`/`ZmqConsole` left for pytest's cyclic collector
-        while `close()` is neutered, not something specific to `test_link.py`'s
-        own tests. Fixed by moving `zmq_cleanup` to `conftest.py` (shared across
-        files rather than module-local) and, for the one `ZmqLink` this task's
-        test has no handle to register -- the one `main()` itself builds and
-        closes, entirely inside a background thread -- an explicit `gc.collect()`
-        after that thread joins, forcing its cyclic collection under the test's
-        own control rather than leaving it for pytest's. **The mechanism itself
-        (why a collector pass specifically invoked as pytest's own, `gc_collect_
-        main`, hangs where an explicit `gc.collect()` from a test does not) is
-        still exactly as open as the paragraph above says.** Only "nothing calls
-        `close()` in production" is resolved by this one.
+        wl_expcontroller/link.py close` hung past 300 s again. That was fixed by
+        moving `zmq_cleanup` to `conftest.py`, and, for the one `ZmqLink` the test
+        has no handle to register -- the one `main()` builds and closes on a
+        background thread -- by an explicit `gc.collect()` after that thread
+        joined. The explicit collection was safe only while reference counting
+        freed that link. Once `Rig.wall_clock` put it in a `Session` cycle (P4d-2b
+        b1), the explicit collection became where the deadlock happened.
+        `b85d0d7` replaced it with `tests/_zmq_release.py`, and `_release` removed
+        the deadlock itself.
         """
-        self._ctx.destroy(linger=0)
+        self._finalizer()
 
     def __enter__(self) -> "ZmqLink":
         return self
@@ -1178,9 +1248,15 @@ class ZmqConsole:
         import zmq
 
         self._ctx = zmq.Context()
-        weakref.finalize(self, self._ctx.destroy, 0)  # see ZmqLink.__init__
+        # Registered before the first socket, as in `ZmqLink.__init__`, and for a
+        # reason that matters more here: nothing below is in a `try`, so a `connect`
+        # that raises (`tcp://a b:5571`) leaves a half-built console no caller ever
+        # holds. This finalizer is then what releases the socket that got made.
+        self._sockets: list = []
+        self._finalizer = weakref.finalize(self, _release, self._ctx, self._sockets)
 
         self._sub = self._ctx.socket(zmq.SUB)
+        self._sockets.append(self._sub)
         self._sub.setsockopt(zmq.LINGER, 0)  # see ZmqLink.__init__ -- same reasoning
         self._sub.setsockopt(zmq.SUBSCRIBE, b"")
         # `receive_timeout_s` is 5 s by default, the ceiling `wlx console` has always
@@ -1191,6 +1267,7 @@ class ZmqConsole:
         self._sub.connect(pub_endpoint)
 
         self._req = self._ctx.socket(zmq.REQ)
+        self._sockets.append(self._req)
         self._req.setsockopt(zmq.LINGER, 0)
         # Same ceiling as the SUB socket above, same reasoning -- see send()'s
         # docstring for why a bounded read happens there at all.
@@ -1258,7 +1335,7 @@ class ZmqConsole:
 
     def close(self) -> None:
         """See `ZmqLink.close` -- same reasoning, same shape."""
-        self._ctx.destroy(linger=0)
+        self._finalizer()
 
     def __enter__(self) -> "ZmqConsole":
         return self

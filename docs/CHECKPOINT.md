@@ -387,6 +387,12 @@ same handoff. Start b2 next, from the P4d-2b spec §2 and §4.0.
   walking up to a `.git` file or directory; when it holds a non-ASCII character, which
   `hmac.compare_digest` cannot compare, so every request would fail, the correct one
   included; and when it holds a non-printable character, which no header can carry.
+- **The full gate's three timeouts were the harness noticing, and each is now `N failed`:**
+  `serve.take`, `link.close` and `link.__exit__` (`b85d0d7`). The `link` pair traced to the
+  `Session`↔`Rig` cycle. With `close` neutered, the cyclic collector freed `wlx run
+  --link`'s `ZmqLink`, and its `weakref.finalize` safety net deadlocked in `term()`, because
+  the collector had already dropped the sockets from the context's `WeakSet`. That
+  deadlock is fixed (Ruling 18): the finalizer holds the sockets itself (`link._release`).
 
 **Carried forward from b1.** The ledger that recorded these is gitignored, so they are
 here, one line each:

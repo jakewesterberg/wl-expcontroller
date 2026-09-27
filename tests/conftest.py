@@ -57,19 +57,24 @@ def zmq_cleanup():
     body to prove it is covered (and, because `__exit__` only calls `close()`,
     neuters that too). Every test that used to clean up by calling `link.close()` or
     `with ZmqLink(...) as link:` left an abandoned `Context` behind under that
-    mutation, because the call site still ran but the method did nothing. Several
-    abandoned contexts, reachable only once pytest's own object graph triggers a
-    cyclic GC pass, is what made `tools/mutate.py wl_expcontroller/link.py close`
-    hang past its 300 s timeout -- confirmed by `sample`-ing the stuck process
-    (`test_link.py`'s fix round 1 report has the full trace), and *not* fixed by
-    routing cleanup through `Context.destroy(linger=0)` or a `weakref.finalize`
-    safety net, because both still depend on *something* eventually reaching the
-    abandoned object -- GC-driven either way, just with a different trigger.
+    mutation, because the call site still ran but the method did nothing. That is
+    what made `tools/mutate.py wl_expcontroller/link.py close` hang past its 300 s
+    timeout. This paragraph used to blame pytest's own object graph, and to call
+    the `weakref.finalize` safety net no help. **The actual mechanism was found on
+    2026-09-27, and it was the net itself** (`link._release`'s docstring has it).
+    The old finalizer, `ctx.destroy`, deadlocked whenever the cyclic collector
+    freed an unclosed object, because the collector had already dropped the
+    object's sockets from the context's `WeakSet`. Any cyclic collection did it, in a
+    bare script too, not only pytest's. Ruling 18 fixed the net: it now holds the
+    sockets itself, so a collection of an unclosed link or console releases it and
+    returns.
 
-    A fixture's teardown is not GC-driven: it always runs when the requesting test
-    returns, pass or fail, and calls `Context.destroy(linger=0)` directly on the raw
-    `._ctx` -- bypassing `close()`/`__exit__` entirely, so neutering either one
-    cannot stop it. Verified this actually removes the hang before relying on it:
+    This fixture is still worth having. A fixture's teardown does not wait for a
+    collection that may never come: it always runs when the requesting test returns,
+    pass or fail, and calls `Context.destroy(linger=0)` directly on the raw `._ctx`
+    -- bypassing `close()`/`__exit__` entirely, so neutering either one cannot stop
+    it, and a test's sockets and ports never outlive it. Verified this actually
+    removes the hang before relying on it:
     a throwaway three-test file using this exact pattern, with `close()` neutered by
     hand, ran in 0.18s (one clean, fast, expected failure from the test that calls
     `close()` on purpose; no hang anywhere) where the equivalent `try`/`finally`
