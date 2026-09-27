@@ -20,7 +20,15 @@ import pytest
 
 from _frames import frame, view
 from wl_expcontroller.link import ParamRow, Refused, Staged
-from wl_expcontroller.web import FONTS, FRAGMENT_IDS, LEGEND, font_bytes, fragments, page
+from wl_expcontroller.web import (
+    _SCRIPT,
+    FONTS,
+    FRAGMENT_IDS,
+    LEGEND,
+    font_bytes,
+    fragments,
+    page,
+)
 
 LIMIT = "out_of_cage: subject 'A' has been out of its cage 43201 s against a ceiling of 43200"
 
@@ -604,6 +612,24 @@ def test_the_script_does_only_what_spec_4_3_asks():
     ):
         assert needle in document, needle
     assert "disconnected · the session keeps running on the box" in document
+
+
+def test_the_stale_timer_runs_from_the_frames_age_not_from_arrival():
+    """Ruling 12 (2026-09-27). Python cannot run the script, so its text is pinned
+    where it is load-bearing: the baseline is the event's arrival less the `age`
+    `wlx serve` sends, stale is `now - baseline` beyond `--stale-after`, the banner's
+    N is that same interval, and a `null` age -- no frame yet -- runs no timer. The
+    old `last = Date.now()` reset is what let a reconnect onto an old frame, or a
+    refusal's wake-up, restart the clock."""
+    assert "last = Date.now()" not in _SCRIPT
+    assert (
+        "baseline = payload.age === null ? null : Date.now() - payload.age * 1000;"
+        in _SCRIPT
+    )
+    assert "var held = Date.now() - baseline;" in _SCRIPT
+    assert "if (held > staleMs) {" in _SCRIPT
+    assert '"stream stale · last frame " + Math.floor(held / 1000) + " s ago"' in _SCRIPT
+    assert "if (!live || baseline === null) {" in _SCRIPT
 
 
 def test_the_stream_banner_and_the_disconnect_dialog_start_hidden():

@@ -235,9 +235,17 @@ welfare number and bounds nothing.
 
 ### 4.3 When the stream falters
 
-- **On connect:** one full render, then a fragment per frame.
+- **On connect:** one full render, then the fragments that changed, once per frame and once
+  per keepalive interval between frames, each re-rendered from a fresh snapshot, so what
+  ages between frames — the time since the last reward, *wl-works sees* — moves on the page.
+  Every event carries `age`, the seconds `wlx serve` has held the latest frame on its steady
+  clock (`null` before any) (Ruling 12, 2026-09-27).
 - **Stale** (no frame for `--stale-after`): a banner reading *stream stale · last frame N s
-  ago*, and the values are greyed.
+  ago*, and the values are greyed. The page's timer runs only while frames are due, from a
+  baseline of the event's arrival less its `age`: stale once *now − baseline* exceeds
+  `--stale-after`, and N is *now − baseline*. So a page that connects onto an already-old
+  frame, or is woken by a refused one, does not restart the clock, and a `null` age runs no
+  timer (Ruling 12, 2026-09-27).
 - **Lost:** a banner reading *stream lost*. The browser reconnects on its own and re-renders in
   full when it does.
 - **The ✕** closes the page's stream and says *disconnected · the session keeps running on the

@@ -446,11 +446,19 @@ def _raw(port: int, data: bytes) -> bytes:
     return b"".join(chunks)
 
 
-def _events(response):
+def _events(response, *, deadline_s: float | None = None):
     """Each `frame` event's payload, as a browser's `EventSource` would dispatch it:
-    comments and the `retry:` line are skipped."""
+    comments and the `retry:` line are skipped.
+
+    `deadline_s` bounds the whole read on this generator's own clock. The socket's
+    10 s timeout alone does not: a server that writes comment lines and never an
+    event keeps the socket busy, and this loop would skip them forever -- as it did
+    against the `: keepalive` comments Ruling 12 replaced."""
+    ends = None if deadline_s is None else time.monotonic() + deadline_s
     name, data = None, None
     while True:
+        if ends is not None and time.monotonic() > ends:
+            raise AssertionError(f"no frame event within {deadline_s} s")
         line = response.readline()
         if not line:
             return
@@ -643,12 +651,112 @@ def test_a_stream_on_the_box_says_so():
     assert first["frags"]["presence"].startswith("<b>this box</b>")
 
 
-def test_a_quiet_stream_sends_keepalives():
+def test_a_quiet_stream_is_refreshed_each_keepalive_not_sent_a_comment():
+    """Ruling 12 (2026-09-27) replaced Task 10's `: keepalive` comment with an event:
+    each keepalive interval re-renders from a fresh snapshot and sends the fragments
+    that changed -- none here, since nothing moved -- with `live` and `age`. An event
+    with nothing changed is still a write, so a browser that went away is still
+    found at the next one."""
     hub = _hub()
+    hub.offer(frame())
     with _served(hub, keepalive_s=0.05) as port, _stream(port) as response:
         lines = [response.readline() for _ in range(40)]
 
-    assert b": keepalive\n" in lines
+    assert b": keepalive\n" not in lines
+    payloads = [
+        json.loads(line[len(b"data: ") :]) for line in lines if line.startswith(b"data: ")
+    ]
+    assert len(payloads) >= 10
+    assert tuple(payloads[0]["frags"]) == FRAGMENT_IDS
+    assert all(p == {"frags": {}, "live": True, "age": 0.0} for p in payloads[1:])
+
+
+def _since_last_reward(payload: dict) -> str:
+    found = re.search(
+        r'<span class="lab">Since last reward</span><span class="val">([^<]*)</span>',
+        payload["frags"]["strip"],
+    )
+    assert found, payload["frags"]["strip"]
+    return found.group(1)
+
+
+def _until_sent(events, fragment: str) -> dict:
+    """The next payload that carries `fragment`, from at most 200 events -- each a
+    keepalive refresh at most `keepalive_s` apart -- never an unbounded wait."""
+    for _, payload in zip(range(200), events):
+        if fragment in payload["frags"]:
+            return payload
+    raise AssertionError(f"no refresh carried {fragment!r}")
+
+
+def test_every_payload_carries_age_and_it_is_null_before_any_frame():
+    """Ruling 12: the page's stale timer is based on `age`, so every event carries
+    it -- the full render, a refusal's wake-up, a frame's, and a keepalive
+    refresh."""
+    hub = _hub()
+    with _served(hub, keepalive_s=0.05) as port, _stream(port) as response:
+        events = _events(response, deadline_s=10.0)
+        payloads = [next(events) for _ in range(3)]
+        hub.reject(REFUSED)
+        payloads += [next(events) for _ in range(3)]
+        hub.offer(frame())
+        payloads += [next(events) for _ in range(3)]
+
+    assert all("age" in payload for payload in payloads)
+    assert payloads[0]["age"] is None
+    assert payloads[-1]["age"] == 0.0
+
+
+def test_a_quiet_stream_whose_frame_goes_stale_is_refreshed_to_degraded():
+    """Ruling 12: `_events` rendered only when the hub woke it, so through a stall the
+    *wl-works sees* pane kept `ok · Last frame 0 s ago` while `GET /health` said
+    `degraded`. A keepalive refresh now re-renders it."""
+    steady = _Clock(0.0)
+    hub = _hub(steady)
+    hub.offer(frame())
+    with _served(hub, keepalive_s=0.05, stale_after_s=30.0) as port, _stream(
+        port
+    ) as response:
+        events = _events(response, deadline_s=10.0)
+        assert '<span class="pill ok">ok</span>' in next(events)["frags"]["rt-health"]
+        steady.t = 45.0
+        refreshed = _until_sent(events, "rt-health")
+
+    assert '<span class="pill warn">degraded</span>' in refreshed["frags"]["rt-health"]
+    assert "45 s ago" in refreshed["frags"]["rt-health"]
+    assert refreshed["age"] == 45.0
+
+
+def test_a_stream_opened_onto_an_old_frame_is_told_its_age_at_once():
+    """Ruling 12: a page that reconnected onto an already-stale stream got a full
+    render with no age, so its timer started from the render's arrival -- no stale
+    banner for `--stale-after` seconds, and then one that understated N."""
+    steady = _Clock(0.0)
+    hub = _hub(steady)
+    hub.offer(frame())
+    steady.t = 100.0
+    with _served(hub) as port, _stream(port) as response:
+        first = next(_events(response, deadline_s=10.0))
+
+    assert first["age"] >= 100.0
+    assert first["live"] is True
+
+
+def test_the_time_since_the_last_reward_advances_with_no_new_frame():
+    """Ledger Ruling 1's "plus the seconds `wlx serve` has held the frame" only
+    reaches a live page if the page is re-rendered between frames (Ruling 12):
+    `frame()`'s reward is 41.5 s before its instant, then 20 s more pass here."""
+    steady = _Clock(0.0)
+    hub = _hub(steady)
+    hub.offer(frame())
+    with _served(hub, keepalive_s=0.05) as port, _stream(port) as response:
+        events = _events(response, deadline_s=10.0)
+        first = next(events)
+        steady.t = 20.0
+        later = _until_sent(events, "strip")
+
+    assert _since_last_reward(first) == "41 s"
+    assert _since_last_reward(later) == "61 s"
 
 
 def test_closing_the_hub_ends_an_open_stream():

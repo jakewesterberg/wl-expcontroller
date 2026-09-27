@@ -838,13 +838,21 @@ _LOGO = (
 #: reconnects on its own after a dropped connection, and `wlx serve` sends a full
 #: render first on every new stream, so a reconnect re-renders in full. Everything
 #: worth testing is in Python; this is small enough to read.
+#:
+#: **The stale timer runs from the frame's age, not from an event's arrival**
+#: (Ruling 12, 2026-09-27). Every event carries `age`, the seconds `wlx serve` has
+#: held the latest frame; the baseline is the arrival less that, and the stream is
+#: stale once `now - baseline` passes `--stale-after`, with that interval as the
+#: banner's N. A `null` age -- no frame yet -- runs no timer. It shares with `/health`
+#: *when* frames are due (`live`, `health.expects_frames`), not the clock: this one
+#: is the browser's, carried from `wlx serve`'s steady clock by `age`.
 _SCRIPT = """
 (function () {
   "use strict";
   var body = document.body;
   var staleMs = Number(body.getAttribute("data-stale-after")) * 1000;
   var source = null;
-  var last = Date.now();
+  var baseline = null;
   var live = false;
   var lost = false;
   var closed = false;
@@ -855,6 +863,22 @@ _SCRIPT = """
     banner.className = "banner " + (tone || "");
     banner.hidden = !text;
   }
+  function check() {
+    if (closed || lost) { return; }
+    if (!live || baseline === null) {
+      body.classList.remove("stale");
+      say("");
+      return;
+    }
+    var held = Date.now() - baseline;
+    if (held > staleMs) {
+      body.classList.add("stale");
+      say("stream stale · last frame " + Math.floor(held / 1000) + " s ago", "warn");
+    } else {
+      body.classList.remove("stale");
+      say("");
+    }
+  }
   function onFrame(event) {
     var payload = JSON.parse(event.data);
     Object.keys(payload.frags).forEach(function (id) {
@@ -862,10 +886,9 @@ _SCRIPT = """
       if (node) { node.innerHTML = payload.frags[id]; }
     });
     live = payload.live;
-    last = Date.now();
+    baseline = payload.age === null ? null : Date.now() - payload.age * 1000;
     lost = false;
-    body.classList.remove("stale");
-    say("");
+    check();
   }
   function open() {
     closed = false;
@@ -882,14 +905,7 @@ _SCRIPT = """
       }
     };
   }
-  setInterval(function () {
-    if (closed || lost || !live) { return; }
-    var age = Math.floor((Date.now() - last) / 1000);
-    if (age * 1000 >= staleMs) {
-      body.classList.add("stale");
-      say("stream stale · last frame " + age + " s ago", "warn");
-    }
-  }, 1000);
+  setInterval(check, 1000);
   el("close").addEventListener("click", function () {
     closed = true;
     if (source) { source.close(); }

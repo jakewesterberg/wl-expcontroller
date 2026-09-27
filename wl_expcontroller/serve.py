@@ -9,7 +9,10 @@ already runs, so no new dependency:
 
 - `GET /` -- the page, every pane rendered in Python (`web.py`).
 - `GET /events` -- server-sent events: one full render on connect, then the fragments
-  that changed, once per frame this browser keeps up with.
+  that changed, once per frame this browser keeps up with and once per keepalive
+  interval between frames, each re-rendered from a fresh snapshot. Every event
+  carries `live` and `age` -- how long this process has held the latest frame, `null`
+  before any -- which the page's stale timer runs on (Ruling 12, 2026-09-27).
 - `GET /health` -- `health.py`'s body for wl-works, behind a bearer token.
 
 Everything else is 404 or 405, as JSON, never the stdlib's HTML page. **b1 has no
@@ -249,8 +252,10 @@ class Hub:
             _put_dropping_oldest(subscriber, CLOSED)
 
 
-#: Seconds between comment lines on a stream with no frame to send. Housekeeping: a
-#: browser that went away is found at the next write rather than never.
+#: Seconds between refreshes on a stream with no frame to send: an event re-rendered
+#: from a fresh snapshot, so what ages between frames -- the time since the last
+#: reward, *wl-works sees*, `age` -- moves on the page (Ruling 12, 2026-09-27). Also
+#: housekeeping: a browser that went away is found at the next write rather than never.
 KEEPALIVE_S = 15.0
 #: The reconnection delay the page's `EventSource` is told, in milliseconds --
 #: housekeeping, not a measurement of this system.
@@ -466,8 +471,17 @@ def make_handler(
 
         def _events(self) -> None:
             """One browser's stream (spec §4.3): a full render on connect, then an
-            event per frame it keeps up with, until the hub closes or the browser
-            goes away.
+            event per frame it keeps up with, and a refresh each `keepalive_s`
+            without one, until the hub closes or the browser goes away.
+
+            **A quiet interval re-renders, it does not send a comment** (Ruling 12,
+            2026-09-27). The page's panes age between frames -- the time since the
+            last reward adds the seconds this process has held the frame, and
+            *wl-works sees* turns `degraded` when the frame goes stale -- and a
+            comment moved neither, so a stalled stream kept `ok · Last frame 0 s
+            ago` on the page while `GET /health` said `degraded`. The refresh is
+            `_send_frame` like any other event: only what changed, with `live` and
+            `age`, and possibly no fragment at all.
 
             `take` is only ever used as a wake-up and to notice `CLOSED` -- never as
             the frame that gets rendered (F2, below `_send_frame`)."""
@@ -485,7 +499,7 @@ def make_handler(
                     try:
                         item = self._hub.take(subscriber, timeout=self._keepalive_s)
                     except queue.Empty:
-                        self.wfile.write(b": keepalive\n\n")
+                        self._send_frame(box, sent)
                         continue
                     if item is CLOSED:
                         return
@@ -499,8 +513,14 @@ def make_handler(
 
         def _send_frame(self, box: bool, sent: dict) -> None:
             """One event: the fragments that differ from what this browser holds --
-            all of them on connect -- and whether more frames are due, which is when
-            the page's stale timer runs.
+            all of them on connect -- whether more frames are due (`live`), which is
+            when the page's stale timer runs, and `age`, the seconds this process
+            has held the latest frame on its steady clock, `None` before any.
+
+            **The page's stale timer runs from `age`** (Ruling 12, 2026-09-27): its
+            baseline is the event's arrival less `age`, so a page that connects
+            onto an old frame, or is woken by a refusal, never restarts the clock
+            the way resetting it on arrival did.
 
             **Frame and view come from the same `snapshot()` call** (F2, security
             review fix round 1). `_events`'s `take` only wakes this up; rendering the
@@ -518,7 +538,13 @@ def make_handler(
             changed = {key: html for key, html in parts.items() if sent.get(key) != html}
             sent.update(changed)
             self.wfile.write(
-                event({"frags": changed, "live": _health.expects_frames(latest)})
+                event(
+                    {
+                        "frags": changed,
+                        "live": _health.expects_frames(latest),
+                        "age": view.frame_age_s,
+                    }
+                )
             )
 
     return ConsoleHandler
