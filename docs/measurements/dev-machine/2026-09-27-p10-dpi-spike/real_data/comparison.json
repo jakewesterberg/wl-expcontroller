@@ -1,0 +1,181 @@
+{
+ "note": "Real values FROM THE TUTORIAL RECORDING; synthetic values from precision.json. Matching SNRs are inferences, not measurements of P4 brightness.",
+ "paper_wn_rms_arcmin": {
+  "x": 0.39,
+  "y": 0.44
+ },
+ "per_eye": {
+  "Left": {
+   "x": {
+    "p1_minus_p4_px": {
+     "white_floor_mean_spectrum": 0.0274425,
+     "white_floor_per_window_p25_p50_p75": [
+      0.0219531,
+      0.0259189,
+      0.0306003
+     ],
+     "rms_step_over_sqrt2_median": 0.0838112454536979,
+     "sd_median": 0.155066,
+     "rms_step_over_sqrt2_floor_ratio": 3.2335957719539756
+    },
+    "matching_p4_snr_INFERENCE": {
+     "from_white_floor": 49.894189375687546,
+     "extrapolated": false,
+     "from_per_window_floor_p75_p50_p25": [
+      44.54707340159823,
+      52.95032255376516,
+      62.94048822828549
+     ],
+     "if_all_step_jitter_were_white": 16.738377551466485,
+     "extrapolated_step": false
+    },
+    "arcmin_if_target_unit_is_degree": {
+     "arcmin_per_px": 9.66422,
+     "white_floor": 0.26521035735000004,
+     "rms_step_over_sqrt2": 0.8099703145385364,
+     "paper_wn_rms": 0.39,
+     "paper_wn_rms_in_this_recordings_px": 0.040355041586387724,
+     "synthetic_snr_reaching_paper_figure_at_this_scale": 33.86017577232975
+    },
+    "p4_alone": {
+     "white_floor": 0.0266837,
+     "matching_p4_snr": 48.2358907214461
+    },
+    "p1_alone": {
+     "white_floor": 0.0161008,
+     "matching_noise_scale": 3.513776585392983,
+     "model_p4_snr_at_that_scale": 21.647330465394248
+    },
+    "p1_p4_floor_correlation": 0.25389911091612083
+   },
+   "y": {
+    "p1_minus_p4_px": {
+     "white_floor_mean_spectrum": 0.031222,
+     "white_floor_per_window_p25_p50_p75": [
+      0.0251287,
+      0.0298814,
+      0.0348354
+     ],
+     "rms_step_over_sqrt2_median": 0.06326965203887247,
+     "sd_median": 0.149718,
+     "rms_step_over_sqrt2_floor_ratio": 2.117359027317076
+    },
+    "matching_p4_snr_INFERENCE": {
+     "from_white_floor": 43.277808154119384,
+     "extrapolated": false,
+     "from_per_window_floor_p75_p50_p25": [
+      38.21308502188091,
+      45.49117406490487,
+      55.38968079982762
+     ],
+     "if_all_step_jitter_were_white": 21.2242790168225,
+     "extrapolated_step": false
+    },
+    "arcmin_if_target_unit_is_degree": {
+     "arcmin_per_px": 9.22055,
+     "white_floor": 0.2878840121,
+     "rms_step_over_sqrt2": 0.5833809901070255,
+     "paper_wn_rms": 0.44,
+     "paper_wn_rms_in_this_recordings_px": 0.047719496125502275,
+     "synthetic_snr_reaching_paper_figure_at_this_scale": 28.016117238691283
+    },
+    "p4_alone": {
+     "white_floor": 0.0298367,
+     "matching_p4_snr": 42.30772159449719
+    },
+    "p1_alone": {
+     "white_floor": 0.0155296,
+     "matching_noise_scale": 3.3154978258336176,
+     "model_p4_snr_at_that_scale": 22.94191910876663
+    },
+    "p1_p4_floor_correlation": 0.16896857414542904
+   }
+  },
+  "Right": {
+   "x": {
+    "p1_minus_p4_px": {
+     "white_floor_mean_spectrum": 0.0319549,
+     "white_floor_per_window_p25_p50_p75": [
+      0.0253933,
+      0.0300494,
+      0.0355906
+     ],
+     "rms_step_over_sqrt2_median": 0.08224995368083803,
+     "sd_median": 0.156128,
+     "rms_step_over_sqrt2_floor_ratio": 2.7371579359600533
+    },
+    "matching_p4_snr_INFERENCE": {
+     "from_white_floor": 42.5833997833885,
+     "extrapolated": false,
+     "from_per_window_floor_p75_p50_p25": [
+      38.065738572787836,
+      45.39737839292863,
+      54.09147609712039
+     ],
+     "if_all_step_jitter_were_white": 17.1033661692831,
+     "extrapolated_step": false
+    },
+    "arcmin_if_target_unit_is_degree": {
+     "arcmin_per_px": 10.0661,
+     "white_floor": 0.32166121889000004,
+     "rms_step_over_sqrt2": 0.8279362587466836,
+     "paper_wn_rms": 0.39,
+     "paper_wn_rms_in_this_recordings_px": 0.03874390280247564,
+     "synthetic_snr_reaching_paper_figure_at_this_scale": 35.16939586634415
+    },
+    "p4_alone": {
+     "white_floor": 0.0306783,
+     "matching_p4_snr": 41.778006727491935
+    },
+    "p1_alone": {
+     "white_floor": 0.016328,
+     "matching_noise_scale": 3.5863942279743535,
+     "model_p4_snr_at_that_scale": 21.209013312663192
+    },
+    "p1_p4_floor_correlation": 0.1863049975094949
+   },
+   "y": {
+    "p1_minus_p4_px": {
+     "white_floor_mean_spectrum": 0.0336487,
+     "white_floor_per_window_p25_p50_p75": [
+      0.0267823,
+      0.031594,
+      0.0373543
+     ],
+     "rms_step_over_sqrt2_median": 0.06566554194556685,
+     "sd_median": 0.153143,
+     "rms_step_over_sqrt2_floor_ratio": 2.0784181156411616
+    },
+    "matching_p4_snr_INFERENCE": {
+     "from_white_floor": 39.74839852619908,
+     "extrapolated": false,
+     "from_per_window_floor_p75_p50_p25": [
+      35.65268489116114,
+      42.69913723548387,
+      51.51958231654666
+     ],
+     "if_all_step_jitter_were_white": 20.461829826521633,
+     "extrapolated_step": false
+    },
+    "arcmin_if_target_unit_is_degree": {
+     "arcmin_per_px": 9.52731,
+     "white_floor": 0.320581595997,
+     "rms_step_over_sqrt2": 0.6256159744334185,
+     "paper_wn_rms": 0.44,
+     "paper_wn_rms_in_this_recordings_px": 0.04618302542900357,
+     "synthetic_snr_reaching_paper_figure_at_this_scale": 28.933309117225654
+    },
+    "p4_alone": {
+     "white_floor": 0.0310972,
+     "matching_p4_snr": 40.42442121001402
+    },
+    "p1_alone": {
+     "white_floor": 0.0172656,
+     "matching_noise_scale": 3.879260940983347,
+     "model_p4_snr_at_that_scale": 19.607828419576535
+    },
+    "p1_p4_floor_correlation": 0.1237649977801853
+   }
+  }
+ }
+}

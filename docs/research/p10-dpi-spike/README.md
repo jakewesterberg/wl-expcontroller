@@ -23,6 +23,7 @@ opened. The report lists the sources.
 | `bench_precision.py` | Localization error against ground truth: SNR, size, rotation, head translation, hard cases, blinks |
 | `bench_speed.py` | Per-frame time: both cores, 720x450 and 1440x1080, 1 and 2 cameras, paced at 500 Hz and not |
 | `make_tables.py` | Renders the committed JSON as `tables.md` (the report's tables) |
+| `real_data/` | The follow-up on OpenIrisDPI's tutorial recording (report §7b); its own README says how to run it |
 
 ## Rerun
 
