@@ -1593,6 +1593,14 @@ def main(argv: list[str] | None = None) -> int:
             except TimeoutError as exc:
                 print(f"console: {exc}", file=sys.stderr)
                 return 1
+            except _link.FrameError as exc:
+                # Fix round 2, M-a: before this, a frame `decode` could not use --
+                # a mismatched schema (`_link.SchemaMismatch`) or one that did not
+                # decode at all -- crashed this loop with a traceback instead of
+                # the sentence `wlx serve` already shows for the same case
+                # (`serve.Server._listen`'s `Hub.reject`).
+                print(f"console: {exc}", file=sys.stderr)
+                return 1
         return 0
 
     if args.command == "review":

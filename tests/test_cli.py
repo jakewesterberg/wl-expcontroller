@@ -963,6 +963,94 @@ def test_the_in_session_clock_has_no_warning_line_of_its_own():
 
 
 # ---------------------------------------------------------------------------
+# `wlx console`: a frame it cannot read (fix round 2, M-a)
+# ---------------------------------------------------------------------------
+
+#: A schema-6 frame's own field set (`link.py`'s schema docstring, entry 6) -- no
+#: `task`, `allocation`, `bounds_config`, `params`, `floor_ml`, `out_of_cage_limit_s`,
+#: `wall_at`, `last_reward_at` or `recent_outcomes`, schema 7's additions. A real
+#: schema-6 `wlx run` never sends those.
+_SCHEMA_6_PAYLOAD = {
+    "schema": 6,
+    "session_id": "2027-01-14_08",
+    "subject": "REFERENCE",
+    "trial_index": 5,
+    "block": "block-1",
+    "stopped_because": None,
+    "stop_kind": None,
+    "phase": "running",
+    "fluid_session_ml": 12.5,
+    "fluid_today_ml": 12.5,
+    "shortfall_ml": 0.0,
+    "out_of_cage_seconds": 300.0,
+    "chair_seconds": None,
+    "in_session_seconds": 300.0,
+    "deployment": "cage_side",
+    "duration_warning": None,
+    "outcomes": {"correct": 3},
+    "hangs": 0,
+    "owed": {},
+    "staged": [],
+    "refusals": [],
+    "refusals_dropped": 0,
+}
+
+
+def test_console_shows_a_schema_mismatch_as_a_sentence_not_a_traceback(
+    zmq_cleanup, capsys
+):
+    """Fix round 2, M-a. `wlx console` shares `link.decode` with `wlx serve`, but
+    its receive loop caught only `TimeoutError` -- a frame `decode` refuses
+    (`link.FrameError`; `link.SchemaMismatch` here) crashed it with a raw
+    traceback instead of the sentence `wlx serve` already shows for the same
+    case (`serve.Server._listen`'s `Hub.reject`).
+
+    A real `ZmqLink`/`ZmqConsole` pair, `wlx console` run through `main()` on a
+    background thread, and a genuine schema-6-shaped payload published straight
+    onto the PUB socket (`link._pub.send`, bypassing `Telemetry`/`encode`
+    entirely: this codebase's `Telemetry` dataclass is schema 7's shape and
+    cannot construct a schema-6 one to round-trip). Published repeatedly, like
+    `test_serve.py`'s `_until_refused`: a PUB socket drops what it sends before a
+    subscription lands, so one send proves nothing.
+    """
+    import msgpack
+
+    link = zmq_cleanup(
+        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
+    )
+    pub_endpoint, rep_endpoint = link.pub_endpoint, link.rep_endpoint
+
+    result: dict = {}
+
+    def _run_console() -> None:
+        result["exit_code"] = main(
+            ["console", "--sub", pub_endpoint, "--req", rep_endpoint]
+        )
+
+    runner = threading.Thread(target=_run_console, daemon=True)
+    runner.start()
+    try:
+        payload = msgpack.packb(_SCHEMA_6_PAYLOAD, use_bin_type=True)
+        for _ in range(250):
+            link._pub.send(payload)
+            if not runner.is_alive():
+                break
+            time.sleep(0.02)
+    finally:
+        runner.join(timeout=10)
+
+    assert not runner.is_alive(), "wlx console never exited on the schema-6 frame"
+    captured = capsys.readouterr()
+    assert result.get("exit_code") == 1, (
+        f"expected 1, got {result.get('exit_code')!r}: {captured.err}"
+    )
+    assert "console: a telemetry frame carried schema 6" in captured.err
+    assert "this console reads schema 7" in captured.err
+    assert "Traceback" not in captured.err
+    gc.collect()
+
+
+# ---------------------------------------------------------------------------
 # `wlx console`: the actor requirement on a write (S9a §6)
 # ---------------------------------------------------------------------------
 

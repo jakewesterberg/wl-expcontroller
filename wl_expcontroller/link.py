@@ -612,7 +612,7 @@ def decode(payload: bytes) -> Telemetry:
     except Exception as exc:  # noqa: BLE001 -- any of msgpack's own exception types
         raise FrameError(
             f"a telemetry frame could not be decoded, so it is not shown: "
-            f"{type(exc).__name__}: {exc}"
+            f"{_describe(exc)}"
         ) from exc
     schema = data.get("schema") if isinstance(data, dict) else None
     if schema != SCHEMA:
@@ -622,8 +622,18 @@ def decode(payload: bytes) -> Telemetry:
     except (KeyError, TypeError) as exc:
         raise FrameError(
             f"a telemetry frame could not be decoded, so it is not shown: "
-            f"{type(exc).__name__}: {exc}"
+            f"{_describe(exc)}"
         ) from exc
+
+
+def _describe(exc: Exception) -> str:
+    """`Type: message`, or `Type` alone when the exception carries no message (fix
+    round 2, M-e): some of `msgpack`'s own exception classes (`FormatError` among
+    them) raise with an empty `str(exc)`, and `f"{type(exc).__name__}: {exc}"`
+    for one of those left a dangling `"FormatError: "` -- a trailing colon and
+    space naming nothing, which reads as truncated rather than as "no message"."""
+    message = str(exc)
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
 
 
 def _telemetry_from(data: dict) -> Telemetry:

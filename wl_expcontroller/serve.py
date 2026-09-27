@@ -41,6 +41,7 @@ import secrets
 import sys
 import threading
 import time
+import traceback
 from collections import deque
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -550,6 +551,11 @@ class Server:
         #: with a telemetry thread that is quietly gone.
         self._fatal = threading.Event()
         self._fatal_reason: str | None = None
+        #: The full traceback behind `_fatal_reason` (fix round 2, M-c): the one
+        #: line is what an operator needs; this is what the next session diagnosing
+        #: an unfamiliar hub bug needs, and `_fatal_reason` alone was not going to
+        #: be enough for that.
+        self._fatal_traceback: str | None = None
         self._http = ThreadingHTTPServer(
             http,
             make_handler(
@@ -621,21 +627,40 @@ class Server:
             if self._stop.is_set():
                 return  # asked to stop; a transport error on the way out is not new
             self._fatal_reason = f"{type(exc).__name__}: {exc}"
+            # fix round 2, M-c: the one-line reason is what an operator reads; the
+            # full traceback is what diagnoses a hub bug nobody anticipated.
+            self._fatal_traceback = traceback.format_exc()
             self._fatal.set()
 
     def close(self) -> None:
         """Stop serving, end every open stream, and close the `ZmqConsole`. Safe to
-        call twice, and before `start`."""
+        call twice, and before `start`.
+
+        **Fix round 2, N2.** `_http.shutdown()` blocks forever for a `serve_forever`
+        loop that never ran at all (the stdlib's own docs on `shutdown()`), and
+        `Thread.join()` raises `RuntimeError` on a thread that was never `.start()`-ed
+        rather than returning -- both were reachable if a Ctrl-C landed inside
+        `Server.start()` itself, between `self._telemetry.start()` and
+        `self._web.start()`: `self._started` is set *before* either thread starts, so
+        it cannot tell "both threads are up" from "one of them never got the chance."
+        `Thread.ident` can: it stays `None` until a thread has actually begun running,
+        and `.start()` itself blocks until `.ident` is set, so checking it here --
+        after `start()` has returned, raised, or never run at all -- is safe either
+        way.
+        """
         if self._closed:
             return
         self._closed = True
         self._stop.set()
         self.hub.close()
-        if self._started:
+        web_started = self._web.ident is not None
+        telemetry_started = self._telemetry.ident is not None
+        if web_started:
             self._http.shutdown()
         self._http.server_close()
-        if self._started:
+        if web_started:
             self._web.join(timeout=5)
+        if telemetry_started:
             self._telemetry.join(timeout=5)
 
 
@@ -803,11 +828,22 @@ def parse_http(text: str) -> tuple[str, int]:
 def _wait(server: Server) -> None:
     """Block until the operator interrupts, or the telemetry thread cannot go on
     (fix round 1, I1). Its own function so a test can stand in for the person
-    pressing Ctrl-C; `Event.wait` with no timeout is interrupted by Ctrl-C the same
-    way `time.sleep` is, and returns on its own once `server._fatal` is set --
-    which is the only way this can return without `KeyboardInterrupt`, so `run`
-    tells the two apart by whether an exception came out of this call."""
-    server._fatal.wait()
+    pressing Ctrl-C; `Event.wait` is interrupted by Ctrl-C the same way `time.sleep`
+    is on every platform this runs on, and returns on its own once `server._fatal`
+    is set -- which is the only way this can return without `KeyboardInterrupt`, so
+    `run` tells the two apart by whether an exception came out of this call.
+
+    **Fix round 2, M-b.** A single `Event.wait()` with no timeout is historically not
+    reliably interruptible by Ctrl-C on Windows (a blocking wait with no timeout
+    never returns control to the interpreter for a signal to be noticed there,
+    unlike POSIX's `EINTR`-driven retry loop). Waiting in a loop with a short
+    timeout -- checked and abandoned once a second, never once forever -- gives the
+    interpreter that chance regardless of platform, at the cost of a wake-up this
+    process is not otherwise doing anything with. Not a measurement of this system,
+    a portability property of `threading.Event`.
+    """
+    while not server._fatal.wait(1.0):
+        pass
 
 
 def run(args) -> int:
@@ -866,5 +902,9 @@ def run(args) -> int:
             f"the session is unaffected",
             file=sys.stderr,
         )
+        # fix round 2, M-c: the traceback behind the one-line reason, for whoever
+        # has to diagnose a hub bug the sentence alone cannot explain.
+        if server._fatal_traceback:
+            print(server._fatal_traceback, file=sys.stderr)
         return 1
     return 0

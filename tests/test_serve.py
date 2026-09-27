@@ -64,6 +64,38 @@ def _hub(steady: _Clock | None = None) -> Hub:
     return Hub(steady=steady or _Clock(0.0))
 
 
+@pytest.fixture(autouse=True)
+def _bounded_real_wait(monkeypatch):
+    """Fix round 2, N1. `serve._wait` blocks on `server._fatal.wait()` with no
+    timeout (M-b's fix round 2 makes this a 1 s poll loop rather than one
+    unbounded call, but the loop itself still never gives up on its own). A test
+    whose mutant removes whatever was supposed to end that wait -- `_fatal.set()`
+    itself, or a refusal that was supposed to keep `run` from ever reaching a real
+    `Server` at all -- reaches this loop for real and then never returns. Under
+    the mutation gate that shows up as a 300 s `timed out`, the harness noticing
+    rather than a test (CLAUDE.md; the exact thing Ruling 10 (P4d-2a) exists to
+    prevent for a session, restated here for a wait).
+
+    Autouse, so every test in this file that reaches the real `_wait` through
+    `run`/`main` -- rather than through its own `monkeypatch.setattr(serve,
+    "_wait", ...)`, which simply overrides this one again -- gets a bounded
+    stand-in instead: 10 s, then `pytest.fail`, never a hang. Tests that need the
+    *real* function's own blocking behavior (`test_serving_waits_for_the_operator`)
+    take this fixture themselves to get it back, captured here before the patch.
+    """
+    real_wait = serve._wait
+
+    def _bounded(server) -> None:
+        if not server._fatal.wait(10):
+            pytest.fail(
+                "wlx serve reached its wait and nothing ended it within 10s "
+                "(fix round 2, N1: a hanging wait must fail a test, not the suite)"
+            )
+
+    monkeypatch.setattr(serve, "_wait", _bounded)
+    yield real_wait
+
+
 # --- the hub (Task 9) ------------------------------------------------------------
 
 
@@ -1289,6 +1321,31 @@ def test_wlx_serve_ends_with_a_sentence_when_offering_a_frame_raises(
     assert "the session is unaffected" in captured.err
 
 
+def test_wlx_serve_ends_with_a_sentence_for_a_link_zmq_refuses_for_real(
+    tmp_path, capsys
+):
+    """Fix round 2, M-d. Not a monkeypatch this time (CLAUDE.md: "test the path,
+    not the piece") -- both tests above stub `_link.ZmqConsole`/`Hub.offer`, which
+    covers the *shape* of a fatal telemetry failure but never proves a real one
+    reaches the same ending. `tcp://a b:5571` (a space inside the host) is
+    accepted by `parse_link`/`_refuse_unless_tcp_endpoint`: a space is not `*`,
+    and it never reaches port validation, since the host is everything before the
+    last `:`. ZeroMQ itself refuses to connect to it
+    (`zmq.error.ZMQError: Invalid argument`, confirmed by hand against a bare
+    `zmq.Context().socket(zmq.SUB).connect(...)` before writing this test) inside
+    the telemetry thread, which is exactly the transport failure I1(b) (fix round
+    1) exists to end the process on rather than hide.
+    """
+    exit_code = _main_uninterrupted(
+        _serve_args(tmp_path, link="tcp://a b:5571,tcp://127.0.0.1:5572")
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "wlx serve: the telemetry thread stopped" in captured.err
+    assert "the session is unaffected" in captured.err
+
+
 def test_wlx_serve_returns_130_for_a_ctrl_c_between_construction_and_wait(
     tmp_path, monkeypatch, capsys
 ):
@@ -1312,15 +1369,76 @@ def test_wlx_serve_returns_130_for_a_ctrl_c_between_construction_and_wait(
     assert "the session keeps running on the box" in captured.err
 
 
-def test_serving_waits_for_the_operator():
+def test_wlx_serve_closes_cleanly_when_ctrl_c_lands_inside_start(
+    tmp_path, monkeypatch, capsys
+):
+    """Fix round 2, N2. A Ctrl-C landing *inside* `Server.start()` itself -- after
+    `self._telemetry.start()` but before `self._web.start()` -- used to leave
+    `close()` calling `self._http.shutdown()` on a `serve_forever()` that never
+    ran, which the stdlib's own docs say blocks forever. The reviewer confirmed it
+    by stack: `wait <- wait <- shutdown <- close <- run`.
+
+    `threading.Thread.start` is monkeypatched to raise `KeyboardInterrupt` only for
+    the thread named `"wlx-serve-http"` (`Server.__init__`'s own name for `_web`),
+    so the telemetry thread starts normally and `Server.start()` itself runs
+    unmodified -- this is `_web.start()` failing, not a reimplementation of
+    `start()`.
+
+    Run on a background thread with a bounded `join`, per this round's own rule
+    (N1) that nothing here waits unboundedly: if `close()` regresses back to
+    hanging, this test fails in ~10 s instead of joining the mutation gate's list
+    of things that time out at 300 s doing nothing.
+    """
+    real_thread_start = threading.Thread.start
+
+    def _start(self) -> None:
+        if self.name == "wlx-serve-http":
+            raise KeyboardInterrupt
+        return real_thread_start(self)
+
+    monkeypatch.setattr(threading.Thread, "start", _start)
+
+    result: dict = {}
+
+    def _run() -> None:
+        result["exit_code"] = _main_uninterrupted(_serve_args(tmp_path))
+
+    runner = threading.Thread(target=_run, daemon=True)
+    runner.start()
+    runner.join(timeout=10)
+
+    assert not runner.is_alive(), (
+        "wlx serve did not return within 10s of a Ctrl-C landing inside start() "
+        "(fix round 2, N2: close() must not hang on shutdown() for a "
+        "serve_forever() that never ran)"
+    )
+    captured = capsys.readouterr()
+    assert result.get("exit_code") == 130, (
+        f"expected 130 (Ctrl-C), got {result.get('exit_code')!r}: {captured.err}"
+    )
+    assert "the session keeps running on the box" in captured.err
+
+
+def test_serving_waits_for_the_operator(_bounded_real_wait):
     """A `_wait` that returned would end the console the moment it started.
 
     Fix round 1, I1: `_wait` now blocks on a real `Server`'s `_fatal` `Event`
     rather than looping on its own, so this stub carries one that is never set --
     `server=None` (the old stand-in) no longer works, since `_wait` reads
-    `server._fatal` unconditionally."""
-    stub = SimpleNamespace(_fatal=threading.Event())
-    waiter = threading.Thread(target=serve._wait, args=(stub,), daemon=True)
+    `server._fatal` unconditionally.
+
+    Fix round 2, N1: this file's autouse `_bounded_real_wait` fixture replaces
+    `serve._wait` everywhere else with a bounded stand-in, so a mutant that breaks
+    the real one fails a test instead of hanging the suite -- but that means
+    `serve._wait` is no longer the real function by the time a test body runs.
+    This test is explicitly about the *real* function's own blocking behavior, so
+    it takes the fixture itself and calls the reference it returns (captured
+    before the patch) rather than `serve._wait`. Still bounded on its own
+    (`join(timeout=0.2)`): a test that exists to prove something never returns
+    must never wait on it unboundedly to find out."""
+    waiter = threading.Thread(
+        target=_bounded_real_wait, args=(SimpleNamespace(_fatal=threading.Event()),), daemon=True
+    )
     waiter.start()
     waiter.join(timeout=0.2)
 

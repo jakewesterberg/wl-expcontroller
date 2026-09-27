@@ -17,6 +17,7 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
     REFUSAL_HISTORY,
     Absent,
+    FrameError,
     ParamRow,
     Refused,
     RemoteBindRefused,
@@ -967,3 +968,20 @@ def test_a_console_can_be_given_a_shorter_receive_timeout(zmq_cleanup):
         pass
     else:
         raise AssertionError("a console received a frame nobody published")
+
+
+def test_a_frame_error_with_no_message_names_only_the_exception_type():
+    """Fix round 2, M-e: `f"{type(exc).__name__}: {exc}"` for an exception whose
+    own `str()` is empty left a dangling `"FormatError: "` -- a trailing colon and
+    space naming nothing, reading as truncated rather than as "no message".
+    `0xc1` is msgpack's one reserved, never-used byte, and `msgpack.unpackb`
+    raises `FormatError` on it with an empty message -- a real trigger, not a
+    synthetic one, confirmed by hand before writing this test."""
+    try:
+        decode(b"\xc1")
+    except FrameError as exc:
+        assert str(exc) == (
+            "a telemetry frame could not be decoded, so it is not shown: FormatError"
+        )
+    else:
+        raise AssertionError("msgpack's one reserved byte did not raise FrameError")
