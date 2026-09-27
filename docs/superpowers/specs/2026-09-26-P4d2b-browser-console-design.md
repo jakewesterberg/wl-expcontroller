@@ -467,15 +467,10 @@ Designed in full as its own section when b2a has shipped. Decided now:
 - Plots (accuracy over time, RT distribution, accuracy by position) — their own slice, with
   the per-trial RT and bounded history they need (PI, 2026-09-26)
 - The replica pane — gated on V11
-- **The animal camera** — its own package, after b2 (PI, 2026-09-27). Decided:
-  - an IR-only monochrome machine-vision camera, with an IR-pass filter and a separate
-    940 nm illuminator. No day/night switching, so no clicking filter and one consistent
-    picture. It can be hardware-triggered for frame-accurate alignment with the neural
-    data;
-  - it is watched by the people who can control, not the LAN;
-  - it is recorded continuously, stamped on the session clock, and kept with the session.
-
-  Its design must prove at bring-up that its IR does not disturb OpenIrisDPI's P1 and P4
-  reflections and that it emits nothing visible (as S4 verifies darkness to each eye). It
-  must also be checked for electrical noise in a real recording, and run as its own
-  process, never in `taskd`.
+- **Cameras** — their own package, **P9**, designed 2026-09-27
+  (`docs/superpowers/specs/2026-09-27-P9-camera-system-design.md`). It supersedes the single
+  "animal camera" first sketched here the same day. P9 is one headless camera box per rig,
+  part of expcontroller, running 2–4 dual-purpose Blackfly S cameras (8 at most) that
+  record behavior and serve as the always-on view of the animal. They are
+  primary-triggered at 200 fps, and a camera failure pauses trials through b2a's pause. P9
+  is built after b2a.
