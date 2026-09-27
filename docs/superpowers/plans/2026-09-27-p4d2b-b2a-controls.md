@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Built on b1** (`p4d2b-b1-read-only-console`, approved by the PI on 2026-09-27 to fast-forward onto `main` once its gate and CI are clean) **plus the spec commit** (`e426de2`, "Design slice b2: controls from the box (b2a), and remote sign-in's decisions (b2b)"). Branch `p4d2b-b2a-controls` rebases onto `main` cleanly once b1 lands: nothing b1's last commits touch is edited here in a way that conflicts.
+> **Built on b1** (`p4d2b-b1-read-only-console`, approved by the PI on 2026-09-27 to fast-forward onto `main` once its gate and CI are clean) **plus the spec commit** (`e426de2`, "Design slice b2: controls from the box (b2a), and remote sign-in's decisions (b2b)"). b1 landed on `main` the same day, and branch `p4d2b-b2a-controls` was rebased onto `main` at `a7493e4` (the CI split, the `test_cli.py` minute-boundary fix, and the P9/P10 docs); the plan was then re-applied there (below).
 >
-> **Every task's code was built and run before this plan was written**, in a scratch copy of `e426de2` (`git archive HEAD`, with the `wl-preproc` checkout linked beside it), task by task, each task's tests red first and then green, the whole suite after each task. The code in every step below is that code, and the steps are exact replacements: each "replace" block's old text is unique in its file at the moment the step is applied, in the order given, and is whole lines — except a one-line block in Task 14 that sits inside a longer line of a document (a table row), where only that text is replaced. An "Append to" block goes at the end of the file as it stands. A script then re-applied every step of this plan, as written, to a fresh copy of `e426de2`, ran the suite after each task and checked the counts stated here. **1092 passed** at `e426de2`; **1330 passed** after Task 13.
+> **Every task's code was built and run before this plan was written**, in a scratch copy of `e426de2` (`git archive HEAD`, with the `wl-preproc` checkout linked beside it), task by task, each task's tests red first and then green, the whole suite after each task. The code in every step below is that code, and the steps are exact replacements: each "replace" block's old text is unique in its file at the moment the step is applied, in the order given, and is whole lines — except a one-line block in Task 14 that sits inside a longer line of a document (a table row), where only that text is replaced. An "Append to" block goes at the end of the file as it stands. A script then re-applied every step of this plan, as written, to a fresh copy of `e426de2`, ran the suite after each task and checked the counts stated here. **1092 passed** at `e426de2`; **1330 passed** after Task 13. **Re-applied after the rebase** (2026-09-27), step by step to a copy of `37c2f1e` — `main` at `a7493e4` plus this branch's spec and plan — with every RED and GREEN run where the plan puts it, each commit block executed, and Task 14's anchors moved to `main`'s newer `CHECKPOINT.md` and `next-session.md`: **1124 passed** there, **1362 passed** after Task 13. Every count is 32 above the first run's: `main`'s new `tests/test_mutation_gate.py` tests.
 >
 > **Also looked at in a real browser, in the scratch copy** (Playwright, 2026-09-27): a simulated `wlx run --link PUB,REP,MARK` and `wlx serve`, the page on `127.0.0.1`. A refused and a cleared name prompt sent nothing and said why; a name was kept in `localStorage`; **P** paused (pill *paused · since HH:MM:SS*, button *resume (P)*); **M** signalled a mark while paused, the note box opened with focus, an **M** typed into it stayed text, and Enter attached the note (feed: *mark 1 stamped while paused, before trial 3511* and *mark 1: "reward line bubble" · jake (box, unverified)*); three clicks on an arrow sent one change, 0.30 → 0.45, staged and then applied on resume; a scheduled stop after N trials showed on the strip and its cancel removed it; `25:00` was refused with its sentence; the stop's confirm step opened and closed; stop ended the session. `controls.jsonl` held every row, the note's with its three instants and two gaps. That look came before four small amendments the suite covers and the browser has not seen — the note box no longer shows the mark's random number, a schedule that fired is spent, a console's stop is a record row, and one test was made deterministic — so Task 15 Step 4 repeats it on the branch, in full.
 >
@@ -55,8 +55,9 @@ Spec §5 left these to the plan. Each is taken here, with its reason; the code i
 ## Global Constraints
 
 - **Branch, not `main`.** Work on `p4d2b-b2a-controls` in its worktree. **This slice is welfare-critical** (CLAUDE.md; spec §5.5): the pause's limit check, a scheduled stop that can end a session ("after X mL" included), reward size set from the page, and M8. **It must not merge to `main` until the PI has approved Task 15 Step 6's items.** Push the branch; do not fast-forward `main`.
-- **The code on disk wins over this plan's quotations.** Every "replace" block below was applied to `e426de2` in order and matched. If one does not match after the rebase onto `main`, anchor on the named function and keep its meaning; never restore the quoted text.
+- **The code on disk wins over this plan's quotations.** Every "replace" block below was applied to `e426de2` in order and matched, and again, after the rebase onto `main`, to `37c2f1e`. If one does not match on disk, anchor on the named function and keep its meaning; never restore the quoted text.
 - **Welfare-critical code is not edited**: `welfare.py`, `bounds.py`, and `cli.py`'s `_wall_clock_time`, `_clock_or_now`, `_settle_return`, `_settle_departure`, and `main`'s `session.left_cage(at=departure, confirmed=note is not None, ...)` line. `welfare.must_stop` and `welfare.session_total` are called, never changed. If a step seems to need any of them changed, stop and ask.
+- **Two functions join the welfare-critical list, and their code requires human review before merge** (CLAUDE.md; Plan decision 13): `taskd.Session._ends` (Tasks 5 and 7) and `taskd.Session._hold` (Task 5). Keep them small; Task 14 lists them in `architecture.md`, and Task 15 Step 6 puts what they do to the PI.
 - **Every session instant is read through `Session.wall_now()`**, the session's anchored `welfare.SessionClock`: a pause and a resume, a mark's stamp, a schedule's target and its check, every control row. `wlx serve` reads its own host clock once, for a mark's `received_at`, which the record labels as that clock's.
 - **US English** in code, comments and docs.
 - **No timing claim without a measurement.** `PAUSE_HOUSEKEEPING_S`, `DEBOUNCE_MS`, `REPLY_TIMEOUT_S`, `CONNECT_TIMEOUT_S`, `COMMAND_QUEUE_DEPTH`, `MARK_QUEUE_DEPTH`, `OUTBOX_POLL_S`, `BODY_LIMIT` and `MARKS_REMEMBERED` are housekeeping, and every docstring that names one says so. The mark check's cost is stated only by `tools/measure_mark_check.py`'s committed output, labeled as a development machine's; its effect on frames is V12's, on a rig.
@@ -106,7 +107,7 @@ Also pinned, the sixth candidate: **the name prompt refused or cleared** sends n
 | `docs/measurements/dev-machine/<date>-mark-check.md` (create, by running the script) | The measurement's first result |
 | `docs/design/architecture.md`, `docs/pitfalls.md`, S9a, `docs/CHECKPOINT.md`, `docs/next-session.md` (modify) | Task 14 |
 
-**The mutation gate needs no edit**: no module is added to `wl_expcontroller/`. `tasks/allocation.py` and `pyproject.toml` change, so the gate escalates to a full sweep (`tools/mutation_gate.py`'s `GLOBAL` and `tasks/` rules) — Task 15 plans for that.
+**The mutation gate needs no edit**: no module is added to `wl_expcontroller/`. `tasks/allocation.py`, `pyproject.toml`, `tests/_zmq_release.py` and `tests/_frames.py` change — each a `tasks/` or `GLOBAL` path in `tools/mutation_gate.py` — and eight modules do, so this branch needs the **full sweep before it merges**. A push does not give it: since the CI split (`c215a10`), a push runs `--changed-only`, which never escalates, and with a `GLOBAL` path in the diff selects no module at all. Task 15 Step 2 plans for that.
 
 ---
 
@@ -329,8 +330,8 @@ def test_a_malformed_ceiling_write_is_recorded_as_asked(tmp_path):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_taskd.py`
-Expected: `tests/test_link.py` fails to collect — `ImportError: cannot import name 'CommandRefused'`; in `tests/test_taskd.py` the six new tests fail, the string cases with `TypeError: must be real number, not str` out of `bounds._finite` (M8 itself) and the `bool` cases because `True` was staged as `1.0` rather than refused.
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider --continue-on-collection-errors tests/test_link.py tests/test_taskd.py`
+Expected: `tests/test_link.py` fails to collect — `ImportError: cannot import name 'CommandRefused'` (without `--continue-on-collection-errors` pytest stops there and runs nothing else); in `tests/test_taskd.py` the six new tests fail, the string cases with `TypeError: must be real number, not str` out of `bounds._finite` (M8 itself) and the `bool` cases because `True` was staged as `1.0` rather than refused.
 
 - [ ] **Step 3: Implement**
 
@@ -705,7 +706,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_taskd.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1113 passed**.
+Expected: **1145 passed**.
 
 - [ ] **Step 5: Commit**
 
@@ -904,7 +905,7 @@ def test_a_command_the_session_does_not_act_on_is_refused_not_a_fault(tmp_path):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_taskd.py`
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider --continue-on-collection-errors tests/test_link.py tests/test_taskd.py`
 Expected: `tests/test_link.py` fails to collect — `ImportError: cannot import name 'CancelScheduledStop'`; `test_a_command_the_session_does_not_act_on_is_refused_not_a_fault` fails with `AttributeError: 'Recenter' object has no attribute 'name'`, the fault this task's fallback closes.
 
 - [ ] **Step 3: Implement**
@@ -1275,7 +1276,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_taskd.py`
 Expected: all pass. `test_an_undecodable_command_is_refused_not_raised` (b1) still passes: its `{"kind": "pause"}` packet is now a known kind with no `by`, refused with a sentence that names *pause*.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1146 passed**.
+Expected: **1178 passed**.
 
 - [ ] **Step 5: Commit**
 
@@ -2425,7 +2426,7 @@ class ZmqMarks:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_cli.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1166 passed**, and `tests/test_no_transport_leak.py` still passes (`link` imports `zmq` only inside functions).
+Expected: **1198 passed**, and `tests/test_no_transport_leak.py` still passes (`link` imports `zmq` only inside functions).
 
 - [ ] **Step 5: Commit**
 
@@ -2851,7 +2852,7 @@ class ZmqCommands:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py`
 Expected: all pass — three times in a row, since the reset test drains on a thread.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1172 passed**.
+Expected: **1204 passed**.
 
 - [ ] **Step 5: Commit**
 
@@ -3687,7 +3688,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_taskd.py tests/test_reference_tasks.py tests/test_task_checks.py`
 Expected: all pass — the allocation's three new names break none of the reference tasks' checks.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1185 passed**.
+Expected: **1217 passed**.
 
 - [ ] **Step 5: Commit**
 
@@ -4428,7 +4429,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_run.py tests/test_taskd.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1196 passed**. `tests/test_cli.py` and `tests/test_serve.py` wrap `taskd.run_trial` for their trial budgets with `*args, **kwargs`, so `each_frame` passes through them.
+Expected: **1228 passed**. `tests/test_cli.py` and `tests/test_serve.py` wrap `taskd.run_trial` for their trial budgets with `*args, **kwargs`, so `each_frame` passes through them.
 
 - [ ] **Step 5: Commit**
 
@@ -5011,7 +5012,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_taskd.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1207 passed**.
+Expected: **1239 passed**.
 
 - [ ] **Step 5: Commit**
 
@@ -5394,8 +5395,8 @@ def test_an_applied_setting_is_on_the_changes_feed_with_who_and_when(tmp_path):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_cli.py tests/test_taskd.py tests/test_web.py`
-Expected: `tests/test_link.py` fails to collect — `ImportError: cannot import name 'Control'`; the fixtures in `test_cli.py` and `_frames.py` raise `TypeError: Telemetry.__init__() got an unexpected keyword argument 'paused_at'`; `test_an_applied_setting_is_on_the_changes_feed_with_who_and_when` fails on an empty feed.
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider --continue-on-collection-errors tests/test_link.py tests/test_cli.py tests/test_taskd.py tests/test_web.py`
+Expected: `tests/test_link.py` fails to collect — `ImportError: cannot import name 'Control'`; the fixtures in `test_cli.py` and `_frames.py` raise `TypeError: Telemetry.__init__() got an unexpected keyword argument 'paused_at'`; `test_an_applied_setting_is_on_the_changes_feed_with_who_and_when` fails on an empty feed, and `test_a_stop_after_n_trials_ends_the_session_there_with_its_reason` on its new line, `AttributeError: 'Telemetry' object has no attribute 'scheduled_stop'`.
 
 - [ ] **Step 3: Implement**
 
@@ -5693,7 +5694,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_cli.py tests/test_taskd.py tests/test_web.py tests/test_health.py tests/test_serve.py`
 Expected: all pass. `test_serve.py`'s refused-frame tests now name schema 8, from `SCHEMA`.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1212 passed**.
+Expected: **1244 passed**.
 
 - [ ] **Step 5: Commit**
 
@@ -5905,7 +5906,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_cli.py`
 Expected: all pass — `test_console_says_a_session_that_has_not_opened_has_no_in_session_clock` still finds no `0:00` on the screen, since the fixture's frame is not paused.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1218 passed**.
+Expected: **1250 passed**.
 
 - [ ] **Step 5: Commit**
 
@@ -6435,7 +6436,7 @@ def test_the_script_holds_a_parameter_card_it_is_being_typed_into():
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_web.py tests/test_health.py`
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider --continue-on-collection-errors tests/test_web.py tests/test_health.py`
 Expected: `tests/test_web.py` fails to collect — `ImportError: cannot import name 'CONTROLS_AT_THE_BOX'`; `test_a_paused_session_is_said_to_be_paused_and_is_ok` fails on `running · trial 40 · block session`.
 
 - [ ] **Step 3: Implement**
@@ -7333,7 +7334,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_web.py tests/test_health.py tests/test_serve.py`
 Expected: all pass. `wlx serve` builds its `View`s without the two new fields until Task 11, so every page it serves is greyed for now — the safe default.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1236 passed**.
+Expected: **1268 passed**.
 Python cannot run the script, so check at least that it parses, if Node is on the machine:
 Run: `python -c "from wl_expcontroller.web import _SCRIPT; open('/tmp/b2a-page.js', 'w').write(_SCRIPT)" && node --check /tmp/b2a-page.js`
 Expected: no output, exit 0. (Task 15 Step 4 runs it in a browser.)
@@ -9718,7 +9719,7 @@ with:
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_serve.py`
 Expected: all pass.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1314 passed**, and `tests/test_no_transport_leak.py` still passes (`serve` imports `socket` and `time`, and no transport).
+Expected: **1346 passed**, and `tests/test_no_transport_leak.py` still passes (`serve` imports `socket` and `time`, and no transport).
 
 - [ ] **Step 5: Commit**
 
@@ -10190,12 +10191,12 @@ Expected: **12 failed**, every one of this task's tests by name; then `git statu
 Run: `for i in 1 2 3; do WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_serve.py -k e2e; done`
 Expected: 12 passed each time.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1326 passed**.
+Expected: **1358 passed**.
 
 Then the mutation that once ran these tests past the harness's limit, read by its line. Do nothing else in the worktree while it runs:
 
 Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/taskd.py _command`
-Expected: `baseline: 1326 passed`; then `caught    _command    68 failed, 1258 passed … <- tests/…`, naming tests — **not** `caught … timed out after 300s (mutation hangs)`, which the harness also prints as caught and which is no test noticing; then `restored: 1326 passed`.
+Expected: `baseline: 1358 passed`; then `caught    _command    68 failed, 1290 passed … <- tests/…`, naming tests — **not** `caught … timed out after 300s (mutation hangs)`, which the harness also prints as caught and which is no test noticing; then `restored: 1358 passed`.
 
 - [ ] **Step 4: Commit**
 
@@ -10609,7 +10610,7 @@ if __name__ == "__main__":
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_measure_mark_check.py`
 Expected: 4 passed.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1330 passed**.
+Expected: **1362 passed**.
 
 - [ ] **Step 5: Measure, read it, and commit it with the script**
 
@@ -10905,12 +10906,10 @@ The note at the top:
 In `docs/CHECKPOINT.md`, replace:
 
 ```markdown
-> **This file describes `main`, plus one branch that is not on it yet.** The newest entry,
-> "What moved on 2026-09-27", describes `p4d2b-b1-read-only-console` (P4d-2b slice b1).
-> The PI approved it on 2026-09-27, to fast-forward onto `main` once the mutation gate and
-> CI are clean, and it has not merged yet; `main`'s copy of this file does not have that
-> entry. Everything older describes `main`. Run
-> `git branch --show-current` before believing either.
+> **This file describes `main`.** P4d-2b slice b1 fast-forwarded onto `main` on
+> 2026-09-27 (`207b170..7b01992`). Work in flight lives on branch `p4d2b-b2a-controls`
+> (the b2 design, approved, and its plan); see "What moved on 2026-09-27, afternoon".
+> Run `git branch --show-current` before believing a line about a branch.
 ```
 
 with:
@@ -10919,18 +10918,19 @@ with:
 > **This file describes `main`, plus one branch that is not on it yet.** The newest entry,
 > "What moved on 2026-09-27, P4d-2b slice b2a", describes `p4d2b-b2a-controls`, which waits
 > for the PI's approval of its welfare items (`docs/next-session.md` §1) and has not merged;
-> `main`'s copy of this file does not have that entry. The entry below it, b1's, is on
-> `main`. Run `git branch --show-current` before believing either.
+> `main`'s copy of this file does not have that entry. The entries below it are on `main`:
+> P4d-2b slice b1 fast-forwarded onto `main` on 2026-09-27 (`207b170..7b01992`). Run
+> `git branch --show-current` before believing a line about a branch.
 ```
 
-A new entry above b1's, with the resume line moved into it:
+A new entry above the afternoon one (the newest on `main`), with the resume line moved into it:
 
 In `docs/CHECKPOINT.md`, replace:
 
 ```markdown
-## What moved on 2026-09-27, P4d-2b slice b1: the read-only browser console
+## What moved on 2026-09-27, afternoon: b1 merged, b2 designed, the camera, CI
 
-**Resume here:** b1 is built on branch `p4d2b-b1-read-only-console`, and the PI approved
+**Resume here:** the b2a implementation plan, on branch `p4d2b-b2a-controls` (worktree
 ```
 
 with:
@@ -10982,9 +10982,9 @@ sign-in through wl-works, designed in full from the P4d-2b spec §5.7 once b2a h
 
 The gate's result and the test count are added here in the plan's Task 15 Step 3.
 
-## What moved on 2026-09-27, P4d-2b slice b1: the read-only browser console
+## What moved on 2026-09-27, afternoon: b1 merged, b2 designed, the camera, CI
 
-**Where b1 stood when it was built:** b1 was built on branch `p4d2b-b1-read-only-console`, and the PI approved
+**Where b2a stood when this entry was made:** the b2a implementation plan, on branch `p4d2b-b2a-controls` (worktree
 ```
 
 The Work packages row:
@@ -10992,13 +10992,13 @@ The Work packages row:
 In `docs/CHECKPOINT.md`, replace:
 
 ```markdown
-**Next is b2** (writes from the box), after that merge — read the P4d-2b spec §2 and §4.0, and close M8 first. b3–b6 each get a section as they are designed | that spec | **b1: the mutation gate and CI, then the fast-forward to `main`** |
+**b2 designed, 2026-09-27**: the spec's §5, on branch `p4d2b-b2a-controls` — b2a (controls from the box) is planned there next, b2b (remote sign-in through wl-works) after it. Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0; §4 is b1, on telemetry schema 7; §5 is b2. b3–b6 each get a section as they are designed | that spec | **b2a's plan, then its execution** (close M8 first) |
 ```
 
 with:
 
 ```markdown
-**b2 is split** (PI, 2026-09-27): **b2a, controls from the box, is built on branch `p4d2b-b2a-controls`** and waits for the PI's approval of its four welfare items (spec §5.5); b2b, remote sign-in through wl-works, is designed from §5.7 after b2a ships. b3–b6 each get a section as they are designed | that spec | **b2a: the PI's review, then the fast-forward to `main`** |
+**b2 designed, 2026-09-27**, and **split** (PI): **b2a, controls from the box, is built on branch `p4d2b-b2a-controls`** and waits for the PI's approval of its four welfare items (spec §5.5); b2b, remote sign-in through wl-works, is designed from §5.7 after b2a ships. Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0; §4 is b1, on telemetry schema 7; §5 is b2. b3–b6 each get a section as they are designed | that spec | **b2a: the PI's review, then the fast-forward to `main`** |
 ```
 
 - [ ] **Step 5: `docs/next-session.md`**
@@ -11008,7 +11008,7 @@ A new §1 above b1's, which becomes §1a's neighbor as the record of what he app
 In `docs/next-session.md`, replace:
 
 ```markdown
-## 1. The thing that needs a person, not a session — P4d-2b b1, approved 2026-09-27
+## 1. The thing that needed a person — P4d-2b b1, approved and merged 2026-09-27
 ```
 
 with:
@@ -11026,7 +11026,7 @@ the per-frame mark check's measured cost (the spec's rule: a check that measurab
 disturbs frames goes back to him before b2a ships). Record his answers here, and move this
 section below as the record once he has.
 
-## 1b. The thing that needs a person, not a session — P4d-2b b1, approved 2026-09-27
+## 1b. The thing that needed a person — P4d-2b b1, approved and merged 2026-09-27
 ```
 
 §6's title and first paragraph:
@@ -11083,15 +11083,32 @@ git commit -m "Record the controls from the box, and what the PI is asked to app
 - [ ] **Step 1: The whole suite, three times**
 
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider -rs` three times in a row.
-Expected: all pass each time, and the `-rs` summary lists no skip from `test_health.py` or `test_serve.py`. **1330 passed** if nothing was added after Task 13 (Task 14 adds no test).
+Expected: all pass each time, and the `-rs` summary lists no skip from `test_health.py` or `test_serve.py`. **1362 passed** if nothing was added after Task 13 (Task 14 adds no test).
 
-- [ ] **Step 2: The mutation gate, read line by line**
+- [ ] **Step 2: The full mutation sweep, before the merge, read line by line**
 
-Run: `python tools/mutation_gate.py --base main 2>&1 | tee "${TMPDIR:-/tmp}/p4d2b-b2a-gate.txt"`
+**This branch touches `GLOBAL` files and many modules, so it gets the full sweep before it merges** (`docs/CHECKPOINT.md`'s CI row): `pyproject.toml`, `tests/_zmq_release.py` and `tests/_frames.py` are `GLOBAL`, `tasks/allocation.py` is under `tasks/`, and eight modules change. **A push does not run it**: CI's `mutation` job runs `tools/mutation_gate.py --changed-only`, which never escalates, and for this branch sweeps **no module at all** — a `GLOBAL` path in the diff makes `--changed-only` select nothing (the pre-flight's dry run: `mutation gate: 0 module(s) -- pyproject.toml changed; --changed-only does not escalate on it -- the nightly full sweep covers it`). The full sweep is every module in the gate's `RETURNS`, split six ways by `--all --shard K/6`, as CI's `mutation-full` job runs it. Do it one of two ways:
 
-**`tasks/allocation.py` and `pyproject.toml` changed in this branch, so this is a full sweep** — the gate escalates on both. It takes hours. Run it in the background and do nothing else in the worktree until it ends: **never run the suite, edit a test, or `git add` while it is in flight.**
+- **On GitHub:** push first (Step 5's `git push`), then trigger the sharded sweep on the branch, `gh workflow run ci.yml --ref p4d2b-b2a-controls`; find the run with `gh run list --branch p4d2b-b2a-controls --workflow ci.yml --event workflow_dispatch`, list its jobs with `gh run view <run-id> --json jobs --jq '.jobs[] | "\(.databaseId) \(.name) \(.conclusion)"'`, save each of the six `mutation-full` shards' logs with `gh run view --job <job-id> --log > shard-K.txt`, and read all six, line by line.
+- **Locally, as six parallel lanes, each in its own `git archive` copy of the branch tip** — never two lanes in one tree, since the harness neuters a module's file in place. Set `PREPROC` to the `wl-preproc` checkout, and use the venv's `python`:
 
-Then read every line of the output file:
+```bash
+PREPROC=/path/to/wl-preproc
+tip=$(git rev-parse HEAD)
+for k in 1 2 3 4 5 6; do
+  lane="${TMPDIR:-/tmp}/p4d2b-b2a-lane-$k"
+  rm -rf "$lane" && mkdir -p "$lane"
+  git archive "$tip" | tar -x -C "$lane"
+  ln -s "$PREPROC" "$lane/wl-preproc"
+  (cd "$lane" && WLX_REQUIRE_PREPROC=1 python tools/mutation_gate.py --all --shard "$k/6" \
+     > "${TMPDIR:-/tmp}/p4d2b-b2a-gate-$k.txt" 2>&1) &
+done
+wait
+```
+
+Either way it takes hours. Do not commit to the branch while it runs (the sweep is of `$tip`), and never run a suite, edit a test or `git add` inside a lane. **A lane's line that says `timed out` is not a catch** (trap 7): six lanes compete for one machine and each mutant's suite has a 300 s limit, so re-run that function alone, in one lane with nothing else running — `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns <R> wl_expcontroller/<module>.py <function>`, `<R>` being the module's value in the gate's `RETURNS` (`None` for every module this plan changes) — and read its line. If it still times out, it is a missing bound: fix the bound in the owning task (Global Constraints).
+
+Then read every line of every shard's log, not its exit code:
 - Zero `SURVIVED` and zero `SKIPPED`.
 - Every `caught` shows `N failed` and a `<-` naming tests. `N errors`, a timeout, or a single unrelated test does not count as caught.
 - For each function this plan added or changed, find its line and check that the `<-` names a test this plan wrote for it: in `link.py`, `_actor`, `_setting`, `check_schedule`, `_instant`, `_mark`, `_encode_command`, `_decode_command`, `drain`, `_refuse`, `mark_signal`, `_take_mark`, `idle`, `signal`, `deliver`, `_open`, `_reset`, `of`, `encode`, `_telemetry_from`, and `ZmqConsole`'s and `ZmqCommands`' `__init__`; in `taskd.py`, `_next_occurrence`, `_gap`, `set`, `_command`, `_control`, `_feed`, `_code`, `_pause`, `_resume`, `_stamp`, `_settle_stamps`, `_check_marks`, `_mark_note`, `_schedule`, `_cancel`, `_ends`, `_hold`, `_apply_staged`, `controls`, `run`; `run.run_trial`; `record.control`; `cli.render` and `cli.main`; `health._state_text`; in `web.py`, `_clock_time`, `_state`, `_off`, `_scheduled`, `_strip`, `_controls`, `_changes`, `_step`, `_field`, `_params`, `fragments`, `page`; in `serve.py`, `host_name`, `names_loopback`, `box_names`, `_person`, `parse_command`, `not_delivered`, `Outbox`'s methods, `_delivered`, `make_handler`, `_host_ok`, `may_write`, `_from_the_box`, `_refuse_method`, `do_POST`, `_command`, `do_GET`, `dispatch`, `_signal`, `_remember`, `_recall`, `start`, `close`, `parse_link`, `run`.
@@ -11146,7 +11163,7 @@ If any of these fails, fix it in the owning task with a test where Python can re
 git push -u origin p4d2b-b2a-controls
 ```
 
-Then read the branch's CI run (`gh run list --branch p4d2b-b2a-controls`): its log, not its verdict — pytest on all three Pythons, and the gate's full sweep, line by line as in Step 2. **Do not merge to `main`.**
+Then read the branch's push run (`gh run list --branch p4d2b-b2a-controls --event push`): its log, not its verdict — pytest on all three Pythons, and the `mutation` job's `--changed-only` gate, which should say `0 module(s)` and why (Step 2). That job is not this branch's mutation check; Step 2's full sweep is, and it must be read before Step 6. **Do not merge to `main`.**
 
 - [ ] **Step 6: Hand the PI the review**
 
