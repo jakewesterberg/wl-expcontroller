@@ -8,7 +8,9 @@ one, while `docs/CHECKPOINT.md` described "a mutation gate over every module".
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -143,3 +145,135 @@ def test_the_returns_flag_matches_what_the_module_needs():
     assert gate.RETURNS["calibration"] == "[]"
     assert gate.RETURNS["run"] == "None"
     assert gate.RETURNS["bounds"] == "None"
+
+
+# ---------------------------------------------------------------------------
+# --shard: splitting the full sweep across parallel jobs (2026-09-27, PI "both")
+# ---------------------------------------------------------------------------
+
+#: The real target list, sharded, is what the nightly matrix actually runs -- these
+#: tests use it rather than a synthetic module list so "the shards partition the
+#: selected modules" means the modules a sweep would really select.
+_TARGETS = sorted(gate.RETURNS)
+
+
+@pytest.mark.parametrize("n", range(1, 9))
+def test_shards_partition_the_selected_modules_exactly(n):
+    """No module lost, none duplicated, for every shard count from 1 to 8 -- the
+    range `.github/workflows/ci.yml` and a person's `--shard` could plausibly ask
+    for."""
+    groups = gate.shard_groups(_TARGETS, n)
+    assert len(groups) == n
+    flattened = [module for group in groups for module in group]
+    assert sorted(flattened) == _TARGETS
+    assert len(flattened) == len(_TARGETS), "a module appears in more than one shard"
+
+
+@pytest.mark.parametrize("n", range(1, 9))
+def test_shards_are_balanced_by_function_count(n):
+    """The largest shard's function count is at most the smallest's plus the
+    largest single module's count -- the guarantee greedy least-loaded placement
+    gives, and the reason `serve.py` (38 functions) and `components.py` (1) can
+    still land in shards of comparable size."""
+    groups = gate.shard_groups(_TARGETS, n)
+    totals = [sum(gate._function_count(m) for m in group) for group in groups]
+    largest_module = max(gate._function_count(m) for m in _TARGETS)
+    assert max(totals) <= min(totals) + largest_module
+
+
+def test_sharding_is_deterministic_across_calls():
+    """The same modules and `n` must produce the same groups every time -- a CI
+    matrix job only sees its own `K`, so shard 3 of 6 run on one runner has to agree
+    with shard 3 of 6 as computed on every other runner, with no shared state
+    between them."""
+    first = gate.shard_groups(_TARGETS, 6)
+    second = gate.shard_groups(_TARGETS, 6)
+    assert first == second
+
+
+def test_a_shard_beyond_the_module_count_is_empty_in_list_order():
+    """`n` may exceed the number of modules to place -- a person could ask for more
+    shards than there is work. The extra shards are simply empty, and they are the
+    highest-numbered ones: every index below the module count receives exactly one
+    module before any receives a second."""
+    groups = gate.shard_groups(["a", "b", "c"], 5, counts={"a": 3, "b": 2, "c": 1})
+    non_empty = [g for g in groups if g]
+    empty = [g for g in groups if not g]
+    assert len(non_empty) == 3
+    assert len(empty) == 2
+    assert groups[3] == [] and groups[4] == []
+
+
+def test_shard_groups_respects_given_counts_not_module_name_length():
+    """Balance is by function count, not by how many modules land in a group --
+    passing counts directly (rather than reading `wl_expcontroller/*.py`) is what
+    makes this provable without depending on the current state of the package."""
+    counts = {"big": 10, "small1": 3, "small2": 3, "small3": 4}
+    groups = gate.shard_groups(list(counts), 2, counts=counts)
+    totals = sorted(sum(counts[m] for m in group) for group in groups)
+    # "big" alone (10) should sit by itself against the other three combined (10).
+    assert totals == [10, 10]
+
+
+# ---------------------------------------------------------------------------
+# --shard: bad values are refused, not guessed at
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", ["0/6", "7/6", "a/b", "3"])
+def test_a_bad_shard_value_is_refused_with_a_message(value):
+    with pytest.raises(argparse.ArgumentTypeError) as excinfo:
+        gate.parse_shard(value)
+    assert value in str(excinfo.value)
+
+
+def test_a_good_shard_value_parses_to_k_and_n():
+    assert gate.parse_shard("3/6") == (3, 6)
+    assert gate.parse_shard("1/1") == (1, 1)
+
+
+# ---------------------------------------------------------------------------
+# --changed-only: pushes and PRs never escalate on GLOBAL; the nightly covers it
+# ---------------------------------------------------------------------------
+
+
+def test_changed_only_does_not_escalate_on_a_global_change_and_says_so():
+    modules, why = gate.select(["pyproject.toml"], changed_only=True)
+    assert modules == [], "a GLOBAL path must not blow up a push's sweep"
+    assert "does not escalate" in why
+    assert "nightly" in why
+
+
+def test_changed_only_still_selects_the_changed_module_when_nothing_global_moved():
+    modules, why = gate.select(["wl_expcontroller/gaze.py"], changed_only=True)
+    assert modules == ["gaze"]
+
+
+def test_without_changed_only_a_global_change_still_escalates():
+    """The contrast that makes --changed-only's own behaviour legible: the ordinary
+    selector's GLOBAL handling is unchanged, only a new flag beside it."""
+    modules, why = gate.select(["pyproject.toml"])
+    assert modules == sorted(gate.RETURNS)
+    assert "pyproject.toml" in why
+
+
+# ---------------------------------------------------------------------------
+# --shard wired into main(): --dry-run so a test never launches a real sweep
+# ---------------------------------------------------------------------------
+
+
+def test_main_with_shard_selects_only_that_groups_modules(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["mutation_gate.py", "--all", "--shard", "1/6", "--dry-run"])
+    assert gate.main() == 0
+    out = capsys.readouterr().out
+    assert "shard 1/6" in out
+
+
+def test_main_with_a_shard_past_the_module_count_says_so_and_passes(monkeypatch, capsys):
+    n = len(gate.RETURNS) + 3
+    monkeypatch.setattr(
+        sys, "argv", ["mutation_gate.py", "--all", "--shard", f"{n}/{n}", "--dry-run"]
+    )
+    assert gate.main() == 0
+    out = capsys.readouterr().out
+    assert "empty" in out

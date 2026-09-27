@@ -4,14 +4,22 @@ on:
   push:
   pull_request:
   schedule:
-    # The full sweep, nightly. Not decoration: the per-push gate selects on changed
-    # files, which cannot see a test deleted from `test_a.py` that was the only thing
-    # covering a function in `b.py`. Nothing in a diff makes that visible, and this
-    # is what catches it.
+    # The full sweep, nightly, sharded six ways across the `mutation-full` matrix
+    # below. Not decoration: the per-push gate (`mutation`, below) selects on
+    # changed files and never escalates on GLOBAL, which cannot see a test deleted
+    # from `test_a.py` that was the only thing covering a function in `b.py`.
+    # Nothing in a diff makes that visible, and this is what catches it.
     - cron: "17 3 * * *"
+  workflow_dispatch:
+    # The "run the full sweep now" button: the same sharded full sweep the nightly
+    # runs, on demand, for before a big merge -- see docs/CHECKPOINT.md's CI row for
+    # the alternative when six parallel Actions jobs are not available (a local
+    # sweep run as parallel lanes in separate `git archive` copies of the tree; the
+    # harness mutates files in place, so separate copies are what let the lanes run
+    # at once).
 
-# Both jobs need a `wl-preproc` checkout, and getting one has failed three different
-# ways. Recorded here because each looked fixed and was not:
+# Every job below needs a `wl-preproc` checkout, and getting one has failed three
+# different ways. Recorded here because each looked fixed and was not:
 #
 #   1. No checkout at all (until 2026-09-01). The codec round-trip skipped silently
 #      into a green build -- `actions/checkout` fetches this repository alone.
@@ -31,13 +39,14 @@ on:
 # not allowed to skip, so `WLX_REQUIRE_PREPROC=1` turns a skip into a failure: a
 # contract test that is allowed to not run is not a contract test.
 #
-# Both jobs install `console` (pyzmq, msgpack) as well as `dev,contract`, on every
-# Python in the matrix. Added 2026-09-19 with the console link, and the reason is the
-# same one that makes the contract tests non-skippable: `tests/test_link.py` and the
-# two `wlx run --link` end-to-end tests in `tests/test_cli.py` fail outright without a
-# transport -- nine failures, measured locally with `zmq`/`msgpack` blocked -- so the
-# extra is not optional for a green suite. It is *not* installed to make the core
-# depend on it. The core's freedom from a transport is proved instead by
+# Every job installs `console` (pyzmq, msgpack) as well as `dev,contract` -- on
+# every Python `test` runs, and on the single Python (3.13) the mutation jobs pin.
+# Added 2026-09-19 with the console link, and the reason is the same one that makes
+# the contract tests non-skippable: `tests/test_link.py` and the two `wlx run --link`
+# end-to-end tests in `tests/test_cli.py` fail outright without a transport -- nine
+# failures, measured locally with `zmq`/`msgpack` blocked -- so the extra is not
+# optional for a green suite. It is *not* installed to make the core depend on it.
+# The core's freedom from a transport is proved instead by
 # `tests/test_no_transport_leak.py`, which blocks both imports inside a **subprocess**
 # and imports `link`, `taskd` and `cli` there; that proof is independent of what this
 # workflow installs, which is exactly why it is a test and not a CI leg.
@@ -75,14 +84,28 @@ jobs:
     # reports safety it does not provide, which for a checker whose whole job is
     # refusing bad tasks would be worse than having no checker (pitfalls P15).
     #
-    # **Selective since 2026-09-05**, because the full sweep re-runs the whole suite
-    # once per function and had reached twenty-five minutes. `tools/mutation_gate.py`
-    # picks the modules a change can have affected and escalates to everything on
-    # anything structural. It also refuses to run at all if a module in
-    # `wl_expcontroller/` appears in neither its gated nor its exempt list -- which
-    # is the real fix here, since the hand-maintained list this replaces had silently
-    # omitted `bounds` (the welfare-critical module), `scheduler` and `findings`
-    # while CHECKPOINT described "a mutation gate over every module".
+    # **Push and pull_request only, and `--changed-only` since 2026-09-27** (PI,
+    # "both"). The full sweep had grown to 25 modules, about 420 functions, and
+    # roughly six hours on a CI runner -- the b1 push (run `36309285075`) was still
+    # running past four hours -- against GitHub's own default job timeout of 360
+    # minutes (6 hours) when `timeout-minutes` is not set on a job, which none here
+    # had (GitHub Actions documentation, read 2026-09-27). `--changed-only` selects
+    # only the modules a push's own diff can have affected and **never escalates on
+    # a GLOBAL path**: a change to `pyproject.toml` or `tests/conftest.py` used to
+    # blow a push up to the full sweep, which is exactly how b1's push approached
+    # the six-hour ceiling. `tools/mutation_gate.py` prints, in that case, that it is
+    # not escalating and that the sharded nightly (`mutation-full`, below) covers
+    # the GLOBAL change instead -- so this job's log does not read like a full check
+    # that happened to select nothing.
+    #
+    # It still refuses to run at all if a module in `wl_expcontroller/` appears in
+    # neither `RETURNS` nor `EXEMPT` (`tools/mutation_gate.py`'s `undeclared()`) --
+    # that guard runs before `--changed-only` or `--shard` are even looked at, so no
+    # mode can skip it. It is the real fix from 2026-09-05, since the hand-maintained
+    # list this replaced had silently omitted `bounds` (the welfare-critical module),
+    # `scheduler` and `findings` while CHECKPOINT described "a mutation gate over
+    # every module".
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,17 +122,52 @@ jobs:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
       - run: pip install -e ".[dev,contract,console]"
-      - name: Mutation gate
+      - name: Mutation gate (changed modules only)
         # WLX_REQUIRE_PREPROC applies to every sweep now, not just the two that named
         # it: each sweep runs the whole suite as its baseline, and a baseline with the
         # contract tests skipped is a baseline that proves less than it appears to.
         env:
           WLX_REQUIRE_PREPROC: "1"
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            python tools/mutation_gate.py --all
-          elif [ -n "${{ github.base_ref }}" ]; then
-            python tools/mutation_gate.py --base "origin/${{ github.base_ref }}"
+          if [ -n "${{ github.base_ref }}" ]; then
+            python tools/mutation_gate.py --changed-only --base "origin/${{ github.base_ref }}"
           else
-            python tools/mutation_gate.py --base "${{ github.event.before }}"
+            python tools/mutation_gate.py --changed-only --base "${{ github.event.before }}"
           fi
+
+  mutation-full:
+    # The full sweep -- every module in RETURNS, nothing left out by a diff -- split
+    # six ways so no single job approaches the six-hour default that made this job
+    # necessary (see the `mutation` job's comment for the measurement and the
+    # GitHub docs citation). Nightly (`schedule`), and on demand
+    # (`workflow_dispatch`) before a big merge, so a branch does not have to wait
+    # for 03:17 UTC to get the check `--changed-only` cannot give it -- including a
+    # GLOBAL change, which the `mutation` job now explicitly does not cover.
+    # `fail-fast: false` so one red shard does not cancel, and hide, the other
+    # five's results.
+    #
+    # Each shard is `tools/mutation_gate.py --shard K/6`'s K-th of six groups,
+    # balanced by function count (`ast`-counted, not module count -- `serve.py`
+    # alone has 38 functions to `components.py`'s 1) and deterministic, so the same
+    # K always names the same modules regardless of which runner computes it.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Check out wl-preproc inside the workspace
+        uses: actions/checkout@v4
+        with:
+          repository: jakewesterberg/wl-preproc
+          path: wl-preproc
+      - run: pip install -e ".[dev,contract,console]"
+      - name: Mutation gate (shard ${{ matrix.shard }}/6)
+        env:
+          WLX_REQUIRE_PREPROC: "1"
+        run: python tools/mutation_gate.py --all --shard ${{ matrix.shard }}/6
