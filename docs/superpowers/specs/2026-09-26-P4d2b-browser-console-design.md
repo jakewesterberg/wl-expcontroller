@@ -76,7 +76,7 @@ stays unrolled.
 **`/health`** is `wl_preproc.contracts.protocol.HealthResponse`, schema version 1: readings
 are plain text, with `<`, `>` and `&` spelled out as `wl-preproc`'s `plain_text` does.
 Readings: session (id · subject · task); state; the reason a frame was refused, when one
-was (Ruling 11, 2026-09-27; put to the PI at handoff); time out of cage against its limit,
+was (Ruling 11; approved by the PI, 2026-09-27); time out of cage against its limit,
 or *cage-side, no limit*; the duration warning when active; fluid this session; supplement
 owed; the behavioral counts above; age of the last frame. **Exactly one is featured**,
 because wl-works' home page shows only the first and wl-preproc's responder features
@@ -84,7 +84,7 @@ exactly one. It is the most urgent (PI, 2026-09-26, amending the five first mark
 - the duration warning when active;
 - else the state, when the session faulted or ended on the limit and the animal is not back;
 - else the refused frame's reason, when a frame was refused since the last one this console
-  could read (Ruling 11, 2026-09-27; put to the PI at handoff);
+  could read (Ruling 11; approved by the PI, 2026-09-27);
 - else the last frame's age, when the stream went stale;
 - else the time out of cage. `actions` is
 always empty — no welfare action goes through `wl-works`.
@@ -94,7 +94,7 @@ always empty — no welfare action goes through `wl-works`.
 | Running normally, or no session attached yet | `ok` |
 | Duration warning active | `degraded` |
 | No frame for `--stale-after` (default 30 s, a display choice) while the last said running | `degraded` |
-| A frame arrived that this console cannot read (another schema, or no frame at all), until the next one it can — at once, not after `--stale-after`; a held fault stays `down` (Ruling 11, 2026-09-27; put to the PI at handoff) | `degraded` |
+| A frame arrived that this console cannot read (another schema, or no frame at all), until the next one it can — at once, not after `--stale-after`; a held fault stays `down` (Ruling 11; approved by the PI, 2026-09-27) | `degraded` |
 | Ended by the out-of-cage limit, **until the return is recorded** (PI, 2026-09-26) | `degraded` |
 | Ended otherwise (completed, operator stop), or ended on the limit and since returned | `ok`, with the reason as a reading |
 | Ended by a fault | `down` |

@@ -234,24 +234,24 @@ def readings(
 
     **With no frame, the session reading names `endpoint`**, the PUB endpoint this
     console reads (m4): that nothing has arrived there is what it knows, and that
-    nothing is publishing is not. Beside a refusal it says no frame it *can read*
-    has arrived, since one did."""
+    nothing is publishing is not. Beside a refusal something *is* sending there, so
+    it says so, and that this console cannot read it (the PI's wording, 2026-09-27)."""
     refused = [("refused", "Refused", rejected)] if rejected else []
     if frame is None:
-        readable, waiting = (
+        session, waiting = (
             (
-                "no frame this console can read",
+                f"a session is sending on {endpoint}, but in a format this console "
+                "cannot read",
                 "waiting for a frame this console can read",
             )
             if rejected
-            else ("no frame", "waiting for the session's telemetry")
+            else (
+                f"none attached · no frame has arrived on {endpoint}",
+                "waiting for the session's telemetry",
+            )
         )
         rows = [
-            (
-                "session",
-                "Session",
-                f"none attached · {readable} has arrived on {endpoint}",
-            ),
+            ("session", "Session", session),
             ("state", "State", waiting),
             *refused,
             ("last_frame", "Last frame", _age_text(frame_age_s)),

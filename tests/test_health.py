@@ -482,9 +482,11 @@ def test_with_a_refusal_and_no_frame_it_never_says_nothing_arrived():
         )
     }
 
+    # The PI's wording (2026-09-27): something is sending, so "none attached" was
+    # wrong; what the console cannot do is read it.
     assert values["session"] == (
-        "none attached · no frame this console can read has arrived on "
-        "tcp://127.0.0.1:5571"
+        "a session is sending on tcp://127.0.0.1:5571, but in a format this console "
+        "cannot read"
     )
     assert values["state"] == "waiting for a frame this console can read"
 

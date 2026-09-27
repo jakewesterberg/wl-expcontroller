@@ -95,9 +95,12 @@ closed, verified 2026-09-06 by reading the runs.
 
 ---
 
-## 1. The thing that needs a person, not a session — P4d-2b b1, awaiting the PI
+## 1. The thing that needs a person, not a session — P4d-2b b1, approved 2026-09-27
 
-Give the PI (memory: he wants numbered items to approve, not the files):
+**The PI approved all three on 2026-09-27**, asked in plain terms through the question
+UI: item 1, "approve, merge after checks" -- b1 fast-forwards to `main` once the
+mutation gate and CI are clean; item 3, the yellow warning (`degraded`); and, asked
+beside it, the session reading's wording (below). What he was given:
 
 1. **`welfare.deliver` now keeps the instant each reward was commanded, once the pump
    returns.** `Rig.reward` reads the instant before `deliver` runs, so it is when the reward
@@ -124,16 +127,15 @@ Give the PI (memory: he wants numbered items to approve, not the files):
    `test_every_font_the_page_uses_is_bundled_with_its_license` and
    `test_the_fonts_ship_with_the_package`.
 
-3. **A refused frame makes `/health` `degraded`** (Ruling 11, 2026-09-27) -- a question,
-   not a settled fact, because it adds a row to spec §3's table, and the PI approved that
-   table. With a schema-6 `wlx run` beside a schema-7 `wlx serve`, every frame is refused.
+3. **A refused frame makes `/health` `degraded`** (Ruling 11, 2026-09-27) -- asked, not
+   assumed, because it adds a row to spec §3's table, and the PI approved that table. With a schema-6 `wlx run` beside a schema-7 `wlx serve`, every frame is refused.
    Before this ruling, `/health` said `ok` throughout and the page said no session was
    publishing. It is now `degraded` at once, with a featured *Refused* reading placed
    after the duration warning and the fault or unreturned-limit state, and before the
    last frame's age; the next frame this console can read clears it. **Built as
-   recommended.** One wording question alongside it: while no frame has ever been
-   readable, the session reading still says "none attached" -- should that instead say a
-   session is attached but unreadable, now that a refusal is told apart from silence?
+   recommended.** Asked alongside it: while no frame has ever been readable, the session
+   reading said "none attached"; the PI chose "a session is sending on ENDPOINT, but in a
+   format this console cannot read", and it now says that.
    Pinned by `test_a_refusal_degrades_the_verdict_at_once_unless_the_held_frame_faulted`,
    `test_with_a_refusal_exactly_one_reading_is_still_featured`,
    `test_a_refusal_is_featured_after_the_warning_and_the_unreturned_state`,
