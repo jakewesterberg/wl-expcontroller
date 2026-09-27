@@ -327,9 +327,10 @@ approval of the welfare item below. Start b2 next, from the P4d-2b spec §2 and 
   it lives in (`serve.py`, `web.py`, `health.py`).
 - **The one welfare-critical change:** `Welfare.deliver`'s `wall_now` and
   `last_delivery_wall_at`, and `Rig.wall_clock`, which is `Session.wall_now` — the one
-  anchored clock. `deliver` records when it delivered: the charge (`commanded`,
-  `deliveries`) still lands before the valve opens, as it always did, but the wall instant
-  is stored only once the pump returns, so a delivery the pump refused is charged but not
+  anchored clock. `deliver` keeps the instant the reward was commanded, once the pump
+  returns: `Rig.reward` reads it before `deliver` runs, the charge (`commanded`,
+  `deliveries`) still lands before the valve opens, as it always did, and the instant is
+  stored only after the pump returns, so a delivery the pump refused is charged but not
   timed. The fonts shipped under ADR-0004's 2026-09-26 amendment. The branch awaits the
   PI's approval of the welfare item.
 - **Ledger Ruling 1 (2026-09-27):** the frame carries its own instant, `wall_at`, and

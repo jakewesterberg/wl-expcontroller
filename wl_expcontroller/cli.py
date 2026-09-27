@@ -778,8 +778,8 @@ def render(frame: _link.Telemetry) -> str:
 
     **Schema 7 adds the configuration and the limits** (P4d-2b b1): which task,
     allocation and bounded config; fluid today against the day's floor; the
-    out-of-cage clock against the ceiling it is stopped on; when the last reward was
-    charged; the parameter rows; and the last outcomes. Each absence is a word --
+    out-of-cage clock against the ceiling it is stopped on; the instant the last
+    reward was commanded, kept once the pump returned; the parameter rows; and the last outcomes. Each absence is a word --
     *PROVISIONAL*, *not given*, *none yet*, *unset*, *open* -- never a zero.
     """
     lines = [

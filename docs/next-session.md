@@ -99,10 +99,12 @@ closed, verified 2026-09-06 by reading the runs.
 
 Give the PI (memory: he wants numbered items to approve, not the files):
 
-1. **`welfare.deliver` now records when it delivered each reward.** The charge —
-   `commanded` and `deliveries` — still lands before the valve opens, as it always did; the
-   wall instant is kept as `last_delivery_wall_at` only once the pump returns, so a delivery
-   the pump refused is charged but not timed. Nothing compares it with a limit, and it is
+1. **`welfare.deliver` now keeps the instant each reward was commanded, once the pump
+   returns.** `Rig.reward` reads the instant before `deliver` runs, so it is when the reward
+   was commanded, before the charge and the valve. The charge — `commanded` and
+   `deliveries` — still lands before the valve opens, as it always did; the instant is kept
+   as `last_delivery_wall_at` only once the pump returns, so a delivery the pump refused is
+   charged but not timed. Nothing compares it with a limit, and it is
    not refused when it is not a number, so a display field can never end a trial the animal
    completed. `Rig` reads it through `Session.wall_now`, once per reward: the session's
    `SessionClock`, the one anchored clock every other welfare instant is on (Ruling 8), so a

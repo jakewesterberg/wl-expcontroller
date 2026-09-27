@@ -334,8 +334,11 @@ class Welfare:
     #: arrives; S8 open item 2 is whether that is continuous or only at close.
     delivered: float | None = None
     deliveries: int = 0
-    #: The wall instant, POSIX seconds, at which the last reward was *delivered* --
-    #: spec §4.1's word -- or `None` before the first, never `0.0`, which would read
+    #: The instant the last reward was commanded, kept once the pump returns: POSIX
+    #: seconds on the session's wall, read by `Rig.reward` before `deliver` runs --
+    #: so before the charge and the valve -- and stored here only after
+    #: `pump.deliver` returns. Spec §4.1's word is *delivered*; this is when the
+    #: reward was asked for. `None` before the first, never `0.0`, which would read
     #: as a reward paid at the epoch. **Recorded for the console's time since the
     #: last reward, and compared against nothing** (P4d-2b spec §4.1, 2026-09-26):
     #: fluid today standing still while this ages is what keeps a working, unpaid

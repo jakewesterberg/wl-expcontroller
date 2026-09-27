@@ -22,8 +22,8 @@ ENDPOINT = "tcp://127.0.0.1:5571"
 
 def frame(**overrides) -> Telemetry:
     """A running rig session, forty trials in. Distinctive numbers: 5025 s out of the
-    cage is `1:23:45`, 4321 s in session is `1:12:01`, the last reward was charged at
-    `1_700_000_000.0`, and the frame was read 41.5 s later -- so with `view()`'s half
+    cage is `1:23:45`, 4321 s in session is `1:12:01`, the last reward was commanded
+    at `1_700_000_000.0`, and the frame was read 41.5 s later -- so with `view()`'s half
     a second in `wlx serve`'s hands, the strip reads the last reward `42 s` ago."""
     base = Telemetry(
         schema=SCHEMA,

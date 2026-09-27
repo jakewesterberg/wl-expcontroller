@@ -126,12 +126,14 @@ declaration to fluid is readable in `welfare.py` alone**, which is the property 
 "can anything deliver reward without asking the ceiling" should stay a question one file
 answers.
 
-**`deliver` also records when it delivered** (`Welfare.last_delivery_wall_at`, P4d-2b b1,
-2026-09-26): the charge — `commanded` and `deliveries` — still lands before the valve opens,
-as it always did, but the wall instant is stored only once the pump returns, so a delivery
-the pump refused is charged but not timed. `Rig` reads that instant through `Session.wall_now`
-— the session's `SessionClock`, the one clock every welfare instant is on — for the console's
-time since the last reward. Nothing compares it with a limit, and it is not refused when it is
+**`deliver` also keeps the instant the reward was commanded, once the pump returns**
+(`Welfare.last_delivery_wall_at`, P4d-2b b1, 2026-09-26). `Rig.reward` reads that instant
+through `Session.wall_now` — the session's `SessionClock`, the one clock every welfare
+instant is on — before `deliver` runs, so it is when the reward was commanded, before the
+charge and the valve. The charge — `commanded` and `deliveries` — still lands before the
+valve opens, as it always did, and the instant is stored only once the pump returns, so a
+delivery the pump refused is charged but not timed. It is read for the console's time
+since the last reward. Nothing compares it with a limit, and it is not refused when it is
 not a number, so a display field can never end a trial.
 
 **Whether a duration limit applies at all is declared, not inferred** (`welfare.Deployment`,

@@ -288,9 +288,10 @@ def test_reconciliation_is_what_the_shortfall_is_computed_from():
 
 def test_a_delivery_records_the_wall_instant_it_was_delivered_at():
     """P4d-2b spec §4.1: the console's time since the last reward. **`None` before the
-    first**, never `0.0`, which would read as a reward paid at the epoch. Named
-    *delivered*, not *charged*, since Ruling 3 (fix round 1) moved the store to after
-    the pump returns -- see
+    first**, never `0.0`, which would read as a reward paid at the epoch. The instant
+    is when the reward was commanded -- `Rig.reward` reads it before `deliver` runs
+    -- and it is kept only once the pump returns (Ruling 3, fix round 1), which is
+    the sense of *delivered* in this test's name; see
     `test_a_delivery_the_pump_refused_is_charged_but_not_timed`."""
     welfare = _welfare()
     assert welfare.last_delivery_wall_at is None
@@ -1900,8 +1901,8 @@ NOT_ENTRY_POINTS = {
     "Absent.deliver.ml": "as Pump.deliver; refuses unconditionally anyway",
     "Card.emit.code": "an event code leaving this module; dio owns its range",
     "Rig.mark.code": "an event code, not a welfare quantity; dio owns its range",
-    # P4d-2b b1 (spec §4.1): when the last reward was charged, for the console's time
-    # since the last reward. Compared against nothing, so refusing a non-finite one
+    # P4d-2b b1 (spec §4.1): the instant the last reward was commanded, kept once the
+    # pump returns, for the console's time since the last reward. Compared against nothing, so refusing a non-finite one
     # would end a trial the animal completed over a display field -- the reason
     # `Welfare.deliveries` is exempt, on an instant.
     "Welfare.deliver.wall_now": (

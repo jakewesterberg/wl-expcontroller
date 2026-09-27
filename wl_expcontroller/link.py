@@ -342,9 +342,9 @@ class Telemetry:
     #: never subtracts its host clock from a session instant, which parts from the
     #: session's anchor by any step of the host clock since the session began.
     wall_at: float
-    #: `welfare.last_delivery_wall_at`: when the last reward was charged, POSIX
-    #: seconds on the session's anchored clock, or `None` before the first -- never
-    #: `0.0` (P4d-2b spec §4.1). A console reads it against `wall_at`, the same
+    #: `welfare.last_delivery_wall_at`: the instant the last reward was commanded,
+    #: kept once the pump returns -- POSIX seconds on the session's anchored clock,
+    #: or `None` before the first, never `0.0` (P4d-2b spec §4.1). A console reads it against `wall_at`, the same
     #: clock, never against its own.
     last_reward_at: float | None
     #: `session.recent_outcomes`: the last `RECENT_OUTCOMES` outcome strings, oldest
