@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import threading
 import time
 from dataclasses import replace
@@ -1300,6 +1301,15 @@ def _hhmm() -> str:
     return time.strftime("%H:%M")
 
 
+#: **The interval a `_hhmm()` departure opens reads 0 or 1 minute, and both are right.**
+#: The departure is truncated to the minute, so it is up to 60 s in the past, and a test
+#: that crosses a minute boundary between typing it and reading the interval sees one
+#: whole minute. An exact "0 minutes" failed the b1 branch's CI mutation sweep on its
+#: *restored* run (run `36309285075`, 2026-09-27: departure 10:37, return 10:38) -- a
+#: flake, not a survivor, and likely the one behind the unexplained 2026-09-25 nightly.
+_UNDER_TWO_MINUTES = r"0 hours (?:0 minutes|1 minute)\b"
+
+
 def test_wlx_run_takes_the_departure_as_a_clock_time(tmp_path, capsys):
     """**PI, 2026-09-20: a clock time is what an operator reads.** `--out-of-cage-ago
     SECONDS` is gone rather than aliased -- an operator who types the old flag gets an
@@ -1361,7 +1371,7 @@ def test_wlx_run_prints_how_long_the_animal_has_been_out(tmp_path, capsys):
     )
 
     out = capsys.readouterr().out
-    assert "the animal has been out 0 hours 0 minutes" in out
+    assert re.search("the animal has been out " + _UNDER_TWO_MINUTES, out), out
     assert "local time" in out, "the zone the clock time was read in is stated"
 
 
@@ -2737,7 +2747,7 @@ def test_the_closed_interval_is_printed_once_the_return_is_taken(
     assert main(_run_args(tmp_path, "--out-of-cage-at", departure)) == 0
 
     after = capsys.readouterr().out.partition("<<prompt 1>>")[2]
-    assert "the animal was out 0 hours 0 minutes" in after
+    assert re.search("the animal was out " + _UNDER_TWO_MINUTES, after), after
     assert f" {departure} (" in after, "the departure's clock time"
     assert "this host's local time" in after
 
