@@ -43,7 +43,6 @@ import queue
 import secrets
 import sys
 import threading
-import time
 import traceback
 from collections import deque
 from collections.abc import Callable
@@ -93,6 +92,15 @@ class Hub:
     `offer` and `reject` are called by the telemetry thread; everything else by HTTP
     handler threads. One lock guards the frame, the window and the table of
     subscribers; each queue is thread-safe on its own.
+
+    **`offer` and `reject` assume one producer thread**, `Server._listen`, and are
+    not safe to call from two at once: each copies the table of subscribers under the
+    lock and pushes to the copy after releasing it. A `close()` that lands between
+    the copy and the push can therefore leave one stale frame queued behind a
+    stream's `CLOSED`. That is bounded -- one item per stream, from the one offer in
+    flight -- and it cannot evict `CLOSED`: a queue holds `QUEUE_DEPTH` (8) items, so
+    one more push drops only the oldest, and `take` returns `CLOSED` whenever it
+    meets it.
 
     **One clock, and it is steady** (ledger Ruling 1, 2026-09-27). `steady` is what a
     frame is aged on -- `View.frame_age_s`, which the page's time since the last reward
@@ -883,8 +891,11 @@ def _wait(server: Server) -> None:
 
     **Fix round 2, M-b; fix round 3, M2 (its docstring contradicted itself, and
     this rewrite is the fix for that too -- CLAUDE.md: no fabrication).** On
-    POSIX, `Event.wait()` is interrupted by Ctrl-C the same way `time.sleep` is --
-    this codebase's own tests exercise exactly that path on this platform.
+    POSIX, a real SIGINT ends a serving `wlx serve` with 130:
+    `test_wlx_serve_exits_130_on_a_real_sigint` starts one as its own process, with
+    this function unpatched, fetches its page and sends the signal. That is the only
+    test that does; every other Ctrl-C test raises `KeyboardInterrupt` through a
+    monkeypatch, which shows `run`'s handling and not that the signal arrives.
     **Windows is UNVERIFIED here**: a blocking `Event.wait()` with no timeout is
     documented elsewhere as not reliably interruptible by Ctrl-C on that platform
     (a wait with no timeout never returns control to the interpreter for a signal

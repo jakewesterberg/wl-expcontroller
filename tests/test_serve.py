@@ -14,7 +14,10 @@ import json
 import os
 import queue
 import re
+import signal
 import socket
+import subprocess
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -152,8 +155,17 @@ def _torn_down_servers(monkeypatch):
 
     monkeypatch.setattr(Server, "__init__", _record_init)
     yield
+    # Every server is torn down even when one teardown raises: a failure here used
+    # to leave each later server running, its telemetry thread in a ZMQ receive
+    # into interpreter shutdown. The failures are raised together at the end.
+    failures = []
     for server in built:
-        _teardown_without_close(server)
+        try:
+            _teardown_without_close(server)
+        except Exception as exc:  # noqa: BLE001 -- collected and re-raised below
+            failures.append(exc)
+    if failures:
+        raise ExceptionGroup("tearing down a test's wlx serve servers failed", failures)
 
 
 # --- the hub (Task 9) ------------------------------------------------------------
@@ -1601,6 +1613,7 @@ def test_wlx_serve_ends_with_a_sentence_when_the_telemetry_thread_cannot_start(
     assert exit_code == 1
     assert "wlx serve: the telemetry thread stopped" in captured.err
     assert "simulated: this transport cannot connect" in captured.err
+    assert "the session is unaffected" in captured.err
 
 
 def test_a_fatal_exception_with_no_message_is_named_plainly(
@@ -1629,7 +1642,6 @@ def test_a_fatal_exception_with_no_message_is_named_plainly(
     ) in captured.err
     assert "RuntimeError: ;" not in captured.err
     assert "RuntimeError:\n" not in captured.err
-    assert "the session is unaffected" in captured.err
 
 
 def test_wlx_serve_ends_with_a_sentence_when_offering_a_frame_raises(
@@ -1755,6 +1767,54 @@ def test_wlx_serve_closes_cleanly_when_ctrl_c_lands_inside_start(
     assert "the session keeps running on the box" in captured.err
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="a POSIX signal; Ctrl-C on Windows is UNVERIFIED (`serve._wait`)",
+)
+def test_wlx_serve_exits_130_on_a_real_sigint(tmp_path):
+    """Every other Ctrl-C test here raises `KeyboardInterrupt` through a monkeypatch,
+    so none shows that a real SIGINT ends a serving `wlx serve` at all. This one
+    starts it as its own process -- the real `_wait`, not this file's bounded
+    stand-in -- waits for its address line, fetches the page from it, sends SIGINT,
+    and reads 130 and the sentence. Every wait is bounded, and the process is killed
+    if it outlives one."""
+    command = [
+        sys.executable,
+        "-c",
+        "import sys; from wl_expcontroller.cli import main; sys.exit(main(sys.argv[1:]))",
+        *_serve_args(tmp_path),
+    ]
+    process = subprocess.Popen(
+        command,
+        cwd=Path(__file__).resolve().parents[1],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        first_line: queue.Queue = queue.Queue()
+        threading.Thread(
+            target=lambda: first_line.put(process.stdout.readline()), daemon=True
+        ).start()
+        try:
+            address = first_line.get(timeout=30)
+        except queue.Empty:
+            pytest.fail("wlx serve never printed its address within 30 s")
+        found = re.search(r"the console is at http://127\.0\.0\.1:(\d+)/", address)
+        assert found, address
+        assert _request(int(found.group(1)), "GET", "/")[0] == 200
+
+        process.send_signal(signal.SIGINT)
+        _, err = process.communicate(timeout=15)
+
+        assert process.returncode == 130, err
+        assert "the session keeps running on the box" in err
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
 def test_serving_waits_for_the_operator(_bounded_real_wait):
     """A `_wait` that returned would end the console the moment it started.
 
@@ -1800,9 +1860,13 @@ def test_wlx_serve_refuses_a_token_it_cannot_use(tmp_path, text, why):
 
 
 def test_wlx_serve_refuses_a_token_file_inside_the_repository(tmp_path):
-    """Spec §2: a token file, never the repository. `pyproject.toml` stands in for a
-    token someone saved into the checkout."""
-    inside = Path(serve.__file__).resolve().parents[1] / "pyproject.toml"
+    """Spec §2: a token file, never the repository, refused through `wlx serve`
+    itself. The checkout is built in `tmp_path` -- a `.git` directory beside the
+    token -- so this passes or fails on the refusal, wherever the suite runs, and not
+    on whether this copy of the code happens to sit in a git checkout."""
+    checkout = tmp_path / "checkout"
+    (checkout / ".git").mkdir(parents=True)
+    inside = _token_file(checkout)
 
     with pytest.raises(SystemExit, match="inside this repository"):
         main(_serve_args(tmp_path, token=inside))
