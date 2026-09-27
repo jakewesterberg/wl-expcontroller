@@ -97,10 +97,11 @@ closed, verified 2026-09-06 by reading the runs.
 
 ## 1. The thing that needs a person, not a session — P4d-2b b1, approved 2026-09-27
 
-**The PI approved all three on 2026-09-27**, asked in plain terms through the question
-UI: item 1, "approve, merge after checks" -- b1 fast-forwards to `main` once the
-mutation gate and CI are clean; item 3, the yellow warning (`degraded`); and, asked
-beside it, the session reading's wording (below). What he was given:
+**The PI approved all three questions put to him on 2026-09-27**, asked in plain terms
+through the question UI. They were item 1, "approve, merge after checks" -- b1
+fast-forwards to `main` once the mutation gate and CI are clean; item 3, the yellow
+warning (`degraded`); and, asked beside item 3, the session reading's wording (below).
+Item 2 was for information and asked nothing. What he was given:
 
 1. **`welfare.deliver` now keeps the instant each reward was commanded, once the pump
    returns.** `Rig.reward` reads the instant before `deliver` runs, so it is when the reward
@@ -128,7 +129,8 @@ beside it, the session reading's wording (below). What he was given:
    `test_the_fonts_ship_with_the_package`.
 
 3. **A refused frame makes `/health` `degraded`** (Ruling 11, 2026-09-27) -- asked, not
-   assumed, because it adds a row to spec §3's table, and the PI approved that table. With a schema-6 `wlx run` beside a schema-7 `wlx serve`, every frame is refused.
+   assumed, because it adds a row to spec §3's table, and the PI approved that table.
+   With a schema-6 `wlx run` beside a schema-7 `wlx serve`, every frame is refused.
    Before this ruling, `/health` said `ok` throughout and the page said no session was
    publishing. It is now `degraded` at once, with a featured *Refused* reading placed
    after the duration warning and the fault or unreturned-limit state, and before the
@@ -145,8 +147,9 @@ beside it, the session reading's wording (below). What he was given:
    `test_an_accepted_frame_after_a_refusal_returns_health_to_ok` and
    `test_with_a_refusal_and_no_frame_it_never_says_nothing_arrived`.
 
-It merges to `main` by fast-forward only after he approves item 1; items 2 and 3 are for
-information and a question, and do not gate the merge.
+Item 1 was the one that gated the merge, and he approved it: b1 merges to `main` by
+fast-forward once the mutation gate and CI are clean. Items 2 and 3 were for information
+and a question, and did not gate the merge.
 
 ## 1a. The thing that needs a person, not a session — approved 2026-09-26 (P4d-2a)
 
@@ -625,8 +628,9 @@ Three things S9a §6–§10 depends on that nobody has built:
 
 ## 6. P4d-2a is on `main`; P4d-2b b1 is built; b2 is next
 
-**2026-09-27.** b1 is built on branch `p4d2b-b1-read-only-console` and awaits the PI's
-approval of its welfare item (§1 above). **b2 is next** — writes from the box (spec §2's
+**2026-09-27.** b1 is built on branch `p4d2b-b1-read-only-console`, and the PI approved
+its welfare item that day (§1 above): it fast-forwards onto `main` once the mutation gate
+and CI are clean. **b2 is next** after that — writes from the box (spec §2's
 four conditions on `POST /commands`, the `NAME (box, unverified)` attribution, and the
 greyed controls' sentence), per spec §4.0's slice list, and it first closes P4d-2a's M8
 (`SetParameter.value`'s type) before any write ships. The command thread that owns the REQ

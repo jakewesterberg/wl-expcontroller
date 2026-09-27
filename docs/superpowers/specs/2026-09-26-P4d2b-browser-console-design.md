@@ -75,7 +75,9 @@ stays unrolled.
 
 **`/health`** is `wl_preproc.contracts.protocol.HealthResponse`, schema version 1: readings
 are plain text, with `<`, `>` and `&` spelled out as `wl-preproc`'s `plain_text` does.
-Readings: session (id · subject · task); state; the reason a frame was refused, when one
+Readings: session (id · subject · task; while nothing readable has arrived but frames
+are being refused, "a session is sending on ENDPOINT, but in a format this console cannot
+read", the PI's wording, 2026-09-27); state; the reason a frame was refused, when one
 was (Ruling 11; approved by the PI, 2026-09-27); time out of cage against its limit,
 or *cage-side, no limit*; the duration warning when active; fluid this session; supplement
 owed; the behavioral counts above; age of the last frame. **Exactly one is featured**,

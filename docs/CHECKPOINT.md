@@ -5,9 +5,10 @@
 distrust the reasoning. Numbers go stale, arguments do not.
 
 > **This file describes `main`, plus one branch that is not on it yet.** The newest entry,
-> "What moved on 2026-09-27", describes `p4d2b-b1-read-only-console` (P4d-2b slice b1),
-> which awaits the PI's approval of its welfare item and has not merged; `main`'s copy of
-> this file does not have that entry. Everything older describes `main`. Run
+> "What moved on 2026-09-27", describes `p4d2b-b1-read-only-console` (P4d-2b slice b1).
+> The PI approved it on 2026-09-27, to fast-forward onto `main` once the mutation gate and
+> CI are clean, and it has not merged yet; `main`'s copy of this file does not have that
+> entry. Everything older describes `main`. Run
 > `git branch --show-current` before believing either.
 >
 > **Earlier, 2026-09-20:** `p4d1-console-link` was reviewed, approved by the
@@ -328,9 +329,16 @@ figure was one low. In order:
 
 ## What moved on 2026-09-27, P4d-2b slice b1: the read-only browser console
 
-**Resume here:** b1 is built on branch `p4d2b-b1-read-only-console`, awaiting the PI's
-approval of the welfare item below; Ruling 11 (below, and spec §3) is put to him at the
-same handoff. Start b2 next, from the P4d-2b spec §2 and §4.0.
+**Resume here:** b1 is built on branch `p4d2b-b1-read-only-console`, and the PI approved
+it on 2026-09-27, asked in plain terms (`docs/next-session.md` §1): the welfare item
+below, "merge after checks"; Ruling 11's yellow `degraded` for a refused frame; and the
+session wording "a session is sending on ENDPOINT, but in a format this console cannot
+read". In order:
+
+1. The mutation gate and CI on the branch, both clean.
+2. The fast-forward to `main`.
+3. b2, writes from the box, from the P4d-2b spec §2 and §4.0. Close M8
+   (`SetParameter.value`'s type) first.
 
 - **What was built:** telemetry schema 7, `wlx serve`, the page, `/health`, and the files
   it lives in (`serve.py`, `web.py`, `health.py`).
@@ -340,8 +348,8 @@ same handoff. Start b2 next, from the P4d-2b spec §2 and §4.0.
   returns: `Rig.reward` reads it before `deliver` runs, the charge (`commanded`,
   `deliveries`) still lands before the valve opens, as it always did, and the instant is
   stored only after the pump returns, so a delivery the pump refused is charged but not
-  timed. The fonts shipped under ADR-0004's 2026-09-26 amendment. The branch awaits the
-  PI's approval of the welfare item.
+  timed. The fonts shipped under ADR-0004's 2026-09-26 amendment. The PI approved the
+  welfare item on 2026-09-27: "approve, merge after checks".
 - **Ledger Ruling 1 (2026-09-27):** the frame carries its own instant, `wall_at`, and
   `wlx serve` ages a frame on its steady clock, so the time since the last reward never
   reads a host clock against a session instant — the question the pre-flight raised, and
@@ -365,12 +373,14 @@ same handoff. Start b2 next, from the P4d-2b spec §2 and §4.0.
   that reconnected onto an old frame showed no stale banner for `--stale-after`
   seconds.
 - **A refused frame:** a schema-6 `wlx run` beside a schema-7 `wlx serve` shows a
-  *Refused* banner, by design. **Ruling 11 (2026-09-27; put to the PI at handoff):** a
-  refusal also makes `/health` and the *wl-works sees* pane `degraded` at once, with a
-  *Refused* reading featured after the duration warning and the unreturned-limit or fault
-  state and before the last frame's age, until the next frame this console can read; a
-  held fault stays `down`. With no frame held, the *Waiting* banner is dropped beside a
-  refusal. Before this, a console refusing every frame told wl-works `ok`. With no frame
+  *Refused* banner, by design. **Ruling 11 (2026-09-27; approved by the PI the same
+  day):** a refusal also makes `/health` and the *wl-works sees* pane `degraded` at once,
+  with a *Refused* reading featured after the duration warning and the unreturned-limit
+  or fault state and before the last frame's age, until the next frame this console can
+  read; a held fault stays `down`. With no frame held, the *Waiting* banner is dropped
+  beside a refusal, and the session reading says "a session is sending on ENDPOINT, but
+  in a format this console cannot read", the wording the PI chose when asked. Before
+  this, a console refusing every frame told wl-works `ok`. With no frame
   and no refusal, the banner and `/health`'s session reading name the PUB endpoint
   nothing has arrived on (`View.endpoint`), rather than asserting that nothing publishes.
 - **The telemetry thread's failure ends `wlx serve` (Ruling 9).** A bad `--link`, or any
@@ -1899,7 +1909,7 @@ runs out of context before it produces anything.**
 | **P4c** | Parquet derivation at close ~~; the `labhost` endpoint~~ (`labhost` moved under `console`, ADR-0008 — see P4d-2) | Contract-tested against `wl-preproc`'s published schema | S10 | nothing. Independently ready to pick up; `trials.jsonl` now carries block and condition per row, so the derivation has what it needs |
 | ~~P4d-1~~ | ~~The console link: telemetry out, commands in, over a real socket~~ | **done 2026-09-19** — `Session` gains a `Link` port drained once per trial boundary, never per frame; `link.py`'s `Telemetry`/`Staged`/`Refused` message and `SetParameter`/`Stop` commands; `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB + REQ/REP; `wlx console` as a terminal client. Not welfare-critical and built to stay that way. Three items found and deliberately left open; **one of them (a pump fault publishing nothing) was closed by the PI on 2026-09-19 and one was widened by the same decisions** — see "What moved" above | — | — |
 | **P4d-2a** | Close the out-of-cage interval: both ends recorded as wall instants, the return taken at `wlx run`'s terminal as the ELN's stand-in, the clock published after the loop, and a separate in-session clock | **On `main` (`0c18827`), approved by the PI 2026-09-26** | `docs/superpowers/specs/2026-09-26-P4d2a-return-to-cage-design.md` §7, §10 | **the PI's review** |
-| **P4d-2b** | The browser console and `GET /health` (S9a §7), with the `labhost` endpoint it carries (`labhost` is a surface of `console`, not its own process), in six slices b1–b6 | **b1 built on branch `p4d2b-b1-read-only-console`, awaiting the PI's approval of the welfare item.** Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0. §4 is slice b1, the read-only console, built on telemetry schema 7. **Next is b2** (writes from the box) — read the P4d-2b spec §2 and §4.0. b3–b6 each get a section as they are designed | that spec | **the PI's approval of the welfare item** |
+| **P4d-2b** | The browser console and `GET /health` (S9a §7), with the `labhost` endpoint it carries (`labhost` is a surface of `console`, not its own process), in six slices b1–b6 | **b1 built on branch `p4d2b-b1-read-only-console`, and approved by the PI on 2026-09-27 to merge after checks: it fast-forwards onto `main` once the mutation gate and CI are clean.** Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0. §4 is slice b1, the read-only console, built on telemetry schema 7. **Next is b2** (writes from the box), after that merge — read the P4d-2b spec §2 and §4.0, and close M8 first. b3–b6 each get a section as they are designed | that spec | **b1: the mutation gate and CI, then the fast-forward to `main`** |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
 | **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |
 | | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested | — | — |
