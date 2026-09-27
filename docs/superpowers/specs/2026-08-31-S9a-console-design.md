@@ -400,7 +400,7 @@ is the behaviour that matters; the frame only means a stranger can read what hap
 the screen, which is this spec's own rule for an abort reason.
 
 Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is 7
-as of 2026-09-26** (P4d-2b b1), and every bump since 2 is the same case: a field that still
+as of 2026-09-26** (P4d-2b b1; `wall_at` arrived in it on 2026-09-27, ledger Ruling 1), and every bump since 2 is the same case: a field that still
 decodes and no longer means what it did, or a new one whose absence a console built against
 the old number would misread. `link.SCHEMA`'s comment carries the same history.
 

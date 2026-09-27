@@ -608,7 +608,11 @@ approval of its welfare item (§1 above). **b2 is next** — writes from the box
 four conditions on `POST /commands`, the `NAME (box, unverified)` attribution, and the
 greyed controls' sentence), per spec §4.0's slice list, and it first closes P4d-2a's M8
 (`SetParameter.value`'s type) before any write ships. The command thread that owns the REQ
-socket arrives with b2 (`serve.py`'s module docstring names it). What follows is the
+socket arrives with b2 (`serve.py`'s module docstring names it). **Ask the PI while
+designing b2:** should the `Host` check spec §2 requires for writes also apply to reads?
+DNS rebinding could let a page open in a lab browser read the LAN-open `/` and `/events`.
+The rest of what b1 carries forward is listed in `docs/CHECKPOINT.md`'s 2026-09-27 entry,
+under "Carried forward from b1". What follows is the
 2026-09-19 account of P4d-1 and of P4d-2 as one package, kept as the record.
 
 **What moved, 2026-09-19 (`p4d1-console-link`, on top of `p4b-session-management`).**

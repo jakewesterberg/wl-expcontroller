@@ -1,22 +1,30 @@
 # Where this build actually is
 
-**Last updated 2026-09-26**, at the commit this file was committed in. Check
+**Last updated 2026-09-27**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
-> **This file now describes `main`.** `p4d1-console-link` was reviewed, approved by the
-> PI on 2026-09-20 and **fast-forwarded onto `main`**, which moved `300d7d1` → `08adfa2`
-> and now carries P4b and P4d-1 together. The long-standing warning that used to sit here
-> — that this file described a branch `main` did not have — is **retired**, because there
-> is no divergence left to trip over. The branch still exists at the same commit; nothing
-> needs it. **Deliberately still not a commit count**: a count of a branch, stated in a
+> **This file describes `main`, plus one branch that is not on it yet.** The newest entry,
+> "What moved on 2026-09-27", describes `p4d2b-b1-read-only-console` (P4d-2b slice b1),
+> which awaits the PI's approval of its welfare item and has not merged; `main`'s copy of
+> this file does not have that entry. Everything older describes `main`. Run
+> `git branch --show-current` before believing either.
+>
+> **Earlier, 2026-09-20:** `p4d1-console-link` was reviewed, approved by the
+> PI and **fast-forwarded onto `main`**, which moved `300d7d1` → `08adfa2`
+> and now carries P4b and P4d-1 together. The warning that sat here then — that this file
+> described a branch `main` did not have — was retired because there was no divergence
+> left; the note above is the same warning, back for b1 until it merges. That branch
+> still exists at the same commit; nothing needs it.
+>
+> **Deliberately still not a commit count**: a count of a branch, stated in a
 > file tracked on that branch, is wrong the instant it is committed — writing it is itself
 > one more commit than it counted, and this file got that wrong three separate times
 > before the number was removed rather than corrected again. Run `git log --oneline` and
 > look.
 >
-> **The merge was a fast-forward**, so `main`'s history stays linear and every commit
-> described below is reachable from it. `git branch --show-current` still costs nothing
+> **That merge was a fast-forward**, so `main`'s history stays linear and every commit
+> described below is reachable from it, except the b1 branch's until it merges. `git branch --show-current` still costs nothing
 > before believing the rest.
 >
 > **P4b's CI history is worth keeping.** Its first run failed (`34769913502`,
@@ -321,7 +329,8 @@ figure was one low. In order:
 ## What moved on 2026-09-27, P4d-2b slice b1: the read-only browser console
 
 **Resume here:** b1 is built on branch `p4d2b-b1-read-only-console`, awaiting the PI's
-approval of the welfare item below. Start b2 next, from the P4d-2b spec §2 and §4.0.
+approval of the welfare item below; Ruling 11 (below, and spec §3) is put to him at the
+same handoff. Start b2 next, from the P4d-2b spec §2 and §4.0.
 
 - **What was built:** telemetry schema 7, `wlx serve`, the page, `/health`, and the files
   it lives in (`serve.py`, `web.py`, `health.py`).
@@ -373,7 +382,30 @@ approval of the welfare item below. Start b2 next, from the P4d-2b spec §2 and 
   sentence. `wlx serve` shows that sentence on its page as a *Refused* banner. `wlx console`
   prints it and exits 1, instead of a `KeyError` traceback.
 - **The `/health` token file is refused when it is inside any git checkout**, found by
-  walking up to a `.git` file or directory, and when it holds a non-printable character.
+  walking up to a `.git` file or directory; when it holds a non-ASCII character, which
+  `hmac.compare_digest` cannot compare, so every request would fail, the correct one
+  included; and when it holds a non-printable character, which no header can carry.
+
+**Carried forward from b1.** The ledger that recorded these is gitignored, so they are
+here, one line each:
+
+- **For b2's design, a question for the PI:** should the `Host` check spec §2 requires for
+  writes also apply to reads? DNS rebinding could let a page open in a lab browser read the
+  LAN-open `/` and `/events`.
+- There is no JSON 500 backstop: a handler that raises gets no JSON error body.
+- `HEAD` answers 405 with a body, and no response carries `Allow` or `WWW-Authenticate` —
+  wl-preproc parity, which the plan mandated.
+- Nothing caps the number of open `/events` connections.
+- The startup line prints `http://0.0.0.0:PORT/` for a LAN bind, not an address a browser
+  can use.
+- `ZmqConsole`'s `receive_timeout_s` is not validated.
+- macOS lets overlapping binds succeed where Linux refuses them, so a port clash on the rig
+  may not reproduce on a Mac.
+- There is no process-level restart test; the manual check covers it.
+- `link.decode` checks that fields are present, not their types. Only a buggy producer
+  reaches that, and Ruling 9 makes it loud.
+- Already carried elsewhere, and left there: the Rig↔Session reference cycle (`welfare.Rig`'s
+  docstring) and M8 (`SetParameter.value`'s type, closed before b2's writes ship).
 
 The gate's result and the test count are added to this entry in Task 13 Step 3, once they
 exist.
