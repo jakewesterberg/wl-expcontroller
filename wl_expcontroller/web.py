@@ -849,6 +849,10 @@ _LOGO = (
 #: banner's N. A `null` age -- no frame yet -- runs no timer. It shares with `/health`
 #: *when* frames are due (`live`, `health.expects_frames`), not the clock: this one
 #: is the browser's, carried from `wlx serve`'s steady clock by `age`.
+#:
+#: **A lost stream is greyed as a stale one is** (m3): the timer stands down while
+#: the stream is lost, so without this a red *stream lost* banner sat over
+#: full-color numbers nothing was updating. The next frame's `check()` clears it.
 _SCRIPT = """
 (function () {
   "use strict";
@@ -902,6 +906,7 @@ _SCRIPT = """
     source.onerror = function () {
       if (closed) { return; }
       lost = true;
+      body.classList.add("stale");
       say("stream lost", "crit");
       if (source.readyState === EventSource.CLOSED) {
         setTimeout(function () { if (!closed && lost) { open(); } }, 3000);

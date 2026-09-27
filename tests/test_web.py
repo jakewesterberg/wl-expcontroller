@@ -649,6 +649,19 @@ def test_the_stale_timer_runs_from_the_frames_age_not_from_arrival():
     assert "if (!live || baseline === null) {" in _SCRIPT
 
 
+def test_a_lost_stream_greys_the_page_as_a_stale_one_does():
+    """m3: the stale timer stands down while the stream is lost, so a red *stream
+    lost* banner used to sit over full-color numbers nobody was updating. The error
+    handler greys the page itself; the next frame's `check()` clears it."""
+    handler = re.search(r"source\.onerror = function \(\) \{(.*?)\n    \};", _SCRIPT, re.S)
+
+    assert handler, "the script's error handler moved; re-pin this test on it"
+    body = handler.group(1)
+    assert 'body.classList.add("stale");' in body
+    assert body.index("lost = true;") < body.index('body.classList.add("stale");')
+    assert 'say("stream lost", "crit");' in body
+
+
 def test_the_stream_banner_and_the_disconnect_dialog_start_hidden():
     document = _document()
 

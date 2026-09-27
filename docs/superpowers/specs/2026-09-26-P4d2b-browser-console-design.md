@@ -246,7 +246,9 @@ welfare number and bounds nothing.
   `--stale-after`, and N is *now − baseline*. So a page that connects onto an already-old
   frame, or is woken by a refused one, does not restart the clock, and a `null` age runs no
   timer (Ruling 12, 2026-09-27).
-- **Lost:** a banner reading *stream lost*. The browser reconnects on its own and re-renders in
+- **Lost:** a banner reading *stream lost*, and the values are greyed as when stale
+  (2026-09-27: the stale timer stands down while the stream is lost, so without this the
+  banner sat over full-color numbers). The browser reconnects on its own and re-renders in
   full when it does.
 - **The ✕** closes the page's stream and says *disconnected · the session keeps running on the
   box*, with a reconnect button.
