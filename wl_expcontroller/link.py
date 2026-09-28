@@ -1084,7 +1084,11 @@ def _setting(value: object, name: str, by: str) -> float | str:
     where the bytes become a command, the bad value is a refusal with a sentence and
     the session runs on. `bool` is refused although Python counts it as an `int`:
     `True` was accepted as `1.0`. Whether a word is one of the parameter's choices is
-    `Session.set`'s to decide, since only the task knows them."""
+    `Session.set`'s to decide, since only the task knows them.
+
+    **Welfare-critical** (`docs/design/architecture.md`, the b2a final review): it is
+    M8 where bytes become a command, on the wire here and for a `POST /commands` body
+    in `serve.parse_command`, which PI item 4 rests on."""
     if isinstance(value, str):
         if len(value) > TEXT_LIMIT:
             raise CommandRefused(

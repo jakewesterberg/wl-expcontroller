@@ -697,6 +697,11 @@ class Session:
         recorded). A reader must take the last row's `now` for the interval and must
         not chain or sum them; a bounded name is the one where doing so would
         mis-attribute fluid, which is the thing this method was changed to stop.
+
+        **Welfare-critical, the whole method** (`docs/design/architecture.md`, the b2a
+        final review): its two type guards are M8 at the session (PI item 4), and
+        sending a ceiling's name to `bounds.validate` is what keeps a reward size set
+        from the page under its approved ceiling (PI item 3).
         """
         if name in self.spec.bounds.ceilings:
             # M8 (P4d-2b b2a): a ceiling takes a number. A word reached
@@ -1023,7 +1028,11 @@ class Session:
         check: trials and a clock time both name something ahead of now -- trials
         count forward from the trial about to run, and a past clock time rolls to
         tomorrow -- so neither needs this guard, but a fluid figure can already be
-        behind the console's own reading. `Stop` is what ends a session now."""
+        behind the console's own reading. `Stop` is what ends a session now.
+
+        **Welfare-critical** (`docs/design/architecture.md`, the b2a final review): the
+        target fixed here is what `_ends` compares against, so a wrong one ends a
+        session early or late with every check in `_ends` passing."""
         why = _link.check_schedule(command.kind, command.value)
         if why is not None:
             self._refuse("schedule", command.by, f"{why}, so it is refused")
@@ -1356,6 +1365,9 @@ class Session:
             return
         try:
             self.set(command.name, command.value, by=command.by)
+        # **Welfare-critical, this one line** (`docs/design/architecture.md`, like
+        # `cli.main`'s `confirmed=` line): it makes a malformed setting a refusal
+        # rather than the end of a session, which is PI item 4.
         except (Exceeded, TypeError) as refused:
             # **M8's backstop** (P4d-2b b2a): `TypeError` too. The wire refuses a
             # malformed value before it becomes a command (`link._setting`) and

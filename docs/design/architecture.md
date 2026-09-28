@@ -79,7 +79,8 @@ token-to-fluid conversion, stimulation bounds and gating, and the bounded-config
 
 **In code, that is `wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`, and
 four functions in `wl_expcontroller/cli.py`, plus one line inside a fifth — and, since
-P4d-2b b2a, three functions in `wl_expcontroller/taskd.py`.** Both modules
+P4d-2b b2a, five functions in `wl_expcontroller/taskd.py` plus one line inside a sixth,
+and one function in `wl_expcontroller/link.py`.** Both modules
 are kept small deliberately: everything in them can hurt an animal if it is wrong, and a
 small file is one a person can actually read before signing it off. **The four functions
 are `cli._wall_clock_time`, `cli._clock_or_now`, `cli._settle_return` and
@@ -96,7 +97,8 @@ confirmed=note is not None, ...)` line is on this list too, one line inside a fu
 that is otherwise ordinary. They stay in `cli.py`, which is where the terminal is, until
 the wl-works ELN records both ends of the interval (P4d-2a spec §10) and the return
 prompt goes. A change to either module, to those four functions, to that one line, or to
-the three `taskd` functions below, is a change requiring review; a change elsewhere is not.
+the `taskd` and `link` functions and the `taskd` line below, is a change requiring review;
+a change elsewhere is not.
 
 **The three `taskd` functions are `Session._ends`, `Session._hold` and
 `Session._manual_reward`** (P4d-2b b2a, 2026-09-28; the third since the PI's 2026-09-28
@@ -116,6 +118,23 @@ own; they are on this list because a plausible
 mistake in any — the limit asked on one path and not the other, a paused session that
 forgot to ask, a reward given while trials run or paid from another entry — ends a session
 late or rewards an animal when nobody meant it to, and passes every refusal `welfare` has.
+
+**The other two `taskd` functions are `Session.set`, whole, and `Session._schedule`; the
+line is `Session._command`'s `except (Exceeded, TypeError) as refused:`; and the `link`
+function is `link._setting`** (the P4d-2b b2a final review, 2026-09-28: they are what the
+PI's items 3 and 4 rest on). `set` is the one write path for a setting from a console:
+its two type guards refuse a value that is not a number, for a welfare ceiling and for a
+numeric parameter alike (M8, item 4), and it sends a ceiling's name to `bounds.validate`,
+which is what keeps a reward size set from the page under its approved ceiling (item 3).
+`link._setting` is M8 where bytes become a command — in `_decode_command` on the wire,
+and in `serve.parse_command` for a `POST /commands` body — refusing a value that is
+neither a finite number nor a bounded word before any session sees it. The `except` line
+turns what `set` raises into a refusal on the feed, and a ceiling's refusal into a row in
+the record, rather than the end of a session (item 4); like `main`'s `confirmed=` line, it
+is one line inside a function that is otherwise ordinary. `_schedule` fixes the target
+`_ends` compares against — a trial count from the trial about to run, an instant on the
+session's clock, or mL this session, refused when already reached — so a wrong target
+ends a session early or late while every check in `_ends` passes.
 
 The split between the two is what keeps each reviewable. `bounds.py` is **pure** — the
 ceilings, the daily *floor*, and the arithmetic of whether a number is past one or short of

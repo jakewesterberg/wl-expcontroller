@@ -104,7 +104,11 @@ correct-trial reward per press (his one change at his review of the plan, 2026-0
 the out-of-cage limit still ends the session; (2) a scheduled stop, "after X mL" included,
 can end a session; (3) reward size can be changed from the console page, still capped by
 its approved ceiling; (4) the M8 fix — a malformed setting is refused and never ends the
-session. He is also asked about the per-frame mark check's measured cost (the spec's rule:
+session. The code each rests on is on `docs/design/architecture.md`'s welfare-critical
+list: (1) `taskd.Session._hold`, `_manual_reward` and `_ends`; (2) `_ends` and
+`_schedule`; (3) `Session.set`, which sends a ceiling's name to `bounds.validate`; (4)
+`link._setting`, `Session.set`'s type guards and the `except (Exceeded, TypeError)` line
+in `Session._command`. He is also asked about the per-frame mark check's measured cost (the spec's rule:
 a check that measurably disturbs frames goes back to him before b2a ships). Record his
 answers here, and move this section below as the record once he has.
 
