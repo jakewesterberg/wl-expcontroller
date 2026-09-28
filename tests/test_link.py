@@ -28,6 +28,7 @@ from wl_expcontroller.link import (
     CommandRefused,
     Control,
     FrameError,
+    ManualReward,
     Mark,
     NotDelivered,
     ParamRow,
@@ -45,6 +46,7 @@ from wl_expcontroller.link import (
     Stop,
     TEXT_LIMIT,
     Telemetry,
+    Unacknowledged,
     ZmqCommands,
     ZmqConsole,
     ZmqLink,
@@ -1972,3 +1974,62 @@ def test_a_schema_7_frame_is_refused_by_a_schema_8_reader():
 
     with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 8"):
         decode(old)
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause
+# ---------------------------------------------------------------------------
+
+
+def test_a_manual_reward_crosses_the_wire_as_one_press_with_who_pressed_it(zmq_cleanup):
+    """PI, 2026-09-28: one press gives one correct-trial reward. The command carries who
+    pressed it and nothing else -- the size is the bounded config's `reward_correct`,
+    read by the rig, so nothing a console sends can set it -- and it crosses a real
+    socket like every other control."""
+    command = ManualReward(by="jake (box, unverified)")
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    console.send(command)
+
+    assert ManualReward.KIND == "reward"
+    assert _decode_command(_encode_command(command)) == command
+    assert _drain_until(link) == [command]
+
+
+@pytest.mark.parametrize("by", [None, "", 3])
+def test_a_manual_reward_that_does_not_say_who_pressed_it_is_refused(by):
+    """S9a §6, as for every command: a reward nobody pressed is refused by its kind."""
+    fields = {"kind": "reward"}
+    if by is not None:
+        fields["by"] = by
+
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(**fields))
+
+    assert refused.value.name == "reward"
+    assert "who sent it" in refused.value.why
+
+
+def test_a_command_the_rig_took_and_never_acknowledged_is_told_from_one_never_sent(
+    zmq_cleanup,
+):
+    """No accidental doubles (PI, 2026-09-28). A command handed to a connected rig that
+    does not acknowledge it may still be applied, so it raises `Unacknowledged` -- a
+    `NotDelivered`, so every caller that catches that still does -- and `wlx serve`
+    answers a reward in that state *unknown*. A command that never left, with no rig
+    connected, is a plain `NotDelivered`: nothing was given."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    took = zmq_cleanup(ZmqCommands(link.rep_endpoint, reply_timeout_s=0.2))
+    probe = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    gone = probe.rep_endpoint
+    probe.close()
+    never = zmq_cleanup(ZmqCommands(gone, reply_timeout_s=30.0, connect_timeout_s=0.1))
+
+    with pytest.raises(Unacknowledged, match="did not acknowledge it within 0.2 s"):
+        took.deliver(ManualReward(by="jake"))
+    with pytest.raises(NotDelivered, match="no rig is connected") as not_sent:
+        never.deliver(ManualReward(by="jake"))
+
+    assert issubclass(Unacknowledged, NotDelivered)
+    assert not isinstance(not_sent.value, Unacknowledged)

@@ -36,12 +36,15 @@ from wl_expcontroller.cli import main
 from wl_expcontroller.link import (
     SCHEMA,
     CancelScheduledStop,
+    ManualReward,
     Mark,
+    NotDelivered,
     Pause,
     Resume,
     ScheduleStop,
     SetParameter,
     Stop,
+    Unacknowledged,
     ZmqConsole,
     ZmqLink,
 )
@@ -53,6 +56,8 @@ from wl_expcontroller.serve import (
     MARK_ID_LIMIT,
     MARKS_REMEMBERED,
     QUEUE_DEPTH,
+    REWARD_SENT,
+    REWARD_UNKNOWN,
     BadCommand,
     Hub,
     MarkNote,
@@ -2332,6 +2337,7 @@ def test_a_write_from_a_peer_that_is_not_the_box_is_refused(monkeypatch):
         ({"kind": "mark", "by": "jake", "pressed_at": "now"}, "pressed_at"),
         ({"kind": "note", "by": "jake", "mark": MARK_ID_LIMIT + 1, "note": ""}, "names the mark"),
         ({"kind": "note", "by": "jake", "mark": 3, "note": "x" * 501}, "at most 500"),
+        ({"kind": "reward", "by": "jake", "ml": 0.5}, "a reward command takes no ml"),
     ],
 )
 def test_a_body_that_is_not_a_command_is_refused_before_anything_is_queued(body, said):
@@ -2428,6 +2434,7 @@ def test_a_body_longer_than_the_limit_or_without_a_length_is_refused_unread():
         ({"kind": "mark", "by": "jake"}, MarkSignal(by="jake (box, unverified)", pressed_at=None)),
         ({"kind": "note", "by": "jake", "mark": 7, "note": "bubble"},
          MarkNote(mark=7, note="bubble", by="jake (box, unverified)")),
+        ({"kind": "reward", "by": "jake"}, ManualReward(by="jake (box, unverified)")),
     ],
 )
 def test_each_command_the_page_sends_parses_to_what_the_rig_is_sent(body, expected):
@@ -2477,8 +2484,11 @@ def test_a_stream_on_the_boxs_page_renders_controls_that_work():
     with _served(hub) as port, _stream(port) as response:
         first = next(_events(response))
 
-    assert 'data-cmd="pause"' in first["frags"]["controls"]
-    assert "disabled" not in first["frags"]["controls"]
+    controls = first["frags"]["controls"]
+    assert 'data-cmd="pause"' in controls
+    # Every control but the manual reward, which waits for a pause (Task 13).
+    assert controls.count(" disabled") == 1
+    assert 'data-cmd="reward" disabled' in controls
 
 
 # --- P4d-2b b2a: the outboxes, where each ZMQ socket has its one thread ---------------
@@ -3364,3 +3374,166 @@ def test_e2e_wlx_serve_restarted_while_paused_shows_it_paused_and_can_resume(
         assert run.post({"kind": "stop", "by": "jake"})[0] == 200
         run.ended()
     run.finished()
+
+
+# --- P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause ---------------
+
+#: `MANUAL_REWARD`'s code (`tasks/allocation.py`), after b2a's other three.
+MANUAL_REWARD_CODE = 4134
+#: `tasks/twelve_hour_bounds.py`'s `reward_correct`: what one press gives these sessions.
+REWARD_ML = 0.05
+
+
+class _Answers:
+    """A command sender whose `deliver` records what it was handed and raises `raised`,
+    or returns when that is `None`."""
+
+    def __init__(self, raised: Exception | None) -> None:
+        self.raised = raised
+        self.sent: list = []
+
+    def deliver(self, command) -> None:
+        self.sent.append(command)
+        if self.raised is not None:
+            raise self.raised
+
+
+@pytest.mark.parametrize(
+    ("raised", "answer"),
+    [
+        (None, (200, {"status": "sent", "said": REWARD_SENT})),
+        (
+            Unacknowledged("not delivered: the rig did not acknowledge it within 15 s"),
+            REWARD_UNKNOWN,
+        ),
+        (RuntimeError("socket gone"), REWARD_UNKNOWN),
+        (
+            NotDelivered("not delivered: no rig is connected on tcp://127.0.0.1:5572"),
+            (
+                504,
+                {
+                    "status": "not_delivered",
+                    "said": (
+                        "not delivered: no rig is connected on tcp://127.0.0.1:5572; "
+                        "no reward was given"
+                    ),
+                },
+            ),
+        ),
+    ],
+    ids=["acknowledged", "unacknowledged", "failed-after-handing-over", "never-sent"],
+)
+def test_a_rewards_answer_is_sent_unknown_or_not_given_and_it_is_delivered_once(
+    raised, answer
+):
+    """No accidental doubles (PI, 2026-09-28). A reward the rig acknowledged is *sent*;
+    one it took and did not acknowledge -- or one whose send failed in a way that
+    cannot say whether it went -- is *unknown*, never *not delivered*, which would
+    invite the press that doubles it; only one that never left `wlx serve` is *not
+    delivered*, and says no reward was given. Each is handed to the sender once."""
+    sender = _Answers(raised)
+
+    assert serve._rewarded(ManualReward(by="jake"))(sender) == answer
+    assert sender.sent == [ManualReward(by="jake")]
+
+
+def test_a_reward_the_rig_takes_and_never_acknowledges_is_unknown_and_sent_once(
+    zmq_cleanup, server_cleanup
+):
+    """No accidental doubles, on real sockets (PI, 2026-09-28). The rig here is a ROUTER
+    socket, which reads every message and answers none, so it sees each one `wlx
+    serve` sends: one press is one POST and one reward command on the wire, and after
+    the reply timeout the page is told *unknown* and nothing sends it again. If a
+    retry is ever added to the command path, this is where it doubles a reward."""
+    import zmq
+
+    from wl_expcontroller.link import _decode_command
+
+    telemetry = _rig(zmq_cleanup)
+    ctx = zmq.Context()
+    rig = ctx.socket(zmq.ROUTER)
+    try:
+        rig.setsockopt(zmq.LINGER, 0)
+        port = rig.bind_to_random_port("tcp://127.0.0.1")
+        server = server_cleanup(
+            Server(
+                sub=telemetry.pub_endpoint,
+                req=f"tcp://127.0.0.1:{port}",
+                http=("127.0.0.1", 0),
+                token=TOKEN,
+                reply_timeout_s=0.3,
+            )
+        )
+        server.start()
+        try:
+            answer = _post(server.address[1], {"kind": "reward", "by": "jake"})
+            seen: list = []
+            # Several reply timeouts, and the command thread's reset, after the answer.
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                if rig.poll(50, zmq.POLLIN):
+                    seen.append(rig.recv_multipart())
+        finally:
+            server.close()
+    finally:
+        rig.close(linger=0)
+        ctx.term()
+
+    assert answer == REWARD_UNKNOWN
+    assert [_decode_command(frames[-1]) for frames in seen] == [
+        ManualReward(by="jake (box, unverified)")
+    ]
+
+
+def test_e2e_a_reward_pressed_while_paused_is_one_correct_trial_reward_on_the_record(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    """PI, 2026-09-28, end to end. While trials run, the page's *give reward* is greyed,
+    and a press that reaches the rig anyway is refused on the feed. Paused, the button
+    is live; the POST it sends crosses `wlx serve`'s command thread to the held
+    session, which gives exactly one `reward_correct` -- and the next frame's fluid
+    total, the page, `controls.jsonl` and the recorded event stream all show it, while
+    the trial count stands still."""
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        port = run.server.address[1]
+        running = run.frame(lambda f: f.trial_index >= 2)
+        with _stream(port) as response:
+            greyed = next(_events(response))["frags"]["controls"]
+        assert run.post({"kind": "reward", "by": "jake"}) == (
+            200, {"status": "sent", "said": REWARD_SENT}
+        )
+        refused = run.frame(lambda f: any(r.name == "reward" for r in f.refusals))
+        assert run.post({"kind": "pause", "by": "jake"})[0] == 200
+        paused = run.frame(lambda f: f.paused_at is not None)
+        with _stream(port) as response:
+            live = next(_events(response))["frags"]["controls"]
+        assert run.post({"kind": "reward", "by": "jake"})[0] == 200
+        given = run.frame(lambda f: any(c.kind == "reward" for c in f.controls))
+        with _stream(port) as response:
+            shown = next(_events(response))["frags"]["controls"]
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        ended = run.ended()
+    run.finished()
+
+    assert running.stop_kind is None
+    assert 'data-cmd="reward" disabled' in greyed
+    (refusal,) = [r for r in refused.refusals if r.name == "reward"]
+    assert refusal.by == "jake (box, unverified)"
+    assert "the session is not paused" in refusal.why
+    assert '<button type="button" class="btn" data-cmd="reward">give reward</button>' in live
+    assert given.paused_at is not None and given.trial_index == paused.trial_index
+    assert given.fluid_session_ml == pytest.approx(paused.fluid_session_ml + REWARD_ML)
+    assert f"fluid session {given.fluid_session_ml:.2f} mL" in shown
+    assert ended.fluid_session_ml == pytest.approx(given.fluid_session_ml)
+    assert ended.trial_index == paused.trial_index
+    pause, reward, stop = run.controls()
+    assert (pause["kind"], reward["kind"], stop["kind"]) == ("pause", "reward", "stop")
+    assert reward["by"] == "jake (box, unverified)"
+    assert (reward["ml"], reward["entry"]) == (REWARD_ML, "reward_correct")
+    assert reward["trial_index"] == paused.trial_index
+    assert reward["at"] == given.last_reward_at
+    codes = run.cards[0].codes
+    assert codes.count(MANUAL_REWARD_CODE) == 1
+    at = codes.index(MANUAL_REWARD_CODE)
+    assert codes.index(PAUSE_CODE) < at
+    assert FIX_ON not in codes[at:], "no trial ran after the pause"

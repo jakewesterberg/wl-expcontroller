@@ -83,5 +83,11 @@ ALLOCATION: Allocation = replace(
         4131: "PAUSE",
         4132: "RESUME",
         4133: "OPERATOR_MARK",
+        # A person's manual reward, given while paused (PI, 2026-09-28), strobed
+        # before its delivery as `REWARD_COMMANDED` precedes a task's reward, so the
+        # recording tells it from a task's reward and from a panel press (S6 §4). In
+        # this range for the reason the three above are; wl-exptasks owns the final
+        # numbering (P4d-2b spec §5.6).
+        4134: "MANUAL_REWARD",
     },
 )

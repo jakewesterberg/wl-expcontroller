@@ -71,6 +71,13 @@ from wl_expcontroller.welfare import (
 #: when nothing arrives. A responsiveness choice, not a measurement of this system.
 PAUSE_HOUSEKEEPING_S = 0.5
 
+#: The bounded config's entry one manual reward delivers (PI, 2026-09-28): asked how
+#: much one press gives, he chose "Same as a correct trial" -- `reward_correct`, the
+#: entry the reference tasks pay a correct trial from, at the value it holds when the
+#: press is given. **The only one**: a config without it refuses the press by name,
+#: and no other entry stands in (`Session._manual_reward`).
+MANUAL_REWARD_ENTRY = "reward_correct"
+
 #: An allowance for accumulated floating-point error in a sum of deliveries
 #: (`welfare.commanded += ml`, once per reward), so an "after X mL" schedule ends at
 #: its amount rather than one reward past it (Task 7 fix round 1: "after 0.8 mL"
@@ -780,7 +787,8 @@ class Session:
         """The recent control events a console's changes feed lists, as `(kind, by,
         at, said)`, oldest first (P4d-2b spec §5.1): `stop`, `pause`, `resume`, and
         -- from the tasks that add them -- `mark`, `note`, `schedule`, `cancel`,
-        `scheduled_stop` and `set` (a staged setting applied). `at` is the session's anchored clock; `said` is the
+        `scheduled_stop`, `set` (a staged setting applied) and `reward` (a manual
+        reward given while paused). `at` is the session's anchored clock; `said` is the
         sentence a console shows after the kind. The public face of `_controls`,
         for the reason `staged` is public; the session record keeps every one."""
         return tuple(self._controls)
@@ -1118,20 +1126,27 @@ class Session:
         return True
 
     def _hold(self, index: int, publish) -> None:
-        """**Paused** (P4d-2b spec §5.1): no trial runs and nothing is rewarded, while
-        once per housekeeping pass the loop drains commands -- resume, stop, marks,
-        schedules, settings -- publishes a frame, and asks `_ends` whether the
-        out-of-cage limit has arrived, ending the session on it as between trials.
-        The out-of-cage clock runs on the wall throughout, since nothing here stops
-        it.
+        """**Paused** (P4d-2b spec §5.1): no trial runs and the task rewards nothing,
+        while once per housekeeping pass the loop drains commands -- resume, stop,
+        marks, schedules, settings, and a person's manual reward -- publishes a frame,
+        and asks `_ends` whether the session must end -- the out-of-cage limit first,
+        then a scheduled stop -- ending it as between trials. The out-of-cage clock
+        runs on the wall throughout, since nothing here stops it.
 
-        **Nothing is rewarded because nothing can be**: a reward is a trial's action
-        (`run.Effects.reward`), and no trial runs here. **Nothing is drawn** for the
-        same reason: a stimulus is shown only by a trial, so the display the task's
-        trials draw on shows its background with nothing on it (spec §5.0). There is
-        no display process yet to be told so -- S4's is not built (docs/CHECKPOINT.md:
-        "a frame on screen" is blocked on a panel) -- and when there is, this is the
-        pause it must show: V12 item 3 in `docs/validation.md`, not yet written.
+        **The task rewards nothing because it cannot**: its reward is a trial's action
+        (`run.Effects.reward`), and no trial runs here. **A person may**, one
+        correct-trial reward per press (PI, 2026-09-28): the commands drained here are
+        the only ones a held session hears, so only they reach `_command` with
+        `held=True`, which is what `_manual_reward` gives a reward for. `_ends`, asked
+        later in this same pass, then ends the session if that reward reached a
+        scheduled "stop after X mL" -- without waiting for a resume, and with the
+        out-of-cage limit asked first, as always.
+
+        **Nothing is drawn**, because a stimulus is shown only by a trial: the display
+        the task's trials draw on shows its background with nothing on it (spec §5.0).
+        There is no display process yet to be told so -- S4's is not built
+        (docs/CHECKPOINT.md: "a frame on screen" is blocked on a panel) -- and when
+        there is, this is the pause it must show: V12 item 3 in `docs/validation.md`.
 
         Returns when the session resumes, or with `stopped_because` set when it must
         end; `run()` reads which."""
@@ -1143,13 +1158,93 @@ class Session:
                 self._stamp(mark, None)
                 self._settle_stamps(index)
             for command in self.link.drain():
-                self._command(command, index)
+                self._command(command, index, held=True)
             publish()
             if self.stopped_because:
                 return
             if self._ends(index):
                 publish()
                 return
+
+    def _manual_reward(self, by: str, index: int, held: bool) -> None:
+        """**A manual reward, given while paused** (PI, 2026-09-28: "I want to be able to
+        give manual rewards during pause"). Asked how much one press gives: "Same as a
+        correct trial" -- one delivery of the bounded config's `MANUAL_REWARD_ENTRY`,
+        at the value it holds now, **through the path a task's reward takes**:
+        `welfare.Rig.reward`, then `Welfare.deliver`, which charges it before the valve
+        opens and counts it in `commanded`, `deliveries` and `last_delivery_wall_at`.
+        So it is on the fluid total, the time since the last reward, and a scheduled
+        stop after X mL, which `_hold` asks `_ends` about in this same pass.
+        `MANUAL_REWARD` is strobed first, as a task strobes `REWARD_COMMANDED` before
+        its `Reward`, and one `reward` row goes to the record, with the mL given, at
+        the instant the reward was commanded.
+
+        **Only while held** (`held`: drained by `_hold`). Refused, with a sentence and
+        nothing given, when the session is stopping -- a `Stop` ahead of it in the
+        drain -- or not paused -- trials running, or a `Resume` ahead of it -- or
+        paused in this same drain and not yet held; when the bounded config has no
+        `MANUAL_REWARD_ENTRY`, which **no other entry replaces**; and when the
+        allocation has no `MANUAL_REWARD` code, since the recording could not show it.
+        A session that has ended refuses it in `_command`, as every command.
+
+        **A pump fault is not caught**, as `welfare.Rig` catches none for a task's
+        reward: the session ends on it as a fault, with the reward charged.
+
+        Welfare-critical (`docs/design/architecture.md`): it delivers fluid."""
+        if self.stopped_because:
+            self._refuse(
+                "reward",
+                by,
+                f"the session is stopping ({self.stopped_because}); no reward was given",
+            )
+            return
+        if self.paused_at is None:
+            self._refuse(
+                "reward",
+                by,
+                "the session is not paused, and a manual reward is given only while it "
+                "is; no reward was given",
+            )
+            return
+        if not held:
+            self._refuse(
+                "reward",
+                by,
+                "the session's pause has not begun holding yet, and a manual reward is "
+                "given only while it is; no reward was given -- press again once the "
+                "page shows the session paused",
+            )
+            return
+        if MANUAL_REWARD_ENTRY not in self.spec.bounds.ceilings:
+            self._refuse(
+                "reward",
+                by,
+                f"this subject's bounded config has no {MANUAL_REWARD_ENTRY!r} entry, so "
+                f"a manual reward has no size, and it is never taken from another "
+                f"entry; no reward was given",
+            )
+            return
+        code = self._code("MANUAL_REWARD")
+        if code is None:
+            self._refuse(
+                "reward",
+                by,
+                "this session's allocation has no MANUAL_REWARD event code, so the "
+                "recording could not show the reward; no reward was given",
+            )
+            return
+        ml = self.spec.bounds.value(MANUAL_REWARD_ENTRY)
+        self.card.emit(code)
+        self.rig.reward(MANUAL_REWARD_ENTRY)
+        self._control(
+            "reward",
+            by,
+            f"{ml:g} mL of {MANUAL_REWARD_ENTRY}, given while paused before trial {index}",
+            index,
+            at=self.welfare.last_delivery_wall_at,
+            ml=ml,
+            entry=MANUAL_REWARD_ENTRY,
+        )
 
     def _refuse(self, name: str, by: str, why: str) -> None:
         """One refusal onto the capped list -- see `refusals`."""
@@ -1158,7 +1253,7 @@ class Session:
             self.refusals_dropped += len(self.refusals) - _link.REFUSAL_HISTORY
             del self.refusals[: -_link.REFUSAL_HISTORY]
 
-    def _command(self, command, index: int) -> None:
+    def _command(self, command, index: int, held: bool = False) -> None:
         """A console's request, routed to the one write path.
 
         `index` is the trial about to run, carried only so a recorded refusal can
@@ -1190,6 +1285,11 @@ class Session:
         the PI ruled the wl-works ELN owns the return, not a console, so `link.py`
         has no such command any more and this method has nothing left to route in
         the post-loop phase but a refusal.
+
+        **`held` is true only for a command `_hold` drained** (P4d-2b b2a, amended
+        2026-09-28): the session held paused at this boundary. Only a manual reward
+        reads it (`_manual_reward`): the PI's manual reward is given while paused, and
+        never while a pause drained in this same pass has yet to hold.
         """
         if self.phase != "running":
             self._refuse(
@@ -1222,6 +1322,9 @@ class Session:
             return
         if isinstance(command, _link.CancelScheduledStop):
             self._cancel(command.by, index)
+            return
+        if isinstance(command, _link.ManualReward):
+            self._manual_reward(command.by, index, held)
             return
         if not isinstance(command, _link.SetParameter):
             # A command this session has no branch for -- a newer console's -- is

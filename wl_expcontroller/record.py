@@ -62,11 +62,13 @@ WELFARE_NOTES = "welfare_notes.jsonl"
 
 #: A console's controls, one row each (P4d-2b spec §5.1: "every one is written to
 #: the session record with who sent it and when"): a stop, a pause, a resume, a
-#: mark's stamp and its note, a schedule, a cancellation, and a scheduled stop firing.
+#: mark's stamp and its note, a schedule, a cancellation, a scheduled stop firing, and
+#: a manual reward given while paused, with its mL (PI, 2026-09-28).
 #:
 #: **Its own file**, for `WELFARE_NOTES`' reason: a row in `parameter_changes.jsonl`
 #: carries a `sequence` for joining to a `PARAM_CHANGED` code, and these join to their
-#: own codes (`PAUSE`, `RESUME`, `OPERATOR_MARK`) by order and instant, or to nothing.
+#: own codes (`PAUSE`, `RESUME`, `OPERATOR_MARK`, `MANUAL_REWARD`) by order and
+#: instant, or to nothing.
 #: **Uncapped**, unlike `refusals.jsonl`: each row is something that happened, and
 #: the party making them is the box's own console, one person at a keyboard, with
 #: marks bounded besides at one per frame (`link.ZmqLink.mark_signal`).
