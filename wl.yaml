@@ -1,11 +1,14 @@
 schema: 1
-slug: wl-expcontroller
+slug: wl-xcon
 class: application
 lifecycle: scaffolded
 visibility: public
 # Created private and pushed 2026-08-31; public as of 2026-09-05, when ADR-0004
-# settled the licence as Apache-2.0.
-remote: https://github.com/jakewesterberg/wl-expcontroller.git
+# settled the licence as Apache-2.0. Renamed from wl-expcontroller on 2026-09-28
+# (PI); GitHub redirects the old URL, and the registry keeps the old slug as an
+# alias. The Python package is still `wl_expcontroller` until it is renamed
+# `wl_xcon`, after branch p4d2b-b2a-controls merges; the `wlx` command stays.
+remote: https://github.com/jakewesterberg/wl-xcon.git
 
 summary: >-
   The behavioural task controller: a Python, Linux-first replacement for NIMH
@@ -15,14 +18,15 @@ summary: >-
 
 status:
   phase: >-
-    M0 signed off 2026-08-31; contracts frozen and code started. The task schema,
-    8 of 10 load-time checks, the event encoder (round-tripped through
-    wl-preproc's own decoder), the trial loop and simulated sessions exist, with
-    27 tests and a mutation gate in CI.
+    Simulated sessions, the terminal and browser consoles, telemetry, the
+    welfare bounds and direct view part 1 are on main, with 1191 tests and a
+    mutation gate in CI (a sharded full sweep nightly). P4d-2b slice b2a --
+    controls from the box, including a manual reward during a pause -- is built
+    on its branch and in its final review; it is welfare-critical and merges
+    after the PI approves its four items.
   next: >-
-    Package P1 in docs/CHECKPOINT.md -- finish the task layer: the two remaining
-    load-time checks, the first two real task files, and the review artifact a
-    generated task is approved from. Needs no hardware and no other repository.
+    b2a's merge; then the Python package rename to `wl_xcon`; then direct view
+    part 2 (the chosen setup wired into session start). See docs/CHECKPOINT.md.
   describes: HEAD
 
 # The task PC. The role name is proposed, not settled -- S0 fixes the rig role
