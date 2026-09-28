@@ -165,7 +165,10 @@ def verdict(
 
 def _state_text(frame: Telemetry) -> str:
     if frame.stop_kind is None:
-        return f"running · trial {frame.trial_index} · block {frame.block}"
+        # P4d-2b b2a: a paused session is running and holding -- said, so a trial
+        # count standing still does not read as a stalled rig. Not a verdict.
+        doing = "running" if frame.paused_at is None else "paused"
+        return f"{doing} · trial {frame.trial_index} · block {frame.block}"
     text = f"ended ({frame.stop_kind}): {frame.stopped_because}"
     if frame.phase == "awaiting_return":
         return f"{text} · awaiting the return to the cage"

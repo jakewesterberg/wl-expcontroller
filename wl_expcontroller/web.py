@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import html
 import math
+import time
 from dataclasses import dataclass
 from importlib import resources
 
@@ -72,6 +73,14 @@ class View:
     #: no frame and no refusal, what the page and `/health` can truthfully say is
     #: that nothing has arrived *here* -- never that nothing is publishing (m4).
     endpoint: str
+    #: Whether this page may write (P4d-2b spec §2, §5.2): the box's own page, a
+    #: loopback peer that named loopback in `Host`. Everywhere else every control is
+    #: greyed with `CONTROLS_AT_THE_BOX`. `False` unless `wlx serve` says otherwise:
+    #: a view that did not say may not write.
+    can_write: bool = False
+    #: Whether this console has the session's mark endpoint (`wlx serve --link
+    #: PUB,REP,MARK`); without it the mark control is greyed with `NO_MARK_ENDPOINT`.
+    can_mark: bool = False
 
 
 #: Every fragment `fragments` renders, in page order. Each is the inner HTML of the
@@ -82,6 +91,7 @@ FRAGMENT_IDS = (
     "presence",
     "strip",
     "banners",
+    "controls",
     "rt-trials",
     "rt-work",
     "rt-need",
@@ -98,6 +108,19 @@ LEGEND = tuple((family.name.lower(), family.value) for family in Family) + (
     ("hang", "hang"),
     ("other", "unknown outcome"),
 )
+
+#: What a refused write says, and what every greyed control says (P4d-2b spec §2):
+#: until remote sign-in arrives (b2b), writes come from the box alone.
+CONTROLS_AT_THE_BOX = "controls work only at the rig PC until remote sign-in arrives"
+#: Why the mark control is greyed on a console started without the mark endpoint.
+NO_MARK_ENDPOINT = (
+    "this console was started without the session's mark endpoint: give wlx serve "
+    "--link PUB,REP,MARK, as wlx run was given it"
+)
+#: How long after the last click on a parameter's arrows the change is sent, in
+#: milliseconds: the mockup's debounce (spec §5.2), housekeeping and not a
+#: measurement. The page's script reads it from `<body>`.
+DEBOUNCE_MS = 600
 
 _NONE = '<span class="nm">no session</span>'
 _UNKNOWN_DAY = "unknown: the day's prior total was not supplied"
@@ -137,10 +160,25 @@ def _pct(part: float, whole: float) -> float:
 # --- the header -------------------------------------------------------------------
 
 
+def _clock_time(at: float | None) -> str:
+    """A session instant as this host's local clock time, `HH:MM:SS`, as `cli.render`
+    prints the last reward: formatting an instant the frame carries, never reading a
+    clock. One that is not a number is `—`, never a crash of every pane."""
+    if at is None or not math.isfinite(at):
+        return "—"
+    return time.strftime("%H:%M:%S", time.localtime(at))
+
+
 def _state(frame: Telemetry | None) -> str:
-    """The header's pill, from `phase` and `stop_kind` (spec §4.2)."""
+    """The header's pill, from `phase`, `stop_kind` and -- P4d-2b b2a -- `paused_at`:
+    a session that ended while paused shows how it ended, never *paused*."""
     if frame is None:
         return '<span class="pill neutral" data-state="none">no session</span>'
+    if frame.stop_kind is None and frame.paused_at is not None:
+        return (
+            f'<span class="pill warn" data-state="paused">paused · since '
+            f"{_clock_time(frame.paused_at)}</span>"
+        )
     if frame.stop_kind is None:
         return '<span class="pill ok" data-state="running">running</span>'
     tone = "crit" if frame.stop_kind in ("fault", "limit") else "neutral"
@@ -273,6 +311,23 @@ def _last_reward(frame: Telemetry, view: View) -> str:
     return _cell("Since last reward", _health.ago(since))
 
 
+def _off(view: View, why: str = CONTROLS_AT_THE_BOX) -> str:
+    """The attributes that grey a control this page may not use, saying why; nothing
+    for the box's own page."""
+    return "" if view.can_write else f' disabled title="{_e(why)}"'
+
+
+def _scheduled(frame: Telemetry, view: View) -> str:
+    """The strip's fifth cell, while a scheduled stop is held (spec §5.2): *stop at
+    14:30 · set by jake*, in the rig's own words, with a cancel button."""
+    stop = frame.scheduled_stop
+    cancel = (
+        f'<button type="button" class="btn small" data-cmd="cancel"{_off(view)}>'
+        f"cancel</button>"
+    )
+    return _cell("Scheduled", f"stop {_e(stop.said)}", sub=f"set by {_e(stop.by)} {cancel}")
+
+
 def _strip(frame: Telemetry | None, view: View) -> str:
     if frame is None:
         return "".join(
@@ -289,6 +344,13 @@ def _strip(frame: Telemetry | None, view: View) -> str:
         + _out_of_cage(frame)
         + _correct(frame, view)
         + _last_reward(frame, view)
+        # Only while the session runs: one that ended another way keeps its
+        # schedule on the frame, and a cancel button for it would offer nothing.
+        + (
+            _scheduled(frame, view)
+            if frame.scheduled_stop is not None and frame.stop_kind is None
+            else ""
+        )
     )
 
 
@@ -331,6 +393,34 @@ def _banners(frame: Telemetry | None, view: View) -> str:
         tone = "crit" if frame.stop_kind in ("fault", "limit") else "info"
         out.append(_banner(tone, "Ended", _e(frame.stopped_because)))
     return "".join(out)
+
+
+# --- the controls (P4d-2b b2a) ------------------------------------------------------
+
+
+def _controls(frame: Telemetry | None, view: View) -> str:
+    """Pause or resume, mark, and stop (spec §5.2), while a session runs.
+
+    **Pause or resume by the session's state**, never a toggle: the page sends what
+    the button says, so a double click sends the same command twice, and the rig
+    refuses the second with a sentence (`taskd.Session._pause`). **Stop** opens the
+    page's confirm step. **Mark** is greyed on its own when this console has no mark
+    endpoint. **Everywhere but the box**, every control is greyed with the §2
+    sentence, which is also said beside them."""
+    if frame is None:
+        return '<span class="nm">controls · no session</span>'
+    if frame.stop_kind is not None:
+        return '<span class="nm">controls · the session has ended</span>'
+    off = _off(view)
+    mark_off = off or ("" if view.can_mark else f' disabled title="{_e(NO_MARK_ENDPOINT)}"')
+    cmd, label = ("resume", "resume (P)") if frame.paused_at is not None else ("pause", "pause (P)")
+    note = "" if view.can_write else f'<span class="nm">{CONTROLS_AT_THE_BOX}</span>'
+    return (
+        f'<button type="button" class="btn" data-cmd="{cmd}"{off}>{label}</button>'
+        f'<button type="button" class="btn" data-cmd="mark"{mark_off}>mark (M)</button>'
+        f'<button type="button" class="btn danger" data-cmd="stop"{off}>stop…</button>'
+        f"{note}"
+    )
 
 
 # --- runtime ------------------------------------------------------------------------
@@ -442,8 +532,10 @@ def _health_pane(frame: Telemetry | None, view: View) -> str:
 
 
 def _changes(frame: Telemetry | None) -> str:
-    """Staged and refused changes, the dropped-refusal count before the rows, as
-    `cli.render` does."""
+    """The changes feed (spec §5.2): staged changes first, then the control events --
+    applied settings, pauses, resumes, marks and their notes, schedules -- newest
+    first with when and who, then the refusals with the dropped-refusal count before
+    them, as `cli.render` does."""
     if frame is None:
         return _NONE
     rows = []
@@ -453,6 +545,18 @@ def _changes(frame: Telemetry | None) -> str:
             f'<div class="ev staged"><span class="kind">staged</span><span>'
             f"{_e(change.name)} {_e(_num(change.was))} → {_e(_num(change.now))} "
             f"by {_e(change.by)} ({kind}, applies at the next trial)</span></div>"
+        )
+    for control in reversed(frame.controls):
+        who = f" · {_e(control.by)}" if control.by else ""
+        rows.append(
+            f'<div class="ev ctl"><span class="kind">{_e(control.kind)}</span><span>'
+            f"{_clock_time(control.at)} · {_e(control.said)}{who}</span></div>"
+        )
+    if frame.controls_dropped:
+        rows.append(
+            f'<div class="ev ctl"><span class="kind">earlier</span><span>'
+            f"{_e(frame.controls_dropped)} earlier control event(s) not shown: only "
+            f"the most recent {len(frame.controls)} are kept</span></div>"
         )
     if frame.refusals_dropped:
         rows.append(
@@ -465,7 +569,7 @@ def _changes(frame: Telemetry | None) -> str:
             f'<div class="ev refused"><span class="kind">refused</span><span>'
             f"{_e(refusal.name)} by {_e(refusal.by)}: {_e(refusal.why)}</span></div>"
         )
-    return "".join(rows) or '<span class="nm">nothing staged or refused</span>'
+    return "".join(rows) or '<span class="nm">nothing staged, controlled or refused</span>'
 
 
 # --- task parameters, setup, end of session ----------------------------------------
@@ -479,14 +583,60 @@ def _range(row) -> str:
     return f"{_e(_edge(row.low))} to {_e(_edge(row.high))} {_e(row.unit)}"
 
 
-def _params(frame: Telemetry | None) -> str:
-    """One card per `ParamRow`: value, unit, range, the ceiling flag, and a staged
-    marker. Read-only: b2 adds the inputs."""
+#: The arrows' step by unit: the mockup's `stepOf` (`docs/superpowers/mockups/
+#: 2026-09-26-console-mockup-v12.html`), in this repository's unit names -- the tasks
+#: say `deg` where the mockup said `°`. A display choice, not a rule about values:
+#: `Session.set` checks the range whatever step reached it.
+_STEPS = {"mL": 0.01, "s": 0.05, "deg": 0.1}
+
+
+def _step(row) -> float:
+    return _STEPS.get(row.unit, 0.01)
+
+
+def _field(row, view: View) -> str:
+    """A card's input and arrows (spec §5.2). A number is shown at its step's
+    decimals and carries the step and the declared range for the script's arrows,
+    which clamp to it; a categorical value is a word, with no arrows. Greyed away
+    from the box."""
+    off = _off(view)
+    name = _e(row.name)
+    if isinstance(row.value, str):
+        return (
+            f'<span class="spin"><input class="field mono" data-param="{name}" '
+            f'data-kind="word" value="{_e(row.value)}" aria-label="{name}"{off}></span>'
+        )
+    step = _step(row)
+    places = len(f"{step:g}".partition(".")[2])
+    value = "" if row.value is None else f"{row.value:.{places}f}"
+    edges = "".join(
+        f' data-{end}="{_e(edge)}"'
+        for end, edge in (("min", row.low), ("max", row.high))
+        if edge is not None
+    )
+    return (
+        f'<span class="spin"><input class="field mono" data-param="{name}" '
+        f'data-step="{step:g}"{edges} inputmode="decimal" value="{value}" '
+        f'aria-label="{name}"{off}>'
+        f'<span class="arrows"><button type="button" data-dir="1" tabindex="-1" '
+        f'aria-label="increase {name}"{off}>▲</button>'
+        f'<button type="button" data-dir="-1" tabindex="-1" '
+        f'aria-label="decrease {name}"{off}>▼</button></span></span>'
+    )
+
+
+def _params(frame: Telemetry | None, view: View) -> str:
+    """One card per `ParamRow`: value, unit, range, the ceiling flag, a staged
+    marker, and -- P4d-2b b2a -- the input and arrows that set it and the last
+    refusal of it with its sentence (spec §5.2: "A refusal shows on the card and in
+    the feed"). *Last* is the word because a refusal carries no time: it stays on
+    the card beside whatever the value has since become, and says it is the last."""
     if frame is None:
         return _NONE
     if not frame.params:
         return '<span class="nm">this task declares no parameters</span>'
     staged = {change.name: change for change in frame.staged}
+    refused = {refusal.name: refusal for refusal in frame.refusals}
     cards = []
     for row in frame.params:
         change = staged.get(row.name)
@@ -496,12 +646,19 @@ def _params(frame: Telemetry | None) -> str:
             if change is None
             else f'<span class="stg">staged → {_e(_num(change.now))} by {_e(change.by)}</span>'
         )
+        refusal = refused.get(row.name)
+        said = (
+            ""
+            if refusal is None
+            else f'<span class="rfs">last refused: {_e(refusal.why)}</span>'
+        )
         cls = "param staged" if change is not None else "param"
         cards.append(
             f'<div class="{cls}"><div class="pn"><span>{_e(row.name)}</span>{flag}</div>'
             f'<span class="pv">{_e(_num(row.value))} '
             f'<span class="unit">{_e(row.unit)}</span></span>'
-            f'<span class="range">{_range(row)}</span>{mark}</div>'
+            f"{_field(row, view)}"
+            f'<span class="range">{_range(row)}</span>{mark}{said}</div>'
         )
     return "".join(cards)
 
@@ -589,13 +746,14 @@ def fragments(frame: Telemetry | None, view: View) -> dict[str, str]:
         "presence": _presence(view),
         "strip": _strip(frame, view),
         "banners": _banners(frame, view),
+        "controls": _controls(frame, view),
         "rt-trials": _trials(frame),
         "rt-work": _work(frame),
         "rt-need": _need(frame),
         "rt-wrong": _wrong(frame),
         "rt-health": _health_pane(frame, view),
         "rt-changes": _changes(frame),
-        "params": _params(frame),
+        "params": _params(frame, view),
         "setup": _setup(frame),
         "end": _end(frame),
     }
@@ -813,6 +971,30 @@ h3 { margin: 0; font-family: var(--cond); font-weight: 600; font-size: 11.5px; l
 .dialog { padding: 16px; width: min(520px, 100%); display: grid; gap: 12px; }
 .dialog h2 { font-size: 14px; color: var(--ink); }
 .dialog .actions { display: flex; justify-content: flex-end; }
+.controlbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 6px 12px; }
+.ctlrow { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.controlbar .spacer { flex: 1; }
+.btn.small { padding: 2px 8px; font-size: 12.5px; }
+.btn.danger { border-color: var(--crit); color: var(--crit); }
+.btn:disabled, .field:disabled, .arrows button:disabled, select:disabled { opacity: 0.45; cursor: not-allowed; }
+.who { font-size: 12.5px; color: var(--muted); }
+.who b { color: var(--ink); font-weight: 600; }
+.sent { font-size: 12.5px; }
+.sent.ok { color: var(--ok); } .sent.crit { color: var(--crit); }
+.inline { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 6px 12px; border-radius: 6px; font-size: 13px; background: var(--surface-2); }
+.inline.crit { background: var(--crit-soft); } .inline.info { background: var(--accent-soft); }
+.inline input, .inline select { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 1px 4px; }
+#mark-note { width: min(34em, 60vw); }
+#sched-value { width: 7em; }
+.spin { display: inline-flex; align-items: stretch; }
+.field { width: 6em; border: 1px solid var(--rule); border-radius: 3px 0 0 3px; padding: 1px 4px; background: var(--surface); color: inherit; font-size: 12.5px; }
+.field[data-kind="word"] { border-radius: 3px; }
+.field.pending { border-color: var(--accent); }
+.arrows { display: flex; flex-direction: column; border: 1px solid var(--rule); border-left: 0; border-radius: 0 3px 3px 0; overflow: hidden; }
+.arrows button { flex: 1; width: 18px; border: 0; padding: 0; background: var(--surface-2); color: var(--muted); cursor: pointer; font-size: 8px; line-height: 1; }
+.arrows button + button { border-top: 1px solid var(--rule); }
+.param .rfs { font-size: 11.5px; color: var(--crit); }
+.ev.ctl .kind { color: var(--accent); }
 body.stale .strip, body.stale .panels { filter: grayscale(1); opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 """
@@ -835,12 +1017,16 @@ _LOGO = (
     '<tspan style="fill: var(--wl-muted)">.works</tspan></text></svg>'
 )
 
-#: **The page's whole script, and all it does** (spec §4.3, §4.4): open the event
-#: stream, swap each fragment into the element with its id, run the stale timer while
-#: more frames are due, close the stream on the ✕, and reconnect. `EventSource`
-#: reconnects on its own after a dropped connection, and `wlx serve` sends a full
-#: render first on every new stream, so a reconnect re-renders in full. Everything
-#: worth testing is in Python; this is small enough to read.
+#: **The page's whole script, and all it does** (spec §4.3, §4.4, and since P4d-2b
+#: b2a §5.2): open the event stream, swap each fragment into the element with its id,
+#: run the stale timer while more frames are due, close the stream on the ✕, and
+#: reconnect -- and, from b2a, send the controls as JSON `POST`s to `/commands`,
+#: debounce the parameter arrows, handle the **P** and **M** keys, and ask for the
+#: operator's name. `EventSource` reconnects on its own after a dropped connection,
+#: and `wlx serve` sends a full render first on every new stream, so a reconnect
+#: re-renders in full. **It still renders nothing itself**: every `innerHTML` it
+#: writes is a fragment `wlx serve` rendered, and what it writes of its own -- the
+#: name and the last command's answer -- goes in as `textContent`.
 #:
 #: **The stale timer runs from the frame's age, not from an event's arrival**
 #: (Ruling 12, 2026-09-27). Every event carries `age`, the seconds `wlx serve` has
@@ -855,16 +1041,34 @@ _LOGO = (
 #: **A lost stream is greyed as a stale one is** (m3): the timer stands down while
 #: the stream is lost, so without this a red *stream lost* banner sat over
 #: full-color numbers nothing was updating. The next frame's `check()` clears it.
+#:
+#: **The controls (P4d-2b b2a).** Only the box's own page may write (`data-can-write`
+#: on `<body>`, from `View.can_write`); elsewhere every control is disabled in the
+#: HTML and `post` sends nothing. The name is asked once, kept in `localStorage` --
+#: inside `try`, since a private window may refuse it -- and a prompt refused or
+#: cleared sends nothing. An arrow steps its input and the change is sent
+#: `debounceMs` after the last click; while an input has focus or a change is
+#: pending, a new parameters fragment is held and swapped in afterwards, so a frame
+#: never replaces an input under a person's hands. P and M do nothing in a text box
+#: or when held. A mark sends its signal at once with `pressed_at` -- the browser's
+#: clock, and the only `Date.now()` here -- then opens the note box: Enter attaches
+#: the note, Esc leaves the mark bare, and a second mark leaves the first bare.
 _SCRIPT = """
 (function () {
   "use strict";
   var body = document.body;
   var staleMs = Number(body.getAttribute("data-stale-after")) * 1000;
+  var canWrite = body.getAttribute("data-can-write") === "1";
+  var debounceMs = Number(body.getAttribute("data-debounce-ms"));
+  var NAME_KEY = "wlx-console-name";
   var source = null;
   var baseline = null;
   var live = false;
   var lost = false;
   var closed = false;
+  var timers = {};
+  var heldParams = null;
+  var markNo = null;
   function el(id) { return document.getElementById(id); }
   function say(text, tone) {
     var banner = el("stream");
@@ -888,12 +1092,25 @@ _SCRIPT = """
       say("");
     }
   }
+  function busy() {
+    var focused = document.activeElement;
+    return Boolean(focused && focused.closest && focused.closest("#params")) ||
+      Object.keys(timers).length > 0;
+  }
+  function swap(id, html) {
+    if (id === "params" && busy()) { heldParams = html; return; }
+    var node = el(id);
+    if (node) { node.innerHTML = html; }
+  }
+  function release() {
+    if (heldParams !== null && !busy()) {
+      el("params").innerHTML = heldParams;
+      heldParams = null;
+    }
+  }
   function onFrame(event) {
     var payload = JSON.parse(event.data);
-    Object.keys(payload.frags).forEach(function (id) {
-      var node = el(id);
-      if (node) { node.innerHTML = payload.frags[id]; }
-    });
+    Object.keys(payload.frags).forEach(function (id) { swap(id, payload.frags[id]); });
     live = payload.live;
     baseline = payload.age === null ? null : performance.now() - payload.age * 1000;
     lost = false;
@@ -915,6 +1132,150 @@ _SCRIPT = """
       }
     };
   }
+  function storedName() {
+    try { return window.localStorage.getItem(NAME_KEY) || ""; } catch (e) { return ""; }
+  }
+  var name = storedName();
+  function showName() {
+    el("who").textContent = name ? name + " (box, unverified)" : "not given yet";
+  }
+  function askName() {
+    var given = window.prompt("Your name, for the session record:", name);
+    if (given === null) { return ""; }
+    given = given.trim();
+    if (!given) { return ""; }
+    name = given;
+    try { window.localStorage.setItem(NAME_KEY, given); } catch (e) { /* kept for this page only */ }
+    showName();
+    return given;
+  }
+  function tell(text, tone) {
+    var line = el("sent");
+    line.textContent = text;
+    line.className = "sent " + (tone || "");
+  }
+  function post(command, then) {
+    if (!canWrite) { return; }
+    var by = name || askName();
+    if (!by) {
+      tell("not sent: give your name first -- every command records who sent it", "crit");
+      return;
+    }
+    command.by = by;
+    tell("sending…", "");
+    fetch("/commands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command),
+      cache: "no-store"
+    }).then(function (response) {
+      return response.json();
+    }).then(function (answer) {
+      tell(answer.said, answer.status === "sent" || answer.status === "signaled" ? "ok" : "crit");
+      if (then) { then(answer); }
+    }).catch(function () {
+      tell("not delivered: this page could not reach wlx serve", "crit");
+    });
+  }
+  function decimals(step) { return (String(step).split(".")[1] || "").length; }
+  function send(input) {
+    input.classList.remove("pending");
+    var key = input.getAttribute("data-param");
+    var raw = input.value.trim();
+    var word = input.getAttribute("data-kind") === "word";
+    var value = word ? raw : Number(raw);
+    if (!word && (raw === "" || !isFinite(value))) {
+      tell("not sent: " + key + " needs a number", "crit");
+    } else {
+      post({ kind: "set", name: key, value: value });
+    }
+    release();
+  }
+  function schedule(input) {
+    var key = input.getAttribute("data-param");
+    clearTimeout(timers[key]);
+    input.classList.add("pending");
+    timers[key] = setTimeout(function () { delete timers[key]; send(input); }, debounceMs);
+  }
+  function stepInput(input, dir) {
+    var step = Number(input.getAttribute("data-step")) || 0.01;
+    var lo = input.hasAttribute("data-min") ? Number(input.getAttribute("data-min")) : -Infinity;
+    var hi = input.hasAttribute("data-max") ? Number(input.getAttribute("data-max")) : Infinity;
+    var v = Number(input.value);
+    if (input.value.trim() === "" || !isFinite(v)) { v = isFinite(lo) ? lo : 0; }
+    v = Math.min(hi, Math.max(lo, Math.round((v + dir * step) / step) * step));
+    input.value = v.toFixed(decimals(step));
+    schedule(input);
+  }
+  function closeNote(note) {
+    if (markNo === null) { return; }
+    var number = markNo;
+    markNo = null;
+    el("mark-form").hidden = true;
+    post({ kind: "note", mark: number, note: note });
+  }
+  function mark() {
+    var button = el("controls").querySelector('[data-cmd="mark"]');
+    if (!button || button.disabled) { return; }
+    closeNote("");
+    post({ kind: "mark", pressed_at: Date.now() / 1000 }, function (answer) {
+      if (answer.status !== "signaled") { return; }
+      markNo = answer.mark;
+      el("mark-note").value = "";
+      el("mark-form").hidden = false;
+      el("mark-note").focus();
+    });
+  }
+  function command(cmd) {
+    if (cmd === "stop") { el("stop-confirm").hidden = false; }
+    else if (cmd === "mark") { mark(); }
+    else { post({ kind: cmd }); }
+  }
+  function pauseOrResume() {
+    var button = el("controls").querySelector('[data-cmd="pause"], [data-cmd="resume"]');
+    if (button && !button.disabled) { command(button.getAttribute("data-cmd")); }
+  }
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest) { return; }
+    var button = e.target.closest("[data-cmd]");
+    if (button && !button.disabled) { command(button.getAttribute("data-cmd")); return; }
+    var arrow = e.target.closest("[data-dir]");
+    if (arrow && !arrow.disabled) {
+      var input = arrow.closest(".spin").querySelector("input[data-param]");
+      if (input && !input.disabled) { stepInput(input, Number(arrow.getAttribute("data-dir"))); }
+    }
+  });
+  document.addEventListener("change", function (e) {
+    if (e.target.matches && e.target.matches("input[data-param]")) { schedule(e.target); }
+  });
+  document.addEventListener("focusout", function () { setTimeout(release, 0); });
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) { return; }
+    var t = e.target;
+    if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) { return; }
+    var k = e.key.toLowerCase();
+    if (k === "p") { e.preventDefault(); pauseOrResume(); }
+    else if (k === "m") { e.preventDefault(); mark(); }
+  });
+  el("mark-note").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); closeNote(el("mark-note").value.trim()); }
+    else if (e.key === "Escape") { e.preventDefault(); closeNote(""); }
+  });
+  el("stop-yes").addEventListener("click", function () {
+    el("stop-confirm").hidden = true;
+    post({ kind: "stop" });
+  });
+  el("stop-no").addEventListener("click", function () { el("stop-confirm").hidden = true; });
+  el("rename").addEventListener("click", function () { askName(); });
+  el("sched-set").addEventListener("click", function () {
+    var kind = el("sched-kind").value;
+    var raw = el("sched-value").value.trim();
+    var request = { kind: "schedule" };
+    if (kind === "clock") { request.at = raw; }
+    else if (kind === "trials") { request.trials = Number(raw); }
+    else { request.ml = Number(raw); }
+    post(request);
+  });
   setInterval(check, 1000);
   el("close").addEventListener("click", function () {
     closed = true;
@@ -926,12 +1287,15 @@ _SCRIPT = """
     if (source) { source.close(); }
     open();
   });
+  showName();
   open();
 })();
 """
 
 
-def page(parts: dict[str, str], *, stale_after_s: float, nonce: str) -> str:
+def page(
+    parts: dict[str, str], *, stale_after_s: float, nonce: str, can_write: bool = False
+) -> str:
     """The whole document, every pane already rendered into it, so it reads before
     its stream has opened (spec §4.3).
 
@@ -941,10 +1305,16 @@ def page(parts: dict[str, str], *, stale_after_s: float, nonce: str) -> str:
     Content-Security-Policy `wlx serve` sends with this response; the one script
     carries it. `stale_after_s` goes to the script as `data-stale-after`.
 
-    **Nothing here writes** (spec §4.2): two buttons -- close this page's stream, and
-    reconnect it -- and four radio inputs that choose a tab.
+    **The controls (P4d-2b b2a, spec §5.2)**: the control bar's buttons are the
+    `controls` fragment, and around it are the parts no frame changes -- the name,
+    the last command's answer, the stop confirm, the mark's note box and the
+    scheduled-stop form -- static, so a frame never replaces what a person is typing.
+    `can_write` is `View.can_write` for the browser this page is for: `False`
+    disables those static controls here and tells the script (`data-can-write`); the
+    fragments grey their own. Close and reconnect, and the tab radios, are b1's.
     """
     p = {key: parts[key] for key in FRAGMENT_IDS}
+    off = "" if can_write else f' disabled title="{_e(CONTROLS_AT_THE_BOX)}"'
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -953,7 +1323,7 @@ def page(parts: dict[str, str], *, stale_after_s: float, nonce: str) -> str:
 <title>expcontroller console</title>
 <style>{_FONT_FACES}{_CSS}</style>
 </head>
-<body data-stale-after="{stale_after_s:g}">
+<body data-stale-after="{stale_after_s:g}" data-can-write="{int(can_write)}" data-debounce-ms="{DEBOUNCE_MS}">
 <div class="wrap">
   <header class="head glass">
     <span class="logo">{_LOGO}<span class="app">expcontroller</span></span>
@@ -966,6 +1336,15 @@ def page(parts: dict[str, str], *, stale_after_s: float, nonce: str) -> str:
   <div class="strip glass" role="region" aria-label="animal" id="strip">{p['strip']}</div>
   <div class="banner" id="stream" role="status" hidden></div>
   <div class="banners" id="banners">{p['banners']}</div>
+  <section class="controlbar glass" aria-label="controls">
+    <div class="ctlrow" id="controls">{p['controls']}</div>
+    <span class="spacer"></span>
+    <span class="who">name <b id="who">not given yet</b> <button class="btn small" id="rename" type="button"{off}>change</button></span>
+    <span class="sent" id="sent" role="status"></span>
+  </section>
+  <div class="inline crit" id="stop-confirm" role="alertdialog" aria-label="confirm stop" hidden><span>stop at the next trial boundary?</span><button class="btn danger" id="stop-yes" type="button">stop</button><button class="btn" id="stop-no" type="button">cancel</button></div>
+  <div class="inline info" id="mark-form" role="dialog" aria-label="mark note" hidden><span>mark sent · note</span><input id="mark-note" maxlength="500" autocomplete="off" placeholder="Enter attaches it · Esc leaves the mark bare" aria-label="mark note"></div>
+  <div class="inline" id="sched-form"><span>scheduled stop</span><select id="sched-kind" aria-label="stop when"{off}><option value="clock">at HH:MM</option><option value="trials">after N more trials</option><option value="fluid">after mL this session</option></select><input id="sched-value" autocomplete="off" aria-label="stop at"{off}><button class="btn small" id="sched-set" type="button"{off}>set</button></div>
   <div class="shell">
     <div class="main">
       <input type="radio" name="tab" id="t-runtime" checked>
@@ -991,7 +1370,7 @@ def page(parts: dict[str, str], *, stale_after_s: float, nonce: str) -> str:
             <div class="stack"><section class="panel glass"><div class="top"><h2>Changes</h2></div><div class="feed" id="rt-changes">{p['rt-changes']}</div></section></div>
           </div>
         </div>
-        <div class="tabpanel" id="tp-task"><section class="panel glass"><div class="top"><h2>Task parameters</h2><span class="sub">read-only</span></div><div class="params" id="params">{p['params']}</div></section></div>
+        <div class="tabpanel" id="tp-task"><section class="panel glass"><div class="top"><h2>Task parameters</h2><span class="sub">staged until the next trial</span></div><div class="params" id="params">{p['params']}</div></section></div>
         <div class="tabpanel" id="tp-setup"><section class="panel glass"><div class="top"><h2>Setup</h2><span class="sub">read-only</span></div><div id="setup">{p['setup']}</div></section></div>
         <div class="tabpanel" id="tp-end"><section class="panel glass"><div class="top"><h2>End of session</h2><span class="sub">read-only</span></div><div id="end">{p['end']}</div></section></div>
       </div>
