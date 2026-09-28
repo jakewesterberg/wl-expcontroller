@@ -44,7 +44,7 @@ from pathlib import Path
 from wl_expcontroller import link as _link
 from wl_expcontroller.bounds import Bounds, Exceeded, _finite
 from wl_expcontroller.check import check
-from wl_expcontroller.cli import _load_allocation, _load_trial
+from wl_expcontroller.cli import _clock, _load_allocation, _load_trial
 from wl_expcontroller.codes import Allocation
 from wl_expcontroller.dio import Absent as NoCard
 from wl_expcontroller.record import XCON_DIRNAME, SessionRecord, welfare_note
@@ -61,6 +61,14 @@ from wl_expcontroller.welfare import (
     SessionClock,
     Welfare,
 )
+
+#: How long the paused loop waits for a console between its housekeeping passes --
+#: draining commands, publishing a frame, and asking `welfare.must_stop` -- in
+#: seconds (P4d-2b spec §5.1). The wait ends early when a mark or a command arrives
+#: (`link.Link.idle`), so a resume or a stop is read as soon as it lands; this bounds
+#: only how long a paused session goes between frames, and between limit checks,
+#: when nothing arrives. A responsiveness choice, not a measurement of this system.
+PAUSE_HOUSEKEEPING_S = 0.5
 
 
 @dataclass
@@ -231,6 +239,21 @@ class Session:
     opened_wall_at: float | None = field(init=False, default=None)
     #: `None` until `end()`, a wall instant afterwards. See `end()`.
     ended_wall_at: float | None = field(init=False, default=None)
+    #: When a console paused the session, on the session's anchored clock, or `None`
+    #: while trials run (P4d-2b spec §5.1). Set at the boundary the `Pause` was
+    #: drained at, cleared by `Resume`; a session stopped while paused keeps it, as
+    #: the truth of how it ended. Published as `Telemetry.paused_at`.
+    paused_at: float | None = field(init=False, default=None)
+    #: The consoles' changes feed: the last `link.CONTROL_HISTORY` control events as
+    #: `(kind, by, at, said)`, oldest first -- see `controls`.
+    _controls: deque = field(
+        init=False,
+        default_factory=lambda: deque(maxlen=_link.CONTROL_HISTORY),
+        repr=False,
+    )
+    #: How many control events fell off the far end of `_controls`. Rolled into
+    #: `Telemetry.controls_dropped`, so a cap can never read as a quiet session.
+    controls_dropped: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
         self._anchored = SessionClock()
@@ -693,6 +716,16 @@ class Session:
         return tuple(self._recent)
 
     @property
+    def controls(self) -> tuple:
+        """The recent control events a console's changes feed lists, as `(kind, by,
+        at, said)`, oldest first (P4d-2b spec §5.1): `stop`, `pause`, `resume`, and
+        -- from the tasks that add them -- `mark`, `note`, `schedule`, `cancel`,
+        `scheduled_stop` and `set` (a staged setting applied). `at` is the session's anchored clock; `said` is the
+        sentence a console shows after the kind. The public face of `_controls`,
+        for the reason `staged` is public; the session record keeps every one."""
+        return tuple(self._controls)
+
+    @property
     def parameters(self) -> tuple:
         """Every settable value a console shows, as `(name, unit, low, high, value,
         bounded)` -- the shape `link.Telemetry.of` builds its `ParamRow`s from (P4d-2b
@@ -718,6 +751,124 @@ class Session:
             if name != OUT_OF_CAGE
         )
         return declared + ceilings
+
+    def _control(self, kind: str, by: str, said: str, index: int, **detail: object) -> float:
+        """One control event: onto the changes feed and into the session record,
+        stamped with the session's anchored clock, which it returns (P4d-2b spec
+        §5.1). `index` is the trial it happened in or, between trials, the trial
+        about to run; `detail` is the record row's own fields."""
+        at = self.wall_now()
+        if len(self._controls) == self._controls.maxlen:
+            self.controls_dropped += 1
+        self._controls.append((kind, by, at, said))
+        if self._record is not None:
+            self._record.control(kind, by, at, index, **detail)
+        return at
+
+    def _code(self, name: str) -> int | None:
+        """The code this session's allocation gives a framework event, or `None` when
+        it gives none. `Allocation.code_for` refuses rather than inventing a number;
+        a control that needs a code it does not have refuses in its turn (`_pause`),
+        rather than raising out of the loop."""
+        try:
+            return self.allocation.code_for(name)
+        except KeyError:
+            return None
+
+    def _pause(self, by: str, index: int) -> None:
+        """Hold the session at this boundary (P4d-2b spec §5.1): `run()` enters
+        `_hold` before the next trial. Strobed now, so the recording shows where the
+        gap begins.
+
+        **Refused, with the sentence, when it would not hold a session that can
+        resume and be seen to**: a session already stopping -- a `Stop` drained
+        ahead of this in the same pass (Review Focus 3) -- one already paused (a
+        double click), or an allocation without both `PAUSE` and `RESUME`, which
+        would leave a gap in the recording with an end nobody could find."""
+        if self.stopped_because:
+            self._refuse(
+                "pause",
+                by,
+                f"the session is stopping ({self.stopped_because}); a pause is not "
+                f"applied",
+            )
+            return
+        if self.paused_at is not None:
+            self._refuse(
+                "pause",
+                by,
+                "the session is already paused; this pause changes nothing",
+            )
+            return
+        codes = {name: self._code(name) for name in ("PAUSE", "RESUME")}
+        missing = [name for name, code in codes.items() if code is None]
+        if missing:
+            self._refuse(
+                "pause",
+                by,
+                f"this session's allocation has no {' or '.join(missing)} event code, "
+                f"so the recording could not show the pause; it is refused",
+            )
+            return
+        self.card.emit(codes["PAUSE"])
+        self.paused_at = self._control("pause", by, f"paused at trial {index}", index)
+
+    def _resume(self, by: str, index: int) -> None:
+        """End the pause: `_hold` returns and `run()` goes back to the top of its
+        loop, which applies whatever was staged while paused before the next trial
+        runs (spec §5.1). Strobed, so the recording shows where the gap ends."""
+        if self.paused_at is None:
+            self._refuse("resume", by, "the session is not paused; this resume changes nothing")
+            return
+        self.card.emit(self.allocation.code_for("RESUME"))
+        held = self.wall_now() - self.paused_at
+        self.paused_at = None
+        self._control(
+            "resume", by, f"resumed after {_clock(held)} paused", index, paused_s=held
+        )
+
+    def _ends(self) -> bool:
+        """Whether the session must end at this boundary, with its reason and kind
+        set: the out-of-cage limit, `welfare.must_stop`, read on the wall as ever
+        (P4d-2a spec §10). **One place for it**, asked between trials and on every
+        pass of the paused loop alike (P4d-2b spec §5.1: "ending the session on it
+        exactly as between trials"), so the limit cannot be enforced in one of the
+        two and not the other."""
+        stop = self.welfare.must_stop(self.wall_now())
+        if stop:
+            self.stopped_because = stop
+            self.stop_kind = "limit"
+            return True
+        return False
+
+    def _hold(self, index: int, publish) -> None:
+        """**Paused** (P4d-2b spec §5.1): no trial runs and nothing is rewarded, while
+        once per housekeeping pass the loop drains commands -- resume, stop, marks,
+        schedules, settings -- publishes a frame, and asks `_ends` whether the
+        out-of-cage limit has arrived, ending the session on it as between trials.
+        The out-of-cage clock runs on the wall throughout, since nothing here stops
+        it.
+
+        **Nothing is rewarded because nothing can be**: a reward is a trial's action
+        (`run.Effects.reward`), and no trial runs here. **Nothing is drawn** for the
+        same reason: a stimulus is shown only by a trial, so the display the task's
+        trials draw on shows its background with nothing on it (spec §5.0). There is
+        no display process yet to be told so -- S4's is not built (docs/CHECKPOINT.md:
+        "a frame on screen" is blocked on a panel) -- and when there is, this is the
+        pause it must show; the hardware verification list says so.
+
+        Returns when the session resumes, or with `stopped_because` set when it must
+        end; `run()` reads which."""
+        while self.paused_at is not None:
+            self.link.idle(PAUSE_HOUSEKEEPING_S)
+            for command in self.link.drain():
+                self._command(command, index)
+            publish()
+            if self.stopped_because:
+                return
+            if self._ends():
+                publish()
+                return
 
     def _refuse(self, name: str, by: str, why: str) -> None:
         """One refusal onto the capped list -- see `refusals`."""
@@ -771,6 +922,16 @@ class Session:
         if isinstance(command, _link.Stop):
             self.stopped_because = f"stopped by {command.by}"
             self.stop_kind = "operator"
+            # P4d-2b b2a: the record says who stopped the session and when, as it
+            # says who paused it; the reason alone was in telemetry and at the
+            # terminal, and neither is the record.
+            self._control("stop", command.by, self.stopped_because, index)
+            return
+        if isinstance(command, _link.Pause):
+            self._pause(command.by, index)
+            return
+        if isinstance(command, _link.Resume):
+            self._resume(command.by, index)
             return
         if not isinstance(command, _link.SetParameter):
             # A command this session has no branch for -- a newer console's -- is
@@ -1009,13 +1170,19 @@ class Session:
                 if self.stopped_because:
                     break
                 # The wall, not `now()` (P4d-2a spec §10): one clock read replacing
-                # another at the same trial boundary, never per frame.
-                stop = self.welfare.must_stop(self.wall_now())
-                if stop:
-                    self.stopped_because = stop
-                    self.stop_kind = "limit"
+                # another at the same trial boundary, never per frame. `_ends` is
+                # the same question the paused loop asks.
+                if self._ends():
                     publish()
                     break
+                if self.paused_at is not None:
+                    # Held here, at the boundary, until a resume or an ending
+                    # (P4d-2b spec §5.1). A resume goes back to the top, where
+                    # anything staged while paused is applied before the next trial.
+                    self._hold(index, publish)
+                    if self.stopped_because:
+                        break
+                    continue
                 if scheduler.finished:
                     if scheduler.done:
                         self.stopped_because = "every block is finished"

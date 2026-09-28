@@ -30,8 +30,11 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
 from wl_expcontroller.cli import _load_trial
 from wl_expcontroller.dio import Simulated as Card
 from wl_expcontroller.link import (
+    CONTROL_HISTORY,
     RECENT_OUTCOMES,
     REFUSAL_HISTORY,
+    Pause,
+    Resume,
     SetParameter,
     Simulated,
     Stop,
@@ -41,7 +44,7 @@ from wl_expcontroller.record import REFUSAL_LOG_LIMIT
 from wl_expcontroller.scheduler import Block, Condition, Counting, Scheduler
 from wl_expcontroller.simulate import Tally
 from wl_expcontroller.task import Outcome
-from wl_expcontroller.taskd import Session, SessionSpec
+from wl_expcontroller.taskd import PAUSE_HOUSEKEEPING_S, Session, SessionSpec
 from wl_expcontroller.welfare import Deployment, Simulated as Pump
 
 VALUES = {
@@ -2310,3 +2313,343 @@ def test_a_command_the_session_does_not_act_on_is_refused_not_a_fault(tmp_path):
     assert session.refusals == [
         ("recenter", "jake", "a 'recenter' command is not one this session acts on, so it is refused")
     ]
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a: pause and resume (spec §5.1)
+# ---------------------------------------------------------------------------
+
+#: The three framework codes b2a allocates (`tasks/allocation.py`).
+PAUSE_CODE, RESUME_CODE, MARK_CODE = 4131, 4132, 4133
+
+#: How many times a `_Scripted` session may drain its commands. The loop drains once
+#: at each trial boundary and once in each paused wait, so these sessions -- a few
+#: trials, at most a few hundred waits -- stay far below it.
+PASS_BUDGET = 2_000
+
+
+class _Scripted(Simulated):
+    """A link whose `idle` -- the paused loop's one wait -- runs a script: on its Nth
+    call it queues `script[N]`, moves `wall` on by `step` seconds, and calls `each`.
+
+    **Ruling 10, for a paused loop**: a session still paused after `budget` waits
+    fails -- `idle` raises, the session faults -- rather than holding the suite until
+    the mutation harness kills it, which is what a neutered `Resume` would otherwise
+    do here. **And for a paused loop that never waits**: with `Session._hold`
+    neutered, the loop goes round the boundary draining and publishing with no trial
+    and no `idle`, so neither budget moves and the suite hung until the harness's
+    300 s; a session that drains more than `PASS_BUDGET` times fails the same way."""
+
+    def __init__(self, script=None, wall=None, step=0.0, budget=200, each=None):
+        super().__init__()
+        self.script = dict(script or {})
+        self.wall = wall
+        self.step = step
+        self.budget = budget
+        self.each = each
+        self.waits: list = []
+        self.drains = 0
+
+    def drain(self) -> list:
+        self.drains += 1
+        if self.drains > PASS_BUDGET:
+            raise RuntimeError(
+                f"drained {PASS_BUDGET} times: the loop is going round with no trial "
+                f"and no wait (tests/test_taskd.py, Ruling 10)"
+            )
+        return super().drain()
+
+    def idle(self, timeout: float) -> int:
+        self.waits.append(timeout)
+        if len(self.waits) > self.budget:
+            raise RuntimeError(
+                f"still paused after {self.budget} waits: nothing ended the pause "
+                f"(tests/test_taskd.py, Ruling 10)"
+            )
+        if self.wall is not None:
+            self.wall.at += self.step
+        for command in self.script.get(len(self.waits), ()):
+            self.queue(command)
+        if self.each is not None:
+            self.each()
+        return super().idle(timeout)
+
+
+def _walled(tmp_path, link, *, trials: int = 5, **spec) -> tuple[Session, "_Wall"]:
+    """A head-fixed session whose wall follows its frames while trials run and moves
+    only when a test moves it while paused (`_Scripted.step`)."""
+    wall = _Wall(WALL_NOW)
+    session = Session(
+        _spec(tmp_path, trials=trials, **spec),
+        card=Card(),
+        pump=Pump(),
+        link=link,
+        wall_clock=wall,
+    )
+    session.left_cage(at=WALL_NOW)
+    session.head_fixed(at=wall())
+    # The frames' seconds, on top of wherever `at` stands: a paused wait moves `at`.
+    wall.follow = session.now
+    return session, wall
+
+
+def _controls_rows(session: Session) -> list[dict]:
+    path = session.directory / "controls.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def test_a_pause_holds_the_session_at_a_boundary_and_resume_continues(tmp_path):
+    """Spec §5.1: at the next trial boundary the loop holds -- no trial runs -- and
+    resume continues. Both are strobed so the recording shows the gap, and nothing
+    else is strobed inside it."""
+    link = _Scripted(script={3: [Resume(by="sam")]}, step=30.0)
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    assert len(link.waits) == 3
+    codes = session.card.codes
+    assert codes.count(PAUSE_CODE) == 1 and codes.count(RESUME_CODE) == 1
+    assert codes.index(RESUME_CODE) == codes.index(PAUSE_CODE) + 1, (
+        "something was strobed while paused: a trial ran"
+    )
+    trials = (session.directory / "trials.jsonl").read_text().splitlines()
+    assert len(trials) == 5
+    held = [frame.trial_index for frame in link.published if frame.trial_index == 0]
+    assert len(held) >= 4, "the paused loop published once per wait at trial 0"
+
+
+def test_pause_and_resume_are_recorded_with_who_and_when(tmp_path):
+    """Spec §5.1: every control is written to the session record with who sent it and
+    when -- the instant on the session's anchored clock, as a number and as a clock
+    time."""
+    link = _Scripted(script={3: [Resume(by="sam")]}, step=30.0)
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    pause, resume = _controls_rows(session)
+    assert (pause["kind"], pause["by"], pause["trial_index"]) == ("pause", "jake", 0)
+    assert (resume["kind"], resume["by"], resume["trial_index"]) == ("resume", "sam", 0)
+    assert resume["paused_s"] == pytest.approx(90.0)
+    assert resume["at"] - pause["at"] == pytest.approx(90.0)
+    assert pause["at_local"].endswith("local")
+
+
+def test_a_stop_is_recorded_with_who_and_when(tmp_path):
+    """Spec §5.1: every control is written to the session record with who sent it and
+    when. A console's stop was in telemetry and at the terminal and nowhere on disk."""
+    link = Simulated()
+    link.queue(Stop(by="sam"))
+    session = _session(_spec(tmp_path, trials=5), link=link)
+
+    session.run()
+
+    (row,) = _controls_rows(session)
+    assert (row["kind"], row["by"], row["trial_index"]) == ("stop", "sam", 0)
+    assert row["at"] == WALL_NOW
+    assert session.controls[0][3] == "stopped by sam"
+
+
+def test_nothing_is_rewarded_while_paused(tmp_path):
+    """Human review item 1 (spec §5.5): while paused, nothing is rewarded. No trial
+    runs, so no `Reward` action reaches the pump, and the session's fluid stands
+    still. Paused after six trials, so what stands still is not zero."""
+    seen: list = []
+    link = _Scripted(script={4: [Resume(by="jake")]}, step=10.0)
+    session, wall = _walled(tmp_path, link, trials=9)
+    link.wall = wall
+    link.each = lambda: seen.append(
+        (
+            session.welfare.session_total(),
+            session.welfare.deliveries,
+            len(session.pump.delivered),
+        )
+    )
+    ran = [0]
+
+    def pause_after_six(condition, values, result) -> None:
+        ran[0] += 1
+        if ran[0] == 6:
+            link.queue(Pause(by="jake"))
+
+    session.observe = pause_after_six
+
+    session.run()
+
+    assert len(seen) == 4
+    assert seen[0][0] > 0.0, "choose a pause point after a reward"
+    assert len(set(seen)) == 1, f"fluid moved while paused: {seen}"
+
+
+def test_the_out_of_cage_limit_still_ends_a_paused_session(tmp_path):
+    """Human review item 1 (spec §5.5): the out-of-cage clock keeps running while
+    paused, and `welfare.must_stop` still ends the session on it, exactly as between
+    trials. The wall moves five minutes per wait; `_bounds()`' limit is 800 s."""
+    link = _Scripted(step=300.0)
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "limit"
+    assert session.stopped_because.startswith("out_of_cage")
+    assert len(link.waits) == 3, "800 s is past after the third five-minute wait"
+    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    clocks = [frame.out_of_cage_seconds for frame in link.published]
+    assert clocks == sorted(clocks) and clocks[-1] > 800.0, "the clock kept running"
+    assert link.published[-1].stop_kind == "limit"
+
+
+def test_a_setting_staged_while_paused_applies_when_trials_resume(tmp_path):
+    """Spec §5.1: settings staged while paused apply when trials resume -- at the top
+    of the pass that runs the next trial, recorded and strobed there."""
+    link = _Scripted(
+        script={1: [SetParameter(name="fix_hold", value=0.4, by="sam")], 3: [Resume(by="jake")]}
+    )
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=3)
+    link.wall = wall
+
+    session.run()
+
+    assert _parameter_changes(session)[0]["now"] == 0.4
+    rows = [json.loads(line) for line in (session.directory / "trials.jsonl").read_text().splitlines()]
+    assert [row["params"]["fix_hold"] for row in rows] == [0.4, 0.4, 0.4]
+
+
+def test_stop_while_paused_ends_the_session(tmp_path):
+    link = _Scripted(script={2: [Stop(by="sam")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "operator"
+    assert session.stopped_because == "stopped by sam"
+    assert len(link.waits) == 2
+
+
+def test_a_second_pause_and_a_resume_with_nothing_paused_are_refused(tmp_path):
+    """A double click sends two pauses; the second is said, not stacked, and a stray
+    resume is said too. Neither strobes."""
+    link = _Scripted(script={2: [Resume(by="jake"), Resume(by="jake")]})
+    link.queue(Pause(by="jake"))
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=2)
+    link.wall = wall
+
+    session.run()
+
+    assert [(n, why.split(";")[0]) for n, _, why in session.refusals] == [
+        ("pause", "the session is already paused"),
+        ("resume", "the session is not paused"),
+    ]
+    assert session.card.codes.count(PAUSE_CODE) == 1
+    assert session.card.codes.count(RESUME_CODE) == 1
+
+
+def test_a_pause_pressed_after_a_stop_is_refused_and_the_session_ends(tmp_path):
+    """Review Focus 3: pause pressed while a stop is already on its way. Both land in
+    one drain; the stop ends the session at that boundary, and the pause is refused
+    with a sentence rather than holding a session that is ending."""
+    link = _Scripted()
+    link.queue(Stop(by="sam"))
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stopped_because == "stopped by sam"
+    assert link.waits == [], "a stopping session never held"
+    ((name, by, why),) = session.refusals
+    assert (name, by) == ("pause", "jake")
+    assert "the session is stopping (stopped by sam)" in why
+    assert PAUSE_CODE not in session.card.codes
+
+
+def test_a_pause_is_refused_when_the_allocation_cannot_mark_it(tmp_path):
+    """A pause the recording cannot show is refused rather than taken silently: the
+    allocation must carry both `PAUSE` and `RESUME`, so the gap has two ends."""
+    from dataclasses import replace
+
+    link = _Scripted()
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=2)
+    link.wall = wall
+    session.allocation = replace(
+        session.allocation,
+        task_events={
+            code: name
+            for code, name in session.allocation.task_events.items()
+            if name != "RESUME"
+        },
+    )
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    ((name, _, why),) = session.refusals
+    assert name == "pause"
+    assert "no RESUME event code" in why
+    assert link.waits == []
+
+
+def test_the_paused_loop_waits_one_housekeeping_interval_at_a_time(tmp_path):
+    link = _Scripted(script={2: [Resume(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=1)
+    link.wall = wall
+
+    session.run()
+
+    assert link.waits == [PAUSE_HOUSEKEEPING_S, PAUSE_HOUSEKEEPING_S]
+
+
+def test_after_the_loop_a_pause_or_a_resume_is_refused_not_applied(tmp_path):
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _fixed_and_run(tmp_path, link, wall)
+    link.queue(Pause(by="jake"))
+    link.queue(Resume(by="sam"))
+
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: len(session.refusals) == 2)
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+
+    assert [(n, b) for n, b, _ in session.refusals] == [("pause", "jake"), ("resume", "sam")]
+    assert session.paused_at is None
+
+
+def test_the_control_feed_keeps_the_newest_and_counts_what_fell_off(tmp_path):
+    """The feed a console shows is bounded like the refusal feed, and a cap never
+    reads as a quiet session. The record keeps every row."""
+    pairs = CONTROL_HISTORY // 2 + 10
+    # Resumed and paused again in one drain, so the loop stays held, and resumed for
+    # good on the last wait: `pairs` pauses and `pairs` resumes.
+    script = {n: [Resume(by="jake"), Pause(by="jake")] for n in range(1, pairs)}
+    script[pairs] = [Resume(by="jake")]
+    link = _Scripted(script=script, budget=2 * pairs)
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=1)
+    link.wall = wall
+
+    session.run()
+
+    assert len(session.controls) == CONTROL_HISTORY
+    assert session.controls_dropped == 2 * pairs - CONTROL_HISTORY
+    assert len(_controls_rows(session)) == 2 * pairs
+    kinds = [row[0] for row in session.controls]
+    assert kinds[-1] == "resume"

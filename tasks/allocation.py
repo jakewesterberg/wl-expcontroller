@@ -74,5 +74,14 @@ ALLOCATION: Allocation = replace(
         # by their order alone, and a dropped code desynchronises that ordering in a
         # way a sequence number would survive.
         4130: "PARAM_CHANGED",
+        # Console controls the framework strobes (P4d-2b spec §5.1, 2026-09-27):
+        # a pause and its resume, so the recording shows the gap, and an operator's
+        # mark, strobed in the frame it reaches the rig. The spec calls them
+        # `pause`, `resume` and `operator_mark`; spelled here as every other
+        # framework name is. In this range while ADR-0007's `TaskEvent` range is
+        # being moved; wl-exptasks owns the final numbering (spec §5.6).
+        4131: "PAUSE",
+        4132: "RESUME",
+        4133: "OPERATOR_MARK",
     },
 )

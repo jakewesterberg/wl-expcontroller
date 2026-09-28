@@ -129,6 +129,13 @@ REFUSAL_HISTORY = 50
 #: display bound, not a measurement.
 RECENT_OUTCOMES = 60
 
+#: How many recent control events -- a pause, a resume, a mark and its note, a
+#: schedule, a cancellation, an applied setting -- a session keeps for its consoles'
+#: changes feed, newest kept (P4d-2b spec §5.1). A display bound, capped for
+#: `REFUSAL_HISTORY`'s reason; what falls off is counted in `Session.controls_dropped`
+#: and the session record keeps every one (`record.CONTROLS`).
+CONTROL_HISTORY = 50
+
 
 @dataclass(frozen=True, slots=True)
 class Staged:

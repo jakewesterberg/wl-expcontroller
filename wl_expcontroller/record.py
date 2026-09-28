@@ -64,6 +64,18 @@ REFUSAL_LOG_LIMIT = 50
 #: is one per session, and must not be droppable.
 WELFARE_NOTES = "welfare_notes.jsonl"
 
+#: A console's controls, one row each (P4d-2b spec §5.1: "every one is written to
+#: the session record with who sent it and when"): a stop, a pause, a resume, a
+#: mark's stamp and its note, a schedule, a cancellation, and a scheduled stop firing.
+#:
+#: **Its own file**, for `WELFARE_NOTES`' reason: a row in `parameter_changes.jsonl`
+#: carries a `sequence` for joining to a `PARAM_CHANGED` code, and these join to their
+#: own codes (`PAUSE`, `RESUME`, `OPERATOR_MARK`) by order and instant, or to nothing.
+#: **Uncapped**, unlike `refusals.jsonl`: each row is something that happened, and
+#: the party making them is the box's own console, one person at a keyboard, with
+#: marks bounded besides at one per frame (`link.ZmqLink.mark_signal`).
+CONTROLS = "controls.jsonl"
+
 
 def welfare_note(
     directory: Path,
@@ -233,6 +245,33 @@ class SessionRecord:
                         "was": was,
                         "now": now,
                         "by": by,
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+
+    def control(
+        self, kind: str, by: str, at: float, trial_index: int, **detail: object
+    ) -> None:
+        """One console control, as it happened (P4d-2b spec §5.1).
+
+        `at` is the instant `taskd` acted on it, **on the session's anchored clock**
+        (`Session.wall_now`), written as the number and as local clock time with its
+        zone, as `welfare_note` writes its instants. `trial_index` is the trial it
+        happened in or, between trials, the trial about to run. `detail` is the row's
+        own fields -- a mark's frame and its three instants, a schedule's target --
+        written as given and never interpreted here."""
+        with (self.directory / CONTROLS).open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "kind": kind,
+                        "by": by,
+                        "at": at,
+                        "at_local": _local(at),
+                        "trial_index": trial_index,
+                        **detail,
                     },
                     sort_keys=True,
                 )
