@@ -2784,3 +2784,32 @@ def test_wlx_serve_takes_the_mark_endpoint_and_the_allowed_hosts(tmp_path, monke
 
     assert seen["mark"] == "tcp://127.0.0.1:5573"
     assert seen["allow_hosts"] == ("rig3.lab", "rig3")
+
+
+# --- Task 1 review ledger: an integer too large for a float ---------------------------
+
+
+def test_a_setting_whose_integer_overflows_a_float_is_refused_not_raised():
+    """Task 1's review, ledgered for this task: `link._setting`'s
+    `math.isfinite(value)` raises `OverflowError` on a Python int too large to
+    become a `float` (`10**400`, say). msgpack cannot carry one, but
+    `serve.parse_command` decodes a JSON body, whose integers Python reads without
+    bound, so a `POST /commands` setting this large can still reach it -- refused
+    with a sentence, never a 500 or a dead thread, the session (this console's own
+    serving) running on."""
+    digits = str(10**400)
+    body = (
+        '{"kind": "set", "by": "jake", "name": "fix_hold", "value": '
+        f"{digits}}}"
+    ).encode("ascii")
+    dispatch = _Dispatch()
+    with _served(_hub(), dispatch=dispatch) as port:
+        status, answer = _post(port, body)
+        still_serving = _request(port, "GET", "/")[0]
+
+    assert status == 400
+    assert answer["status"] == "refused"
+    assert "not a real number" in answer["said"]
+    assert "the session runs on" in answer["said"]
+    assert dispatch.seen == []
+    assert still_serving == 200

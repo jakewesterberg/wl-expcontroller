@@ -1059,7 +1059,18 @@ def _setting(value: object, name: str, by: str) -> float | str:
             f"for a categorical parameter, and this is neither, so it is refused and "
             f"the session runs on",
         )
-    if not math.isfinite(value):
+    try:
+        finite = math.isfinite(value)
+    except OverflowError:
+        # A Python `int` too large to become a `float` at all (`10**400`, say):
+        # `math.isfinite` itself raises rather than answering. msgpack cannot carry
+        # one, but `serve.parse_command` decodes a JSON body, whose integers Python
+        # reads without bound, so a `POST /commands` setting can still reach here.
+        # Treated as "not a real number" -- the refusal below already covers it, and
+        # both paths (the wire and the box) share it (P4d-2b b2a, Task 1's review,
+        # ledgered).
+        finite = False
+    if not finite:
         raise CommandRefused(
             name,
             by,
