@@ -2333,6 +2333,46 @@ def test_a_body_that_is_not_a_command_is_refused_before_anything_is_queued(body,
     assert dispatch.seen == []
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"kind": [], "by": "jake"}',
+        b'{"kind": {}, "by": "jake"}',
+        ('{"kind": "mark", "by": "jake", "pressed_at": ' + str(10**400) + "}").encode("ascii"),
+        ('{"kind": "schedule", "by": "jake", "ml": ' + str(10**400) + "}").encode("ascii"),
+        f'{{"kind": "schedule", "by": "jake", "trials": {2**64}}}'.encode("ascii"),
+    ],
+    ids=[
+        "kind-is-a-list",
+        "kind-is-a-dict",
+        "mark-pressed-at-overflows-a-float",
+        "schedule-ml-overflows-a-float",
+        "schedule-trials-past-the-wires-signed-range",
+    ],
+)
+def test_a_malformed_body_of_any_shape_gets_a_json_refusal_and_nothing_is_queued(body):
+    """Fix round 1, Important 2 (security review). Each of these used to escape
+    `_command`'s specific `except (UnicodeDecodeError, ValueError)` and kill the
+    handler thread with no answer at all: an unhashable `kind` (`TypeError` from
+    `kind not in _SHAPES`, serve.py:524), and a JSON integer too large for `float`
+    to carry -- `OverflowError` from `math.isfinite`, in the mark branch
+    (serve.py:553) and in `link.check_schedule`'s fluid branch (link.py:933). A
+    `trials` count of `2**64` is a fifth shape: no `OverflowError`, but it used to
+    pass `check_schedule` (no upper bound, link.py:923), get queued, and only then
+    fail inside msgpack on the command thread -- a validation failure reported as a
+    *not delivered* one. Every shape now gets an ordinary JSON refusal before
+    anything is queued, and the server keeps serving."""
+    dispatch = _Dispatch()
+    with _served(_hub(), dispatch=dispatch) as port:
+        status, answer = _post(port, body)
+        still_serving = _request(port, "GET", "/")[0]
+
+    assert 400 <= status < 500, (status, answer)
+    assert answer["status"] == "refused"
+    assert dispatch.seen == []
+    assert still_serving == 200
+
+
 def test_a_body_longer_than_the_limit_or_without_a_length_is_refused_unread():
     dispatch = _Dispatch()
     with _served(_hub(), dispatch=dispatch) as port:

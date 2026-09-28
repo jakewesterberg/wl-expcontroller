@@ -491,6 +491,18 @@ _SHAPES = {
 _SCHEDULES = {"at": "clock", "trials": "trials", "ml": "fluid"}
 
 
+def _finite(value: int | float) -> bool:
+    """`math.isfinite`, except a Python `int` too large to become a `float` at all
+    (`10**400`, say) is "not finite" too, rather than the `OverflowError`
+    `math.isfinite` itself raises for one (fix round 1, security review Important
+    2): msgpack cannot carry an int that large, but a `POST /commands` JSON body
+    can, and `parse_command` must answer with a refusal here, never raise."""
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def _person(by: object) -> str:
     """The actor a box command is recorded under: the name the page asked for, as
     `NAME (box, unverified)` (spec §2, S9a §6: a forgeable name is worse than none,
@@ -521,7 +533,11 @@ def parse_command(data: object):
     if not isinstance(data, dict):
         raise BadCommand("a command is one JSON object")
     kind = data.get("kind")
-    if kind not in _SHAPES:
+    # `isinstance` first (fix round 1, Important 2): `kind not in _SHAPES` alone
+    # raises `TypeError: unhashable type` for a `kind` that is a `list` or a
+    # `dict`, and `isinstance(kind, str)` being `False` short-circuits `or` before
+    # that membership test ever runs.
+    if not isinstance(kind, str) or kind not in _SHAPES:
         raise BadCommand(f"{kind!r} is not a command this console sends")
     by = _person(data.get("by"))
     extra = set(data) - {"kind", "by"} - _SHAPES[kind]
@@ -550,7 +566,7 @@ def parse_command(data: object):
         if pressed is not None and (
             isinstance(pressed, bool)
             or not isinstance(pressed, (int, float))
-            or not math.isfinite(pressed)
+            or not _finite(pressed)
         ):
             raise BadCommand("a mark's pressed_at is the browser's clock, in seconds")
         return MarkSignal(by=by, pressed_at=None if pressed is None else float(pressed))
@@ -861,6 +877,21 @@ def make_handler(
                 # `BadCommand` is a `ValueError`, and so is `json`'s own error.
                 said = str(exc) if isinstance(exc, BadCommand) else "a command is one JSON object"
                 self._send_json(400, {"status": "refused", "said": f"not sent: {said}"})
+                return
+            except Exception:  # noqa: BLE001 -- a last resort, answered, never a dead thread
+                # Fix round 1, Important 2: a body shape this file has not
+                # anticipated must still get an answer, not kill the handler
+                # thread the way an unhashable `kind` and an oversized integer
+                # both used to before their own guards existed. Never the
+                # exception's own text: a body malformed enough to reach here is
+                # not proven safe to echo back.
+                self._send_json(
+                    400,
+                    {
+                        "status": "refused",
+                        "said": "not sent: this request could not be read as a command",
+                    },
+                )
                 return
             if self._dispatch is None:
                 code, answer = not_delivered("this console has no command path")
