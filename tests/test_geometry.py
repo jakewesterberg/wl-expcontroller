@@ -12,6 +12,7 @@ the suite as a collection error rather than as a failed assertion.
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 
 import pytest
@@ -196,6 +197,73 @@ def test_a_setup_that_is_neither_is_refused():
     with pytest.raises(ValueError, match="'stereo' is not a setup"):
         Geometry(panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=50.0,
                  view="stereo")
+
+
+# ---------------------------------------------------------------------------
+# M5: a typo in a housing, or a housing/mask on the wrong setup, fails open
+# ---------------------------------------------------------------------------
+
+
+def test_a_housing_with_left_not_less_than_right_is_refused():
+    """`left >= right` is a rectangle that covers nothing on the panel, so `covers`
+    would never be true and a stimulus under the real housing would pass."""
+    with pytest.raises(ValueError, match="left"):
+        replace(HOUSINGS[0], left_cm=4.0, right_cm=4.0)
+    with pytest.raises(ValueError, match="left"):
+        replace(HOUSINGS[0], left_cm=5.0, right_cm=4.0)
+
+
+def test_a_housing_with_bottom_not_less_than_top_is_refused():
+    """The same failure, the other axis."""
+    with pytest.raises(ValueError, match="top"):
+        replace(HOUSINGS[0], bottom_cm=3.0, top_cm=3.0)
+    with pytest.raises(ValueError, match="top"):
+        replace(HOUSINGS[0], bottom_cm=4.0, top_cm=3.0)
+
+
+def test_a_housing_with_a_negative_margin_is_refused():
+    """A negative margin would shrink the excluded rectangle instead of widening it,
+    which is not what `margin_cm` is for (direct-view spec §4)."""
+    with pytest.raises(ValueError, match="margin"):
+        replace(HOUSINGS[0], margin_cm=-0.5)
+
+
+def test_a_housing_with_a_non_finite_value_is_refused():
+    """NaN and infinity satisfy no useful `<`/`>=` comparison, so `covers` on a
+    non-finite housing would either cover the whole panel or nothing, silently."""
+    with pytest.raises(ValueError, match="finite"):
+        replace(HOUSINGS[0], right_cm=math.inf)
+    with pytest.raises(ValueError, match="finite"):
+        replace(HOUSINGS[0], margin_cm=math.nan)
+
+
+def test_a_stereoscope_geometry_refuses_housings():
+    """The mask hides the light sensors through the stereoscope; housings on a
+    stereoscope geometry would exclude degrees the mask already stops, for the wrong
+    reason, and were never meant to be checked there."""
+    with pytest.raises(ValueError, match="housings"):
+        Geometry(
+            panel_width_cm=58.997,
+            panel_height_cm=33.293,
+            viewing_distance_cm=63.149,
+            view="stereoscope",
+            housings=HOUSINGS,
+        )
+
+
+def test_a_direct_geometry_refuses_a_mask():
+    """Direct view has no mask -- only the stereoscope's removable one stops the
+    field. A `mask_deg` on a direct geometry silently narrowed the field to a value
+    nothing at the rig sets (review M5: `mask_deg=10` gave a 10° field)."""
+    with pytest.raises(ValueError, match="mask"):
+        Geometry(
+            panel_width_cm=58.997,
+            panel_height_cm=33.293,
+            viewing_distance_cm=50.0,
+            view="direct",
+            mask_deg=10.0,
+            housings=HOUSINGS,
+        )
 
 
 def test_a_stimulus_under_a_housing_cannot_be_shown():

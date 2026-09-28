@@ -56,6 +56,35 @@ class Housing:
     top_cm: float
     margin_cm: float
 
+    def __post_init__(self) -> None:
+        values = (self.left_cm, self.right_cm, self.bottom_cm, self.top_cm, self.margin_cm)
+        if not all(math.isfinite(v) for v in values):
+            raise ValueError(
+                f"a housing's rectangle must be finite cm; got {values}. A NaN or "
+                f"infinite bound compares as neither covering a point nor excluding "
+                f"one, so `covers` would go quiet instead of refusing"
+            )
+        if self.left_cm >= self.right_cm:
+            raise ValueError(
+                f"a housing's left edge ({self.left_cm:g} cm) must be less than its "
+                f"right edge ({self.right_cm:g} cm); left >= right is a rectangle "
+                f"that covers no point on the panel, and a stimulus under the real "
+                f"housing would pass"
+            )
+        if self.bottom_cm >= self.top_cm:
+            raise ValueError(
+                f"a housing's bottom edge ({self.bottom_cm:g} cm) must be less than "
+                f"its top edge ({self.top_cm:g} cm); bottom >= top is a rectangle "
+                f"that covers no point on the panel, and a stimulus under the real "
+                f"housing would pass"
+            )
+        if self.margin_cm < 0:
+            raise ValueError(
+                f"a housing's margin must not be negative; got {self.margin_cm:g} "
+                f"cm, which would shrink the excluded rectangle instead of widening "
+                f"it (direct-view spec §4)"
+            )
+
     def covers(self, x_cm: float, y_cm: float) -> bool:
         """Whether a point on the panel, in the same corner-origin cm, is under this
         housing or its margin."""
@@ -93,6 +122,20 @@ class Geometry:
                 "direct view's field excludes the light sensors' housings, and none were "
                 "given. They are measured at build (direct-view spec §9 item 1); a field "
                 "without them would pass a stimulus drawn under a housing"
+            )
+        if self.view == "stereoscope" and self.housings:
+            raise ValueError(
+                "the stereoscope's mask hides the light sensors, so a stereoscope "
+                "geometry takes no housings; a housing there would exclude degrees "
+                "the mask already stops, for a reason that does not hold in this "
+                "setup"
+            )
+        if self.view == "direct" and self.mask_deg is not None:
+            raise ValueError(
+                f"direct view has no mask -- only the stereoscope's removable mask "
+                f"stops the field -- so mask_deg={self.mask_deg!r} on a direct "
+                f"geometry would silently narrow the field to a value nothing at the "
+                f"rig sets"
             )
 
     @classmethod
