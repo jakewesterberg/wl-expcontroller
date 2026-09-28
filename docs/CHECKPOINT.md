@@ -58,12 +58,14 @@ with the directory. The ADR figure moved because ADR-0008 was accepted, and the 
 figure was one low. In order:
 
 1. **This file** — where things are.
-2. **`CLAUDE.md`** — the conventions. Sixteen, and the ones that cost the most to
+2. **`docs/backlog.md`** — everything open, one line per item (since 2026-09-28). An
+   item goes in when it is deferred and its line goes when it closes.
+3. **`CLAUDE.md`** — the conventions. Seventeen, and the ones that cost the most to
    learn are near the bottom: prove a test can fail, ship a safety component with its
    consumer, and treat a "not yet" comment as a dated claim nothing can check.
-3. **`docs/M0-REVIEW.md`** §3 and §4 — what is still open, and the 24 engineering
+4. **`docs/M0-REVIEW.md`** §3 and §4 — what is still open, and the 24 engineering
    calls made without asking.
-4. **The one S-spec your package names**, from the table below. Not the others.
+5. **The one S-spec your package names**, from the table below. Not the others.
 
 `docs/superpowers/specs/2026-08-31-spec-map.md` maps S0–S13 if you need to find one.
 
@@ -328,6 +330,10 @@ figure was one low. In order:
 ## What moved on 2026-09-28: the screen, the stereoscope, direct view, and b2a under way
 
 **Resume here (state at 2026-09-28 ~15:00 UTC):**
+- **Everything open is in `docs/backlog.md`** (added 2026-09-28, gathered from this file, the
+  specs' open items, `next-session.md`, memory and direct view part 1's ledger). Read it after
+  this entry. Direct view part 2 is XC-003 (a missing geometry failing loudly is part of it),
+  and the other carries below are XC-036 to XC-038.
 - **Direct view part 1 is on `main`** (`370b561`; CI run `36427664739` green, read line by line: the
   gate over `calibration`, `check`, `geometry`, `task` caught 87 of 87, all `N failed`). 1191 tests.
   It adds each setup's field (`Geometry.direct`/`.stereoscope`, `geometry.Rig`, `tasks/rig.py`),
@@ -387,32 +393,12 @@ ledger keeps the running offset.
   (same active area; DisplayPort 1.4, so DSC at 4K/240; S0 §5.1). **In January 2027, when the PI
   arrives at KU Leuven and can purchase, check Dell's lineup again** for a 27-inch 4K QD-OLED with
   DP 2.1 UHBR20; Dell is easier to order there.
-- **Queued for a brainstorm with the PI (his request, 2026-09-28): which eye(s) task control
-  listens to.** Today an `eye="both"` window averages the two eyes (`gaze.in_window`), the saccade
-  detector averages the usable ones, and `eye.parse` drops the **whole** sample when either eye's
-  record is incomplete — so one lost eye reads as tracker loss, and a noisy-but-present eye
-  pollutes the mean unseen (no per-eye quality exists yet). Options to put to him: a per-session
-  choice after calibration; a per-sample per-eye quality flag with hysteresis and recorded
-  switches (the eyes' maps disagree slightly, so a switch jumps); never substituting eyes in
-  dichoptic tasks. The quality signal most naturally comes from P10's tracker, so hold it before
-  P10's design. Raw data from both eyes is always recorded; this is online control only.
-- **Queued for a brainstorm with the PI (his request, 2026-09-28): automated color calibration
-  and gray-tone linearization, built into the rig.** What exists: `photometry.py` specifies
-  color device-independently (xyY, DKL) against a measured `Calibration` (primaries, background,
-  **one** `gamma` exponent, the observer's luminous efficiency), and check faults a color outside
-  the panel's gamut; S4 §9 defines the stimulus-calibration record and id a session runs against
-  (per-mode gamma per panel half), and §10 lists a gamma/luminance ramp test screen. What does
-  not: any measured calibration, an instrument, a procedure, automation, or a per-channel
-  transfer (a QD-OLED is not a power law, and its ABL makes luminance depend on how much of the
-  screen is lit). To put to him: the instrument (a tristimulus colorimeter measures for a human
-  observer; macaque-weighted luminance needs spectra, i.e. a spectroradiometer: the expensive,
-  science-facing fork); measuring at the eye point (automatable with the screen fixed at 50 cm,
-  and through each periscope for the stereoscope); what the automated run fits and records; how
-  often, and what a session does with a stale calibration (OLED warm-up, drift, burn-in).
-- **Carried:** re-run `tools/calibration_design.py` per setup (the spec's §6) — the geometry
-  rework found 85% reach winning under two of four assumptions on the new panel; the ridge
-  softens the ±12° mask's nasal edge for pupils over about 2.9 mm, which the per-animal carriage
-  can move behind the mask at fitting.
+- **Queued for a brainstorm with the PI (his requests, 2026-09-28):** which eye(s) task control
+  listens to is XC-001, and automated color calibration and gray-tone linearization is XC-002.
+  The options prepared for each are in this entry as of `42e4a9f`, which both items link.
+- **Carried:** the per-setup `tools/calibration_design.py` rerun is done (the two 2026-09-28
+  records under `docs/measurements/dev-machine/`, direct view part 1's Task 5); the ridge's fade
+  at the mask's nasal edge for wide pupils is XC-081.
 
 ## What moved on 2026-09-27, afternoon: b1 merged, b2 designed, the camera, CI
 

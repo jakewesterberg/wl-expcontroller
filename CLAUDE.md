@@ -51,6 +51,9 @@ These conventions bind every session (human- or AI-driven) working in this repo.
   to get wrong goes to the PI as a question at the moment it arises. Recording it in an
   open-items table is a record, not an ask — and three of the first four decisions
   revisited that way were changed.
+- **What is open lives in `docs/backlog.md`, one line per item.** An item goes in the
+  moment it is deferred, by whoever defers it; closing one removes its line in the
+  commit that does the work ("closes XC-017"). A PI decision is asked, never filed there.
 
 - **Leave the repo resumable.** A session ends by updating `docs/CHECKPOINT.md`:
   what moved, what is next, and anything learned that would cost the next session
