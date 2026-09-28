@@ -217,6 +217,18 @@ thread alone owns the REQ socket and tells the page *sent* only when `taskd` has
 acknowledged, and its mark thread sends an operator's mark on a third socket, ahead of
 every command, for `taskd` to stamp in the frame it arrives.
 
+**Queued commands reach the rig one trial boundary apart** (found by the b2a final
+review's probe, 2026-09-28). The command thread sends one command and waits for
+`taskd`'s acknowledgment before it sends the next, and `taskd` reads its REP socket once
+per trial boundary — once per housekeeping pass while paused — so a command queued
+behind another reaches the rig, in practice, at the boundary after the one ahead of it.
+Up to `COMMAND_QUEUE_DEPTH` (4) wait behind the one in flight, and a further one is
+answered *busy*. So a stop posted behind queued settings or schedules takes effect that
+many trials late: in the probe, three schedules and a stop posted together landed at
+trials 17, 18, 19 and 20. The stop's confirm step still says *stop at the next trial
+boundary?*, which is exact only when nothing is queued ahead of it. Marks are not in
+this queue. Delivering what is queued at a single boundary is left to b2b.
+
 **A deployment note on the `Host` check.** `wlx serve` finds the box's own names by
 resolving its host names, not by listing its network interfaces, so on a box whose
 `/etc/hosts` maps its hostname to `127.0.1.1` (Debian's default) its LAN address is
