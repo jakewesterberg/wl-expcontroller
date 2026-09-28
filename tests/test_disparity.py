@@ -129,8 +129,8 @@ def test_form_disparity_counts_toward_the_off_screen_check():
     """
     from wl_expcontroller.geometry import Geometry
 
-    geometry = Geometry(
-        panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=57.0
+    geometry = Geometry.stereoscope(
+        panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
     )
     safe = a_task(RDS(form=Corrugation(sf=0.5, amplitude=0.2)), at=(12.5, 0.0))
     extreme = a_task(RDS(form=Corrugation(sf=0.5, amplitude=8.0)), at=(12.5, 0.0))

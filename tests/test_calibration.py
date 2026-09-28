@@ -30,8 +30,8 @@ from wl_expcontroller.calibration import (
 )
 from wl_expcontroller.geometry import Geometry
 
-GEOMETRY = Geometry(
-    panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=57.0
+GEOMETRY = Geometry.stereoscope(
+    panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
 )
 
 #: A forward map the second-order basis can represent exactly, so a fit against it

@@ -56,8 +56,11 @@ calibration = Trial(
         # Bounded to the field the stereoscope actually shows, not to the
         # constellation of the day: check 8 inspects the parameter *space*, and a
         # range wider than the panel is a task that can be scheduled off-screen.
-        Param("target_x", unit="deg", low=-14.5, high=14.5),
-        Param("target_y", unit="deg", low=-16.1, high=16.1),
+        # That field is ±13.15° × ±14.77° with the screen at 50 cm (S0 §5.2), stopped
+        # at the panel by the PI's ±12° mask (optics drawing §5), so ±12 both ways.
+        # It was ±14.5 × ±16.1, 0.85 of the 31.5-inch panel's field (2026-09-28).
+        Param("target_x", unit="deg", low=-12.0, high=12.0),
+        Param("target_y", unit="deg", low=-12.0, high=12.0),
         # Wider than an ordinary fixation window. A calibration window has to admit
         # gaze that is *wrong by the amount calibration is about to correct*; sized
         # for a good map it would reject every fixation on the uncalibrated animal

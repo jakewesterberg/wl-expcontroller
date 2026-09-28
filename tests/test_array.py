@@ -172,8 +172,8 @@ def test_an_array_that_would_not_fit_on_the_display_is_refused():
             ),
         ],
     )
-    geometry = Geometry(
-        panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=57.0
+    geometry = Geometry.stereoscope(
+        panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
     )
     codes = {f.code for f in check(trial, geometry=geometry)}
     assert "stimulus-off-screen" in codes

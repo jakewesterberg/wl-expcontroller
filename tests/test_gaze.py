@@ -38,8 +38,8 @@ from wl_expcontroller.welfare import Deployment, Simulated as Pump
 from wl_expcontroller.task import Outcome, SaccadeOnset, SaccadeTo
 from tasks.calibration import calibration
 
-GEOMETRY = Geometry(
-    panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=57.0
+GEOMETRY = Geometry.stereoscope(
+    panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
 )
 
 

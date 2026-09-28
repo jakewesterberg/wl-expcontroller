@@ -260,9 +260,10 @@ def test_a_resolving_custom_component_is_accepted_but_flagged_for_review():
     assert findings[0].blocking is False
 
 
-#: The PG27UCDM stereoscope at 57 cm: a ±14.51° × ±16.28° field per eye.
-GEOMETRY = Geometry(
-    panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=57.0
+#: The PG27UCDM through the stereoscope, the screen at 50 cm and E = 1.6 cm: a 63.15 cm
+#: path and a ±13.15° × ±14.77° field per eye.
+GEOMETRY = Geometry.stereoscope(
+    panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
 )
 
 
@@ -299,13 +300,13 @@ def test_disparity_can_push_one_eye_off_screen_from_a_legal_cyclopean_position()
         states=[
             State(
                 "show",
-                enter=[Show(Stimulus("s", at=(14.0, 0.0), disparity=2.0))],
+                enter=[Show(Stimulus("s", at=(12.65, 0.0), disparity=2.0))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
     )
 
-    assert GEOMETRY.can_show(14.0, 0.0), "the cyclopean position is legal"
+    assert GEOMETRY.can_show(12.65, 0.0), "the cyclopean position is legal"
 
     findings = check(trial, geometry=GEOMETRY)
 
