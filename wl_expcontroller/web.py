@@ -1253,6 +1253,14 @@ _SCRIPT = """
       el("mark-note").focus();
     });
   }
+  function toggleAllowed(detail) {
+    // The same hold, whichever route a pause or resume comes from (round 2: the
+    // click handler alone missed the P key, which calls this before `command` too).
+    var now = performance.now();
+    if (detail > 1 || now - lastToggleAt < TOGGLE_HOLD_MS) { return false; }
+    lastToggleAt = now;
+    return true;
+  }
   function command(cmd) {
     if (cmd === "stop") { el("stop-confirm").hidden = false; }
     else if (cmd === "mark") { mark(); }
@@ -1260,18 +1268,18 @@ _SCRIPT = """
   }
   function pauseOrResume() {
     var button = el("controls").querySelector('[data-cmd="pause"], [data-cmd="resume"]');
-    if (button && !button.disabled) { command(button.getAttribute("data-cmd")); }
+    // No click to read a detail from a key press, so 1 -- never a double on its own,
+    // still held to the same `TOGGLE_HOLD_MS` as a click.
+    if (button && !button.disabled && toggleAllowed(1)) {
+      command(button.getAttribute("data-cmd"));
+    }
   }
   document.addEventListener("click", function (e) {
     if (!e.target.closest) { return; }
     var button = e.target.closest("[data-cmd]");
     if (button && !button.disabled) {
       var cmd = button.getAttribute("data-cmd");
-      if (cmd === "pause" || cmd === "resume") {
-        var now = performance.now();
-        if (e.detail > 1 || now - lastToggleAt < TOGGLE_HOLD_MS) { return; }
-        lastToggleAt = now;
-      }
+      if ((cmd === "pause" || cmd === "resume") && !toggleAllowed(e.detail)) { return; }
       command(cmd);
       return;
     }
