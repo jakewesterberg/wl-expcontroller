@@ -71,6 +71,14 @@ from wl_expcontroller.welfare import (
 PAUSE_HOUSEKEEPING_S = 0.5
 
 
+def _gap(later: float | None, earlier: float | None) -> float | None:
+    """`later - earlier`, or `None` when either instant is unknown: a mark's gaps are
+    recorded as the clocks read, and one nobody read is not a gap of zero."""
+    if later is None or earlier is None:
+        return None
+    return later - earlier
+
+
 @dataclass
 class SessionSpec:
     """Everything a session needs before it starts.
@@ -254,6 +262,15 @@ class Session:
     #: How many control events fell off the far end of `_controls`. Rolled into
     #: `Telemetry.controls_dropped`, so a cap can never read as a quiet session.
     controls_dropped: int = field(init=False, default=0)
+    #: `OPERATOR_MARK`'s code, looked up once when `run()` starts so the frame never
+    #: searches the allocation; `None` when the allocation has none (P4d-2b b2a).
+    _mark_code: int | None = field(init=False, default=None, repr=False)
+    #: Marks stamped in a frame and not yet written: `(mark, frame, at, paused)`. The
+    #: frame only appends; `_settle_stamps` writes them at the boundary after.
+    _stamps: list = field(init=False, default_factory=list, repr=False)
+    #: Every mark this session stamped, by its signal's number: `(number, trial,
+    #: frame, at)`, what a note arriving later is joined to.
+    _stamped: dict = field(init=False, default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         self._anchored = SessionClock()
@@ -752,12 +769,22 @@ class Session:
         )
         return declared + ceilings
 
-    def _control(self, kind: str, by: str, said: str, index: int, **detail: object) -> float:
-        """One control event: onto the changes feed and into the session record,
-        stamped with the session's anchored clock, which it returns (P4d-2b spec
-        §5.1). `index` is the trial it happened in or, between trials, the trial
-        about to run; `detail` is the record row's own fields."""
-        at = self.wall_now()
+    def _control(
+        self,
+        kind: str,
+        by: str,
+        said: str,
+        index: int,
+        at: float | None = None,
+        **detail: object,
+    ) -> float:
+        """One control event: onto the changes feed and into the session record, at
+        `at` on the session's anchored clock -- now, unless the event was stamped
+        earlier (a mark, in its frame) -- which it returns (P4d-2b spec §5.1).
+        `index` is the trial it happened in or, between trials, the trial about to
+        run; `detail` is the record row's own fields."""
+        if at is None:
+            at = self.wall_now()
         if len(self._controls) == self._controls.maxlen:
             self.controls_dropped += 1
         self._controls.append((kind, by, at, said))
@@ -841,6 +868,90 @@ class Session:
             "resume", by, f"resumed after {_clock(held)} paused", index, paused_s=held
         )
 
+    def _stamp(self, mark: int, frame: int | None) -> None:
+        """**An operator's mark, in the frame it reached the rig** (P4d-2b spec
+        §5.0, §5.1): `OPERATOR_MARK` strobed now, and the stamp -- the mark's
+        number, the frame (`None` between trials and while paused), the session's
+        anchored clock -- kept for `_settle_stamps` to write at the boundary after.
+
+        **Called from inside a frame**, but only when a signal arrived: the per-frame
+        check that finds none is `link.mark_signal` alone. What this does on a mark
+        is bounded -- one strobe, one clock read, one append -- and is the whole of
+        the mark's work in the frame; nothing here writes a file. A mark is never
+        refused, since it has already been pressed: without an `OPERATOR_MARK` code
+        it is stamped unstrobed, and `_settle_stamps` says so."""
+        if self._mark_code is not None:
+            self.card.emit(self._mark_code)
+        self._stamps.append((mark, frame, self.wall_now(), self.paused_at is not None))
+
+    def _settle_stamps(self, index: int) -> None:
+        """Write the stamps a frame or a boundary kept (`_stamp`): one `mark` row
+        each, numbered in the order this session stamped them, onto the changes feed
+        and into the record, and remembered for the note that follows (`_mark_note`).
+        `index` is the trial they were stamped in, or the one about to run."""
+        for mark, frame, at, paused in self._stamps:
+            number = len(self._stamped) + 1
+            if frame is not None:
+                said = f"mark {number} stamped in trial {index}, frame {frame}"
+            elif paused:
+                said = f"mark {number} stamped while paused, before trial {index}"
+            else:
+                said = f"mark {number} stamped between trials, before trial {index}"
+            strobed = self._mark_code is not None
+            if not strobed:
+                said += (
+                    "; not strobed: this session's allocation has no OPERATOR_MARK "
+                    "event code"
+                )
+            self._control(
+                "mark", "", said, index, at=at,
+                mark=mark, number=number, frame=frame, strobed=strobed,
+            )
+            self._stamped[mark] = (number, index, frame, at)
+        self._stamps.clear()
+
+    def _check_marks(self, index: int) -> None:
+        """The mark check at a trial boundary (spec §5.1: it "runs between trials and
+        while paused too"): a mark waiting here is stamped with no frame and written
+        at once, since nothing here is inside a frame."""
+        mark = self.link.mark_signal()
+        if mark:
+            self._stamp(mark, None)
+            self._settle_stamps(index)
+
+    def _mark_note(self, command, index: int) -> None:
+        """A `Mark` command: the note half of a mark, joined to its stamp by the
+        signal's number (spec §5.1). One `note` row carrying the three instants --
+        pressed (the browser's clock), received (`wlx serve`'s), stamped (the
+        session's anchored clock, with its frame) -- **and the gaps between them**,
+        each across two clocks and recorded as they read, never hidden and never
+        corrected. A note for a mark this session never stamped -- a signal that
+        did not arrive, or one from before this session -- is recorded as such."""
+        joined = self._stamped.get(command.mark)
+        number, trial, frame, stamped_at = joined if joined else (None, None, None, None)
+        quoted = f'"{command.note}"' if command.note else "no note"
+        said = (
+            f"a note for mark {command.mark}, which this session never stamped: {quoted}"
+            if number is None
+            else f"mark {number}: {quoted}"
+        )
+        self._control(
+            "note",
+            command.by,
+            said,
+            index,
+            mark=command.mark,
+            number=number,
+            note=command.note,
+            pressed_at=command.pressed_at,
+            received_at=command.received_at,
+            stamped_at=stamped_at,
+            stamped_in_trial=trial,
+            frame=frame,
+            received_after_pressed_s=_gap(command.received_at, command.pressed_at),
+            stamped_after_received_s=_gap(stamped_at, command.received_at),
+        )
+
     def _ends(self) -> bool:
         """Whether the session must end at this boundary, with its reason and kind
         set: the out-of-cage limit, `welfare.must_stop`, read on the wall as ever
@@ -874,7 +985,12 @@ class Session:
         Returns when the session resumes, or with `stopped_because` set when it must
         end; `run()` reads which."""
         while self.paused_at is not None:
-            self.link.idle(PAUSE_HOUSEKEEPING_S)
+            # The wait is also the paused loop's mark check: `idle` returns the
+            # moment a mark arrives, and it is stamped then.
+            mark = self.link.idle(PAUSE_HOUSEKEEPING_S)
+            if mark:
+                self._stamp(mark, None)
+                self._settle_stamps(index)
             for command in self.link.drain():
                 self._command(command, index)
             publish()
@@ -946,6 +1062,9 @@ class Session:
             return
         if isinstance(command, _link.Resume):
             self._resume(command.by, index)
+            return
+        if isinstance(command, _link.Mark):
+            self._mark_note(command, index)
             return
         if not isinstance(command, _link.SetParameter):
             # A command this session has no branch for -- a newer console's -- is
@@ -1140,6 +1259,17 @@ class Session:
         self._scheduler = scheduler
         self._index = 0
         self.phase = "running"
+        self._mark_code = self._code("OPERATOR_MARK")
+        # **The per-frame mark check** (P4d-2b spec §5.1), handed to `run_trial` as
+        # its one per-frame hook. Bound once, here, so each frame is two calls and a
+        # test on a small integer; `_stamp` runs only when a signal arrived.
+        signal, stamp = self.link.mark_signal, self._stamp
+
+        def each_frame(frame: int) -> None:
+            mark = signal()
+            if mark:
+                stamp(mark, frame)
+
         try:
             index = 0
             #: Block transitions taken. Bounded by the plan -- see the check below.
@@ -1167,6 +1297,10 @@ class Session:
 
             while True:
                 self._apply_staged()
+                # Between trials the frame's mark check runs once here, before the
+                # drain, so a mark's stamp is written ahead of a note that arrived
+                # with it (P4d-2b spec §5.1).
+                self._check_marks(index)
                 # Drain *after* `_apply_staged()`, not before: staging and applying
                 # in the same pass would collapse S9a §8's one-boundary visibility
                 # window to nothing. A change drained here is staged but not yet
@@ -1247,7 +1381,10 @@ class Session:
                     self.spec.frame_period,
                     values=values,
                     effects=self.rig,
+                    each_frame=each_frame,
                 )
+                # The marks this trial's frames stamped, written now that it is over.
+                self._settle_stamps(index)
                 self._elapsed += result.frames * self.spec.frame_period + self.spec.iti
                 if result.outcome is not None:
                     # The terminal `Marker`, which is `wl-preproc`'s and the
@@ -1321,6 +1458,11 @@ class Session:
             publish()
             raise
         finally:
+            # A trial that faulted or was interrupted has no boundary after it, so
+            # the marks its frames stamped -- already strobed -- are written here,
+            # while the record is still open (P4d-2b b2a).
+            if self._stamps:
+                self._settle_stamps(self._index)
             record.close()
             self._record = None
 

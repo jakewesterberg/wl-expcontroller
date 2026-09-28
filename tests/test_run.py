@@ -24,6 +24,7 @@ from wl_expcontroller.task import (
     SaccadeTo,
     Score,
     State,
+    Tolerances,
     Trial,
     Window,
 )
@@ -391,3 +392,62 @@ def test_a_task_that_commands_nothing_needs_no_io_port():
     trial = Trial(start="go", states=[State("go", go=[On(After(0.0), Outcome.CORRECT)])])
 
     assert run_trial(trial, Quiet(), frame_period=0.01).outcome is Outcome.CORRECT
+
+
+# --- P4d-2b b2a: the one per-frame hook ------------------------------------------
+
+
+class _Watched(Quiet):
+    """`Quiet`, with every display call logged beside the hook's."""
+
+    def __init__(self, log: list) -> None:
+        object.__setattr__(self, "log", log)
+
+    def display(self, visible, frame: int) -> None:
+        self.log.append(("display", frame))
+
+
+def test_each_frame_is_called_once_per_frame_before_anything_else_on_it():
+    """P4d-2b spec §5.1: a mark is stamped in the frame it reaches the rig, so the
+    session's check runs once per frame, first, before the frame is drawn or any
+    guard is read -- the frame it names is the frame it happened in."""
+    trial = Trial(
+        start="wait",
+        states=[State("wait", go=[On(After(0.1), Outcome.CORRECT)])],
+    )
+    log: list = []
+
+    result = run_trial(
+        trial,
+        world=_Watched(log),
+        frame_period=0.01,
+        each_frame=lambda frame: log.append(("each", frame)),
+    )
+
+    assert result.frames == 10
+    assert log == [
+        entry for frame in range(1, 11) for entry in (("each", frame), ("display", frame))
+    ]
+
+
+class _Blinking(Quiet):
+    def signal(self, frame: int) -> str:
+        return "blink"
+
+
+def test_each_frame_runs_on_a_frame_the_gaze_signal_was_lost_too():
+    """An interrupted frame skips the guards (`continue`), and must not skip the mark
+    check: an operator's mark during a blink is still a mark."""
+    trial = Trial(
+        start="wait",
+        states=[State("wait", go=[On(After(10.0), Outcome.CORRECT)])],
+        tolerances=Tolerances(blink=None, tracker_lost=None),
+    )
+    frames: list = []
+
+    run_trial(
+        trial, world=_Blinking(), frame_period=0.01, max_frames=20,
+        each_frame=frames.append,
+    )
+
+    assert frames == list(range(1, 21))

@@ -14,7 +14,7 @@ time is the loop's own property rather than something the world reports.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Mapping, NamedTuple, Protocol
+from typing import Callable, Mapping, NamedTuple, Protocol
 
 from wl_expcontroller.task import (
     Action,
@@ -364,6 +364,7 @@ def run_trial(
     max_frames: int = 100_000,
     values: dict[str, float] | None = None,
     effects: "Effects | None" = None,
+    each_frame: "Callable[[int], None] | None" = None,
 ) -> Result:
     """Run one trial to its outcome.
 
@@ -375,6 +376,13 @@ def run_trial(
     `effects` is where marks and rewards go. It defaults to `Unwired`, which refuses:
     a task that commands neither never touches it, and one that does may not have the
     command quietly dropped.
+
+    **`each_frame`, the loop's one per-frame hook** (P4d-2b spec §5.1): called with
+    the frame's number first thing on every frame -- before the display, before any
+    guard, and on a frame the gaze signal was lost -- so what it does happens in the
+    frame it names. `taskd.Session` passes its mark check, which strobes an
+    operator's mark in the frame it arrives. **Hot path**: whatever is passed must
+    not block, log or allocate when there is nothing to do; this loop does not check.
     """
     effects = Unwired() if effects is None else effects
     by_name = {state.name: state for state in trial.states}
@@ -437,6 +445,8 @@ def run_trial(
     interruption = "ok"
 
     for frame in range(1, max_frames + 1):
+        if each_frame is not None:
+            each_frame(frame)
         world.display(visible, frame)
         elapsed = (frame - entered_at) * frame_period
         bound = values or {}
