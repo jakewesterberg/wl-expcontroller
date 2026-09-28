@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-140.**
+**Next free ID: XC-141.**
 
 ## Brainstorms queued for the PI
 
@@ -101,6 +101,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-109** Rename the local folder `~/GitHub/wl-expcontroller` to `~/GitHub/wl-xcon`, moving this project's Claude memory folder (keyed on the path) and repairing the worktrees, so `wlo` finds wl-xcon by its slug. — 2026-09-28, [wl-orchestrator known-gaps](https://github.com/jakewesterberg/wl-orchestrator/blob/main/docs/known-gaps.md) — waits on: XC-053
 - **XC-123** "greyed"/"greys" (UK spelling) appears 33 times across the product code (web.py, serve.py, cli.py), the tests and the P4d-2b spec, though CLAUDE.md requires US English. — 2026-09-28, [web.py](../wl_expcontroller/web.py) — waits on: nothing
 - **XC-124** CONTROL_TRIAL_BUDGET (1,000 trials, in tests/test_serve.py) is still a speed-dependent bound for every end-to-end test that posts a command while trials run. — 2026-09-28, [CHECKPOINT 2026-09-28, "controls from the box"](CHECKPOINT.md#what-moved-on-2026-09-28-p4d-2b-slice-b2a-controls-from-the-box) — waits on: nothing
+- **XC-140** Mutating `scheduler.record` times out in CI (300 s per mutant) though it is a real catch locally (84 failed, in 165 s against a 63 s baseline); find the tests that run long under it and bound them. — 2026-09-28, [CHECKPOINT 2026-09-28, "controls from the box"](CHECKPOINT.md#what-moved-on-2026-09-28-p4d-2b-slice-b2a-controls-from-the-box) — waits on: nothing
 - **XC-125** Two decoded-command branches stay untested: a Stop with a blank by, and taskd's repr(command.value) fallback for a malformed ceiling write's asked field. — 2026-09-28, [taskd.py's `Session._command`](../wl_expcontroller/taskd.py) — waits on: nothing
 - **XC-126** ZmqConsole.send's docstring does not mention the RuntimeError it raises for a console built read-only, with no command endpoint. — 2026-09-28, [link.py's `ZmqConsole.send`](../wl_expcontroller/link.py) — waits on: nothing
 - **XC-127** `_decode_command` rebuilds its "simple" kind-name map on every call instead of once, a boundary-path cost rather than a hot-path one. — 2026-09-28, [link.py's `_decode_command`](../wl_expcontroller/link.py) — waits on: nothing
@@ -170,4 +171,3 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-108** Move `tasks/` and the provisional allocation to wl-xtasks. — 2026-08-31, [CHECKPOINT, "What exists"](CHECKPOINT.md#what-exists) — waits on: wl-xtasks having a library to load
 - **XC-110** wl-juicer: carry the three renames (wl-xcon, wl-xviz, wl-xtasks) into its current code and docs once it is back on `main`. — 2026-09-28, [wl-orchestrator `d8b9ccb`](https://github.com/jakewesterberg/wl-orchestrator/commit/d8b9ccb) — waits on: wl-juicer's branch `wl-juicer-build` merging
 - **XC-111** wl-trajectortree: carry the three renames into its current code and docs once it is back on `main`. — 2026-09-28, [wl-orchestrator `d8b9ccb`](https://github.com/jakewesterberg/wl-orchestrator/commit/d8b9ccb) — waits on: wl-trajectortree's branch `polish-the-last-five` merging
-- **XC-112** wl-works: carry the three renames into its live documents and tests. — 2026-09-28, [wl-orchestrator `d8b9ccb`](https://github.com/jakewesterberg/wl-orchestrator/commit/d8b9ccb) — waits on: the PI's confirmation in the wl-works session
