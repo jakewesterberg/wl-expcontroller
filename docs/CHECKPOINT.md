@@ -361,6 +361,10 @@ ledger keeps the running offset.
   file (`334f6db`).
 - **Still to read:** the first sharded nightly (not yet started by GitHub at 08:33 UTC; its schedule has run hours late before); a
   watcher saves its logs to the session scratchpad.
+- **Monitor: the ASUS PG27UCDM stays** (PI, 2026-09-28), after comparing the Alienware AW2725Q
+  (same active area; DisplayPort 1.4, so DSC at 4K/240; S0 §5.1). **In January 2027, when the PI
+  arrives at KU Leuven and can purchase, check Dell's lineup again** for a 27-inch 4K QD-OLED with
+  DP 2.1 UHBR20; Dell is easier to order there.
 - **Queued for a brainstorm with the PI (his request, 2026-09-28): which eye(s) task control
   listens to.** Today an `eye="both"` window averages the two eyes (`gaze.in_window`), the saccade
   detector averages the usable ones, and `eye.parse` drops the **whole** sample when either eye's

@@ -157,6 +157,18 @@ screen at 50 cm from the eyes, physically, in both setups** (2026-09-28, §5.2).
 view shows ±30.5° × ±18.4°, 3.4° beyond a 15° target vertically; its design, approved the same
 day, is `2026-09-28-direct-view-design.md`.
 
+**The Alienware AW2725Q was compared, 2026-09-28, and the PI kept the ASUS** — "3, but we check
+again for a new dell model later (in jan once I arrive and can purchase)"; Dell is easier to order
+at KU Leuven. Per Dell's user guide and product page, read 2026-09-28: the **same active area,
+589.97 × 332.93 mm**, and 0.153 mm pitch, 3840 × 2160 at 240 Hz, QD-OLED, $899.99 — so none of
+§5.2's geometry would change. The difference: **"1 DisplayPort 1.4 (HDCP 1.4 & 2.3) port
+(Supports up to 3840 x 2160, 240 Hz, DSC, HDR)"**, so 4K/240 needs DSC (§5.3's rule is to avoid
+it). No QD-OLED generation or "tandem" is named; pixel refresh "is activated automatically when you
+have used the monitor for 4 hours" and "takes approximately 6 to 8 minutes", and the guide does not
+say whether it waits for standby (UNVERIFIED — a 12-hour session would meet it); no pixel shift or
+proximity sensor is mentioned. **Re-check Dell's lineup in January 2027, before purchase**, for a
+27-inch 4K QD-OLED with DisplayPort 2.1 UHBR20 (uncompressed 4K/240).
+
 ASUS lists, per the spec page and product page read 2026-09-27:
 - a **26.5" Tandem QD-OLED**, "Latest 4th-gen QD-OLED", 3840 × 2160 at 240 Hz, 0.153 mm
   pixel pitch, 10-bit;
