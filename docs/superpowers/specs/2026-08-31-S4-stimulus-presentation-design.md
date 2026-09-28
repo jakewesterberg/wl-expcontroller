@@ -23,8 +23,8 @@ The pipeline deliberately holds no screen geometry. We hold all of it.
 ## 2. Coordinates: cyclopean degrees, and nothing else crosses a boundary
 
 **A task never names a pixel.** Positions are cyclopean degrees; the display module maps them
-to per-eye viewport pixels using measured optics. That is what makes the same task run at a
-different viewing distance, on a different panel, in either display mode, and on the S13 kiosk.
+to viewport pixels using measured optics. That is what makes the same task run at a different
+viewing distance, on a different panel, in either display mode, and on the S13 kiosk.
 
 ```
 cyclopean (x°, y°, disparity°)
@@ -32,6 +32,13 @@ cyclopean (x°, y°, disparity°)
         ├── left  viewport → pixels, via left  optical path, left  centre
         └── right viewport → pixels, via right optical path, right centre
 ```
+
+**The mapping is per setup** (`2026-09-28-direct-view-design.md` §2). The diagram is the
+stereoscope's: two per-eye viewports at the folded path `D`, stopped by the mask. **In direct
+view there is one viewport, the whole panel, at the screen's own distance `Z`**, and both eyes
+see it. Either way a position maps by `D · tan` per axis, so each field is a rectangle in degrees.
+This module does not exist yet; `wl_expcontroller/geometry.py` fixes the mapping it must
+implement, and the field check 8 uses is the one it will draw into.
 
 The mapping inputs are per-rig and per-animal, and all of them are **measured, not derived**:
 each eye's folded optical path length, each viewport's centre, the vergence offset (a software

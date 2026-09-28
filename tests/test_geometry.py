@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from wl_expcontroller.geometry import Geometry
+from wl_expcontroller.geometry import Geometry, Housing
 
 #: The PG27UCDM through the stereoscope, the screen at 50 cm, `E` = 1.6 cm
 #: (S0 §5.1, §5.2; PI 2026-09-27, 2026-09-28).
@@ -129,3 +129,125 @@ def test_the_field_edge_is_where_the_drawing_puts_it():
     assert STEREOSCOPE.can_show(0.0, -14.76)
     assert not STEREOSCOPE.can_show(0.0, 14.78)
     assert not STEREOSCOPE.can_show(0.0, -14.78)
+
+
+# ---------------------------------------------------------------------------
+# Direct view, and the stereoscope's mask (direct-view spec §2, §4)
+# ---------------------------------------------------------------------------
+
+#: **Stand-ins for the light sensors' housings, not a measurement**: the real ones are
+#: measured at build (direct-view spec §9 item 1). One per bottom corner, 4 × 3 cm with
+#: a 0.5 cm margin, in cm from the active area's bottom-left corner.
+HOUSINGS = (
+    Housing(left_cm=0.0, right_cm=4.0, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
+    Housing(left_cm=54.997, right_cm=58.997, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
+)
+
+#: The PG27UCDM seen directly with the screen at 50 cm (direct-view spec §2), with the
+#: stand-in housings.
+DIRECT = Geometry.direct(58.997, 33.293, screen_distance_cm=50.0, housings=HOUSINGS)
+
+#: The same screen through the stereoscope at `E` = 1.6 cm, stopped by the PI's ±12° mask.
+MASKED = Geometry.stereoscope(
+    58.997, 33.293, screen_distance_cm=50.0, half_ipd_cm=1.6, mask_deg=12.0
+)
+
+
+def test_direct_view_is_the_whole_panel_at_the_screens_own_distance():
+    """No periscope, so no lateral run: the path is `Z`, and the viewport is the whole
+    panel, seen by both eyes."""
+    assert DIRECT.view == "direct"
+    assert DIRECT.viewing_distance_cm == 50.0
+    assert DIRECT.half_width_cm == pytest.approx(29.4985)
+    assert DIRECT.half_height_cm == pytest.approx(16.6465)
+
+
+def test_direct_views_field_is_the_spec_tables():
+    """The direct-view spec §2's table: ±30.5° × ±18.4° at `Z` = 50 cm."""
+    assert DIRECT.half_field_h_deg == pytest.approx(30.539, abs=0.001)
+    assert DIRECT.half_field_v_deg == pytest.approx(18.414, abs=0.001)
+
+
+def test_pixels_per_degree_in_direct_view_are_across_the_whole_panel():
+    """S0 §5.2's mean, with the viewport the whole panel: 3840 px across 2 × 30.54°.
+    (The spec's 56.8 is the center's, a different statistic.)"""
+    assert DIRECT.pixels_per_degree(horizontal_pixels=3840) == pytest.approx(
+        62.87, abs=0.005
+    )
+
+
+def test_direct_view_refuses_to_exist_without_the_housings():
+    """A missing measurement is not an absent housing. A direct-view field with no
+    exclusions would pass a stimulus drawn under a sensor, so it is refused, by either
+    road to it, naming what is missing."""
+    with pytest.raises(ValueError, match="§9 item 1"):
+        Geometry.direct(58.997, 33.293, screen_distance_cm=50.0, housings=())
+    with pytest.raises(ValueError, match="housings"):
+        Geometry(panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=50.0,
+                 view="direct")
+
+
+def test_a_setup_that_is_neither_is_refused():
+    """`view="stereo"` is not a setup. Read as one or the other it would compute a
+    field for a screen nobody has."""
+    with pytest.raises(ValueError, match="'stereo' is not a setup"):
+        Geometry(panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=50.0,
+                 view="stereo")
+
+
+def test_a_stimulus_under_a_housing_cannot_be_shown():
+    """Direct-view spec §4: check 8 refuses a stimulus that could overlap a housing,
+    exactly as it refuses one off the panel. Both bottom corners here, since which
+    corner the sensors take is a build finding."""
+    assert not DIRECT.can_show(-29.0, -17.0)
+    assert not DIRECT.can_show(29.0, -17.0)
+    assert DIRECT.can_show(-29.0, 0.0), "the side of the panel, above the housing"
+    assert DIRECT.can_show(0.0, -18.0), "the bottom of the panel, between them"
+    assert DIRECT.can_show(16.0, 0.0)
+    assert not DIRECT.can_show(31.0, 0.0), "off the panel"
+    assert not DIRECT.can_show(0.0, 18.5), "off the panel"
+
+
+def test_a_housings_margin_is_part_of_it():
+    """The margin is recorded beside each rectangle and widens it on every side.
+    4.5 cm in from the left edge is 26.565° left of center at 50 cm; 3.5 cm up from
+    the bottom is 14.731° below it."""
+    housing = HOUSINGS[0]
+    assert housing.covers(4.5, 1.0) and not housing.covers(4.51, 1.0)
+    assert housing.covers(-0.5, 1.0) and not housing.covers(-0.51, 1.0)
+    assert housing.covers(2.0, 3.5) and not housing.covers(2.0, 3.51)
+    assert housing.covers(2.0, -0.5) and not housing.covers(2.0, -0.51)
+
+    assert not DIRECT.can_show(-26.6, -16.0)
+    assert DIRECT.can_show(-26.5, -16.0)
+    assert not DIRECT.can_show(-29.0, -14.8)
+    assert DIRECT.can_show(-29.0, -14.6)
+
+
+def test_the_mask_is_the_stereoscopes_field():
+    """The PI's removable mask at the panel, ±12° to start (2026-09-28): inside the
+    viewport's ±13.15° × ±14.77°, so it sets both edges."""
+    assert MASKED.half_field_h_deg == 12.0
+    assert MASKED.half_field_v_deg == 12.0
+    assert MASKED.can_show(11.99, -11.99)
+    assert not MASKED.can_show(12.01, 0.0)
+    assert not MASKED.can_show(0.0, -12.01)
+
+
+def test_a_mask_wider_than_the_viewport_stops_nothing():
+    """The mask can only narrow the field. One cut wider than the viewport leaves the
+    viewport's own edge, which is where the mirrors end."""
+    wide = Geometry.stereoscope(
+        58.997, 33.293, screen_distance_cm=50.0, half_ipd_cm=1.6, mask_deg=20.0
+    )
+    assert wide.half_field_h_deg == pytest.approx(13.146, abs=0.001)
+    assert wide.half_field_v_deg == pytest.approx(14.768, abs=0.001)
+
+
+def test_the_mask_covers_pixels_and_does_not_rescale_them():
+    """Pixels per degree are the viewport's: the mask hides the edge, it does not
+    change what one pixel subtends."""
+    assert MASKED.pixels_per_degree(horizontal_pixels=1920) == pytest.approx(
+        STEREOSCOPE.pixels_per_degree(horizontal_pixels=1920)
+    )
+    assert MASKED.pixels_per_degree(horizontal_pixels=1920) == pytest.approx(73.02, abs=0.005)

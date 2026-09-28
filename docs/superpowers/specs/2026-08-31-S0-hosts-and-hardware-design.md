@@ -371,6 +371,24 @@ peak luminance is a longevity strategy as well as an ABL one. Panel replacement 
 rather than avoided. This makes acceptance criterion 6 — sustained full-field luminance at
 100% APL — the number that decides how low we can sit, and therefore how long a panel lasts.
 
+### 5.5 Direct view
+
+**Most experiments view the screen directly, and the first animal task does** (PI, 2026-09-27
+and 2026-09-28). The stereoscope is a removable device in front of the same screen, and the
+operator picks the setup at session start (`2026-09-28-direct-view-design.md` §1, §3).
+
+- **One screen at one place.** `Z` = 50 cm, eye to screen, in both setups (§5.2), on a locked
+  arm or stand with a stop. It is measured once at setup and re-checked in the regular rig
+  checks (V9).
+- **The field is the whole panel at `Z`**, the same image to both eyes: ±30.5° × ±18.4°, and
+  62.9 px/deg by §5.2's formula with the whole panel as the viewport (56.8 px/deg at the
+  center). **Less the light sensors' housings**, in a bottom corner around (±30°, −18°)
+  (direct-view spec §4; S3 §8).
+- **In code**, `geometry.Geometry.direct`: its `can_show` refuses a position under a housing's
+  rectangle or its margin, as it refuses one off the panel. **It refuses to exist without the
+  housings**, which are measured at build (direct-view spec §9 item 1). Through the
+  stereoscope, `Geometry.stereoscope` takes the mask as `mask_deg`.
+
 ---
 
 ## 6. Procurement

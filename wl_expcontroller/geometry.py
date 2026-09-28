@@ -1,21 +1,31 @@
-"""Display geometry for the split-screen stereoscope.
+"""Display geometry, for both setups: direct view and the split-screen stereoscope.
 
-One panel split down the middle, each eye viewing its half through a two-mirror
-periscope. The mirrors translate rather than deviate, so the *optical path* is the
-physical eye-to-panel distance plus the lateral shift. The screen is fixed 50 cm from
-the eyes in both setups (PI, 2026-09-28), so through the stereoscope the path is about
-63 cm, and it moves with each animal's eye spacing (`Geometry.stereoscope`).
+**One screen at one place, two paths to it** (direct-view spec §2). The screen is fixed
+50 cm from the eyes in both setups (PI, 2026-09-28); the stereoscope is a removable device
+in front of it.
+
+- **Direct view:** both eyes see the whole panel, at the screen's own distance. The field
+  is the panel's, less the light sensors' housings in a bottom corner (spec §4).
+- **The stereoscope:** one panel split down the middle, each eye viewing its half through a
+  two-mirror periscope. The mirrors translate rather than deviate, so the *optical path* is
+  the physical distance plus the lateral shift: about 63 cm, moving with each animal's eye
+  spacing (`Geometry.stereoscope`). A removable mask at the panel stops the field, at ±12°
+  to start.
 
 **The panel is given by its active area, not its diagonal.** S0 §5.2's diagonal form
 assumes an exact 16:9, and the rig's ASUS PG27UCDM is neither: ASUS publishes its
 active area as 589.97 × 332.93 mm (1.772:1) and its diagonal as a rounded "26.5-inch
 viewable". Feeding the rounded diagonal through the 16:9 fractions puts each edge
-0.6-0.9% short of the published area (S0 §5.2).
+0.6-0.9% short (S0 §5.2).
 
-Every number here is derived from `2026-08-31-stereoscope-optics-drawing.md` §3 and
-S0 §5.2, and the tests assert the agreement. **They are computed, not measured.**
-V9 measures each eye's real path per animal, because the mirror carriage is
-adjustable and the two paths are equal only if the mirrors are.
+**Degrees map to the panel by `D · tan`, per axis**, so the field is a rectangle in degrees
+as it is in centimeters, and a housing's rectangle on the panel is a region in degrees the
+same way.
+
+Every number here is derived from `2026-08-31-stereoscope-optics-drawing.md` §3,
+S0 §5.2 and the direct-view spec §2, and the tests assert the agreement. **They are
+computed, not measured.** V9 measures each eye's real path per animal, because the
+mirror carriage is adjustable and the two paths are equal only if the mirrors are.
 """
 
 from __future__ import annotations
@@ -23,15 +33,67 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+#: The two setups a session can run in (direct-view spec §3). The operator picks one at
+#: session start; a task's `Trial.view` names one of these, or `"either"`.
+VIEWS = ("direct", "stereoscope")
+
+
+@dataclass(frozen=True, slots=True)
+class Housing:
+    """One screen-timing light sensor's opaque housing, as a rectangle on the panel.
+
+    **In cm from the active area's bottom-left corner, as the animal faces the screen**:
+    `left_cm` and `right_cm` from its left edge, `bottom_cm` and `top_cm` up from its
+    bottom edge -- what a person measures at build with a rule against the panel.
+
+    `margin_cm` is recorded beside the rectangle (direct-view spec §4) and widens it on
+    every side, because check 8 tests a stimulus's position, not its extent.
+    """
+
+    left_cm: float
+    right_cm: float
+    bottom_cm: float
+    top_cm: float
+    margin_cm: float
+
+    def covers(self, x_cm: float, y_cm: float) -> bool:
+        """Whether a point on the panel, in the same corner-origin cm, is under this
+        housing or its margin."""
+        return (
+            self.left_cm - self.margin_cm <= x_cm <= self.right_cm + self.margin_cm
+            and self.bottom_cm - self.margin_cm <= y_cm <= self.top_cm + self.margin_cm
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Geometry:
-    #: The panel's active area. Each eye's viewport is half its width and all of
-    #: its height.
+    #: The panel's active area. Through the stereoscope each eye's viewport is half its
+    #: width and all of its height; in direct view the viewport is the whole panel.
     panel_width_cm: float
     panel_height_cm: float
-    #: Along the **folded** optical path, not the physical distance to the panel.
+    #: Along the **folded** optical path through the stereoscope; the screen's own
+    #: distance in direct view.
     viewing_distance_cm: float
+    #: `"stereoscope"` or `"direct"` (`VIEWS`).
+    view: str = "stereoscope"
+    #: The stereoscope's mask at the panel, as a half-angle in degrees (direct-view spec
+    #: §2), or `None` for the viewport's own field.
+    mask_deg: float | None = None
+    #: The light sensors' housings, direct view's alone: through the stereoscope the
+    #: mask hides them. **Direct view refuses to exist without them.**
+    housings: tuple[Housing, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.view not in VIEWS:
+            raise ValueError(
+                f"{self.view!r} is not a setup; a geometry is one of {', '.join(VIEWS)}"
+            )
+        if self.view == "direct" and not self.housings:
+            raise ValueError(
+                "direct view's field excludes the light sensors' housings, and none were "
+                "given. They are measured at build (direct-view spec §9 item 1); a field "
+                "without them would pass a stimulus drawn under a housing"
+            )
 
     @classmethod
     def stereoscope(
@@ -41,6 +103,7 @@ class Geometry:
         *,
         screen_distance_cm: float,
         half_ipd_cm: float,
+        mask_deg: float | None = None,
     ) -> Geometry:
         """The field through the periscope, with the screen `screen_distance_cm` from
         the eyes and the eyes `half_ipd_cm` either side of the midline.
@@ -55,11 +118,33 @@ class Geometry:
             panel_width_cm=panel_width_cm,
             panel_height_cm=panel_height_cm,
             viewing_distance_cm=screen_distance_cm + panel_width_cm / 4 - half_ipd_cm,
+            mask_deg=mask_deg,
+        )
+
+    @classmethod
+    def direct(
+        cls,
+        panel_width_cm: float,
+        panel_height_cm: float,
+        *,
+        screen_distance_cm: float,
+        housings: tuple[Housing, ...],
+    ) -> Geometry:
+        """The whole panel, seen by both eyes at the screen's own distance, less the
+        light sensors' housings (direct-view spec §2, §4)."""
+        return cls(
+            panel_width_cm=panel_width_cm,
+            panel_height_cm=panel_height_cm,
+            viewing_distance_cm=screen_distance_cm,
+            view="direct",
+            housings=tuple(housings),
         )
 
     @property
     def half_width_cm(self) -> float:
-        return self.panel_width_cm / 4
+        """The viewport's half-width: the whole panel's in direct view, one eye's half
+        through the stereoscope."""
+        return self.panel_width_cm / (2 if self.view == "direct" else 4)
 
     @property
     def half_height_cm(self) -> float:
@@ -67,24 +152,41 @@ class Geometry:
 
     @property
     def half_field_h_deg(self) -> float:
-        return math.degrees(math.atan(self.half_width_cm / self.viewing_distance_cm))
+        """The horizontal half-field a stimulus may use: the viewport's, or the mask's
+        where the mask is narrower."""
+        return self._stopped(self._viewport_deg(self.half_width_cm))
 
     @property
     def half_field_v_deg(self) -> float:
-        return math.degrees(math.atan(self.half_height_cm / self.viewing_distance_cm))
+        return self._stopped(self._viewport_deg(self.half_height_cm))
+
+    def _viewport_deg(self, half_cm: float) -> float:
+        return math.degrees(math.atan(half_cm / self.viewing_distance_cm))
+
+    def _stopped(self, degrees: float) -> float:
+        return degrees if self.mask_deg is None else min(degrees, self.mask_deg)
 
     def pixels_per_degree(self, horizontal_pixels: int) -> float:
-        """Across one eye's viewport, so `horizontal_pixels` is half the panel."""
-        return horizontal_pixels / (2 * self.half_field_h_deg)
+        """S0 §5.2's mean across one viewport, so `horizontal_pixels` is the viewport's:
+        half the panel through the stereoscope, all of it in direct view. Across the
+        viewport's own extent, not the mask's: the mask covers pixels, it does not
+        rescale them."""
+        return horizontal_pixels / (2 * self._viewport_deg(self.half_width_cm))
 
     def can_show(self, x_deg: float, y_deg: float) -> bool:
-        """Whether a cyclopean position lands inside the field both eyes see.
+        """Whether a cyclopean position lands inside the field the setup shows.
 
         A position outside it is not a rendering problem to clamp -- the stimulus would
-        be drawn off the panel, the animal would never see it, and the trial would
-        score as a miss indistinguishable from behaviour. Refused at load instead.
+        be drawn off the panel, behind the mask or under a light sensor's housing, the
+        animal would never see it, and the trial would score as a miss
+        indistinguishable from behavior. Refused at load instead.
         """
-        return (
-            abs(x_deg) <= self.half_field_h_deg
-            and abs(y_deg) <= self.half_field_v_deg
+        if abs(x_deg) > self.half_field_h_deg or abs(y_deg) > self.half_field_v_deg:
+            return False
+        x_cm = self.panel_width_cm / 2 + self.viewing_distance_cm * math.tan(
+            math.radians(x_deg)
         )
+        y_cm = self.panel_height_cm / 2 + self.viewing_distance_cm * math.tan(
+            math.radians(y_deg)
+        )
+        return not any(housing.covers(x_cm, y_cm) for housing in self.housings)
