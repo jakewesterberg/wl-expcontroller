@@ -42,6 +42,7 @@ from wl_expcontroller.link import (
     Stop,
     TEXT_LIMIT,
     Telemetry,
+    ZmqCommands,
     ZmqConsole,
     ZmqLink,
     ZmqMarks,
@@ -1770,3 +1771,122 @@ def test_the_refusal_cap_also_bounds_a_repeatedly_malformed_setting(zmq_cleanup)
 
     assert len(link.refused) == REFUSAL_HISTORY
     assert link.refused_dropped == sent - REFUSAL_HISTORY
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a: a command that knows whether it arrived (spec §5.3)
+# ---------------------------------------------------------------------------
+
+
+def _draining(link, until=None, seconds: float = 5.0) -> tuple[threading.Thread, list]:
+    """Drain `link` on a thread, as `taskd` would at its boundaries, until `until` has
+    arrived -- or any command, when `until` is `None` -- or `seconds` pass. Bounded,
+    so a broken sender fails a test rather than hanging it."""
+    got: list = []
+
+    def arrived() -> bool:
+        return until in got if until is not None else bool(got)
+
+    def run() -> None:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and not arrived():
+            got.extend(link.drain())
+            time.sleep(0.005)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread, got
+
+
+def test_a_command_is_delivered_once_the_rig_acknowledges_it(zmq_cleanup):
+    """*Sent* means `taskd` acknowledged receipt (spec §5.3): `deliver` returns only
+    after the rig's `drain` has replied."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    commands = zmq_cleanup(ZmqCommands(link.rep_endpoint, reply_timeout_s=5.0))
+    thread, got = _draining(link)
+
+    commands.deliver(Pause(by="jake (box, unverified)"))
+    thread.join(timeout=10)
+
+    assert got == [Pause(by="jake (box, unverified)")]
+
+
+def test_with_no_rig_connected_a_command_is_not_delivered(zmq_cleanup):
+    """With `taskd` gone the page is told *not delivered* (spec §5.4), and it is told
+    once the connect timeout passes, not after a reply timeout: `IMMEDIATE` queues a
+    message only to a completed connection, so there is nothing to wait a reply for."""
+    probe = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    endpoint = probe.rep_endpoint
+    probe.close()
+    commands = zmq_cleanup(ZmqCommands(endpoint, reply_timeout_s=30.0, connect_timeout_s=0.1))
+
+    started = time.monotonic()
+    with pytest.raises(NotDelivered, match="no rig is connected"):
+        commands.deliver(Stop(by="jake"))
+    assert time.monotonic() - started < 10.0, "it waited out the reply timeout"
+
+
+def test_a_rig_that_never_acknowledges_is_not_delivered_and_the_socket_is_reset(zmq_cleanup):
+    """*Not delivered* when the exchange times out, **after which the socket is reset**
+    (spec §5.3): a REQ socket cannot send again until it reads a reply, so without the
+    reset every later command would raise instead of being sent. The rig here is a
+    live link nobody drains until the second command."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    commands = zmq_cleanup(ZmqCommands(link.rep_endpoint, reply_timeout_s=0.2))
+    first = commands._req
+
+    with pytest.raises(NotDelivered, match="did not acknowledge it within 0.2 s"):
+        commands.deliver(Pause(by="jake"))
+
+    assert first.closed, "the timed-out socket was not closed"
+    assert commands._req is not first
+    assert commands._sockets == [commands._req], "a reset must not grow the release list"
+
+    thread, got = _draining(link, until=Resume(by="jake"))
+    commands.deliver(Resume(by="jake"))
+    thread.join(timeout=10)
+    # The first command was already on the rig's side of the wire, so it may still be
+    # drained: a timed-out command is *not acknowledged*, not unsent, which is why
+    # the page is told to watch the feed (serve.NOT_DELIVERED).
+    assert Resume(by="jake") in got
+
+
+def test_an_unclosed_command_sender_is_released_by_the_collector(zmq_cleanup):
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    with _collector_paused():
+        commands = ZmqCommands(link.rep_endpoint)
+        commands._cycle = commands
+        ctx = commands._ctx
+        req = weakref.ref(commands._req)
+        del commands
+
+        returned = _collected_within(10.0)
+
+    assert returned, "collecting an unclosed ZmqCommands in a reference cycle hung for 10 s"
+    assert ctx.closed
+    assert req() is None
+
+
+def test_close_releases_the_command_socket(zmq_cleanup):
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    commands = zmq_cleanup(ZmqCommands(link.rep_endpoint))
+
+    commands.close()
+
+    assert commands._req.closed and commands._ctx.closed
+
+
+def test_a_console_built_to_read_only_has_no_command_socket(zmq_cleanup):
+    """`wlx serve`'s telemetry thread reads and never sends (P4d-2b b2a): the REQ
+    socket belongs to its command thread, so each socket has one owning thread
+    (spec §2). A console given no REQ endpoint opens none, and refuses to send."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, None, settle_s=0))
+
+    assert console._req is None
+    assert len(console._sockets) == 1
+    with pytest.raises(RuntimeError, match="no command endpoint"):
+        console.send(Stop(by="jake"))
+    link.publish(_telemetry())
+    console.close()
+    assert console._sub.closed and console._ctx.closed
