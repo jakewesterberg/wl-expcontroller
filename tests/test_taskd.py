@@ -33,6 +33,7 @@ from wl_expcontroller.link import (
     CONTROL_HISTORY,
     RECENT_OUTCOMES,
     REFUSAL_HISTORY,
+    Mark,
     Pause,
     Resume,
     SetParameter,
@@ -2734,3 +2735,233 @@ def test_the_control_feed_keeps_the_newest_and_counts_what_fell_off(tmp_path):
     assert len(_controls_rows(session)) == 2 * pairs
     kinds = [row[0] for row in session.controls]
     assert kinds[-1] == "resume"
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a: marks, stamped in the frame they arrive (spec §5.0, §5.1)
+# ---------------------------------------------------------------------------
+
+#: `fixation_detection`'s first code on entering a trial, and the markers a trial ends
+#: on (`codes._standing_outcomes`).
+FIX_ON = 4096
+MARKERS = {34, 35, 36, 37, 38}
+
+
+class _MarkAfter(Simulated):
+    """A link whose mark check answers `mark` on the `calls`-th check after it is
+    armed, and zero otherwise -- so a test chooses the frame a mark arrives in."""
+
+    def __init__(self, mark: int, calls: int) -> None:
+        super().__init__()
+        self.mark = mark
+        self.calls = calls
+        self.armed = False
+        self.seen = 0
+
+    def mark_signal(self) -> int:
+        if not self.armed:
+            return 0
+        self.seen += 1
+        if self.seen == self.calls:
+            return self.mark
+        return 0
+
+
+def _trial_codes(codes: list, trial: int) -> list:
+    """The codes strobed during trial `trial` (0-based): from its `FIX_ON` to its
+    ending marker."""
+    starts = [i for i, code in enumerate(codes) if code == FIX_ON]
+    start = starts[trial]
+    end = next(i for i in range(start, len(codes)) if codes[i] in MARKERS)
+    return codes[start : end + 1]
+
+
+def test_a_mark_is_strobed_and_stamped_in_the_frame_it_arrives(tmp_path):
+    """Spec §5.0, the PI's ruling: marks must be instant -- stamped in the frame they
+    reach the rig, not at the next trial boundary. Armed after the second trial, the
+    link answers on its eleventh check: the first is the boundary's, so the mark
+    arrives in the third trial's tenth frame, and that is where the code is strobed
+    and what the record names."""
+    link = _MarkAfter(mark=77, calls=11)
+    session = _session(_spec(tmp_path, trials=4), link=link)
+    ran = [0]
+
+    def arm_after_two(condition, values, result) -> None:
+        ran[0] += 1
+        if ran[0] == 2:
+            link.armed = True
+
+    session.observe = arm_after_two
+
+    session.run()
+
+    assert MARK_CODE in _trial_codes(session.card.codes, 2)
+    assert session.card.codes.count(MARK_CODE) == 1
+    (stamp,) = _controls_rows(session)
+    assert (stamp["kind"], stamp["mark"], stamp["number"]) == ("mark", 77, 1)
+    assert (stamp["trial_index"], stamp["frame"]) == (2, 10)
+    assert stamp["strobed"] is True
+    assert session.controls[0][3] == "mark 1 stamped in trial 2, frame 10"
+
+
+def test_a_mark_between_trials_is_stamped_at_the_boundary_with_no_frame(tmp_path):
+    link = Simulated()
+    link.marks.append(5)
+    session = _session(_spec(tmp_path, trials=2), link=link)
+
+    session.run()
+
+    (stamp,) = _controls_rows(session)
+    assert (stamp["trial_index"], stamp["frame"]) == (0, None)
+    assert session.controls[0][3] == "mark 1 stamped between trials, before trial 0"
+    assert session.card.codes.index(MARK_CODE) < session.card.codes.index(FIX_ON)
+
+
+def test_a_mark_while_paused_is_stamped_when_it_arrives(tmp_path):
+    class _MarkWhilePaused(_Scripted):
+        def idle(self, timeout: float) -> int:
+            super().idle(timeout)
+            return 9 if len(self.waits) == 2 else 0
+
+    link = _MarkWhilePaused(script={3: [Resume(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=1)
+    link.wall = wall
+
+    session.run()
+
+    pause, stamp, resume = _controls_rows(session)
+    assert (pause["kind"], stamp["kind"], resume["kind"]) == ("pause", "mark", "resume")
+    assert (stamp["mark"], stamp["frame"]) == (9, None)
+    assert session.controls[1][3] == "mark 1 stamped while paused, before trial 0"
+    codes = session.card.codes
+    assert codes.index(PAUSE_CODE) < codes.index(MARK_CODE) < codes.index(RESUME_CODE)
+
+
+def test_a_note_joins_its_stamp_with_the_three_instants_and_their_gaps(tmp_path):
+    """Spec §5.1: the record keeps when M was pressed (the browser's clock), when
+    `wlx serve` received it (its clock), and when the rig stamped it (the session's
+    anchored clock and frame), and the gaps between them are recorded, never hidden.
+    The note arrives as a `Mark` command and is joined to its stamp by number."""
+    link = Simulated()
+    link.marks.append(5)
+    link.queue(
+        Mark(
+            mark=5,
+            note="reward line bubble",
+            by="jake (box, unverified)",
+            pressed_at=WALL_NOW - 2.0,
+            received_at=WALL_NOW - 1.5,
+        )
+    )
+    session = _session(_spec(tmp_path, trials=2), link=link)
+
+    session.run()
+
+    stamp, note = _controls_rows(session)
+    assert note["kind"] == "note" and note["by"] == "jake (box, unverified)"
+    assert (note["mark"], note["number"], note["note"]) == (5, 1, "reward line bubble")
+    assert note["pressed_at"] == WALL_NOW - 2.0
+    assert note["received_at"] == WALL_NOW - 1.5
+    assert note["stamped_at"] == stamp["at"] == WALL_NOW
+    assert note["received_after_pressed_s"] == pytest.approx(0.5)
+    assert note["stamped_after_received_s"] == pytest.approx(1.5)
+    assert (note["stamped_in_trial"], note["frame"]) == (0, None)
+    assert session.controls[1][1:] == (
+        "jake (box, unverified)", session.controls[1][2], 'mark 1: "reward line bubble"'
+    )
+
+
+def test_a_note_left_bare_and_a_note_whose_instants_are_unknown_still_record(tmp_path):
+    """Esc leaves the mark bare; a `wlx serve` restarted between the signal and the
+    note knows no instants. Both are recorded as they are, never filled in."""
+    link = Simulated()
+    link.marks.append(5)
+    link.queue(Mark(mark=5, note="", by="jake", pressed_at=None, received_at=None))
+    session = _session(_spec(tmp_path, trials=1), link=link)
+
+    session.run()
+
+    _, note = _controls_rows(session)
+    assert note["note"] == ""
+    assert note["received_after_pressed_s"] is None
+    assert note["stamped_after_received_s"] is None
+    assert session.controls[1][3] == "mark 1: no note"
+
+
+def test_a_note_for_a_mark_this_session_never_stamped_says_so(tmp_path):
+    link = Simulated()
+    link.queue(Mark(mark=99, note="lost?", by="jake", pressed_at=None, received_at=None))
+    session = _session(_spec(tmp_path, trials=1), link=link)
+
+    session.run()
+
+    (note,) = _controls_rows(session)
+    assert note["number"] is None and note["stamped_at"] is None
+    assert session.controls[0][3] == 'a note for mark 99, which this session never stamped: "lost?"'
+
+
+def test_two_marks_pressed_fast_are_two_stamps_in_order(tmp_path):
+    """Review Focus 2: M pressed twice fast. Two signals, two numbers, two codes, in
+    order, neither lost -- the check reads one per frame, so the second is stamped in
+    the next frame and its row names that frame."""
+    link = Simulated()
+    link.marks.extend([5, 6])
+    session = _session(_spec(tmp_path, trials=1), link=link)
+
+    session.run()
+
+    first, second = _controls_rows(session)
+    assert (first["mark"], first["number"], first["frame"]) == (5, 1, None)
+    assert (second["mark"], second["number"], second["trial_index"], second["frame"]) == (6, 2, 0, 1)
+    assert session.card.codes.count(MARK_CODE) == 2
+
+
+def test_a_mark_the_allocation_cannot_strobe_is_stamped_and_says_so(tmp_path):
+    """A mark cannot be refused -- it has already been pressed -- so without an
+    `OPERATOR_MARK` code it is recorded unstrobed, and the feed says so rather than
+    implying the recording has it."""
+    from dataclasses import replace
+
+    link = Simulated()
+    link.marks.append(5)
+    session = _session(_spec(tmp_path, trials=1), link=link)
+    session.allocation = replace(
+        session.allocation,
+        task_events={
+            code: name
+            for code, name in session.allocation.task_events.items()
+            if name != "OPERATOR_MARK"
+        },
+    )
+
+    session.run()
+
+    (stamp,) = _controls_rows(session)
+    assert stamp["strobed"] is False
+    assert session.controls[0][3].endswith(
+        "; not strobed: this session's allocation has no OPERATOR_MARK event code"
+    )
+    assert MARK_CODE not in session.card.codes
+
+
+def test_a_mark_in_a_trial_that_faults_is_still_recorded(tmp_path, monkeypatch):
+    """The strobe is on the recording the instant it happens; the record row is
+    written at the boundary after, and a trial that faults has no boundary after, so
+    the stamps it holds are written as the session closes."""
+    from wl_expcontroller import taskd
+
+    def faults(trial, world, frame_period, values=None, effects=None, each_frame=None):
+        each_frame(1)
+        raise RuntimeError("the display went away")
+
+    monkeypatch.setattr(taskd, "run_trial", faults)
+    link = Simulated()
+    link.marks.extend([0, 8])  # nothing at the boundary; mark 8 in frame 1
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    with pytest.raises(RuntimeError, match="the display went away"):
+        session.run()
+
+    (stamp,) = _controls_rows(session)
+    assert (stamp["mark"], stamp["trial_index"], stamp["frame"]) == (8, 0, 1)
