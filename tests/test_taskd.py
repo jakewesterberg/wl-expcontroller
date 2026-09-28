@@ -3196,3 +3196,84 @@ def test_the_limit_wins_when_it_and_a_schedule_fall_due_together(tmp_path, utc):
     session.run()
 
     assert session.stop_kind == "limit"
+    # The premise: a single 900 s wait crosses both the 800 s out-of-cage ceiling
+    # and 22:14 (40 s ahead of `WALL_NOW`), so this is genuinely "both due on the
+    # same check" and not the limit merely winning a race across several.
+    assert len(link.waits) == 1, "both the limit and the schedule are due on the first wait"
+    assert session.scheduled_stop is not None, "the schedule was not spent: the limit alone decided this stop"
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a, Task 7 fix round 1: the fluid schedule's rounding, and one guard test
+# ---------------------------------------------------------------------------
+
+
+def test_after_fluid_ends_at_the_amount_not_one_reward_past_it(tmp_path):
+    """Important: a sum of same-sized deliveries lands a whisker past a round target
+    in a binary float -- ten deliveries of 0.1 mL sum to 0.9999999999999999, not
+    1.0 -- so "after 1 mL" must not wait for an eleventh reward before it stops.
+    `FLUID_TOLERANCE_ML` is what keeps it at ten rather than eleven."""
+    link = Simulated()
+    link.queue(ScheduleStop(kind="fluid", value=1.0, by="jake"))
+    session = _session(
+        _spec(tmp_path, trials=400, bounds=_bounds(reward_correct=0.1)), link=link
+    )
+
+    session.run()
+
+    assert session.stopped_because == "scheduled stop (after 1 mL this session) set by jake"
+    assert session.welfare.deliveries == 10, "ten deliveries of 0.1 mL, not eleven"
+
+
+def test_a_fluid_schedule_at_or_below_the_current_total_is_refused(tmp_path):
+    """Ruling 2: an "after X mL" schedule the session has already reached would be
+    found due at the very next check, so it is refused instead -- named at the
+    session's own current total, to two decimals -- and the session runs on. Trials
+    and a clock time need no such guard (spec §5.1: trials count forward from now,
+    and a past clock time rolls to tomorrow's), so only the fluid kind is refused
+    this way."""
+    link = Simulated()
+    session = _session(
+        _spec(tmp_path, trials=400, bounds=_bounds(reward_correct=0.1)), link=link
+    )
+    queued = [False]
+
+    def queue_once_five_delivered(condition, values, result) -> None:
+        if not queued[0] and session.welfare.deliveries >= 5:
+            queued[0] = True
+            link.queue(ScheduleStop(kind="fluid", value=0.5, by="jake"))
+
+    session.observe = queue_once_five_delivered
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    assert session.scheduled_stop is None, "the schedule was refused, never held"
+    schedules = [row for row in session.refusals if row[0] == "schedule"]
+    assert len(schedules) == 1
+    name, by, why = schedules[0]
+    assert by == "jake"
+    assert "0.50 mL" in why
+    assert why.endswith("use Stop to end it now")
+
+
+def test_a_schedule_queued_behind_a_stop_in_the_same_drain_is_refused(tmp_path):
+    """The pause guard's mirror (`_pause`, `_resume`): a `Stop` drained just ahead of
+    a `ScheduleStop` in the same pass leaves the session already stopping, so the
+    schedule is refused rather than held for an `_ends` check the session never
+    reaches -- the session ends by the `Stop` alone."""
+    link = Simulated()
+    link.queue(Stop(by="jake"))
+    link.queue(ScheduleStop(kind="trials", value=3, by="sam"))
+    session = _session(_spec(tmp_path, trials=50), link=link)
+
+    session.run()
+
+    schedules = [row for row in session.refusals if row[0] == "schedule"]
+    assert len(schedules) == 1
+    name, by, why = schedules[0]
+    assert by == "sam"
+    assert "a schedule is not applied" in why
+    assert session.scheduled_stop is None
+    assert session.stopped_because == "stopped by jake"
+    assert session.stop_kind == "operator"

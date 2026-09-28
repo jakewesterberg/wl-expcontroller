@@ -71,6 +71,15 @@ from wl_expcontroller.welfare import (
 #: when nothing arrives. A responsiveness choice, not a measurement of this system.
 PAUSE_HOUSEKEEPING_S = 0.5
 
+#: An allowance for accumulated floating-point error in a sum of deliveries
+#: (`welfare.commanded += ml`, once per reward), so an "after X mL" schedule ends at
+#: its amount rather than one reward past it (Task 7 fix round 1: "after 0.8 mL"
+#: stopped at 0.8999999999999999, eleven deliveries at 0.1 mL each rather than ten).
+#: **Not a measurement and not a welfare figure** -- it never touches a ceiling or
+#: any welfare limit's own comparison; it only keeps a scheduled stop's boundary
+#: from reading one reward past where it should, because of how binary floats sum.
+FLUID_TOLERANCE_ML = 1e-9
+
 
 def _gap(later: float | None, earlier: float | None) -> float | None:
     """`later - earlier`, or `None` when either instant is unknown: a mark's gaps are
@@ -993,7 +1002,14 @@ class Session:
         that crossed it -- so a schedule that reached the session another way meets
         the same rule. The target is fixed now: a clock time's next occurrence on
         the session's anchored clock, a trial count from the trials run so far, or
-        mL this session."""
+        mL this session.
+
+        **An "after X mL" schedule the session has already reached is refused**
+        (Task 7 fix round 1), rather than stored and found due on the very next
+        check: trials and a clock time both name something ahead of now -- trials
+        count forward from the trial about to run, and a past clock time rolls to
+        tomorrow -- so neither needs this guard, but a fluid figure can already be
+        behind the console's own reading. `Stop` is what ends a session now."""
         why = _link.check_schedule(command.kind, command.value)
         if why is not None:
             self._refuse("schedule", command.by, f"{why}, so it is refused")
@@ -1006,6 +1022,17 @@ class Session:
                 f"applied",
             )
             return
+        if command.kind == "fluid":
+            total = self.welfare.session_total()
+            if total >= float(command.value) - FLUID_TOLERANCE_ML:
+                self._refuse(
+                    "schedule",
+                    command.by,
+                    f"this session has already commanded {total:.2f} mL; a stop "
+                    f"after {command.value:g} mL would end it at once, so it is "
+                    f"refused -- use Stop to end it now",
+                )
+                return
         if command.kind == "clock":
             wall = self.wall_now()
             target = _next_occurrence(command.value, wall)
@@ -1053,8 +1080,9 @@ class Session:
         schedule fell due at the same check. **Then the scheduled stop**, which ends
         the session like the stop button -- `stop_kind` `operator`, the reason
         *scheduled stop (...) set by NAME* -- when its clock time has come on the
-        session's anchored clock, `index` trials have run, or `welfare`'s session
-        fluid has reached it. `welfare` is read, never asked to decide."""
+        session's anchored clock, the target trial count has been reached, or
+        `welfare`'s session fluid has reached it. `welfare` is read, never asked to
+        decide."""
         wall = self.wall_now()
         stop = self.welfare.must_stop(wall)
         if stop:
@@ -1069,7 +1097,7 @@ class Session:
             if kind == "clock"
             else index >= target
             if kind == "trials"
-            else self.welfare.session_total() >= target
+            else self.welfare.session_total() >= target - FLUID_TOLERANCE_ML
         )
         if not due:
             return False
