@@ -153,8 +153,9 @@ The PI chose the 27-inch with those numbers in hand.
 **Direct-view geometry at 57 cm** (the comparison's figures): about ±27° × ±16°, at about
 65 px/deg. That leaves roughly a degree of vertical margin beyond a 15° target, so the
 direct-view viewing distance was left to the direct-view design. **The PI has since fixed the
-screen at 50 cm from the eyes, physically, in both setups** (2026-09-28, §5.2); direct view's own
-geometry is being designed with him.
+screen at 50 cm from the eyes, physically, in both setups** (2026-09-28, §5.2). At 50 cm direct
+view shows ±30.5° × ±18.4°, 3.4° beyond a 15° target vertically; its design, approved the same
+day, is `2026-09-28-direct-view-design.md`.
 
 ASUS lists, per the spec page and product page read 2026-09-27:
 - a **26.5" Tandem QD-OLED**, "Latest 4th-gen QD-OLED", 3840 × 2160 at 240 Hz, 0.153 mm
@@ -1095,9 +1096,10 @@ the cables cross it, and the layout decides it. This is what it implies:
 - **The ASUS proximity sensor.** It is still open whether the Neo Proximity Sensor and pixel
   cleaning can be turned off (open item 3). How the sensor senses is not published. So
   whether the tracker's 940 nm light affects it is **UNVERIFIED**.
-- **The direct-view design.** It sets the viewing distance (57–65 cm), and with it the camera
-  angle, the lens, the mount, and the photodiode shields. The stereoscope drawing's recompute
-  for 26.5" sets the secondary mount.
+- **The direct-view design** (`2026-09-28-direct-view-design.md`, approved 2026-09-28) fixed the
+  screen at 50 cm in both setups and put one camera position below the screen for both, at the
+  paper's 35°/25° (its §5). The camera's working distance, and so the lens row above, is chosen
+  with the mount; the stereoscope must leave the camera's and light's lines clear.
 
 ### 7.10 Eye-light drivers and the safety cap
 
