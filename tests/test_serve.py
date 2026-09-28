@@ -3130,7 +3130,7 @@ class _Session:
         return self.frame(lambda f: f.stop_kind is not None)
 
     def controls(self) -> list[dict]:
-        path = Path(self.root) / self.session_id / "expcontroller" / "controls.jsonl"
+        path = Path(self.root) / self.session_id / "xcon" / "controls.jsonl"
         return [json.loads(line) for line in path.read_text().splitlines()]
 
     def finished(self) -> None:
