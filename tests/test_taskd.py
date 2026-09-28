@@ -2549,6 +2549,34 @@ def test_the_limit_still_ends_a_paused_session_with_refused_commands_on_the_way(
     assert len(session.refusals) == 3
 
 
+def test_the_limit_still_ends_a_paused_session_with_a_mark_stamped_on_every_wait(tmp_path):
+    """Task 6 review (welfare evidence for `_hold`): a mark stamped on a paused pass
+    must not change when the out-of-cage limit ends the session, mirroring
+    `test_the_limit_still_ends_a_paused_session_with_refused_commands_on_the_way` for
+    a mark instead of a refused command. `_hold`'s own mark check stamps whatever
+    `link.idle` hands back before `_ends` is asked (spec §5.1), so a mark on every
+    wait must still let the limit land on the same wait as with no marks at all
+    (`test_the_out_of_cage_limit_still_ends_a_paused_session`, wait 3), run no trial,
+    and leave one `mark` control row behind for every wait that stamped one."""
+    link = _Scripted(step=300.0)
+    # The leading 0 is `_check_marks`'s own pre-pause check, at the top of `run()`'s
+    # loop before `Pause` is even drained; 1-5 are `_hold`'s waits, a new mark number
+    # on each -- more than the three this run needs.
+    link.marks = [0, 1, 2, 3, 4, 5]
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "limit"
+    assert session.stopped_because.startswith("out_of_cage")
+    assert len(link.waits) == 3, "the limit still lands on the third wait, same as with no marks"
+    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    marks = [row for row in _controls_rows(session) if row["kind"] == "mark"]
+    assert len(marks) == 3, "one mark row per wait before the end"
+
+
 def test_the_limit_still_ends_a_paused_session_when_a_resume_lands_the_same_pass(tmp_path):
     """Regression (review round 1, item 3b): a resume landing in the same drain as
     the pass that crosses the out-of-cage limit does not race it. `_resume` clears
