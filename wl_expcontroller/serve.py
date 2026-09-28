@@ -453,6 +453,26 @@ BUSY = (
         ),
     },
 )
+#: What the page is told when the rig has a manual reward (PI, 2026-09-28). Whether
+#: it was given, and how much, is the changes feed's and the fluid total's to show.
+REWARD_SENT = (
+    "sent: the rig has the reward command; the changes feed and the fluid total show "
+    "whether it was given"
+)
+#: What the page is told when the rig took a manual reward and did not acknowledge it
+#: (PI, 2026-09-28: no accidental doubles). It may have been given, so it is neither
+#: *not delivered*, which would invite a second press, nor sent again.
+REWARD_UNKNOWN = (
+    504,
+    {
+        "status": "unknown",
+        "said": (
+            "unknown: the rig took the reward command and did not acknowledge it, so "
+            "whether the reward was given is not known, and it was not sent again; "
+            "check the session's fluid total before pressing again"
+        ),
+    },
+)
 
 
 class BadCommand(ValueError):
@@ -487,6 +507,7 @@ _SHAPES = {
     "pause": frozenset(),
     "resume": frozenset(),
     "cancel": frozenset(),
+    "reward": frozenset(),
     "schedule": frozenset({"at", "trials", "ml"}),
     "mark": frozenset({"pressed_at"}),
     "note": frozenset({"mark", "note"}),
@@ -589,6 +610,7 @@ def parse_command(data: object):
         "pause": _link.Pause,
         "resume": _link.Resume,
         "cancel": _link.CancelScheduledStop,
+        "reward": _link.ManualReward,
     }[kind](by=by)
 
 
@@ -706,6 +728,29 @@ def _delivered(command) -> Callable[[object], tuple[int, dict]]:
         except _link.NotDelivered as exc:
             return not_delivered(str(exc))
         return 200, {"status": "sent", "said": SENT}
+
+    return work
+
+
+def _rewarded(command: _link.ManualReward) -> Callable[[object], tuple[int, dict]]:
+    """The command thread's work for a manual reward (PI, 2026-09-28): delivered
+    **once**, like every command -- nothing on this path re-sends one, and a reward
+    must never be the first thing that does -- and answered without guessing. *Sent*
+    when the rig acknowledged it; *unknown* when it was handed over and not
+    acknowledged (`link.Unacknowledged`), or failed in a way that cannot say whether
+    it went, since it may already have been given; *not delivered* only when it never
+    left, saying no reward was given."""
+
+    def work(commands) -> tuple[int, dict]:
+        try:
+            commands.deliver(command)
+        except _link.Unacknowledged:
+            return REWARD_UNKNOWN
+        except _link.NotDelivered as exc:
+            return not_delivered(f"{exc}; no reward was given")
+        except Exception:  # noqa: BLE001 -- a reward that may have gone is unknown
+            return REWARD_UNKNOWN
+        return 200, {"status": "sent", "said": REWARD_SENT}
 
     return work
 
@@ -1189,6 +1234,9 @@ class Server:
         the instants this process kept for that mark."""
         if isinstance(request, MarkSignal):
             return self._signal(request)
+        if isinstance(request, _link.ManualReward):
+            # Its own answers, never a re-send (PI, 2026-09-28): see `_rewarded`.
+            return self._commands.submit(_rewarded(request))
         if isinstance(request, MarkNote):
             pressed_at, received_at = self._recall(request.mark)
             request = _link.Mark(

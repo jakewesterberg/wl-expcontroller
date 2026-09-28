@@ -117,6 +117,9 @@ NO_MARK_ENDPOINT = (
     "this console was started without the session's mark endpoint: give wlx serve "
     "--link PUB,REP,MARK, as wlx run was given it"
 )
+#: Why *give reward* is greyed while trials run: the rig gives a manual reward only
+#: while the session is paused (PI, 2026-09-28; `taskd.Session._manual_reward`).
+REWARD_ONLY_PAUSED = "a manual reward is given only while the session is paused: pause first"
 #: How long after the last click on a parameter's arrows the change is sent, in
 #: milliseconds: the mockup's debounce (spec §5.2), housekeeping and not a
 #: measurement. The page's script reads it from `<body>`.
@@ -400,15 +403,46 @@ def _banners(frame: Telemetry | None, view: View) -> str:
 # --- the controls (P4d-2b b2a) ------------------------------------------------------
 
 
+def _reward_button(frame: Telemetry, view: View) -> str:
+    """The manual reward's button (PI, 2026-09-28): live only while the session is
+    paused, since the rig gives a manual reward only then
+    (`taskd.Session._manual_reward`); greyed with `REWARD_ONLY_PAUSED` while trials
+    run, and with the §2 sentence away from the box. **One button and no key**: a
+    click is one command, and the script holds the button until that command's
+    answer."""
+    paused = frame.paused_at is not None
+    off = _off(view) or ("" if paused else f' disabled title="{_e(REWARD_ONLY_PAUSED)}"')
+    return f'<button type="button" class="btn" data-cmd="reward"{off}>give reward</button>'
+
+
+def _reward_answer(frame: Telemetry) -> str:
+    """While paused, what became of the last press (PI, 2026-09-28), from the frames
+    the paused loop publishes: the session's fluid total, the newest reward given
+    with its size, and the newest press refused with the rig's sentence -- *last*,
+    since a refusal carries no time, as on a parameter card. Nothing while trials
+    run, when the button is greyed."""
+    if frame.paused_at is None:
+        return ""
+    said = [f"fluid session {frame.fluid_session_ml:.2f} mL"]
+    given = [control for control in frame.controls if control.kind == "reward"]
+    if given:
+        said.append(f"last given {_clock_time(given[-1].at)}: {_e(given[-1].said)}")
+    refused = [refusal for refusal in frame.refusals if refusal.name == "reward"]
+    if refused:
+        said.append(f"last refused: {_e(refused[-1].why)}")
+    return f'<span class="nm">{" · ".join(said)}</span>'
+
+
 def _controls(frame: Telemetry | None, view: View) -> str:
-    """Pause or resume, mark, and stop (spec §5.2), while a session runs.
+    """Pause or resume, mark, give reward, and stop (spec §5.2), while a session runs.
 
     **Pause or resume by the session's state**, never a toggle: the page sends what
-    the button says, so a double click sends the same command twice, and the rig
-    refuses the second with a sentence (`taskd.Session._pause`). **Stop** opens the
-    page's confirm step. **Mark** is greyed on its own when this console has no mark
-    endpoint. **Everywhere but the box**, every control is greyed with the §2
-    sentence, which is also said beside them."""
+    the button says, and the click handler's `toggleAllowed` stops a double click
+    from sending it twice, as `rewardAllowed` does for a reward (R2, 2026-09-28).
+    **Stop** opens the page's confirm step. **Mark** is greyed on its own when this
+    console has no mark endpoint, and **give reward** while trials run
+    (`_reward_button`). **Everywhere but the box**, every control is greyed with the
+    §2 sentence, which is also said beside them."""
     if frame is None:
         return '<span class="nm">controls · no session</span>'
     if frame.stop_kind is not None:
@@ -420,8 +454,9 @@ def _controls(frame: Telemetry | None, view: View) -> str:
     return (
         f'<button type="button" class="btn" data-cmd="{cmd}"{off}>{label}</button>'
         f'<button type="button" class="btn" data-cmd="mark"{mark_off}>mark (M)</button>'
+        f"{_reward_button(frame, view)}"
         f'<button type="button" class="btn danger" data-cmd="stop"{off}>stop…</button>'
-        f"{note}"
+        f"{_reward_answer(frame)}{note}"
     )
 
 
@@ -1090,6 +1125,13 @@ _SCRIPT = """
   var timers = {};
   var heldParams = null;
   var markNo = null;
+  var rewarding = false;
+  var REWARD_LOST = "unknown: this page lost wlx serve's answer, so whether the reward was given is not known, and it was not sent again; check the session's fluid total before pressing again";
+  // Housekeeping, not a measurement (R2, 2026-09-28): the same double click's span as
+  // TOGGLE_HOLD_MS, since a reward's answer can return well inside it on loopback,
+  // leaving the button live again before a double click's second click lands.
+  var REWARD_HOLD_MS = 1000;
+  var lastRewardAt = -Infinity;
   function el(id) { return document.getElementById(id); }
   function say(text, tone) {
     var banner = el("stream");
@@ -1122,6 +1164,7 @@ _SCRIPT = """
     if (id === "params" && busy()) { heldParams = html; return; }
     var node = el(id);
     if (node) { node.innerHTML = html; }
+    if (id === "controls") { holdReward(); }
   }
   function release() {
     if (heldParams !== null && !busy()) {
@@ -1175,11 +1218,13 @@ _SCRIPT = """
     line.textContent = text;
     line.className = "sent " + (tone || "");
   }
-  function post(command, then) {
-    if (!canWrite) { return; }
+  function post(command, then, after) {
+    var done = after || function () {};
+    if (!canWrite) { done(); return; }
     var by = name || askName();
     if (!by) {
       tell("not sent: give your name first -- every command records who sent it", "crit");
+      done();
       return;
     }
     command.by = by;
@@ -1195,8 +1240,8 @@ _SCRIPT = """
       tell(answer.said, answer.status === "sent" || answer.status === "signaled" ? "ok" : "crit");
       if (then) { then(answer); }
     }).catch(function () {
-      tell("not delivered: this page could not reach wlx serve", "crit");
-    });
+      tell(command.kind === "reward" ? REWARD_LOST : "not delivered: this page could not reach wlx serve", "crit");
+    }).then(done);
   }
   function decimals(step) { return (String(step).split(".")[1] || "").length; }
   function send(input) {
@@ -1261,10 +1306,38 @@ _SCRIPT = """
     lastToggleAt = now;
     return true;
   }
+  function holdReward() {
+    var button = el("controls").querySelector('[data-cmd="reward"]');
+    if (rewarding && button && !button.disabled) {
+      button.disabled = true;
+      button.setAttribute("data-held", "1");
+    }
+  }
+  function reward() {
+    var button = el("controls").querySelector('[data-cmd="reward"]');
+    if (!button || button.disabled || rewarding) { return; }
+    rewarding = true;
+    holdReward();
+    post({ kind: "reward" }, null, function () {
+      rewarding = false;
+      var held = el("controls").querySelector('[data-cmd="reward"][data-held]');
+      if (held) { held.removeAttribute("data-held"); held.disabled = false; }
+    });
+  }
   function command(cmd) {
     if (cmd === "stop") { el("stop-confirm").hidden = false; }
     else if (cmd === "mark") { mark(); }
+    else if (cmd === "reward") { reward(); }
     else { post({ kind: cmd }); }
+  }
+  function rewardAllowed(detail) {
+    // Same reasoning as `toggleAllowed` (R2, 2026-09-28): loopback's round trip can
+    // return well inside a double click's span, so the disabled-until-answered rule
+    // in `reward` alone can miss the second click.
+    var now = performance.now();
+    if (detail > 1 || now - lastRewardAt < REWARD_HOLD_MS) { return false; }
+    lastRewardAt = now;
+    return true;
   }
   function pauseOrResume() {
     var button = el("controls").querySelector('[data-cmd="pause"], [data-cmd="resume"]');
@@ -1280,6 +1353,7 @@ _SCRIPT = """
     if (button && !button.disabled) {
       var cmd = button.getAttribute("data-cmd");
       if ((cmd === "pause" || cmd === "resume") && !toggleAllowed(e.detail)) { return; }
+      if (cmd === "reward" && !rewardAllowed(e.detail)) { return; }
       command(cmd);
       return;
     }

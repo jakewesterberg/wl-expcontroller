@@ -812,8 +812,9 @@ class Stop:
 @dataclass(frozen=True, slots=True)
 class Pause:
     """Hold the session at the next trial boundary (P4d-2b spec §5.1): no trial runs
-    and nothing is rewarded until `Resume`, while the out-of-cage clock keeps running
-    and still ends the session. `taskd.Session._hold` is what it does."""
+    and the task rewards nothing until `Resume` -- a person may give a `ManualReward`
+    meanwhile (PI, 2026-09-28) -- while the out-of-cage clock keeps running and still
+    ends the session. `taskd.Session._hold` is what it does."""
 
     KIND: ClassVar[str] = "pause"
 
@@ -891,7 +892,34 @@ class CancelScheduledStop:
     by: str
 
 
-Command = SetParameter | Stop | Pause | Resume | Mark | ScheduleStop | CancelScheduledStop
+@dataclass(frozen=True, slots=True)
+class ManualReward:
+    """One press of the page's *give reward* (P4d-2b b2a, amended 2026-09-28; the PI: "I
+    want to be able to give manual rewards during pause").
+
+    **One press, one reward, the size a correct trial pays** -- the PI's answer to how
+    much, "Same as a correct trial" -- so it carries who pressed it and nothing else:
+    the size is the bounded config's `reward_correct`, read by `taskd` when it gives
+    the reward, and nothing a console sends can set it. `taskd.Session._manual_reward`
+    gives it only while the session is held paused, and refuses it with a sentence at
+    any other time. **Never sent twice**: `wlx serve` answers one it cannot confirm
+    *unknown*, and nothing on the command path re-sends a command."""
+
+    KIND: ClassVar[str] = "reward"
+
+    by: str
+
+
+Command = (
+    SetParameter
+    | Stop
+    | Pause
+    | Resume
+    | Mark
+    | ScheduleStop
+    | CancelScheduledStop
+    | ManualReward
+)
 
 #: The kinds of scheduled stop, in the order a person is offered them.
 SCHEDULE_KINDS = ("clock", "trials", "fluid")
@@ -975,7 +1003,7 @@ def _encode_command(command: Command) -> bytes:
 
     if isinstance(command, SetParameter):
         payload = {"kind": "set", "name": command.name, "value": command.value, "by": command.by}
-    elif isinstance(command, (Stop, Pause, Resume, CancelScheduledStop)):
+    elif isinstance(command, (Stop, Pause, Resume, CancelScheduledStop, ManualReward)):
         payload = {"kind": command.KIND, "by": command.by}
     elif isinstance(command, Mark):
         payload = {
@@ -1126,7 +1154,10 @@ def _decode_command(payload: bytes) -> Command:
             )
         by = _actor(data.get("by"), name)
         return SetParameter(name=name, value=_setting(data.get("value"), name, by), by=by)
-    simple = {command.KIND: command for command in (Stop, Pause, Resume, CancelScheduledStop)}
+    simple = {
+        command.KIND: command
+        for command in (Stop, Pause, Resume, CancelScheduledStop, ManualReward)
+    }
     if kind in simple:
         return simple[kind](by=_actor(data.get("by"), kind))
     if kind == "mark":
@@ -2088,6 +2119,15 @@ class ZmqMarks:
 REPLY_TIMEOUT_S = 15.0
 
 
+class Unacknowledged(NotDelivered):
+    """A command handed to a connected rig that did not acknowledge it within the reply
+    timeout (P4d-2b b2a, amended 2026-09-28). Unlike a `NotDelivered` raised before the
+    send, it **may still be applied** at the rig's next boundary. A `NotDelivered`, so
+    every caller that catches that still does; `wlx serve` tells the two apart for a
+    manual reward (`serve._rewarded`), which it answers *unknown*, because a reward
+    that may have been given must not invite a second press."""
+
+
 class ZmqCommands:
     """The console side of the command path, for a sender that must know whether each
     command arrived (P4d-2b b2a): `wlx serve`'s command thread owns one.
@@ -2104,7 +2144,13 @@ class ZmqCommands:
     `test_with_no_rig_connected_a_command_is_not_delivered`). With a rig connected and
     no reply within the reply timeout, the command **was handed over and was not
     acknowledged**: it may still be drained and applied at the rig's next boundary,
-    which is why that sentence says so rather than calling it lost.
+    which is why that sentence says so rather than calling it lost, and why it is
+    raised as `Unacknowledged`, which a caller can tell from a command never sent.
+
+    **Nothing here sends a command twice**, and nothing may (PI, 2026-09-28): a manual
+    reward is a command, and a re-send after a timeout would double a reward the rig
+    had already given. A test in `tests/test_serve.py` puts a socket that answers
+    nothing where the rig is, and counts what reaches the wire.
 
     **After a timeout the socket is reset** (spec §5.3): a REQ socket may not send
     again before it reads a reply, so the old one is closed and a new one opened and
@@ -2159,7 +2205,7 @@ class ZmqCommands:
             self._req.recv()
         except zmq.Again as exc:
             self._reset()
-            raise NotDelivered(
+            raise Unacknowledged(
                 f"not delivered: the rig did not acknowledge it within "
                 f"{self._reply_s:g} s. It may still be applied at the rig's next trial "
                 f"boundary; the changes feed will show it if it is"

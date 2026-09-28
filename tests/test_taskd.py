@@ -34,6 +34,7 @@ from wl_expcontroller.link import (
     RECENT_OUTCOMES,
     REFUSAL_HISTORY,
     CancelScheduledStop,
+    ManualReward,
     Mark,
     Pause,
     Resume,
@@ -2462,9 +2463,10 @@ def test_a_stop_is_recorded_with_who_and_when(tmp_path):
 
 
 def test_nothing_is_rewarded_while_paused(tmp_path):
-    """Human review item 1 (spec §5.5): while paused, nothing is rewarded. No trial
-    runs, so no `Reward` action reaches the pump, and the session's fluid stands
-    still. Paused after six trials, so what stands still is not zero.
+    """Human review item 1 (spec §5.5, amended 2026-09-28): while paused, the task
+    rewards nothing. No trial runs, so no `Reward` action reaches the pump, and with
+    no manual reward pressed the session's fluid stands still. Paused after six
+    trials, so what stands still is not zero.
 
     `before` is read at the moment the pause is decided -- before `_pause` runs and
     before `_hold`'s `while` is entered -- because `seen`'s first reading is taken
@@ -3356,3 +3358,276 @@ def test_an_applied_setting_is_on_the_changes_feed_with_who_and_when(tmp_path):
     assert said == "fix_hold 0.30 → 0.40, from trial 1"
     assert at >= WALL_NOW
     assert _controls_rows(session) == []
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause
+# ---------------------------------------------------------------------------
+
+#: `MANUAL_REWARD`'s code (`tasks/allocation.py`), after b2a's other three; and
+#: `REWARD_COMMANDED`'s, which `fixation_detection` strobes with each reward it pays.
+REWARD_CODE, TASK_REWARD_CODE = 4134, 4102
+
+
+class _Watched(Pump):
+    """A simulated pump that notes, as each delivery arrives, the last code the card
+    had strobed: how a test tells that the strobe came before the valve."""
+
+    def __init__(self, card) -> None:
+        super().__init__()
+        self.card = card
+        self.strobed_before: list = []
+
+    def deliver(self, ml: float) -> None:
+        self.strobed_before.append(self.card.codes[-1] if self.card.codes else None)
+        super().deliver(ml)
+
+
+def _manual_rows(session: Session) -> list[dict]:
+    return [row for row in _controls_rows(session) if row["kind"] == "reward"]
+
+
+def test_a_manual_reward_while_paused_is_one_correct_trial_reward_through_the_tasks_path(
+    tmp_path,
+):
+    """PI, 2026-09-28: "I want to be able to give manual rewards during pause", and one
+    press is "Same as a correct trial". A `ManualReward` drained while the session is
+    held is one delivery of the bounded config's `reward_correct` -- 0.15 mL here, the
+    value it holds -- through `Rig.reward` and `Welfare.deliver`, the path a task's
+    reward takes: `commanded`, `deliveries` and `last_delivery_wall_at` count it,
+    `MANUAL_REWARD` is strobed before the valve opens, `controls.jsonl` has one row, and
+    the frame published in that pass, still paused, carries the new fluid total."""
+    link = _Scripted(script={1: [ManualReward(by="jake")], 2: [Resume(by="sam")]}, step=10.0)
+    session, wall = _walled(tmp_path, link, trials=6)
+    link.wall = wall
+    pump = _Watched(session.card)
+    session.welfare.pump = pump
+    seen: list = []
+    link.each = lambda: seen.append(
+        (
+            session.welfare.commanded,
+            session.welfare.deliveries,
+            len(pump.delivered),
+            session.welfare.last_delivery_wall_at,
+        )
+    )
+    _scheduled_at_trial(link, session, 3, Pause(by="jake"))
+
+    session.run()
+
+    (commanded, deliveries, delivered, _), (after, then, now, last) = seen
+    assert after == pytest.approx(commanded + 0.15)
+    assert (then, now) == (deliveries + 1, delivered + 1), "exactly one delivery"
+    assert pump.delivered[delivered] == 0.15
+    assert pump.strobed_before[delivered] == REWARD_CODE, "strobed before the valve"
+    codes = session.card.codes
+    assert codes.count(REWARD_CODE) == 1
+    assert codes.index(PAUSE_CODE) + 1 == codes.index(REWARD_CODE) == codes.index(RESUME_CODE) - 1
+    (row,) = _manual_rows(session)
+    assert (row["by"], row["trial_index"]) == ("jake", 3)
+    assert (row["ml"], row["entry"]) == (0.15, "reward_correct")
+    assert row["at"] == last
+    held = [frame for frame in link.published if frame.paused_at is not None]
+    assert held[-1].fluid_session_ml == pytest.approx(after)
+    assert held[-1].last_reward_at == last
+    assert [c.kind for c in held[-1].controls][-1] == "reward"
+    assert len((session.directory / "trials.jsonl").read_text().splitlines()) == 6
+
+
+@pytest.mark.parametrize(
+    ("first", "script", "said"),
+    [
+        ([ManualReward(by="jake")], {}, "the session is not paused"),
+        (
+            [Pause(by="jake"), ManualReward(by="jake")],
+            {1: [Resume(by="sam")]},
+            "the session's pause has not begun holding yet",
+        ),
+        (
+            [Pause(by="jake")],
+            {1: [Stop(by="sam"), ManualReward(by="jake")]},
+            "the session is stopping (stopped by sam)",
+        ),
+        (
+            [Pause(by="jake")],
+            {1: [Resume(by="sam"), ManualReward(by="jake")]},
+            "the session is not paused",
+        ),
+    ],
+    ids=["while-running", "pause-not-yet-held", "after-a-stop", "after-a-resume"],
+)
+def test_a_manual_reward_at_any_other_time_is_refused_and_nothing_is_given(
+    tmp_path, first, script, said
+):
+    """Only while paused, meaning held at the boundary (Plan decision 16). Pressed while
+    trials run; in the same drain as the pause, before the boundary holds it; or after
+    a stop or a resume ahead of it in the paused loop's drain -- refused with a
+    sentence, nothing strobed, nothing given, and the session goes on. Every delivery
+    left is a trial's, each with its `REWARD_COMMANDED`."""
+    link = _Scripted(script=script)
+    for command in first:
+        link.queue(command)
+    session, wall = _walled(tmp_path, link, trials=2)
+    link.wall = wall
+
+    session.run()
+
+    ((name, by, why),) = [r for r in session.refusals if r[0] == "reward"]
+    assert (name, by) == ("reward", "jake")
+    assert said in why and "no reward was given" in why
+    assert REWARD_CODE not in session.card.codes
+    assert _manual_rows(session) == []
+    assert session.welfare.deliveries == session.card.codes.count(TASK_REWARD_CODE)
+
+
+def test_after_the_loop_a_manual_reward_is_refused_and_nothing_is_given(tmp_path):
+    """After the session has ended, a reward is refused with the post-loop sentence,
+    as every command is then, and the fluid total does not move."""
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _fixed_and_run(tmp_path, link, wall)
+    given = (session.welfare.commanded, session.welfare.deliveries)
+    link.queue(ManualReward(by="jake"))
+
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: len(session.refusals) == 1)
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+
+    ((name, by, why),) = session.refusals
+    assert (name, by) == ("reward", "jake")
+    assert "the session has ended" in why
+    assert (session.welfare.commanded, session.welfare.deliveries) == given
+    assert REWARD_CODE not in session.card.codes
+
+
+def test_a_manual_reward_with_no_reward_correct_in_the_bounded_config_is_refused(
+    tmp_path,
+):
+    """One press is "Same as a correct trial": the bounded config's `reward_correct`. A
+    config without that entry gives a press no size, so it is refused naming the entry
+    -- and **never** paid from another entry, even one that is there."""
+    bounds = Bounds(
+        subject="A",
+        ceilings={
+            "reward_large": Ceiling(value=0.3, maximum=0.4, unit="mL"),
+            "out_of_cage": Ceiling(value=800.0, maximum=100_000.0, unit="s"),
+        },
+        minima={"daily_fluid": Floor(value=250.0, unit="mL")},
+    )
+    link = _Scripted(script={1: [ManualReward(by="jake")], 2: [Stop(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, bounds=bounds)
+    link.wall = wall
+
+    session.run()
+
+    ((name, by, why),) = session.refusals
+    assert (name, by) == ("reward", "jake")
+    assert "has no 'reward_correct' entry" in why
+    assert "never taken from another entry" in why
+    assert session.welfare.deliveries == 0 and session.pump.delivered == []
+    assert REWARD_CODE not in session.card.codes
+
+
+def test_a_manual_reward_is_refused_when_the_allocation_cannot_mark_it(tmp_path):
+    """A reward the recording could not show is refused, as a pause is: without
+    `MANUAL_REWARD` a delivery in the event stream would look like nothing, or like a
+    panel press."""
+    from dataclasses import replace
+
+    link = _Scripted(script={1: [ManualReward(by="jake")], 2: [Resume(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=2)
+    link.wall = wall
+    session.allocation = replace(
+        session.allocation,
+        task_events={
+            code: name
+            for code, name in session.allocation.task_events.items()
+            if name != "MANUAL_REWARD"
+        },
+    )
+
+    session.run()
+
+    ((name, _, why),) = session.refusals
+    assert name == "reward"
+    assert "no MANUAL_REWARD event code" in why
+    assert session.welfare.deliveries == session.card.codes.count(TASK_REWARD_CODE)
+
+
+def test_a_manual_reward_that_reaches_a_fluid_stop_ends_the_paused_session_in_that_pass(
+    tmp_path,
+):
+    """Items 1 and 2 of spec §5.5 together (amended 2026-09-28): a manual reward counts
+    toward "stop after X mL". `_hold` gives it in its drain and asks `_ends` before the
+    pass is over -- the pass that asks the out-of-cage limit -- so the session ends
+    there, as a scheduled stop, without waiting for a resume."""
+    link = _Scripted(script={1: [ManualReward(by="jake")]})
+    link.queue(ScheduleStop(kind="fluid", value=0.15, by="sam"))
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "operator"
+    assert session.stopped_because == "scheduled stop (after 0.15 mL this session) set by sam"
+    assert len(link.waits) == 1, "it ended in the pass that gave the reward"
+    assert session.welfare.session_total() == pytest.approx(0.15)
+    assert [row["kind"] for row in _controls_rows(session)] == [
+        "schedule", "pause", "reward", "scheduled_stop",
+    ]
+    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    assert link.published[-1].stop_kind == "operator"
+
+
+def test_a_reward_size_staged_while_paused_is_not_a_manual_rewards_until_trials_resume(
+    tmp_path,
+):
+    """A setting staged while paused applies when trials resume (spec §5.1), so a
+    manual reward given before then is the size a correct trial pays now -- the applied
+    `reward_correct` -- and the staged size is the next trial's."""
+    link = _Scripted(
+        script={
+            1: [SetParameter(name="reward_correct", value=0.3, by="sam")],
+            2: [ManualReward(by="jake")],
+            3: [Resume(by="jake")],
+        }
+    )
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=1)
+    link.wall = wall
+
+    session.run()
+
+    assert session.pump.delivered[0] == 0.15
+    (row,) = _manual_rows(session)
+    assert row["ml"] == 0.15
+    assert _parameter_changes(session)[0]["now"] == 0.3
+
+
+def test_a_pump_that_fails_a_manual_reward_faults_the_session_as_a_tasks_would(tmp_path):
+    """`welfare.Rig` swallows nothing for a task's reward, and a manual reward takes
+    the same path: a pump that will not answer ends the session as a fault, published,
+    with the reward charged, since it was charged before the valve opened."""
+
+    class _Broken(Pump):
+        def deliver(self, ml: float) -> None:
+            raise RuntimeError("the pump did not answer")
+
+    link = _Scripted(script={1: [ManualReward(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+    session.welfare.pump = _Broken()
+
+    with pytest.raises(RuntimeError, match="the pump did not answer"):
+        session.run()
+
+    assert session.stop_kind == "fault"
+    assert link.published[-1].stop_kind == "fault"
+    assert (session.welfare.commanded, session.welfare.deliveries) == (0.15, 1)
+    assert session.card.codes[-1] == REWARD_CODE

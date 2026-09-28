@@ -29,6 +29,7 @@ from wl_expcontroller.web import (
     FRAGMENT_IDS,
     LEGEND,
     NO_MARK_ENDPOINT,
+    REWARD_ONLY_PAUSED,
     font_bytes,
     fragments,
     page,
@@ -643,7 +644,14 @@ def test_the_script_does_only_what_spec_4_3_and_5_2_ask():
     ):
         assert needle in document, needle
     assert "disconnected · the session keeps running on the box" in document
-    assert re.findall(r"\.innerHTML = (\w+)", _SCRIPT) == ["html", "heldParams"]
+    # R3 (Task 13 rulings, carried from Task 10's review): capture the whole
+    # right-hand side, not just the identifier -- `node.innerHTML = "<b>" + name`
+    # would have slipped past a pin that only read the trailing word -- and allow
+    # only the fragment renderer's own two forms. No other way to write markup.
+    assert re.findall(r"\.innerHTML\s*\+?=\s*([^;]+);", _SCRIPT) == ["html", "heldParams"]
+    assert "outerHTML" not in _SCRIPT
+    assert "insertAdjacentHTML" not in _SCRIPT
+    assert "document.write" not in _SCRIPT
 
 
 def test_the_stale_timer_runs_from_the_frames_age_not_from_arrival():
@@ -705,7 +713,9 @@ def test_the_controls_offer_pause_mark_and_stop_while_running():
     assert '<button type="button" class="btn" data-cmd="pause">pause (P)</button>' in controls
     assert '<button type="button" class="btn" data-cmd="mark">mark (M)</button>' in controls
     assert '<button type="button" class="btn danger" data-cmd="stop">stop…</button>' in controls
-    assert "disabled" not in controls
+    # Every control but the manual reward, which waits for a pause (Task 13).
+    assert controls.count(" disabled") == 1
+    assert 'data-cmd="reward" disabled' in controls
 
 
 def test_a_paused_session_offers_resume_and_says_since_when_in_its_pill():
@@ -1019,6 +1029,115 @@ def test_the_script_pins_the_box_only_write_guard():
     refuses to send anything when it says this page may not write."""
     assert 'var canWrite = body.getAttribute("data-can-write") === "1";' in _SCRIPT
     post_body = re.search(
-        r"function post\(command, then\) \{(.*?)\n  \}", _SCRIPT, re.S
+        r"function post\(command, then, after\) \{(.*?)\n  \}", _SCRIPT, re.S
     ).group(1)
-    assert post_body.strip().startswith("if (!canWrite) { return; }")
+    assert "if (!canWrite) { done(); return; }" in post_body
+
+
+# --- P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause -------------
+
+
+def test_the_reward_button_is_live_only_while_paused_and_greyed_otherwise():
+    """PI, 2026-09-28: a manual reward during a pause. The button works only while the
+    session is paused (`paused_at`), and otherwise says why: greyed with its reason
+    while trials run, with the §2 sentence away from the box, and gone once the
+    session has ended. One button and no key: a click is one command."""
+    at = 1_700_000_030.0
+    paused = _controls(paused_at=at)
+    running = _controls()
+    lan = fragments(frame(paused_at=at), view(on_box=False, can_write=False))["controls"]
+    ended = fragments(frame(**STATES["returned"], paused_at=at), view())["controls"]
+
+    assert '<button type="button" class="btn" data-cmd="reward">give reward</button>' in paused
+    assert (
+        f'<button type="button" class="btn" data-cmd="reward" disabled '
+        f'title="{REWARD_ONLY_PAUSED}">give reward</button>'
+    ) in running
+    assert REWARD_ONLY_PAUSED == (
+        "a manual reward is given only while the session is paused: pause first"
+    )
+    assert re.search(r'data-cmd="reward" disabled title="[^"]+">give reward', lan)
+    assert CONTROLS_AT_THE_BOX in lan
+    assert "give reward" not in ended
+    assert 'k === "r"' not in _SCRIPT, "no key gives a reward"
+
+
+def test_while_paused_the_controls_show_the_fluid_total_and_what_the_last_press_did():
+    """The answer to a press, from the frames the rig publishes while paused: the
+    session's fluid total, the newest reward given with its size, and the newest
+    refused with the rig's sentence -- *last*, since a refusal carries no time, as on
+    a parameter card. Escaped like every string from telemetry."""
+    at = 1_700_000_035.0
+    controls = _controls(
+        paused_at=1_700_000_030.0,
+        fluid_session_ml=1.4,
+        controls=(
+            Control(
+                "reward",
+                "jake (box, unverified)",
+                at,
+                "0.15 mL of reward_correct, given while paused before trial 40",
+            ),
+        ),
+        refusals=(Refused(name="reward", by="sam", why="the session is <not> paused"),),
+    )
+    clock = time.strftime("%H:%M:%S", time.localtime(at))
+
+    assert "fluid session 1.40 mL" in controls
+    assert (
+        f"last given {clock}: 0.15 mL of reward_correct, given while paused before trial 40"
+        in controls
+    )
+    assert "last refused: the session is &lt;not&gt; paused" in controls
+    assert "fluid session" not in _controls(), "said beside the live button alone"
+
+
+def test_the_script_sends_one_reward_per_click_and_holds_the_button_until_its_answer():
+    """No accidental doubles (PI, 2026-09-28). Python cannot run the script, so its text
+    is pinned where it is load-bearing: a click while a reward is on its way does
+    nothing; the button is held from the click until the answer or the failure -- and
+    held again whenever a frame re-renders the controls meanwhile -- and only a button
+    the script held is released; the one `fetch` is never retried; and an answer the
+    page lost is *unknown*, never *not delivered*, with the fluid total to check first."""
+    assert "if (!button || button.disabled || rewarding) { return; }" in _SCRIPT
+    assert "rewarding = true;" in _SCRIPT
+    assert 'post({ kind: "reward" }, null, function () {' in _SCRIPT
+    assert 'if (id === "controls") { holdReward(); }' in _SCRIPT
+    assert "if (rewarding && button && !button.disabled) {" in _SCRIPT
+    assert """el("controls").querySelector('[data-cmd="reward"][data-held]')""" in _SCRIPT
+    assert "}).then(done);" in _SCRIPT
+    assert _SCRIPT.count("fetch(") == 1
+    assert (
+        "unknown: this page lost wlx serve's answer, so whether the reward was given is "
+        "not known, and it was not sent again; check the session's fluid total before "
+        "pressing again"
+    ) in _SCRIPT
+
+
+def test_a_double_click_on_give_reward_gives_only_one_reward():
+    """R2 (Task 13 rulings, an animal-facing defect in the plan): the disabled-until-
+    answered rule alone can miss a double click on loopback, where the answer can
+    return well inside a double click's span, leaving the button live again before
+    the second click lands. `rewardAllowed` gives *give reward* the same debounce
+    Task 10 gave pause and resume -- refused on a native double click (`detail > 1`)
+    or within `REWARD_HOLD_MS` of the last reward this page sent -- in the click
+    handler's own branch, never inside `command` or `post`, so a deliberate second
+    press a second later still gives another reward."""
+    assert "var REWARD_HOLD_MS = 1000;" in _SCRIPT
+    assert _SCRIPT.count("not a measurement") == 2
+    assert "var lastRewardAt = -Infinity;" in _SCRIPT
+    assert "function rewardAllowed(detail) {" in _SCRIPT
+    assert (
+        "if (detail > 1 || now - lastRewardAt < REWARD_HOLD_MS) { return false; }"
+        in _SCRIPT
+    )
+    assert "lastRewardAt = now;" in _SCRIPT
+    assert 'if (cmd === "reward" && !rewardAllowed(e.detail)) { return; }' in _SCRIPT
+    command_body = re.search(
+        r"function command\(cmd\) \{(.*?)\n  \}", _SCRIPT, re.S
+    ).group(1)
+    post_body = re.search(
+        r"function post\(command, then, after\) \{(.*?)\n  \}", _SCRIPT, re.S
+    ).group(1)
+    assert "rewardAllowed" not in command_body
+    assert "rewardAllowed" not in post_body
