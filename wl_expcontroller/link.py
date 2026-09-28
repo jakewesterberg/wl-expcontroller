@@ -238,7 +238,8 @@ class ScheduledStop:
 class Control:
     """One recent control event for a console's changes feed (P4d-2b spec §5.1):
     from `taskd.Session.controls`. `kind` is `stop`, `pause`, `resume`, `mark`,
-    `note`, `schedule`, `cancel`, `scheduled_stop` or `set` (a staged setting applied);
+    `note`, `schedule`, `cancel`, `scheduled_stop`, `set` (a staged setting applied) or
+    `reward` (a manual reward, given while paused);
     `by` is who sent it, empty for a mark's stamp, whose sender arrives with its note;
     `at` is on the session's anchored clock; `said` is the sentence after the kind.
     The session record keeps every one (`record.CONTROLS`); this feed keeps the last
@@ -984,12 +985,13 @@ def check_schedule(kind: object, value: object) -> str | None:
 
 
 def _encode_command(command: Command) -> bytes:
-    """`SetParameter`/`Stop` to msgpack, tagged by kind so `_decode_command` knows
-    which dataclass to rebuild.
+    """A command to msgpack -- `SetParameter`, `Stop`, and since P4d-2b b2a `Pause`,
+    `Resume`, `Mark`, `ScheduleStop`, `CancelScheduledStop` and `ManualReward` --
+    tagged by kind so `_decode_command` knows which dataclass to rebuild.
 
-    Private, unlike `encode`/`decode`: `ZmqConsole.send` is the only caller, in this
-    same file, so this is an implementation detail of the REQ/REP leg rather than a
-    wire contract another module is meant to import.
+    Private, unlike `encode`/`decode`: its callers are `ZmqConsole.send` and
+    `ZmqCommands.deliver`, both in this same file, so this is an implementation detail
+    of the REQ/REP leg rather than a wire contract another module is meant to import.
 
     **No `"returned"` kind (P4d-2a spec §10, Task 8).** `ReturnedToCage` lived here
     briefly (Task 4) and is gone: the PI ruled the wl-works ELN owns the return, not
@@ -1168,7 +1170,7 @@ def _decode_command(payload: bytes) -> Command:
         if why is not None:
             raise CommandRefused("schedule", by, f"{why}, so it is refused")
         return ScheduleStop(kind=data["stop"], value=data["value"], by=by)
-    raise ValueError(f"unknown command kind on the wire: {kind!r}")
+    raise ValueError(f"unknown command kind on the wire: {_quoted(kind)}")
 
 
 def _instant(data: dict, key: str, by: str) -> float | None:

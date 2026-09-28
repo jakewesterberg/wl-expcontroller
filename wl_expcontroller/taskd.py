@@ -1360,8 +1360,11 @@ class Session:
             # **M8's backstop** (P4d-2b b2a): `TypeError` too. The wire refuses a
             # malformed value before it becomes a command (`link._setting`) and
             # `set` refuses what it knows is not a number, so this catches only a
-            # check neither of them makes yet -- and a session never ends with an
-            # animal in the chair because a setting was malformed.
+            # `TypeError` from a check neither of them makes yet. **Nothing else**: a
+            # value that raises another exception still ends the session as a fault
+            # -- an int too large for a float, handed to `set` in this process rather
+            # than over the wire, raises `OverflowError` in `bounds._finite`, and
+            # this line does not catch it.
             why = (
                 str(refused)
                 if isinstance(refused, Exceeded)

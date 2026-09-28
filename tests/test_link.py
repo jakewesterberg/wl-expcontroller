@@ -1375,6 +1375,18 @@ def test_a_setting_with_an_over_long_name_is_refused_without_quoting_all_of_it()
     assert long_name not in refused.value.why
 
 
+def test_an_unknown_kind_is_quoted_within_text_limit():
+    """The b2a final review: the unknown-kind refusal quoted the kind whole, so one
+    packet could put a string of any length into the transport refusal every frame
+    carries. `_quoted` bounds it as it bounds the rest."""
+    kind = "x" * 100_000
+    with pytest.raises(ValueError) as refused:
+        _decode_command(_packed(kind=kind, by="jake"))
+
+    assert len(str(refused.value)) < TEXT_LIMIT + 100
+    assert kind not in str(refused.value)
+
+
 @pytest.mark.parametrize(
     ("by", "expected"),
     [
