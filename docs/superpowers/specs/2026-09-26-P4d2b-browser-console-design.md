@@ -4,7 +4,9 @@
   read-only console, and was approved the same day. §5 covers slice b2, split into b2a
   (controls from the box) and b2b (remote sign-in through wl-works); b2a's design was
   approved in conversation on 2026-09-27, section by section, and b2b's decisions so far
-  are recorded in §5.7. Slices b3–b6 get their own sections as each is designed.
+  are recorded in §5.7. **Amended 2026-09-28**, when the PI approved b2a's plan with one
+  change — a manual reward during a pause (§5.0) — in §4.0, §5.0–§5.7. Slices b3–b6 get
+  their own sections as each is designed.
 - **Date:** 2026-09-26
 - **Parent:** S9a §6–§9; ADR-0008; `architecture.md`'s `console` and `labhost` rows
 - **Depends on:** P4d-2a (`2026-09-26-P4d2a-return-to-cage-design.md`, as amended in its
@@ -183,7 +185,9 @@ builds its part; S9a is amended to match when that slice lands.
   - **b3 — sessions from the page:** new / load / end session, the task-library pull and
     pre-flight. This needs a service on the box that holds a session across runs.
   - **b4 — simulation** with mouse gaze.
-  - **b5 — training tools and manual reward** (welfare-critical).
+  - **b5 — training tools and manual reward** (welfare-critical). *Amended 2026-09-28:*
+    a manual reward **during a pause** moved to b2a, at the PI's request when he approved
+    b2a's plan (§5.0, §5.1); a manual reward at any other time stays here.
   - **b6 — end of session:** the code package and the wl-nas transfer.
   
   Overlays, behavior plots, online analysis, the parameter log and RHX status come later,
@@ -282,7 +286,7 @@ welfare number and bounds nothing.
 - **The page's JavaScript** only opens the stream, swaps fragments by id, and runs the stale
   timer, so everything worth testing is in Python.
 
-## 5. Slice b2: controls (b2a approved 2026-09-27)
+## 5. Slice b2: controls (b2a approved 2026-09-27; amended 2026-09-28)
 
 b2 is split in two (PI, 2026-09-27): **b2a**, the controls, sent from the box; then **b2b**,
 the same controls for people signed in to wl-works. b2a ships and is used while wl-works
@@ -306,6 +310,11 @@ registers the rigs and the rigs gain their route to it (§5.7), which b2b cannot
   with b2b.
 - **Rig machines may connect to wl-works** ("i think its fine if the rig machines can
   connect to wl-works"). A permission, not a route: see §5.7.
+- **A manual reward during a pause** (PI, 2026-09-28, approving b2a's plan: "I want to be
+  able to give manual rewards during pause"). Asked how much one press gives, he chose
+  **"Same as a correct trial"**: one press delivers the task's current reward size, and
+  nothing new is set. The engineering calls that follow from it (§5.1–§5.3) were stated to
+  him the same day. Any-time manual reward stays in b5 (§4.0).
 
 ### 5.1 What the rig does
 
@@ -313,8 +322,9 @@ Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loo
 `link.drain()`), except the mark's own signal (below).
 
 - **Commands on the wire.** Today's closed union, `SetParameter | Stop`, gains `Pause`,
-  `Resume`, `Mark`, `ScheduleStop` and `CancelScheduledStop`, each carrying `by`. Every one
-  is written to the session record with who sent it and when.
+  `Resume`, `Mark`, `ScheduleStop` and `CancelScheduledStop` — and, since 2026-09-28,
+  `ManualReward` — each carrying `by`. Every one is written to the session record with who
+  sent it and when.
 - **M8 closes first.** `SetParameter.value` is a type hint that nothing enforces: a string
   reaching `bounds._finite` raises `TypeError`, which `Session._command` does not catch, so
   `run()`'s fault handler ends the whole session. The value is checked where the command is
@@ -322,13 +332,35 @@ Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loo
   and a bad one becomes a refusal with a sentence. `Session._command` also refuses on a
   type error, as a backstop. The session never ends because a setting was malformed.
 - **Pause.** At the next trial boundary the loop holds: no trial runs, the display shows the
-  task's background color, and nothing is rewarded. While paused the rig still, once per
-  housekeeping interval, drains commands (resume, stop, marks, schedules, settings),
-  publishes telemetry, and **checks the out-of-cage limit with `welfare.must_stop`, ending
-  the session on it exactly as between trials**. The out-of-cage clock keeps running.
+  task's background color, and **the task rewards nothing; a person may give one
+  correct-trial reward per press** (amended 2026-09-28, the PI's answer in §5.0; below).
+  While paused the rig still, once per housekeeping interval, drains commands (resume,
+  stop, marks, schedules, settings, manual rewards), publishes telemetry, and **checks the
+  out-of-cage limit with `welfare.must_stop`, ending the session on it exactly as between
+  trials**. The out-of-cage clock keeps running.
   Settings staged while paused apply when trials resume. Stop while paused ends the
   session. Pause and resume are recorded, and are strobed as framework events (`pause`,
   `resume`) so the recording shows the gap.
+- **Manual reward, while paused** (2026-09-28, the PI's answer in §5.0):
+  - **only while the session is held paused at the trial boundary.** A reward command at
+    any other time — while trials run, after a pause is requested but before the boundary
+    holds it, after the session has ended — is refused with a plain sentence, nothing is
+    given, and the session goes on;
+  - **one press is one delivery of the bounded config's `reward_correct`**, at the value it
+    holds then, **through the path a task's reward takes** (`welfare.Rig.reward` →
+    `Welfare.deliver`): charged before the valve opens, and counted in the session's
+    commanded fluid, its deliveries and the time of its last reward. A config with no
+    `reward_correct` refuses the press, naming the entry; **no other entry ever stands
+    in**. `welfare.py` and `bounds.py` are called, not changed;
+  - **recorded like every control:** a row in the session record with who, when, the
+    trial and the mL given, and a framework event (`manual_reward`) strobed before the
+    delivery, as `REWARD_COMMANDED` precedes a task's reward, so a recording tells it from
+    a task's reward and from a panel press (S6 §4);
+  - **it counts toward "stop after X mL"**: a manual reward that reaches the target ends
+    the session as a scheduled stop does, in the same housekeeping pass that checks the
+    out-of-cage limit, without waiting for a resume;
+  - **no accidental doubles:** each accepted command is exactly one reward, never
+    deduplicated and **never re-sent** (§5.3).
 - **Mark, stamped instantly.** Draining every command per frame would break the trial loop's
   rules, so a mark has two parts:
   - a **signal**: a fixed-size sequence number the loop checks once per frame with no
@@ -356,11 +388,13 @@ Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loo
   trial boundary, every change recorded.
 - **Telemetry schema 8** adds what the page needs: whether the session is paused and since
   when, the scheduled stop (kind, target, who), and a bounded list of recent control events
-  (pause, resume, mark with its note, schedule, cancel) for the changes feed. A schema-7
-  reader refuses schema 8, as §3's schema rule already says.
-- **Event codes.** `operator_mark`, `pause` and `resume` are new framework event names in
-  the allocation (`codes.Allocation.code_for`), in the task-specific range while ADR-0007's
-  `TaskEvent` range is being moved; wl-exptasks owns the final numbering.
+  (pause, resume, mark with its note, schedule, cancel, and since 2026-09-28 a manual
+  reward) for the changes feed. A schema-7 reader refuses schema 8, as §3's schema rule
+  already says.
+- **Event codes.** `operator_mark`, `pause` and `resume` — and, since 2026-09-28,
+  `manual_reward` — are new framework event names in the allocation
+  (`codes.Allocation.code_for`), in the task-specific range while ADR-0007's `TaskEvent`
+  range is being moved; wl-exptasks owns the final numbering.
 
 ### 5.2 The page
 
@@ -372,12 +406,19 @@ Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loo
 - **Pause / resume:** one button, and the **P** key.
 - **Mark:** the **M** key, or a button, sends the signal at once. A note box then opens:
   Enter attaches the note to that mark and Esc leaves it bare.
+- **Give reward** (2026-09-28, §5.0): a button in the control bar, **live only while the
+  session is paused** and greyed with its reason otherwise; no key. It is held from the
+  click until that command's answer or its failure arrives, and shows what the rig did —
+  the mL given, or the refusal's sentence — beside the session's fluid total, which moves
+  on the next frame. Pause stays *pause or resume*, never a toggle. `wlx console` stays
+  render-only.
 - **Scheduled stop:** a small form (clock time, N trials, or mL this session). While a
   schedule is active the strip shows it, for example *stop at 14:30 · set by jake*, with a
   cancel button.
 - **Keys** do nothing while a text box has focus.
 - **The changes feed** lists every setting change, refusal, pause, resume, mark (with its
-  note) and schedule, with who did it, rendered in Python like every other pane.
+  note), schedule and — since 2026-09-28 — manual reward, with who did it, rendered in
+  Python like every other pane.
 - **Name:** the box's browser asks once and remembers it locally; commands carry it and are
   recorded as `NAME (box, unverified)`.
 - **Everywhere but the box**, the controls are greyed with the §2 sentence.
@@ -396,6 +437,10 @@ Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loo
   the rig accepted or refused a command shows in the feed, from telemetry, as today.
 - **The mark's signal** goes on its own path to the rig's mark socket as soon as it
   arrives, ahead of the queue.
+- **A manual reward is never re-sent** (2026-09-28). Nothing on the command path re-sends
+  any command; a reward the rig took and did not acknowledge may have been given, so the
+  page is told *unknown*, with a sentence to check the fluid total before pressing again,
+  never *not delivered*. A test pins that one press puts one command on the wire.
 - **`Host` is checked on every request** (§2). `--allow-host NAME`, repeatable, adds names;
   the defaults are loopback and the box's own host names and addresses. A refused request
   gets a JSON 421 and no page.
@@ -412,7 +457,10 @@ Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loo
     and the record holds its three instants and its note;
   - each kind of scheduled stop ends the session with its reason, and cancel removes it;
   - a write from a non-loopback peer, or to an unknown `Host`, is refused;
-  - with `taskd` gone, the page is told *not delivered*.
+  - with `taskd` gone, the page is told *not delivered*;
+  - (2026-09-28) a reward pressed while trials run is refused on the feed; one pressed
+    while paused gives exactly one `reward_correct`, and the fluid total, the record and
+    the recorded event stream all show it.
 - **The renderer** stays pure and is tested as in §4.4, with the new controls, feed rows and
   strip item.
 - **The measurement** (CLAUDE.md: no timing claim without one). A script in `tools/`
@@ -426,14 +474,18 @@ Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loo
 
 Welfare-critical by CLAUDE.md, given to the PI as numbered items in plain terms:
 
-1. While paused, nothing is rewarded, and the out-of-cage limit still ends the session.
+1. While paused, the task rewards nothing, a person at the box may give one correct-trial
+   reward per press (the bounded config's `reward_correct`, counted in the fluid total and
+   toward "stop after X mL"), and the out-of-cage limit still ends the session. *Amended
+   2026-09-28, the PI's answer in §5.0; it was "nothing is rewarded".*
 2. A scheduled stop, including "after X mL", can end a session.
 3. Reward size can be changed from the console page, still capped by its approved ceiling.
 4. The M8 fix: a malformed setting is refused and never ends the session.
 
 ### 5.6 Outside this repository
 
-- The three new event names go into the allocation; wl-exptasks owns the final numbering.
+- The four new event names go into the allocation (three, and `manual_reward` since
+  2026-09-28); wl-exptasks owns the final numbering.
 - With b2b, not before: tell wl-works that its handover's "a person at the console" line
   is superseded for signed-in writes (§5.0), and ask it to register each rig's client.
 
@@ -441,7 +493,10 @@ Welfare-critical by CLAUDE.md, given to the PI as numbered items in plain terms:
 
 Designed in full as its own section when b2a has shipped. Decided now:
 
-- **Who:** people signed in to wl-works, with every b2 control (§5.0).
+- **Who:** people signed in to wl-works, with every b2 control (§5.0). **The manual reward
+  during a pause is one of them** (2026-09-28): it follows the PI's 2026-09-27 ruling for
+  remote users in §5.0 — remote gets everything, reward size included — and is not asked
+  again.
 - **How:** **the browser holds the wl-works access token and presents it with each command**,
   and the rig verifies it. The PI chose this over the rig holding its own sign-in session,
   knowing that **a deactivated account keeps working until its token expires**.
