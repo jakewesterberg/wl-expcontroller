@@ -4,15 +4,17 @@
 
 > **Built on b1** (`p4d2b-b1-read-only-console`, approved by the PI on 2026-09-27 to fast-forward onto `main` once its gate and CI are clean) **plus the spec commit** (`e426de2`, "Design slice b2: controls from the box (b2a), and remote sign-in's decisions (b2b)"). b1 landed on `main` the same day, and branch `p4d2b-b2a-controls` was rebased onto `main` at `a7493e4` (the CI split, the `test_cli.py` minute-boundary fix, and the P9/P10 docs); the plan was then re-applied there (below).
 >
-> **Every task's code was built and run before this plan was written**, in a scratch copy of `e426de2` (`git archive HEAD`, with the `wl-preproc` checkout linked beside it), task by task, each task's tests red first and then green, the whole suite after each task. The code in every step below is that code, and the steps are exact replacements: each "replace" block's old text is unique in its file at the moment the step is applied, in the order given, and is whole lines — except a one-line block in Task 14 that sits inside a longer line of a document (a table row), where only that text is replaced. An "Append to" block goes at the end of the file as it stands. A script then re-applied every step of this plan, as written, to a fresh copy of `e426de2`, ran the suite after each task and checked the counts stated here. **1092 passed** at `e426de2`; **1330 passed** after Task 13. **Re-applied after the rebase** (2026-09-27), step by step to a copy of `37c2f1e` — `main` at `a7493e4` plus this branch's spec and plan — with every RED and GREEN run where the plan puts it, each commit block executed, and Task 14's anchors moved to `main`'s newer `CHECKPOINT.md` and `next-session.md`: **1124 passed** there, **1362 passed** after Task 13. Every count is 32 above the first run's: `main`'s new `tests/test_mutation_gate.py` tests. **Rebased again** (2026-09-28) onto `334f6db`, `main`'s fix to `--changed-only` selection, which adds three tests: **1127 passed** there, and every count below is 3 above the `37c2f1e` run's. Nothing else this plan touches moved — no step edits `tools/mutation_gate.py`, and each of Task 14's replace blocks still matches its file exactly once, applied in order (checked by script, 2026-09-28).
+> **Every task's code was built and run before this plan was written**, in a scratch copy of `e426de2` (`git archive HEAD`, with the `wl-preproc` checkout linked beside it), task by task, each task's tests red first and then green, the whole suite after each task. The code in every step below is that code, and the steps are exact replacements: each "replace" block's old text is unique in its file at the moment the step is applied, in the order given, and is whole lines — except a one-line block in Task 15 that sits inside a longer line of a document (a table row), where only that text is replaced. An "Append to" block goes at the end of the file as it stands. A script then re-applied every step of this plan, as written, to a fresh copy of `e426de2`, ran the suite after each task and checked the counts stated here. **1092 passed** at `e426de2`; **1330 passed** after the measurement task (Task 13 then, Task 14 since the amendment below). **Re-applied after the rebase** (2026-09-27), step by step to a copy of `37c2f1e` — `main` at `a7493e4` plus this branch's spec and plan — with every RED and GREEN run where the plan puts it, each commit block executed, and the documents task's anchors (Task 14 then, Task 15 now) moved to `main`'s newer `CHECKPOINT.md` and `next-session.md`: **1124 passed** there, **1362 passed** after the measurement task. Every count is 32 above the first run's: `main`'s new `tests/test_mutation_gate.py` tests. **Rebased again** (2026-09-28) onto `334f6db`, `main`'s fix to `--changed-only` selection, which adds three tests: **1127 passed** there, and every count below through Task 12 is 3 above the `37c2f1e` run's. Nothing else this plan touches moved — no step edits `tools/mutation_gate.py`, and each of the documents task's replace blocks still matches its file exactly once, applied in order (checked by script, 2026-09-28).
 >
-> **Also looked at in a real browser, in the scratch copy** (Playwright, 2026-09-27): a simulated `wlx run --link PUB,REP,MARK` and `wlx serve`, the page on `127.0.0.1`. A refused and a cleared name prompt sent nothing and said why; a name was kept in `localStorage`; **P** paused (pill *paused · since HH:MM:SS*, button *resume (P)*); **M** signalled a mark while paused, the note box opened with focus, an **M** typed into it stayed text, and Enter attached the note (feed: *mark 1 stamped while paused, before trial 3511* and *mark 1: "reward line bubble" · jake (box, unverified)*); three clicks on an arrow sent one change, 0.30 → 0.45, staged and then applied on resume; a scheduled stop after N trials showed on the strip and its cancel removed it; `25:00` was refused with its sentence; the stop's confirm step opened and closed; stop ended the session. `controls.jsonl` held every row, the note's with its three instants and two gaps. That look came before four small amendments the suite covers and the browser has not seen — the note box no longer shows the mark's random number, a schedule that fired is spent, a console's stop is a record row, and one test was made deterministic — so Task 15 Step 4 repeats it on the branch, in full.
+> **Amended 2026-09-28, at the PI's review of this plan** (Plan decision 16): he approved it with one change, "I want to be able to give manual rewards during pause", and chose "Same as a correct trial" for how much one press gives. **Task 13, a manual reward during a pause, is new; the old Tasks 13, 14 and 15 are now 14, 15 and 16**, and every reference in this plan says the new number, except where a history note says which it was. Task 13 was built first, test-first, in a scratch copy of this branch's tip with Tasks 1–12 applied — its tests red, then green — and each function it adds or changes was mutation-checked there (Task 13 Step 5). The whole amended plan was then re-applied, as written, to a fresh `git archive` of the branch tip: **1361 passed** after Task 12 as before, 1388 after Task 13 and 1392 after Task 14, every stated count matched, and every one of Task 15's replace blocks still matches its file exactly once, applied in order.
 >
-> **Swept in the scratch copy** (`tools/mutate.py --all --returns None`, 2026-09-27), every module this plan changes — `link`, `taskd`, `serve`, `web`, `cli`, `record`, `run`, `health` and `tools/measure_mark_check.py`: 241 functions, each read by its line. 235 were `N failed` naming tests; `run`'s `display` is inert, as it was before this slice; one `SURVIVED` and five `timed out`. Four defects in this plan's tests were found by that sweep and the round before it, each fixed in its owning task and re-run to `N failed`: `measure_mark_check.main` `SURVIVED` (Task 13 now tests it), and three missing bounds that printed `caught … timed out` — `taskd.Session._command` (Task 12's `CONTROL_TRIAL_BUDGET`; now 68 failed), `serve.Outbox._answer` (Task 11's `_submitted`; 20 failed) and `taskd.Session._hold` (Task 5's `PASS_BUDGET`; 12 failed). The other four `timed out` lines — `link.mark_signal`, `taskd.Session.controls`, `serve.parse_command` and `web._wrong` — all ran in the same five minutes, while the machine's load average stood above 300 from other work; each, re-run alone, was `N failed` in about a minute (15, 165, 45 and 7). Task 15 Step 2 sweeps again on the executed branch: the gate for `wl_expcontroller/`, and `tools/measure_mark_check.py` by hand, since no gate mode reaches `tools/`.
+> **Also looked at in a real browser, in the scratch copy** (Playwright, 2026-09-27): a simulated `wlx run --link PUB,REP,MARK` and `wlx serve`, the page on `127.0.0.1`. A refused and a cleared name prompt sent nothing and said why; a name was kept in `localStorage`; **P** paused (pill *paused · since HH:MM:SS*, button *resume (P)*); **M** signalled a mark while paused, the note box opened with focus, an **M** typed into it stayed text, and Enter attached the note (feed: *mark 1 stamped while paused, before trial 3511* and *mark 1: "reward line bubble" · jake (box, unverified)*); three clicks on an arrow sent one change, 0.30 → 0.45, staged and then applied on resume; a scheduled stop after N trials showed on the strip and its cancel removed it; `25:00` was refused with its sentence; the stop's confirm step opened and closed; stop ended the session. `controls.jsonl` held every row, the note's with its three instants and two gaps. That look came before four small amendments the suite covers and the browser has not seen — the note box no longer shows the mark's random number, a schedule that fired is spent, a console's stop is a record row, and one test was made deterministic — and before Task 13's manual reward, which no browser has seen either; so Task 16 Step 4 repeats it on the branch, in full, with the reward button added.
+>
+> **Swept in the scratch copy** (`tools/mutate.py --all --returns None`, 2026-09-27), every module this plan changes — `link`, `taskd`, `serve`, `web`, `cli`, `record`, `run`, `health` and `tools/measure_mark_check.py`: 241 functions, each read by its line. 235 were `N failed` naming tests; `run`'s `display` is inert, as it was before this slice; one `SURVIVED` and five `timed out`. Four defects in this plan's tests were found by that sweep and the round before it, each fixed in its owning task and re-run to `N failed`: `measure_mark_check.main` `SURVIVED` (Task 14 now tests it), and three missing bounds that printed `caught … timed out` — `taskd.Session._command` (Task 12's `CONTROL_TRIAL_BUDGET`; now 68 failed), `serve.Outbox._answer` (Task 11's `_submitted`; 20 failed) and `taskd.Session._hold` (Task 5's `PASS_BUDGET`; 12 failed). The other four `timed out` lines — `link.mark_signal`, `taskd.Session.controls`, `serve.parse_command` and `web._wrong` — all ran in the same five minutes, while the machine's load average stood above 300 from other work; each, re-run alone, was `N failed` in about a minute (15, 165, 45 and 7). Task 13's functions, added on 2026-09-28, were swept on their own (Task 13 Step 5). Task 16 Step 2 sweeps again on the executed branch: the gate for `wl_expcontroller/`, and `tools/measure_mark_check.py` by hand, since no gate mode reaches `tools/`.
 
-**Goal:** A person at the rig PC works a running session from the browser console: sets parameters with arrows and inputs, pauses and resumes, marks a moment that is stamped in the frame it reaches the rig, schedules a stop by clock time, trials or fluid, and stops — every control recorded with who did it and when, every write refused anywhere but the box, and the page told the truth about whether the rig got it.
+**Goal:** A person at the rig PC works a running session from the browser console: sets parameters with arrows and inputs, pauses and resumes, marks a moment that is stamped in the frame it reaches the rig, schedules a stop by clock time, trials or fluid, gives a manual reward while paused (the PI's 2026-09-28 amendment), and stops — every control recorded with who did it and when, every write refused anywhere but the box, and the page told the truth about whether the rig got it.
 
-**Architecture:** Commands on the link grow from `SetParameter | Stop` to seven kinds, each carrying `by` and each checked where it is decoded — M8 first, so a malformed setting is a refusal and never the end of a session. `taskd` holds a pause at the trial boundary (a housekeeping loop that still drains, publishes, and asks `welfare.must_stop`), holds a scheduled stop, and records every control in a new `controls.jsonl`. A mark is two things: an eight-byte signal on a third loopback socket that the trial loop checks once per frame — `getsockopt(EVENTS)` and, only when one waits, `recv_into` a preallocated buffer — strobing `OPERATOR_MARK` in that frame; and a note, an ordinary `Mark` command, joined to its stamp by the signal's number. Telemetry goes to schema 8 (`paused_at`, `scheduled_stop`, `controls`, `controls_dropped`). `wlx serve` takes `POST /commands` under spec §2's four checks, answers every request only when its `Host` names the console, and owns each ZMQ socket on one thread: a read-only telemetry thread, a command thread whose REQ socket waits for the rig's acknowledgment and resets on a timeout, and a mark thread that sends the signal ahead of every command. The page renders the controls in Python, as every pane is, and its script grows to send them.
+**Architecture:** Commands on the link grow from `SetParameter | Stop` to eight kinds, each carrying `by` and each checked where it is decoded — M8 first, so a malformed setting is a refusal and never the end of a session. `taskd` holds a pause at the trial boundary (a housekeeping loop that still drains, publishes, and asks `welfare.must_stop`), gives a person's manual reward only while it holds one, holds a scheduled stop, and records every control in a new `controls.jsonl`. A mark is two things: an eight-byte signal on a third loopback socket that the trial loop checks once per frame — `getsockopt(EVENTS)` and, only when one waits, `recv_into` a preallocated buffer — strobing `OPERATOR_MARK` in that frame; and a note, an ordinary `Mark` command, joined to its stamp by the signal's number. Telemetry goes to schema 8 (`paused_at`, `scheduled_stop`, `controls`, `controls_dropped`). `wlx serve` takes `POST /commands` under spec §2's four checks, answers every request only when its `Host` names the console, and owns each ZMQ socket on one thread: a read-only telemetry thread, a command thread whose REQ socket waits for the rig's acknowledgment and resets on a timeout, and a mark thread that sends the signal ahead of every command. The page renders the controls in Python, as every pane is, and its script grows to send them.
 
 **Tech Stack:** Python 3.11–3.13; pyzmq (floor raised to 26.4 for `Socket.recv_into`) and msgpack through `link.py`, imported lazily; stdlib `http.server`, `threading`, `queue`, `socket`, `json`, `tracemalloc` (the measurement); pytest. No new dependency.
 
@@ -22,7 +24,7 @@
 
 Spec §5 left these to the plan. Each is taken here, with its reason; the code is in the task named.
 
-1. **The mark signal: a third loopback socket, checked once per frame through `EVENTS`, read with `recv_into`** (spec §5.1's proposal, kept; Tasks 3 and 6). `taskd` binds a PULL socket, `wlx serve` connects a PUSH. `ZmqLink.mark_signal()` is `getsockopt(EVENTS) & POLLIN` on plain `int` constants read once in `__init__`, and only when a message waits, `recv_into(self._mark_buffer, flags=DONTWAIT)` into an eight-byte `bytearray` the link allocated once. **Verified against the installed source**, pyzmq 27.2.0 in this repository's venv, read 2026-09-27: `zmq/sugar/socket.py:376` makes `getsockopt` `SocketBase.get`; `zmq/backend/cython/_zmq.py:853` is `Socket.get`, which for an `int` option calls `zmq_getsockopt` into a C `int` and returns it; `_zmq.py:1264` is `Socket.recv_into`, "storing the data into a buffer rather than allocating a new Frame", `.. versionadded:: 26.4`, returning "the size of the received frame" even past the buffer's size, which is how an oversize signal is told from a mark. **Allocation, checked** (scratchpad `tracemalloc` probes, 2026-09-27): with nothing waiting, the check's peak over 100,000 calls was indistinguishable from an empty function's, and nothing was left held; the `zmq.EVENTS & zmq.POLLIN` form of the same check left 656 bytes held, because `&` on a `PollEvent` builds a flag through the enum machinery — hence the plain `int`s. `test_the_per_frame_check_keeps_nothing_it_allocates` pins "nothing held"; transient allocation is not pinned by a test, because `tracemalloc`'s peak moved by ±32 bytes run to run in the probe. **Cost: it is not free, and this plan does not say how much it costs** (CLAUDE.md). In a scratchpad probe on a heavily loaded development machine (2026-09-27; not committed, and not a claim about this system), `getsockopt(EVENTS)` took tens of times as long as `getsockopt(LINGER)`, consistent with work inside libzmq on each call — libzmq's own source was not read, so which work is UNVERIFIED. The committed measurement is Task 13's. `tools/measure_mark_check.py` measures it (Task 13), its first result is committed, and its effect on real frames is V12 on a rig. The spec's rule stands: if it disturbs frames, it goes back to the PI (Task 15 Step 6 asks). The alternative, if it must change: a listener thread in `taskd` that blocks on the PULL socket and appends to a `deque` the frame reads — a length test per frame, at the cost of a thread in the trial process and a mark's wake-up waiting on the GIL. Not built. **Where it runs**: `run_trial` gains one per-frame hook, `each_frame(frame)`, called first thing on every frame, the gaze-lost frames included; `taskd` passes the check. Between trials it runs once per boundary (`Session._check_marks`); while paused, the housekeeping wait is `Link.idle`, a `zmq.Poller` over the REP and PULL sockets that returns the moment a mark or a command arrives, so a mark is stamped then. **One signal per frame**: a second waiting is read on the next frame, and its stamp names that frame. A signal that is not eight bytes naming a mark is counted in the frame (one integer, no list grows mid-trial) and refused once at the next `drain`.
+1. **The mark signal: a third loopback socket, checked once per frame through `EVENTS`, read with `recv_into`** (spec §5.1's proposal, kept; Tasks 3 and 6). `taskd` binds a PULL socket, `wlx serve` connects a PUSH. `ZmqLink.mark_signal()` is `getsockopt(EVENTS) & POLLIN` on plain `int` constants read once in `__init__`, and only when a message waits, `recv_into(self._mark_buffer, flags=DONTWAIT)` into an eight-byte `bytearray` the link allocated once. **Verified against the installed source**, pyzmq 27.2.0 in this repository's venv, read 2026-09-27: `zmq/sugar/socket.py:376` makes `getsockopt` `SocketBase.get`; `zmq/backend/cython/_zmq.py:853` is `Socket.get`, which for an `int` option calls `zmq_getsockopt` into a C `int` and returns it; `_zmq.py:1264` is `Socket.recv_into`, "storing the data into a buffer rather than allocating a new Frame", `.. versionadded:: 26.4`, returning "the size of the received frame" even past the buffer's size, which is how an oversize signal is told from a mark. **Allocation, checked** (scratchpad `tracemalloc` probes, 2026-09-27): with nothing waiting, the check's peak over 100,000 calls was indistinguishable from an empty function's, and nothing was left held; the `zmq.EVENTS & zmq.POLLIN` form of the same check left 656 bytes held, because `&` on a `PollEvent` builds a flag through the enum machinery — hence the plain `int`s. `test_the_per_frame_check_keeps_nothing_it_allocates` pins "nothing held"; transient allocation is not pinned by a test, because `tracemalloc`'s peak moved by ±32 bytes run to run in the probe. **Cost: it is not free, and this plan does not say how much it costs** (CLAUDE.md). In a scratchpad probe on a heavily loaded development machine (2026-09-27; not committed, and not a claim about this system), `getsockopt(EVENTS)` took tens of times as long as `getsockopt(LINGER)`, consistent with work inside libzmq on each call — libzmq's own source was not read, so which work is UNVERIFIED. The committed measurement is Task 14's. `tools/measure_mark_check.py` measures it (Task 14), its first result is committed, and its effect on real frames is V12 on a rig. The spec's rule stands: if it disturbs frames, it goes back to the PI (Task 16 Step 6 asks). The alternative, if it must change: a listener thread in `taskd` that blocks on the PULL socket and appends to a `deque` the frame reads — a length test per frame, at the cost of a thread in the trial process and a mark's wake-up waiting on the GIL. Not built. **Where it runs**: `run_trial` gains one per-frame hook, `each_frame(frame)`, called first thing on every frame, the gaze-lost frames included; `taskd` passes the check. Between trials it runs once per boundary (`Session._check_marks`); while paused, the housekeeping wait is `Link.idle`, a `zmq.Poller` over the REP and PULL sockets that returns the moment a mark or a command arrives, so a mark is stamped then. **One signal per frame**: a second waiting is read on the next frame, and its stamp names that frame. A signal that is not eight bytes naming a mark is counted in the frame (one integer, no list grows mid-trial) and refused once at the next `drain`.
 
 2. **`--link PUB,REP[,MARK]`, for `wlx run` and `wlx serve` alike** (Task 3, Task 11). The operator gives both processes the same string, as b1 already asks for two endpoints. Two endpoints still work as they did in b1: `taskd` binds no mark socket, and `wlx serve` greys the mark control with a sentence naming the flag (`web.NO_MARK_ENDPOINT`) and answers a mark *not delivered*. The mark endpoint gets the other two's rule: loopback unless `--link-allow-remote`.
 
@@ -30,45 +32,55 @@ Spec §5 left these to the plan. Each is taken here, with its reason; the code i
 
 4. **A mark is recorded in two rows, and the first never waits for the second** (Task 6). The stamp — `kind: mark`, the signal's number, the session's number, the trial and frame (`null` between trials and while paused), whether it was strobed, and `at`, the stamp's instant on the session's anchored clock — is written at the boundary after its frame, whether or not a note ever comes: a page closed before Enter must not lose the mark. The note arrives as a `Mark` command (Enter attaches the typed text; Esc sends it empty) and is written as `kind: note`, joined by number, with all three instants — `pressed_at` (the browser's clock), `received_at` (`wlx serve`'s host clock), `stamped_at` (the session's anchored clock) — and both gaps, `received_after_pressed_s` and `stamped_after_received_s`. The gaps are across two clocks each and are recorded as the clocks read, never corrected (spec §5.1: "recorded, never hidden"); they are session data, not a claim about this system's latency. A note for a mark the session never stamped says so; a note after `wlx serve` restarted carries its instants as `null`, never guessed. A mark is never refused, since it has already been pressed: with no `OPERATOR_MARK` code in the allocation it is stamped unstrobed and the feed says so.
 
-5. **Pause holds at the boundary, in `Session._hold`** (Task 5). Once per housekeeping pass (`taskd.PAUSE_HOUSEKEEPING_S = 0.5`, a responsiveness choice and not a measurement; the wait ends early on any command or mark) it drains commands, publishes a frame, and asks `Session._ends` — the one place the loop asks `welfare.must_stop`, between trials and while paused alike, so the limit ends a paused session "exactly as between trials". `welfare` is called unchanged. **Nothing is rewarded because nothing can be**: a reward is a trial's action, and no trial runs. **The display shows the task's background because nothing is drawn**: a stimulus is shown only by a trial. No display process exists yet to be told so (S4's is not built; `docs/CHECKPOINT.md`: "a frame on screen" is blocked on a panel), so this is structural today, and V12 item 3 is how a rig proves it. A pause is **refused, with a sentence**, when a `Stop` was drained ahead of it (Review Focus 3), when the session is already paused (a double click), or when the allocation lacks `PAUSE` or `RESUME` — a gap in the recording needs both ends. Settings staged while paused apply at the top of the loop's next pass, before the next trial. Telemetry: `paused_at`, the instant on the session's anchored clock, `None` while running; a session stopped while paused keeps it, and the page shows how it ended, not *paused*.
+5. **Pause holds at the boundary, in `Session._hold`** (Task 5). Once per housekeeping pass (`taskd.PAUSE_HOUSEKEEPING_S = 0.5`, a responsiveness choice and not a measurement; the wait ends early on any command or mark) it drains commands, publishes a frame, and asks `Session._ends` — the one place the loop asks `welfare.must_stop`, between trials and while paused alike, so the limit ends a paused session "exactly as between trials". `welfare` is called unchanged. **The task rewards nothing because it cannot**: its reward is a trial's action, and no trial runs. A person may give one correct-trial reward per press, and only while the session is held (Plan decision 16, Task 13). **The display shows the task's background because nothing is drawn**: a stimulus is shown only by a trial. No display process exists yet to be told so (S4's is not built; `docs/CHECKPOINT.md`: "a frame on screen" is blocked on a panel), so this is structural today, and V12 item 3 is how a rig proves it. A pause is **refused, with a sentence**, when a `Stop` was drained ahead of it (Review Focus 3), when the session is already paused (a double click), or when the allocation lacks `PAUSE` or `RESUME` — a gap in the recording needs both ends. Settings staged while paused apply at the top of the loop's next pass, before the next trial. Telemetry: `paused_at`, the instant on the session's anchored clock, `None` while running; a session stopped while paused keeps it, and the page shows how it ended, not *paused*.
 
 6. **A scheduled stop is fixed when it is accepted** (Task 7). `ScheduleStop(kind, value, by)`, kinds `clock` (`"HH:MM"`), `trials` (a whole number, at least one) and `fluid` (mL above zero); `link.check_schedule` is the one rule, asked where the wire decodes it and again by `taskd`. **Clock**: `taskd._next_occurrence(hhmm, wall)` — the first instant strictly after `wall = Session.wall_now()`, the session's anchored clock, at which the host's local clock reads `hhmm`; `time.mktime` with `tm_isdst=-1` decides daylight saving and rolls the day. **Exactly now is past**, so both name tomorrow's (Review Focus 4), and the schedule's words then carry the date — *at 22:13 on 2023-11-15* — on the feed and the strip, so a slip of the hour is read rather than waited for. **Trials**: the target is the trial count at acceptance plus N, shown as *after trial 48*. **Fluid**: the target is mL compared with `welfare.session_total()`, read and never asked to decide. One at a time: a new one replaces the old and says what it replaced; cancel with nothing scheduled is refused. `_ends` checks it after `must_stop`, so a session that reached its limit ends as `limit`; when due it ends the session like the stop button, `stop_kind` `operator`, *scheduled stop (after trial 48) set by NAME*, writes a `scheduled_stop` row, and the schedule is spent.
 
-7. **The record: `controls.jsonl`, one row per control** (Tasks 5–7). `SessionRecord.control(kind, by, at, trial_index, **detail)`, beside `refusal` and `parameter_change` and in their shape: `at` is the session's anchored clock, written also as local clock time with its zone (`record._local`); `trial_index` is the trial it happened in or, between trials, the one about to run. Kinds: `stop` (a console's stop, which until now was on the record nowhere but in the stop reason's telemetry and at the terminal), `pause`, `resume` (with `paused_s`), `mark`, `note`, `schedule`, `cancel`, `scheduled_stop`. **Its own file**, for `welfare_notes.jsonl`'s reason, and **uncapped**, unlike `refusals.jsonl`: each row is something that happened, made by the box's own console, and marks are bounded besides at one per frame. An applied setting is already a row in `parameter_changes.jsonl` and is not repeated here; it goes on the feed only.
+7. **The record: `controls.jsonl`, one row per control** (Tasks 5–7). `SessionRecord.control(kind, by, at, trial_index, **detail)`, beside `refusal` and `parameter_change` and in their shape: `at` is the session's anchored clock, written also as local clock time with its zone (`record._local`); `trial_index` is the trial it happened in or, between trials, the one about to run. Kinds: `stop` (a console's stop, which until now was on the record nowhere but in the stop reason's telemetry and at the terminal), `pause`, `resume` (with `paused_s`), `mark`, `note`, `schedule`, `cancel`, `scheduled_stop`, and — since the 2026-09-28 amendment — `reward` (Task 13). **Its own file**, for `welfare_notes.jsonl`'s reason, and **uncapped**, unlike `refusals.jsonl`: each row is something that happened, made by the box's own console, and marks are bounded besides at one per frame. An applied setting is already a row in `parameter_changes.jsonl` and is not repeated here; it goes on the feed only.
 
-8. **Three framework event names, allocated as the others are** (Task 5). `tasks/allocation.py` gains `4131: "PAUSE"`, `4132: "RESUME"`, `4133: "OPERATOR_MARK"`, after `4130: "PARAM_CHANGED"`: the spec's `pause`, `resume` and `operator_mark`, spelled as every framework name there is. `codes.py`'s docstring confines this package to 4096–32767 while ADR-0007's `TaskEvent` range is being moved, and wl-exptasks owns the final numbering (spec §5.6). `taskd` looks them up through `Session._code`, which answers `None` for a name the allocation lacks rather than raising out of the loop, and each control says what it does then (decisions 4 and 5).
+8. **Three framework event names, allocated as the others are** (Task 5). `tasks/allocation.py` gains `4131: "PAUSE"`, `4132: "RESUME"`, `4133: "OPERATOR_MARK"`, after `4130: "PARAM_CHANGED"`: the spec's `pause`, `resume` and `operator_mark`, spelled as every framework name there is. `codes.py`'s docstring confines this package to 4096–32767 while ADR-0007's `TaskEvent` range is being moved, and wl-exptasks owns the final numbering (spec §5.6). `taskd` looks them up through `Session._code`, which answers `None` for a name the allocation lacks rather than raising out of the loop, and each control says what it does then (decisions 4 and 5). **A fourth, `4134: "MANUAL_REWARD"`, joined on 2026-09-28** (Plan decision 16, Task 13), allocated the same way.
 
 9. **Telemetry schema 8** (Task 8). After `recent_outcomes`: `paused_at: float | None`; `scheduled_stop: ScheduledStop | None`, where `ScheduledStop(kind, target, by, said)` carries the rig's own words so every console shows the same sentence the stop reason uses; `controls: tuple` of `Control(kind, by, at, said)`, the last `link.CONTROL_HISTORY` (50) control events, oldest first; and `controls_dropped: int`, so a cap never reads as a quiet session. `Control` kinds include `set`, a staged setting applied, because the feed lists every setting change (spec §5.2) and a staged row leaves `Telemetry.staged` when it applies. A schema-7 reader refuses schema 8 by name (`SchemaMismatch`), and schema 8 refuses 7.
 
-10. **`wlx serve`'s writes** (Task 4, Task 11). Three threads, each owning its socket (spec §2): the telemetry thread builds a **read-only** `ZmqConsole` (its REQ endpoint `None`); the **command thread** (an `Outbox`) builds `ZmqCommands`, a REQ socket with `IMMEDIATE`, and `deliver` returns only when `taskd` acknowledged receipt — *sent* — or raises `NotDelivered`: at once when no rig is connected (`IMMEDIATE` queues only to a completed connection; `CONNECT_TIMEOUT_S = 1.0` covers a socket still connecting), or after `REPLY_TIMEOUT_S = 15.0` with no reply, **after which the socket is reset** — closed, and a new one connected — because a REQ socket cannot send again unanswered. The timeout outlasts a trial, since `taskd` reads commands only at boundaries; a command that timed out was handed over and not acknowledged, and may still apply at the rig's next boundary, so its sentence says so rather than calling it lost. The **mark thread** builds `ZmqMarks`, a PUSH socket with `IMMEDIATE`, so a mark never waits behind a command awaiting its acknowledgment. Each `Outbox` has a bounded queue (`COMMAND_QUEUE_DEPTH = 4`, `MARK_QUEUE_DEPTH = 8`); a full one answers *busy* at once, and every queued job is answered, by its work or by *not delivered: wlx serve is closing*. All of these numbers are housekeeping, not measurements. **`POST /commands`** takes one JSON object: `{"kind": "set", "name", "value"}`, `{"kind": "stop" | "pause" | "resume" | "cancel"}`, `{"kind": "schedule"}` with exactly one of `"at": "HH:MM"`, `"trials": N`, `"ml": X`, `{"kind": "mark", "pressed_at"}` and `{"kind": "note", "mark", "note"}`, each with `"by"`, the person's name (1–64 printable characters), recorded as `NAME (box, unverified)`. A field a kind does not take is refused, not ignored. `serve.parse_command` validates before anything is queued, with the wire's own rules (`link._setting`, `link.check_schedule`). Answers: `200` *sent* or *signaled* (a mark, with its number); `503` *busy*; `504` *not delivered*; `400` *refused* with the sentence (a body that is not a command, or longer than `BODY_LIMIT = 4096` bytes — `413`); `403` with spec §2's sentence when any of the four checks fails.
+10. **`wlx serve`'s writes** (Task 4, Task 11). Three threads, each owning its socket (spec §2): the telemetry thread builds a **read-only** `ZmqConsole` (its REQ endpoint `None`); the **command thread** (an `Outbox`) builds `ZmqCommands`, a REQ socket with `IMMEDIATE`, and `deliver` returns only when `taskd` acknowledged receipt — *sent* — or raises `NotDelivered`: at once when no rig is connected (`IMMEDIATE` queues only to a completed connection; `CONNECT_TIMEOUT_S = 1.0` covers a socket still connecting), or after `REPLY_TIMEOUT_S = 15.0` with no reply, **after which the socket is reset** — closed, and a new one connected — because a REQ socket cannot send again unanswered. The timeout outlasts a trial, since `taskd` reads commands only at boundaries; a command that timed out was handed over and not acknowledged, and may still apply at the rig's next boundary, so its sentence says so rather than calling it lost. The **mark thread** builds `ZmqMarks`, a PUSH socket with `IMMEDIATE`, so a mark never waits behind a command awaiting its acknowledgment. Each `Outbox` has a bounded queue (`COMMAND_QUEUE_DEPTH = 4`, `MARK_QUEUE_DEPTH = 8`); a full one answers *busy* at once, and every queued job is answered, by its work or by *not delivered: wlx serve is closing*. All of these numbers are housekeeping, not measurements. **`POST /commands`** takes one JSON object: `{"kind": "set", "name", "value"}`, `{"kind": "stop" | "pause" | "resume" | "cancel" | "reward"}` (`reward` since Task 13), `{"kind": "schedule"}` with exactly one of `"at": "HH:MM"`, `"trials": N`, `"ml": X`, `{"kind": "mark", "pressed_at"}` and `{"kind": "note", "mark", "note"}`, each with `"by"`, the person's name (1–64 printable characters), recorded as `NAME (box, unverified)`. A field a kind does not take is refused, not ignored. `serve.parse_command` validates before anything is queued, with the wire's own rules (`link._setting`, `link.check_schedule`). Answers: `200` *sent* or *signaled* (a mark, with its number); `503` *busy*; `504` *not delivered*, or, for a manual reward handed over and not acknowledged, *unknown* (Task 13); `400` *refused* with the sentence (a body that is not a command, or longer than `BODY_LIMIT = 4096` bytes — `413`); `403` with spec §2's sentence when any of the four checks fails.
 
 11. **Every request's `Host`** (Task 11). `do_GET`, `do_POST` and every refused method answer `421` with a JSON body, and no page, unless `host_name(Host)` is in the console's names: `serve.LOOPBACK_NAMES` (`localhost`, `127.0.0.1`, `::1`), `socket.gethostname()` and `socket.getfqdn()`, every address `socket.getaddrinfo` gives for those, and each `--allow-host NAME` (repeatable) — lowercased, computed once when `wlx serve` starts (`serve.box_names`). A lookup that fails adds nothing: loopback and `--allow-host` still work, and a LAN viewer's refusal names the flag. A request so malformed that the stdlib answers it before `do_*` (`send_error`) is answered as in b1: a fixed JSON body that echoes nothing. **A write** also needs `Host` to name loopback, not merely the box: spec §2's second check. `View.can_write` is §2's first two checks, per request, and greys the page's controls.
 
-12. **The page** (Task 10). The controls are rendered in Python like every pane: a `controls` fragment (pause *or* resume by the session's state — never a toggle, so a double click sends the same command twice and the rig refuses the second — mark, stop), each parameter card's input and ▲▼ arrows (step by unit, the mockup's rule: mL 0.01, s 0.05, deg 0.1, else 0.01; a categorical card takes a word and has no arrows), the last refusal of that parameter on its card as *last refused: …* (a refusal carries no time, so *last* is the honest word), and a fifth strip cell while a schedule is held (*stop at 14:30 · set by jake*, with *cancel*). What no frame changes — the name, the last command's answer, the stop confirm, the mark's note box, the scheduled-stop form — is static in `page()`, so a frame never replaces what a person is typing. The script grows as spec §5.2 says and still renders nothing: it posts JSON with `fetch`, debounces the arrows (`web.DEBOUNCE_MS = 600`, the mockup's, housekeeping), holds a new parameters fragment while an input has focus or a change is pending, handles **P** and **M** outside text boxes and never on a held key, and asks the name once, kept in `localStorage` inside `try`. A prompt refused or cleared sends nothing and says why (Review Focus's sixth case, below). **The Content-Security-Policy is unchanged**: `connect-src 'self'` already covers the `fetch`, and `form-action 'none'` refuses any form. `View.can_write` and `View.can_mark` default to `False`: a view that did not say may not write.
+12. **The page** (Task 10). The controls are rendered in Python like every pane: a `controls` fragment (pause *or* resume by the session's state — never a toggle, so a double click sends the same command twice and the rig refuses the second — mark, stop, and since Task 13 *give reward*, live only while paused), each parameter card's input and ▲▼ arrows (step by unit, the mockup's rule: mL 0.01, s 0.05, deg 0.1, else 0.01; a categorical card takes a word and has no arrows), the last refusal of that parameter on its card as *last refused: …* (a refusal carries no time, so *last* is the honest word), and a fifth strip cell while a schedule is held (*stop at 14:30 · set by jake*, with *cancel*). What no frame changes — the name, the last command's answer, the stop confirm, the mark's note box, the scheduled-stop form — is static in `page()`, so a frame never replaces what a person is typing. The script grows as spec §5.2 says and still renders nothing: it posts JSON with `fetch`, debounces the arrows (`web.DEBOUNCE_MS = 600`, the mockup's, housekeeping), holds a new parameters fragment while an input has focus or a change is pending, handles **P** and **M** outside text boxes and never on a held key, and asks the name once, kept in `localStorage` inside `try`. A prompt refused or cleared sends nothing and says why (Review Focus's sixth case, below). **The Content-Security-Policy is unchanged**: `connect-src 'self'` already covers the `fetch`, and `form-action 'none'` refuses any form. `View.can_write` and `View.can_mark` default to `False`: a view that did not say may not write.
 
-13. **Two `taskd` functions join the welfare-critical list** (Task 14). `Session._ends` is now the one place the loop asks `welfare.must_stop`, and where a scheduled stop — "after X mL" included — ends a session; `Session._hold` is where a paused session is kept from rewarding and still ended on the limit. Spec §5.5's items 1 and 2 are about exactly these, so `architecture.md` lists them beside `bounds.py`, `welfare.py` and the `cli` functions. **Nothing already on the list changes**: `welfare.py`, `bounds.py`, and `cli.py`'s `_wall_clock_time`, `_clock_or_now`, `_settle_return`, `_settle_departure` and `main`'s `confirmed=` line are untouched, and `welfare.must_stop` is called as it was.
+13. **Three `taskd` functions join the welfare-critical list** (Task 15). `Session._ends` is now the one place the loop asks `welfare.must_stop`, and where a scheduled stop — "after X mL" included — ends a session; `Session._hold` is where a paused session runs no trial and is still ended on the limit, and — since the PI's 2026-09-28 amendment — the only place a person's manual reward is given from; and `Session._manual_reward` (Task 13) delivers that reward. Spec §5.5's items 1 and 2 are about exactly these, so `architecture.md` lists them beside `bounds.py`, `welfare.py` and the `cli` functions. **Nothing already on the list changes**: `welfare.py`, `bounds.py`, and `cli.py`'s `_wall_clock_time`, `_clock_or_now`, `_settle_return`, `_settle_departure` and `main`'s `confirmed=` line are untouched, and `welfare.must_stop` is called as it was.
 
 14. **M8 closes first, where the command is decoded** (Task 1). `link._setting`: a setting's value is a finite real number that is not a `bool` (returned as a `float`; `True` was accepted as `1.0`), or a word of at most `TEXT_LIMIT` characters for a categorical parameter; anything else is a `CommandRefused` naming the parameter and the sender, which `drain` turns into a `Refused` row the feed shows. `by` must be a non-empty string, for every kind. `Session.set` refuses a non-number for a ceiling and for a numeric parameter before `bounds._finite` could raise, and `Session._command` catches `TypeError` too, as the spec's backstop. **`bounds.py` is not touched.** One more hole on the same line was found and closed: a categorical parameter's word reached `_finite` too, and raised; `Session.set` now checks a categorical value against its choices alone.
 
 15. **A test-only speedup** (Task 11). `tests/test_serve.py`'s `_served` runs `serve_forever(poll_interval=0.05)`: `shutdown()` otherwise waits up to half a second, and b2a adds dozens of handler tests that each serve once — run once more per function by the mutation sweep. In the scratch copy `test_serve.py` took 49 s before this and 19 s after, on one loaded machine: a wall-clock reading of the test suite, not a claim about this system.
 
+16. **A manual reward during a pause** (PI, 2026-09-28; Task 13). He approved this plan with one change: "I want to be able to give manual rewards during pause." Asked how much one press gives, he chose **"Same as a correct trial"**: the task's current reward size, and nothing new set. The engineering calls below were stated to him the same day; the spec records them in §5.0–§5.7.
+    - **Only while held** at the trial boundary (`Session._hold`, Task 5). `_hold` passes `held=True` to `Session._command` for the commands it drains, and `Session._manual_reward` gives a reward for no other. Pressed while trials run, in the same drain as a pause that has not held yet, after a `Stop` or a `Resume` ahead of it in the drain, or after the session has ended (`_command`'s post-loop refusal), a reward is refused with a plain sentence, nothing is given, and the session goes on. Any-time manual reward stays in slice b5 (spec §4.0).
+    - **One press, one delivery of the bounded config's `reward_correct`** (`taskd.MANUAL_REWARD_ENTRY`), at the value it holds then — a size staged while paused applies at resume, so it is the next trial's, not this reward's — **through the path a task's reward takes**, `welfare.Rig.reward` → `Welfare.deliver`: charged before the valve opens and counted in `commanded`, `deliveries` and `last_delivery_wall_at`. A config with no `reward_correct` refuses the press, naming the entry; **no other entry ever stands in**. `welfare.py` and `bounds.py` are called, not edited. A pump fault is not caught, as `welfare.Rig` catches none for a task's reward: the session ends as a fault.
+    - **Recorded like every control**: a `controls.jsonl` row (`SessionRecord.control`), kind `reward`, with `by`, `at` — the instant the reward was commanded, which is also the frame's `last_reward_at` — the trial index, `ml` and `entry`; and a framework code, **`4134: "MANUAL_REWARD"`**, allocated after 4131–4133 as Task 5 allocated them: in 4096–32767, the task-specific range `wl-preproc`'s `wl_preproc/contracts/events.py` gives to wl-exptasks and whose values its `decode_stream` reads as simple events (read 2026-09-28; wl-exptasks allocates nothing in code yet). It is strobed before the delivery, as `REWARD_COMMANDED` precedes a task's reward, so a recording tells a manual reward from a task's and from a panel press (S6 §4). An allocation without it refuses the press, as one without `PAUSE` or `RESUME` refuses a pause.
+    - **It counts toward "stop after X mL", and `Session._ends` checks it** — unchanged, and asked by `_hold` after its drain, in the same pass that gave the reward and that asks the out-of-cage limit. So the session ends there as a scheduled stop, without waiting for a resume. Why `_ends` and not `_manual_reward`: `_ends` is the one place the loop asks the limit and then the schedule (Tasks 5 and 7), so the limit still wins a tie, and a second copy of the schedule's rule inside the reward would be the thing decision 13 put `_ends` on the welfare-critical list to prevent.
+    - **No accidental doubles.** Nothing on the command path re-sends a command: `ZmqCommands.deliver` sends once and, on a reply timeout, closes the socket and raises (Task 4), and an `Outbox` runs each job's work once (Task 11). So no exemption is needed; a test on real sockets pins one reward command on the wire whatever the answer, so a retry added later cannot silently double a reward. A reward handed over and not acknowledged may have been given, so `ZmqCommands.deliver` raises it as `link.Unacknowledged`, a `NotDelivered`, and `wlx serve` answers `serve.REWARD_UNKNOWN` — *unknown*, check the fluid total before pressing again — never *not delivered*. Each accepted command is exactly one reward; `taskd` does not deduplicate. The page holds its button from the click until the answer or the failure, and a lost answer is *unknown* there too.
+    - **The page**: *give reward* in the controls fragment, live only on a frame with `paused_at`, greyed with `web.REWARD_ONLY_PAUSED` while trials run and with the §2 sentence off the box; no key. While paused it is followed by the session's fluid total, the last reward given and the last press refused. Frames are still published while paused (`_hold`'s `publish()`), so the total moves on the next one. Pause stays *pause or resume*. `wlx console` stays render-only; it lists a `reward` control row like any other.
+    - **Welfare-critical**: `Session._manual_reward` joins `_ends` and `_hold` on the list (decision 13; Global Constraints; Task 15 writes it into `architecture.md`).
+    - **Remote (b2b)**: spec §5.7 records that it follows the PI's 2026-09-27 ruling for people signed in to wl-works — every b2 control, reward size included. b2b is not designed here.
+
 ## Global Constraints
 
-- **Branch, not `main`.** Work on `p4d2b-b2a-controls` in its worktree. **This slice is welfare-critical** (CLAUDE.md; spec §5.5): the pause's limit check, a scheduled stop that can end a session ("after X mL" included), reward size set from the page, and M8. **It must not merge to `main` until the PI has approved Task 15 Step 6's items.** Push the branch; do not fast-forward `main`.
+- **Branch, not `main`.** Work on `p4d2b-b2a-controls` in its worktree. **This slice is welfare-critical** (CLAUDE.md; spec §5.5): the pause's limit check, a scheduled stop that can end a session ("after X mL" included), reward size set from the page, a manual reward during a pause (Plan decision 16), and M8. **It must not merge to `main` until the PI has approved Task 16 Step 6's items.** Push the branch; do not fast-forward `main`.
 - **The code on disk wins over this plan's quotations.** Every "replace" block below was applied to `e426de2` in order and matched, and again, after the rebase onto `main`, to `37c2f1e`. If one does not match on disk, anchor on the named function and keep its meaning; never restore the quoted text.
 - **Welfare-critical code is not edited**: `welfare.py`, `bounds.py`, and `cli.py`'s `_wall_clock_time`, `_clock_or_now`, `_settle_return`, `_settle_departure`, and `main`'s `session.left_cage(at=departure, confirmed=note is not None, ...)` line. `welfare.must_stop` and `welfare.session_total` are called, never changed. If a step seems to need any of them changed, stop and ask.
-- **Two functions join the welfare-critical list, and their code requires human review before merge** (CLAUDE.md; Plan decision 13): `taskd.Session._ends` (Tasks 5 and 7) and `taskd.Session._hold` (Task 5). Keep them small; Task 14 lists them in `architecture.md`, and Task 15 Step 6 puts what they do to the PI.
+- **Three functions join the welfare-critical list, and their code requires human review before merge** (CLAUDE.md; Plan decisions 13 and 16): `taskd.Session._ends` (Tasks 5 and 7), `taskd.Session._hold` (Tasks 5 and 13) and `taskd.Session._manual_reward` (Task 13), which delivers fluid. Keep them small; Task 15 lists them in `architecture.md`, and Task 16 Step 6 puts what they do to the PI.
 - **Every session instant is read through `Session.wall_now()`**, the session's anchored `welfare.SessionClock`: a pause and a resume, a mark's stamp, a schedule's target and its check, every control row. `wlx serve` reads its own host clock once, for a mark's `received_at`, which the record labels as that clock's.
 - **US English** in code, comments and docs.
 - **No timing claim without a measurement.** `PAUSE_HOUSEKEEPING_S`, `DEBOUNCE_MS`, `REPLY_TIMEOUT_S`, `CONNECT_TIMEOUT_S`, `COMMAND_QUEUE_DEPTH`, `MARK_QUEUE_DEPTH`, `OUTBOX_POLL_S`, `BODY_LIMIT` and `MARKS_REMEMBERED` are housekeeping, and every docstring that names one says so. The mark check's cost is stated only by `tools/measure_mark_check.py`'s committed output, labeled as a development machine's; its effect on frames is V12's, on a rig.
-- **Hot path.** The only new work inside a frame is `run_trial`'s `each_frame(frame)`, which is `link.mark_signal()` — one `getsockopt(EVENTS)`, one `&` — and, only on a frame a mark arrived in, one strobe, one `Session.wall_now()` and one list append. Nothing in a frame writes a file: stamps are written at the boundary after. Everything else happens at a trial boundary, while paused, or in `wlx serve`'s process.
+- **Hot path.** The only new work inside a frame is `run_trial`'s `each_frame(frame)`, which is `link.mark_signal()` — one `getsockopt(EVENTS)`, one `&` — and, only on a frame a mark arrived in, one strobe, one `Session.wall_now()` and one list append. Nothing in a frame writes a file: stamps are written at the boundary after. Everything else happens at a trial boundary, while paused, or in `wlx serve`'s process — a manual reward only while paused, in `_hold`, never in a frame.
 - **No new dependency.** The console extra's pyzmq floor rises from 26 to 26.4 (`Socket.recv_into`), recorded in `pyproject.toml` and ADR-0004's inventory row (Task 3). `serve.py`, `web.py` and `health.py` still import with no transport installed (`tests/test_no_transport_leak.py`).
 - **Writes come from the box alone** (spec §2): a loopback peer, a `Host` naming loopback, the page's own `Origin`, and `Content-Type: application/json`. **Every request is answered only when its `Host` names this console** (spec §5.3). The actor is `NAME (box, unverified)`.
 - **Every telemetry string reaches the page through `web._e`**, in elements and attributes alike; the page's script writes only rendered fragments (`innerHTML`) and its own words (`textContent`).
 - **Tests that open a socket set a client timeout and bind loopback only**, register every `ZmqLink`/`ZmqConsole`/`ZmqCommands`/`ZmqMarks` they build with `zmq_cleanup`, and rely on `tests/_zmq_release.py`'s autouse fixture (extended in Tasks 3 and 4) for those built inside `main()` or a server thread.
 - **Tests that start a `wlx run` follow P4d-2a's two rules**: a trial budget (Ruling 10) — `_trial_budget` in `test_serve.py`, sized to the session it bounds (`CONTROL_TRIAL_BUDGET` for Task 12's, which have a mark socket and so run fewer trials a second than b1's), and for a paused session `_Scripted`'s wait and drain budgets in `test_taskd.py` — and `_main_uninterrupted` for every `main(...)` call on a thread (M3). **A mutation that prints `caught … timed out` is a missing bound, not a catch** (`docs/next-session.md`: *the fix is a bound, not a shrug*): fix the bound in the owning task.
 - **Do not edit `tests/conftest.py`.** Shared frames live in `tests/_frames.py`.
-- **Prove each new test can fail** (CLAUDE.md): Task 15 runs the mutation gate and reads it line by line — `N failed` is a test noticing; `N errors in 0.8s` is not.
+- **Prove each new test can fail** (CLAUDE.md): Task 16 runs the mutation gate and reads it line by line — `N failed` is a test noticing; `N errors in 0.8s` is not.
 - **Never run the suite, edit a test, or `git add` while a mutation sweep is in flight.**
 - Run tests with `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider` from the worktree root, with the `wl-preproc` checkout beside the repo or inside it.
 - Commit messages: imperative subject; body says why when it is not obvious; end with the two attribution lines the session supplies.
@@ -78,26 +90,32 @@ Spec §5 left these to the plan. Each is taken here, with its reason; the code i
 The five conditions the spec implies that a lab member will meet and no task's main tests would otherwise pin — each has its test in the owning task:
 
 1. **A double-click, or a held arrow, floods commands** → the arrows send one change once they stop being clicked; a second identical pause or a stray resume is refused by the rig with a sentence, never stacked; and whatever does not fit `wlx serve`'s queue is answered *busy* at once, never queued without bound, while everything queued is answered. *Task 5 (`test_a_second_pause_and_a_resume_with_nothing_paused_are_refused`), Task 10 (`test_the_script_debounces_the_arrows_and_keeps_p_and_m_out_of_text_boxes`), Task 11 (`test_a_full_outbox_answers_busy_at_once_and_every_queued_job_is_answered`).*
-2. **M pressed twice fast** → two signals, two numbers, two `OPERATOR_MARK` codes in order, neither lost; the second is read in the next frame and its stamp names that frame; a second mark while a note box is open leaves the first bare. *Task 6 (`test_two_marks_pressed_fast_are_two_stamps_in_order`); the page's half in Task 15 Step 4.*
+2. **M pressed twice fast** → two signals, two numbers, two `OPERATOR_MARK` codes in order, neither lost; the second is read in the next frame and its stamp names that frame; a second mark while a note box is open leaves the first bare. *Task 6 (`test_two_marks_pressed_fast_are_two_stamps_in_order`); the page's half in Task 16 Step 4.*
 3. **Pause pressed while a stop is already on its way** → both land in one drain; the stop ends the session at that boundary, and the pause is refused with *the session is stopping (…)*, never holding a session that is ending. *Task 5 (`test_a_pause_pressed_after_a_stop_is_refused_and_the_session_ends`).*
 4. **A scheduled clock time that is already past, or exactly now** → the next occurrence, tomorrow's, as the spec rules, with the date in the schedule's words on the feed and the strip. *Task 7 (`test_a_clock_time_already_past_or_exactly_now_is_tomorrows`).*
 5. **`wlx serve` restarted while the session is paused** → the pause is `taskd`'s, so the new console shows it paused and offers *resume*, and its resume continues the session; a mark's note sent across the restart is recorded with its instants unknown, never guessed. *Task 12 (`test_e2e_wlx_serve_restarted_while_paused_shows_it_paused_and_can_resume`), Task 11 (`test_a_note_for_a_mark_this_console_does_not_know_carries_no_instants`).*
 
 Also pinned, the sixth candidate: **the name prompt refused or cleared** sends nothing and says *give your name first*, and a command with no name is refused at `POST /commands` whatever sent it. *Task 10 (`test_the_script_asks_for_the_name_once_and_keeps_it_where_it_may`), Task 11 (`test_a_body_that_is_not_a_command_is_refused_before_anything_is_queued`).*
 
+Added with the PI's manual reward during a pause (2026-09-28, Plan decision 16), three more, each with its tests in Task 13:
+
+- **A reward pressed while trials run, or while a pause is on its way** → refused with a sentence and nothing given: while running, *the session is not paused*; in the same drain as the pause, before the boundary holds it, *the session's pause has not begun holding yet*; after a stop or a resume ahead of it, or after the session ended, likewise. The page offers the button only on a frame that says paused. *Task 13 (`test_a_manual_reward_at_any_other_time_is_refused_and_nothing_is_given`, `test_after_the_loop_a_manual_reward_is_refused_and_nothing_is_given`, `test_the_reward_button_is_live_only_while_paused_and_greyed_otherwise`, and the refusal in `test_e2e_a_reward_pressed_while_paused_is_one_correct_trial_reward_on_the_record`).*
+- **A reward whose answer is lost** → *unknown*, with the fluid total to check before pressing again, and **never sent again**: one press is one command on the wire whatever the answer, a lost answer never reads *not delivered*, and the page's button is held from the click until the answer. *Task 13 (`test_a_reward_the_rig_takes_and_never_acknowledges_is_unknown_and_sent_once`, `test_a_rewards_answer_is_sent_unknown_or_not_given_and_it_is_delivered_once`, `test_a_command_the_rig_took_and_never_acknowledged_is_told_from_one_never_sent`, `test_the_script_sends_one_reward_per_click_and_holds_the_button_until_its_answer`).*
+- **A manual reward that reaches a scheduled "stop after X mL"** → the session ends in that housekeeping pass, as a scheduled stop, without a resume, and the limit is still asked first. *Task 13 (`test_a_manual_reward_that_reaches_a_fluid_stop_ends_the_paused_session_in_that_pass`).*
+
 ## File Structure
 
 | File | Responsibility |
 |---|---|
-| `wl_expcontroller/link.py` (modify) | M8's `_setting`, `_actor`, `CommandRefused`; `Pause`, `Resume`, `Mark`, `ScheduleStop`, `CancelScheduledStop`, `check_schedule`; the mark socket (`mark_signal`, `idle`, `MARK_BYTES`); `ZmqMarks`, `ZmqCommands`, `NotDelivered`; a read-only `ZmqConsole`; schema 8 (`ScheduledStop`, `Control`, `CONTROL_HISTORY`) |
-| `wl_expcontroller/taskd.py` (modify) | M8's backstop; `_pause`, `_resume`, `_hold`, `_ends`; `_stamp`, `_settle_stamps`, `_check_marks`, `_mark_note`; `_schedule`, `_cancel`, `_next_occurrence`; `_control`, `_feed`, `controls`; `PAUSE_HOUSEKEEPING_S` |
+| `wl_expcontroller/link.py` (modify) | M8's `_setting`, `_actor`, `CommandRefused`; `Pause`, `Resume`, `Mark`, `ScheduleStop`, `CancelScheduledStop`, `check_schedule`, `ManualReward`; the mark socket (`mark_signal`, `idle`, `MARK_BYTES`); `ZmqMarks`, `ZmqCommands`, `NotDelivered`, `Unacknowledged`; a read-only `ZmqConsole`; schema 8 (`ScheduledStop`, `Control`, `CONTROL_HISTORY`) |
+| `wl_expcontroller/taskd.py` (modify) | M8's backstop; `_pause`, `_resume`, `_hold`, `_ends`; `_stamp`, `_settle_stamps`, `_check_marks`, `_mark_note`; `_schedule`, `_cancel`, `_next_occurrence`; `_control`, `_feed`, `controls`; `PAUSE_HOUSEKEEPING_S`; `_manual_reward`, `MANUAL_REWARD_ENTRY`, `_command`'s `held` |
 | `wl_expcontroller/run.py` (modify) | `run_trial`'s `each_frame` hook |
 | `wl_expcontroller/record.py` (modify) | `CONTROLS`, `SessionRecord.control` |
-| `tasks/allocation.py` (modify) | `PAUSE`, `RESUME`, `OPERATOR_MARK` |
+| `tasks/allocation.py` (modify) | `PAUSE`, `RESUME`, `OPERATOR_MARK`, `MANUAL_REWARD` |
 | `wl_expcontroller/cli.py` (modify) | `--link PUB,REP[,MARK]` for `run` and `serve`; `serve --allow-host`; `render` for schema 8 |
 | `wl_expcontroller/health.py` (modify) | *paused* in the state reading |
-| `wl_expcontroller/web.py` (modify) | `View.can_write`, `View.can_mark`; the `controls` fragment, card inputs and arrows, the strip's schedule cell, the feed's control rows; the page's static controls; the script |
-| `wl_expcontroller/serve.py` (modify) | `host_name`, `box_names`, `names_loopback`; `parse_command`, `MarkSignal`, `MarkNote`; `Outbox`; `POST /commands`; `Server.dispatch`; `parse_link`'s third endpoint |
+| `wl_expcontroller/web.py` (modify) | `View.can_write`, `View.can_mark`; the `controls` fragment, card inputs and arrows, the strip's schedule cell, the feed's control rows; *give reward* (`_reward_button`, `_reward_answer`, `REWARD_ONLY_PAUSED`); the page's static controls; the script |
+| `wl_expcontroller/serve.py` (modify) | `host_name`, `box_names`, `names_loopback`; `parse_command`, `MarkSignal`, `MarkNote`; `Outbox`; `POST /commands`; `Server.dispatch`; `_rewarded`, `REWARD_SENT`, `REWARD_UNKNOWN`; `parse_link`'s third endpoint |
 | `tools/measure_mark_check.py` (create) | The measurement spec §5.4 requires |
 | `pyproject.toml`, `docs/design/decisions/ADR-0004-license.md` (modify) | pyzmq ≥ 26.4 |
 | `docs/validation.md` (modify) | V12 |
@@ -105,9 +123,9 @@ Also pinned, the sixth candidate: **the name prompt refused or cleared** sends n
 | `tests/test_measure_mark_check.py` (create) | The measurement script measures what it says |
 | `tests/_frames.py`, `tests/_zmq_release.py` (modify) | Schema 8's fields and `View`'s two; the two new socket owners registered |
 | `docs/measurements/dev-machine/<date>-mark-check.md` (create, by running the script) | The measurement's first result |
-| `docs/design/architecture.md`, `docs/pitfalls.md`, S9a, `docs/CHECKPOINT.md`, `docs/next-session.md` (modify) | Task 14 |
+| `docs/design/architecture.md`, `docs/pitfalls.md`, S9a, `docs/CHECKPOINT.md`, `docs/next-session.md` (modify) | Task 15 |
 
-**The mutation gate needs no edit**: no module is added to `wl_expcontroller/`. `tasks/allocation.py`, `pyproject.toml`, `tests/_zmq_release.py` and `tests/_frames.py` change — each a `tasks/` or `GLOBAL` path in `tools/mutation_gate.py` — and eight modules do, so this branch needs the **full sweep before it merges**. A push does not give it: since the CI split (`c215a10`), a push runs `--changed-only`, which never escalates, and with a `GLOBAL` path in the diff selects no module at all. Task 15 Step 2 plans for that.
+**The mutation gate needs no edit**: no module is added to `wl_expcontroller/`. `tasks/allocation.py`, `pyproject.toml`, `tests/_zmq_release.py` and `tests/_frames.py` change — each a `tasks/` or `GLOBAL` path in `tools/mutation_gate.py` — and eight modules do, so this branch needs the **full sweep before it merges**. A push does not give it: since the CI split (`c215a10`), a push runs `--changed-only`, which never escalates, and with a `GLOBAL` path in the diff selects no module at all. Task 16 Step 2 plans for that.
 
 ---
 
@@ -2865,7 +2883,7 @@ git commit -m "Add a command sender that waits for the rig's acknowledgment and 
 
 ### Task 5: Pause and resume, and the record of every control
 
-**Why:** spec §5.1: at the next trial boundary the loop holds — no trial runs, nothing is rewarded, the display shows the task's background — while once per housekeeping interval it still drains commands, publishes telemetry, and ends the session on the out-of-cage limit with `welfare.must_stop`, exactly as between trials; pause and resume are recorded and strobed so the recording shows the gap (Plan decision 5). This task also opens `controls.jsonl` (Plan decision 7) — with a row for a console's stop as well, since "every one is written to the session record with who sent it and when" and a stop was on disk nowhere — the feed a console shows (`Session.controls`, capped like the refusal feed), and the three framework event names (Plan decision 8).
+**Why:** spec §5.1: at the next trial boundary the loop holds — no trial runs, nothing is rewarded (since the PI's 2026-09-28 amendment: the task rewards nothing, and a person may give a manual reward, which Task 13 adds), the display shows the task's background — while once per housekeeping interval it still drains commands, publishes telemetry, and ends the session on the out-of-cage limit with `welfare.must_stop`, exactly as between trials; pause and resume are recorded and strobed so the recording shows the gap (Plan decision 5). This task also opens `controls.jsonl` (Plan decision 7) — with a row for a console's stop as well, since "every one is written to the session record with who sent it and when" and a stop was on disk nowhere — the feed a console shows (`Session.controls`, capped like the refusal feed), and the three framework event names (Plan decision 8).
 
 **Files:**
 - Modify: `tasks/allocation.py` (4131–4133)
@@ -5037,7 +5055,7 @@ git commit -m "Hold a scheduled stop by clock time, trials or fluid, and end the
 - Produces:
   - `link.SCHEMA == 8`.
   - `link.ScheduledStop(kind: str, target: float, by: str, said: str)` and `link.Control(kind: str, by: str, at: float, said: str)`, frozen and slotted.
-  - `Telemetry` gains, after `recent_outcomes`: `paused_at: float | None`, `scheduled_stop: ScheduledStop | None`, `controls: tuple` (of `Control`), `controls_dropped: int`. Tasks 9–12 read them by name.
+  - `Telemetry` gains, after `recent_outcomes`: `paused_at: float | None`, `scheduled_stop: ScheduledStop | None`, `controls: tuple` (of `Control`), `controls_dropped: int`. Tasks 9–13 read them by name.
   - `Session._feed(kind, by, at, said)`; `Session._apply_staged(index: int)`; the feed kind `set`, saying *fix_hold 0.30 → 0.40, from trial 1*.
 
 - [ ] **Step 1: Write the failing tests, and move the fixtures to schema 8**
@@ -7337,7 +7355,7 @@ Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
 Expected: **1271 passed**.
 Python cannot run the script, so check at least that it parses, if Node is on the machine:
 Run: `python -c "from wl_expcontroller.web import _SCRIPT; open('/tmp/b2a-page.js', 'w').write(_SCRIPT)" && node --check /tmp/b2a-page.js`
-Expected: no output, exit 0. (Task 15 Step 4 runs it in a browser.)
+Expected: no output, exit 0. (Task 16 Step 4 runs it in a browser.)
 
 - [ ] **Step 5: Commit**
 
@@ -9736,7 +9754,7 @@ git commit -m "Take commands from the box's own page, answer every request only 
 
 The clock kind's next occurrence is made a quarter second away inside the test (`taskd._next_occurrence`, in this process, where `wlx run` runs), because a real minute is too long for the suite; what that function computes is pinned by Task 7.
 
-**These sessions have their own trial budget, and a frame wait that ends with the session** (Ruling 10; `docs/next-session.md`: *if a sweep prints `timed out`, the fix is a bound, not a shrug*). b1's `E2E_TRIAL_BUDGET` of 20,000 is sized for b1's session, which has no mark socket; a session with one runs fewer trials a second in the simulator, since every frame pays for the mark check Task 13 measures — b1's 20,000 took about 20 s without one, and 1,000 took a few seconds with one (scratch readings on one loaded machine). In the plan's pre-flight, `tools/mutate.py --returns None wl_expcontroller/taskd.py _command` under b1's budget ran each of these tests past 50 s — its 20 s frame wait, then its 30 s join with the session still short of the budget — and the suite past the harness's 300 s, which the harness prints as `caught … timed out` and no test noticed. `CONTROL_TRIAL_BUDGET` is 1,000, against 27 to 84 trials per test over three pre-flight runs (a scratch count), and `_Session.frame` gives up `LAST_FRAME_S` after `wlx run` ends, so the same mutant fails all twelve in about 100 s.
+**These sessions have their own trial budget, and a frame wait that ends with the session** (Ruling 10; `docs/next-session.md`: *if a sweep prints `timed out`, the fix is a bound, not a shrug*). b1's `E2E_TRIAL_BUDGET` of 20,000 is sized for b1's session, which has no mark socket; a session with one runs fewer trials a second in the simulator, since every frame pays for the mark check Task 14 measures — b1's 20,000 took about 20 s without one, and 1,000 took a few seconds with one (scratch readings on one loaded machine). In the plan's pre-flight, `tools/mutate.py --returns None wl_expcontroller/taskd.py _command` under b1's budget ran each of these tests past 50 s — its 20 s frame wait, then its 30 s join with the session still short of the budget — and the suite past the harness's 300 s, which the harness prints as `caught … timed out` and no test noticed. `CONTROL_TRIAL_BUDGET` is 1,000, against 27 to 84 trials per test over three pre-flight runs (a scratch count), and `_Session.frame` gives up `LAST_FRAME_S` after `wlx run` ends, so the same mutant fails all twelve in about 100 s.
 
 **Files:**
 - Test: `tests/test_serve.py`
@@ -9780,7 +9798,7 @@ MARKERS = {34, 35, 36, 37, 38}
 #: runs of these twelve tests in the plan's pre-flight, 2026-09-27. b1's
 #: `E2E_TRIAL_BUDGET` is sized for b1's session, which has no mark socket; a session
 #: with one runs fewer trials a second in the simulator, every frame paying for the
-#: mark check Task 13 measures. There, b1's 20,000 trials took about 20 s without one,
+#: mark check Task 14 measures. There, b1's 20,000 trials took about 20 s without one,
 #: and 1,000 took a few seconds with one (scratch readings on one loaded machine, not
 #: claims about this system). Under b1's budget, a mutant that breaks the command path
 #: -- `taskd.Session._command` neutered -- held each of these tests past 50 s, its 20 s
@@ -10207,7 +10225,1705 @@ git commit -m "Drive a simulated session through the page's own commands, end to
 
 ---
 
-### Task 13: The measurement
+### Task 13: A manual reward during a pause
+
+**Why:** the PI approved this plan on 2026-09-28 with one change: "I want to be able to give manual rewards during pause." Asked how much one press gives, he chose "Same as a correct trial" (Plan decision 16). So while the session is held paused at a trial boundary, one press of the page's *give reward* is one delivery of the bounded config's `reward_correct` — at the value it holds, nothing new set — through the path a task's reward takes, `welfare.Rig.reward` → `Welfare.deliver`: charged before the valve opens, and counted in `commanded`, `deliveries` and `last_delivery_wall_at`, so it is on the fluid total, the time since the last reward, and a "stop after X mL". `MANUAL_REWARD` (4134) is strobed before it, as `REWARD_COMMANDED` precedes a task's reward, and `controls.jsonl` records it. At any other time it is refused with a sentence and the session goes on; any-time manual reward stays in slice b5 (spec §4.0). S9 and S6 §4 already asked for this shape: a console reward "commands through the normal path", so it "appears as commanded *and* delivered", told apart from a panel press.
+
+**Which function checks "stop after X mL", and why:** `Session._ends`, unchanged. `_hold`'s pass is wait → drain → publish → `_ends`; the reward is given inside the drain, and `_ends` — the one place the loop asks `welfare.must_stop` and then the scheduled stop, `welfare.session_total() >= target` (Tasks 5 and 7) — is asked before the pass ends. So a manual reward that reaches the target ends the session in that pass, as a scheduled stop, without waiting for a resume, and the out-of-cage limit is still asked first. A check inside `_manual_reward` would be a second copy of the schedule's rule, the thing Plan decision 13 put `_ends` on the welfare-critical list to prevent. `test_a_manual_reward_that_reaches_a_fluid_stop_ends_the_paused_session_in_that_pass` pins it.
+
+**"Only while paused" means held, and only `_hold` can say so.** A pause is taken in the loop's boundary drain and held from the next `_hold` pass, so `_command` gains `held`, true only for the commands `_hold` drains. A reward in the same drain as its pause — pressed after the pause and before the boundary held it — is refused; so is one while trials run, one after a `Stop` or a `Resume` ahead of it in the drain, and one after the session has ended (`_command`'s post-loop refusal). The page's button is live only on a frame with `paused_at`, and that frame is published after the pause is taken, so a press from the page is drained by `_hold`.
+
+**Nothing re-sends a command, and a test makes sure nothing starts to.** `ZmqCommands.deliver` sends once and, on a reply timeout, closes its socket, opens another, and raises (Task 4); an `Outbox` runs each job's work once (Task 11); the page's `fetch` is never retried. So there is nothing to exempt a reward from. What changes is the answer: a reward handed over and not acknowledged may have been given, so `deliver` raises that case as `link.Unacknowledged`, a `NotDelivered`, and `wlx serve` answers `serve.REWARD_UNKNOWN` — *unknown*, check the fluid total before pressing again — never *not delivered*, which would invite the second press. `test_a_reward_the_rig_takes_and_never_acknowledges_is_unknown_and_sent_once` puts a ROUTER socket where the rig is, which reads every message and answers none, and counts one reward command on the wire. The page holds its button from the click until the answer or the failure.
+
+**Frames are still published while paused**: `_hold` publishes once a pass, after its drain, so the frame after a reward carries the new fluid total, still paused. Both the session's test and the end to end read it from that frame.
+
+**Files:**
+- Modify: `tasks/allocation.py` (4134)
+- Modify: `wl_expcontroller/link.py` (`Pause`'s docstring; `ManualReward`; `Command`; `_encode_command`, `_decode_command`; `Unacknowledged`; `ZmqCommands`' docstring and `deliver`)
+- Modify: `wl_expcontroller/taskd.py` (`MANUAL_REWARD_ENTRY`; `controls`' docstring; `_hold`; `_manual_reward`; `_command`'s `held`)
+- Modify: `wl_expcontroller/record.py` (`CONTROLS`' docstring)
+- Modify: `wl_expcontroller/serve.py` (`_SHAPES`, `parse_command`; `REWARD_SENT`, `REWARD_UNKNOWN`, `_rewarded`; `Server.dispatch`)
+- Modify: `wl_expcontroller/web.py` (`REWARD_ONLY_PAUSED`, `_reward_button`, `_reward_answer`, `_controls`; the script's `post`, `swap`, `holdReward`, `reward`, `command`)
+- Test: `tests/test_link.py`, `tests/test_taskd.py`, `tests/test_web.py`, `tests/test_serve.py`
+
+**Interfaces:**
+- Consumes: Task 4's `ZmqCommands`, `NotDelivered`; Task 5's `_hold`, `_command`, `_control`, `_code`, `_refuse`, `_Scripted`, `_walled`, `_controls_rows`, `PAUSE_CODE`, `RESUME_CODE`; Task 6's `_control(..., at=)`; Task 7's `_ends(index)`, `_scheduled_at_trial`; Task 10's `_controls`, `_off`, `_clock_time` and the script's `post`, `swap`, `command`; Task 11's `parse_command`, `Outbox`, `Server.dispatch`, `_post`, `_rig`; Task 12's `_Session`, `FIX_ON`; `welfare.Rig.reward` and `Welfare.deliver`, unchanged.
+- Produces:
+  - The allocation's `MANUAL_REWARD` (4134).
+  - `link.ManualReward(by)`, `KIND` `"reward"`; `link.Unacknowledged(NotDelivered)`, raised by `ZmqCommands.deliver` on a reply timeout.
+  - `taskd.MANUAL_REWARD_ENTRY = "reward_correct"`; `Session._command(command, index, held=False)`; `Session._manual_reward(by, index, held)`. Control kind `reward`; its record row adds `ml` and `entry`.
+  - `serve.REWARD_SENT`, `serve.REWARD_UNKNOWN`, `serve._rewarded(command)`; `POST /commands` takes `{"kind": "reward", "by"}` and nothing else for it.
+  - `web.REWARD_ONLY_PAUSED`; `web._reward_button`, `web._reward_answer`; the controls fragment's `<button … data-cmd="reward">give reward</button>`.
+
+- [ ] **Step 1: Write the failing tests**
+
+The wire, in `tests/test_link.py`:
+
+In `tests/test_link.py`, replace:
+
+```python
+    FrameError,
+    Mark,
+    NotDelivered,
+```
+
+with:
+
+```python
+    FrameError,
+    ManualReward,
+    Mark,
+    NotDelivered,
+```
+
+In `tests/test_link.py`, replace:
+
+```python
+    Telemetry,
+    ZmqCommands,
+```
+
+with:
+
+```python
+    Telemetry,
+    Unacknowledged,
+    ZmqCommands,
+```
+
+Append to `tests/test_link.py`:
+
+```python
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause
+# ---------------------------------------------------------------------------
+
+
+def test_a_manual_reward_crosses_the_wire_as_one_press_with_who_pressed_it(zmq_cleanup):
+    """PI, 2026-09-28: one press gives one correct-trial reward. The command carries who
+    pressed it and nothing else -- the size is the bounded config's `reward_correct`,
+    read by the rig, so nothing a console sends can set it -- and it crosses a real
+    socket like every other control."""
+    command = ManualReward(by="jake (box, unverified)")
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    console.send(command)
+
+    assert ManualReward.KIND == "reward"
+    assert _decode_command(_encode_command(command)) == command
+    assert _drain_until(link) == [command]
+
+
+@pytest.mark.parametrize("by", [None, "", 3])
+def test_a_manual_reward_that_does_not_say_who_pressed_it_is_refused(by):
+    """S9a §6, as for every command: a reward nobody pressed is refused by its kind."""
+    fields = {"kind": "reward"}
+    if by is not None:
+        fields["by"] = by
+
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(**fields))
+
+    assert refused.value.name == "reward"
+    assert "who sent it" in refused.value.why
+
+
+def test_a_command_the_rig_took_and_never_acknowledged_is_told_from_one_never_sent(
+    zmq_cleanup,
+):
+    """No accidental doubles (PI, 2026-09-28). A command handed to a connected rig that
+    does not acknowledge it may still be applied, so it raises `Unacknowledged` -- a
+    `NotDelivered`, so every caller that catches that still does -- and `wlx serve`
+    answers a reward in that state *unknown*. A command that never left, with no rig
+    connected, is a plain `NotDelivered`: nothing was given."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    took = zmq_cleanup(ZmqCommands(link.rep_endpoint, reply_timeout_s=0.2))
+    probe = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    gone = probe.rep_endpoint
+    probe.close()
+    never = zmq_cleanup(ZmqCommands(gone, reply_timeout_s=30.0, connect_timeout_s=0.1))
+
+    with pytest.raises(Unacknowledged, match="did not acknowledge it within 0.2 s"):
+        took.deliver(ManualReward(by="jake"))
+    with pytest.raises(NotDelivered, match="no rig is connected") as not_sent:
+        never.deliver(ManualReward(by="jake"))
+
+    assert issubclass(Unacknowledged, NotDelivered)
+    assert not isinstance(not_sent.value, Unacknowledged)
+```
+
+The session, in `tests/test_taskd.py`:
+
+In `tests/test_taskd.py`, replace:
+
+```python
+    CancelScheduledStop,
+    Mark,
+```
+
+with:
+
+```python
+    CancelScheduledStop,
+    ManualReward,
+    Mark,
+```
+
+Task 5's test of spec §5.5 item 1 says what the amended item says:
+
+In `tests/test_taskd.py`, replace:
+
+```python
+    """Human review item 1 (spec §5.5): while paused, nothing is rewarded. No trial
+    runs, so no `Reward` action reaches the pump, and the session's fluid stands
+    still. Paused after six trials, so what stands still is not zero."""
+```
+
+with:
+
+```python
+    """Human review item 1 (spec §5.5, amended 2026-09-28): while paused, the task
+    rewards nothing. No trial runs, so no `Reward` action reaches the pump, and with
+    no manual reward pressed the session's fluid stands still. Paused after six
+    trials, so what stands still is not zero."""
+```
+
+Append to `tests/test_taskd.py`:
+
+```python
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause
+# ---------------------------------------------------------------------------
+
+#: `MANUAL_REWARD`'s code (`tasks/allocation.py`), after b2a's other three; and
+#: `REWARD_COMMANDED`'s, which `fixation_detection` strobes with each reward it pays.
+REWARD_CODE, TASK_REWARD_CODE = 4134, 4102
+
+
+class _Watched(Pump):
+    """A simulated pump that notes, as each delivery arrives, the last code the card
+    had strobed: how a test tells that the strobe came before the valve."""
+
+    def __init__(self, card) -> None:
+        super().__init__()
+        self.card = card
+        self.strobed_before: list = []
+
+    def deliver(self, ml: float) -> None:
+        self.strobed_before.append(self.card.codes[-1] if self.card.codes else None)
+        super().deliver(ml)
+
+
+def _manual_rows(session: Session) -> list[dict]:
+    return [row for row in _controls_rows(session) if row["kind"] == "reward"]
+
+
+def test_a_manual_reward_while_paused_is_one_correct_trial_reward_through_the_tasks_path(
+    tmp_path,
+):
+    """PI, 2026-09-28: "I want to be able to give manual rewards during pause", and one
+    press is "Same as a correct trial". A `ManualReward` drained while the session is
+    held is one delivery of the bounded config's `reward_correct` -- 0.15 mL here, the
+    value it holds -- through `Rig.reward` and `Welfare.deliver`, the path a task's
+    reward takes: `commanded`, `deliveries` and `last_delivery_wall_at` count it,
+    `MANUAL_REWARD` is strobed before the valve opens, `controls.jsonl` has one row, and
+    the frame published in that pass, still paused, carries the new fluid total."""
+    link = _Scripted(script={1: [ManualReward(by="jake")], 2: [Resume(by="sam")]}, step=10.0)
+    session, wall = _walled(tmp_path, link, trials=6)
+    link.wall = wall
+    pump = _Watched(session.card)
+    session.welfare.pump = pump
+    seen: list = []
+    link.each = lambda: seen.append(
+        (
+            session.welfare.commanded,
+            session.welfare.deliveries,
+            len(pump.delivered),
+            session.welfare.last_delivery_wall_at,
+        )
+    )
+    _scheduled_at_trial(link, session, 3, Pause(by="jake"))
+
+    session.run()
+
+    (commanded, deliveries, delivered, _), (after, then, now, last) = seen
+    assert after == pytest.approx(commanded + 0.15)
+    assert (then, now) == (deliveries + 1, delivered + 1), "exactly one delivery"
+    assert pump.delivered[delivered] == 0.15
+    assert pump.strobed_before[delivered] == REWARD_CODE, "strobed before the valve"
+    codes = session.card.codes
+    assert codes.count(REWARD_CODE) == 1
+    assert codes.index(PAUSE_CODE) + 1 == codes.index(REWARD_CODE) == codes.index(RESUME_CODE) - 1
+    (row,) = _manual_rows(session)
+    assert (row["by"], row["trial_index"]) == ("jake", 3)
+    assert (row["ml"], row["entry"]) == (0.15, "reward_correct")
+    assert row["at"] == last
+    held = [frame for frame in link.published if frame.paused_at is not None]
+    assert held[-1].fluid_session_ml == pytest.approx(after)
+    assert held[-1].last_reward_at == last
+    assert [c.kind for c in held[-1].controls][-1] == "reward"
+    assert len((session.directory / "trials.jsonl").read_text().splitlines()) == 6
+
+
+@pytest.mark.parametrize(
+    ("first", "script", "said"),
+    [
+        ([ManualReward(by="jake")], {}, "the session is not paused"),
+        (
+            [Pause(by="jake"), ManualReward(by="jake")],
+            {1: [Resume(by="sam")]},
+            "the session's pause has not begun holding yet",
+        ),
+        (
+            [Pause(by="jake")],
+            {1: [Stop(by="sam"), ManualReward(by="jake")]},
+            "the session is stopping (stopped by sam)",
+        ),
+        (
+            [Pause(by="jake")],
+            {1: [Resume(by="sam"), ManualReward(by="jake")]},
+            "the session is not paused",
+        ),
+    ],
+    ids=["while-running", "pause-not-yet-held", "after-a-stop", "after-a-resume"],
+)
+def test_a_manual_reward_at_any_other_time_is_refused_and_nothing_is_given(
+    tmp_path, first, script, said
+):
+    """Only while paused, meaning held at the boundary (Plan decision 16). Pressed while
+    trials run; in the same drain as the pause, before the boundary holds it; or after
+    a stop or a resume ahead of it in the paused loop's drain -- refused with a
+    sentence, nothing strobed, nothing given, and the session goes on. Every delivery
+    left is a trial's, each with its `REWARD_COMMANDED`."""
+    link = _Scripted(script=script)
+    for command in first:
+        link.queue(command)
+    session, wall = _walled(tmp_path, link, trials=2)
+    link.wall = wall
+
+    session.run()
+
+    ((name, by, why),) = [r for r in session.refusals if r[0] == "reward"]
+    assert (name, by) == ("reward", "jake")
+    assert said in why and "no reward was given" in why
+    assert REWARD_CODE not in session.card.codes
+    assert _manual_rows(session) == []
+    assert session.welfare.deliveries == session.card.codes.count(TASK_REWARD_CODE)
+
+
+def test_after_the_loop_a_manual_reward_is_refused_and_nothing_is_given(tmp_path):
+    """After the session has ended, a reward is refused with the post-loop sentence,
+    as every command is then, and the fluid total does not move."""
+    link, wall = Simulated(), _Wall(WALL_NOW)
+    session = _fixed_and_run(tmp_path, link, wall)
+    given = (session.welfare.commanded, session.welfare.deliveries)
+    link.queue(ManualReward(by="jake"))
+
+    thread, give_up = _awaiting(session)
+    try:
+        assert _until(lambda: len(session.refusals) == 1)
+    finally:
+        give_up.set()
+        thread.join(timeout=2)
+
+    ((name, by, why),) = session.refusals
+    assert (name, by) == ("reward", "jake")
+    assert "the session has ended" in why
+    assert (session.welfare.commanded, session.welfare.deliveries) == given
+    assert REWARD_CODE not in session.card.codes
+
+
+def test_a_manual_reward_with_no_reward_correct_in_the_bounded_config_is_refused(
+    tmp_path,
+):
+    """One press is "Same as a correct trial": the bounded config's `reward_correct`. A
+    config without that entry gives a press no size, so it is refused naming the entry
+    -- and **never** paid from another entry, even one that is there."""
+    bounds = Bounds(
+        subject="A",
+        ceilings={
+            "reward_large": Ceiling(value=0.3, maximum=0.4, unit="mL"),
+            "out_of_cage": Ceiling(value=800.0, maximum=100_000.0, unit="s"),
+        },
+        minima={"daily_fluid": Floor(value=250.0, unit="mL")},
+    )
+    link = _Scripted(script={1: [ManualReward(by="jake")], 2: [Stop(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, bounds=bounds)
+    link.wall = wall
+
+    session.run()
+
+    ((name, by, why),) = session.refusals
+    assert (name, by) == ("reward", "jake")
+    assert "has no 'reward_correct' entry" in why
+    assert "never taken from another entry" in why
+    assert session.welfare.deliveries == 0 and session.pump.delivered == []
+    assert REWARD_CODE not in session.card.codes
+
+
+def test_a_manual_reward_is_refused_when_the_allocation_cannot_mark_it(tmp_path):
+    """A reward the recording could not show is refused, as a pause is: without
+    `MANUAL_REWARD` a delivery in the event stream would look like nothing, or like a
+    panel press."""
+    from dataclasses import replace
+
+    link = _Scripted(script={1: [ManualReward(by="jake")], 2: [Resume(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=2)
+    link.wall = wall
+    session.allocation = replace(
+        session.allocation,
+        task_events={
+            code: name
+            for code, name in session.allocation.task_events.items()
+            if name != "MANUAL_REWARD"
+        },
+    )
+
+    session.run()
+
+    ((name, _, why),) = session.refusals
+    assert name == "reward"
+    assert "no MANUAL_REWARD event code" in why
+    assert session.welfare.deliveries == session.card.codes.count(TASK_REWARD_CODE)
+
+
+def test_a_manual_reward_that_reaches_a_fluid_stop_ends_the_paused_session_in_that_pass(
+    tmp_path,
+):
+    """Items 1 and 2 of spec §5.5 together (amended 2026-09-28): a manual reward counts
+    toward "stop after X mL". `_hold` gives it in its drain and asks `_ends` before the
+    pass is over -- the pass that asks the out-of-cage limit -- so the session ends
+    there, as a scheduled stop, without waiting for a resume."""
+    link = _Scripted(script={1: [ManualReward(by="jake")]})
+    link.queue(ScheduleStop(kind="fluid", value=0.15, by="sam"))
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "operator"
+    assert session.stopped_because == "scheduled stop (after 0.15 mL this session) set by sam"
+    assert len(link.waits) == 1, "it ended in the pass that gave the reward"
+    assert session.welfare.session_total() == pytest.approx(0.15)
+    assert [row["kind"] for row in _controls_rows(session)] == [
+        "schedule", "pause", "reward", "scheduled_stop",
+    ]
+    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    assert link.published[-1].stop_kind == "operator"
+
+
+def test_a_reward_size_staged_while_paused_is_not_a_manual_rewards_until_trials_resume(
+    tmp_path,
+):
+    """A setting staged while paused applies when trials resume (spec §5.1), so a
+    manual reward given before then is the size a correct trial pays now -- the applied
+    `reward_correct` -- and the staged size is the next trial's."""
+    link = _Scripted(
+        script={
+            1: [SetParameter(name="reward_correct", value=0.3, by="sam")],
+            2: [ManualReward(by="jake")],
+            3: [Resume(by="jake")],
+        }
+    )
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link, trials=1)
+    link.wall = wall
+
+    session.run()
+
+    assert session.pump.delivered[0] == 0.15
+    (row,) = _manual_rows(session)
+    assert row["ml"] == 0.15
+    assert _parameter_changes(session)[0]["now"] == 0.3
+
+
+def test_a_pump_that_fails_a_manual_reward_faults_the_session_as_a_tasks_would(tmp_path):
+    """`welfare.Rig` swallows nothing for a task's reward, and a manual reward takes
+    the same path: a pump that will not answer ends the session as a fault, published,
+    with the reward charged, since it was charged before the valve opened."""
+
+    class _Broken(Pump):
+        def deliver(self, ml: float) -> None:
+            raise RuntimeError("the pump did not answer")
+
+    link = _Scripted(script={1: [ManualReward(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+    session.welfare.pump = _Broken()
+
+    with pytest.raises(RuntimeError, match="the pump did not answer"):
+        session.run()
+
+    assert session.stop_kind == "fault"
+    assert link.published[-1].stop_kind == "fault"
+    assert (session.welfare.commanded, session.welfare.deliveries) == (0.15, 1)
+    assert session.card.codes[-1] == REWARD_CODE
+```
+
+The page, in `tests/test_web.py`:
+
+In `tests/test_web.py`, replace:
+
+```python
+    NO_MARK_ENDPOINT,
+    font_bytes,
+```
+
+with:
+
+```python
+    NO_MARK_ENDPOINT,
+    REWARD_ONLY_PAUSED,
+    font_bytes,
+```
+
+Task 10's running-session test keeps its three buttons, and now sees the fourth greyed:
+
+In `tests/test_web.py`, replace:
+
+```python
+    assert '<button type="button" class="btn danger" data-cmd="stop">stop…</button>' in controls
+    assert "disabled" not in controls
+```
+
+with:
+
+```python
+    assert '<button type="button" class="btn danger" data-cmd="stop">stop…</button>' in controls
+    # Every control but the manual reward, which waits for a pause (Task 13).
+    assert controls.count(" disabled") == 1
+    assert 'data-cmd="reward" disabled' in controls
+```
+
+Append to `tests/test_web.py`:
+
+```python
+
+
+# --- P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause -------------
+
+
+def test_the_reward_button_is_live_only_while_paused_and_greyed_otherwise():
+    """PI, 2026-09-28: a manual reward during a pause. The button works only while the
+    session is paused (`paused_at`), and otherwise says why: greyed with its reason
+    while trials run, with the §2 sentence away from the box, and gone once the
+    session has ended. One button and no key: a click is one command."""
+    at = 1_700_000_030.0
+    paused = _controls(paused_at=at)
+    running = _controls()
+    lan = fragments(frame(paused_at=at), view(on_box=False, can_write=False))["controls"]
+    ended = fragments(frame(**STATES["returned"], paused_at=at), view())["controls"]
+
+    assert '<button type="button" class="btn" data-cmd="reward">give reward</button>' in paused
+    assert (
+        f'<button type="button" class="btn" data-cmd="reward" disabled '
+        f'title="{REWARD_ONLY_PAUSED}">give reward</button>'
+    ) in running
+    assert REWARD_ONLY_PAUSED == (
+        "a manual reward is given only while the session is paused: pause first"
+    )
+    assert re.search(r'data-cmd="reward" disabled title="[^"]+">give reward', lan)
+    assert CONTROLS_AT_THE_BOX in lan
+    assert "give reward" not in ended
+    assert 'k === "r"' not in _SCRIPT, "no key gives a reward"
+
+
+def test_while_paused_the_controls_show_the_fluid_total_and_what_the_last_press_did():
+    """The answer to a press, from the frames the rig publishes while paused: the
+    session's fluid total, the newest reward given with its size, and the newest
+    refused with the rig's sentence -- *last*, since a refusal carries no time, as on
+    a parameter card. Escaped like every string from telemetry."""
+    at = 1_700_000_035.0
+    controls = _controls(
+        paused_at=1_700_000_030.0,
+        fluid_session_ml=1.4,
+        controls=(
+            Control(
+                "reward",
+                "jake (box, unverified)",
+                at,
+                "0.15 mL of reward_correct, given while paused before trial 40",
+            ),
+        ),
+        refusals=(Refused(name="reward", by="sam", why="the session is <not> paused"),),
+    )
+    clock = time.strftime("%H:%M:%S", time.localtime(at))
+
+    assert "fluid session 1.40 mL" in controls
+    assert (
+        f"last given {clock}: 0.15 mL of reward_correct, given while paused before trial 40"
+        in controls
+    )
+    assert "last refused: the session is &lt;not&gt; paused" in controls
+    assert "fluid session" not in _controls(), "said beside the live button alone"
+
+
+def test_the_script_sends_one_reward_per_click_and_holds_the_button_until_its_answer():
+    """No accidental doubles (PI, 2026-09-28). Python cannot run the script, so its text
+    is pinned where it is load-bearing: a click while a reward is on its way does
+    nothing; the button is held from the click until the answer or the failure -- and
+    held again whenever a frame re-renders the controls meanwhile -- and only a button
+    the script held is released; the one `fetch` is never retried; and an answer the
+    page lost is *unknown*, never *not delivered*, with the fluid total to check first."""
+    assert "if (!button || button.disabled || rewarding) { return; }" in _SCRIPT
+    assert "rewarding = true;" in _SCRIPT
+    assert 'post({ kind: "reward" }, null, function () {' in _SCRIPT
+    assert 'if (id === "controls") { holdReward(); }' in _SCRIPT
+    assert "if (rewarding && button && !button.disabled) {" in _SCRIPT
+    assert """el("controls").querySelector('[data-cmd="reward"][data-held]')""" in _SCRIPT
+    assert "}).then(done);" in _SCRIPT
+    assert _SCRIPT.count("fetch(") == 1
+    assert (
+        "unknown: this page lost wlx serve's answer, so whether the reward was given is "
+        "not known, and it was not sent again; check the session's fluid total before "
+        "pressing again"
+    ) in _SCRIPT
+```
+
+`wlx serve`, in `tests/test_serve.py`:
+
+In `tests/test_serve.py`, replace:
+
+```python
+    CancelScheduledStop,
+    Mark,
+    Pause,
+```
+
+with:
+
+```python
+    CancelScheduledStop,
+    ManualReward,
+    Mark,
+    NotDelivered,
+    Pause,
+```
+
+In `tests/test_serve.py`, replace:
+
+```python
+    Stop,
+    ZmqConsole,
+```
+
+with:
+
+```python
+    Stop,
+    Unacknowledged,
+    ZmqConsole,
+```
+
+In `tests/test_serve.py`, replace:
+
+```python
+    QUEUE_DEPTH,
+    BadCommand,
+```
+
+with:
+
+```python
+    QUEUE_DEPTH,
+    REWARD_SENT,
+    REWARD_UNKNOWN,
+    BadCommand,
+```
+
+A reward body parses to the command, and one that tries to say how much is refused:
+
+In `tests/test_serve.py`, replace:
+
+```python
+        ({"kind": "note", "by": "jake", "mark": 7, "note": "bubble"},
+         MarkNote(mark=7, note="bubble", by="jake (box, unverified)")),
+    ],
+```
+
+with:
+
+```python
+        ({"kind": "note", "by": "jake", "mark": 7, "note": "bubble"},
+         MarkNote(mark=7, note="bubble", by="jake (box, unverified)")),
+        ({"kind": "reward", "by": "jake"}, ManualReward(by="jake (box, unverified)")),
+    ],
+```
+
+In `tests/test_serve.py`, replace:
+
+```python
+        ({"kind": "note", "by": "jake", "mark": 3, "note": "x" * 501}, "at most 500"),
+    ],
+```
+
+with:
+
+```python
+        ({"kind": "note", "by": "jake", "mark": 3, "note": "x" * 501}, "at most 500"),
+        ({"kind": "reward", "by": "jake", "ml": 0.5}, "a reward command takes no ml"),
+    ],
+```
+
+Task 11's box stream renders a running session, whose reward button waits for a pause:
+
+In `tests/test_serve.py`, replace:
+
+```python
+    assert 'data-cmd="pause"' in first["frags"]["controls"]
+    assert "disabled" not in first["frags"]["controls"]
+```
+
+with:
+
+```python
+    controls = first["frags"]["controls"]
+    assert 'data-cmd="pause"' in controls
+    # Every control but the manual reward, which waits for a pause (Task 13).
+    assert controls.count(" disabled") == 1
+    assert 'data-cmd="reward" disabled' in controls
+```
+
+Append to `tests/test_serve.py`:
+
+```python
+
+
+# --- P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause ---------------
+
+#: `MANUAL_REWARD`'s code (`tasks/allocation.py`), after b2a's other three.
+MANUAL_REWARD_CODE = 4134
+#: `tasks/twelve_hour_bounds.py`'s `reward_correct`: what one press gives these sessions.
+REWARD_ML = 0.05
+
+
+class _Answers:
+    """A command sender whose `deliver` records what it was handed and raises `raised`,
+    or returns when that is `None`."""
+
+    def __init__(self, raised: Exception | None) -> None:
+        self.raised = raised
+        self.sent: list = []
+
+    def deliver(self, command) -> None:
+        self.sent.append(command)
+        if self.raised is not None:
+            raise self.raised
+
+
+@pytest.mark.parametrize(
+    ("raised", "answer"),
+    [
+        (None, (200, {"status": "sent", "said": REWARD_SENT})),
+        (
+            Unacknowledged("not delivered: the rig did not acknowledge it within 15 s"),
+            REWARD_UNKNOWN,
+        ),
+        (RuntimeError("socket gone"), REWARD_UNKNOWN),
+        (
+            NotDelivered("not delivered: no rig is connected on tcp://127.0.0.1:5572"),
+            (
+                504,
+                {
+                    "status": "not_delivered",
+                    "said": (
+                        "not delivered: no rig is connected on tcp://127.0.0.1:5572; "
+                        "no reward was given"
+                    ),
+                },
+            ),
+        ),
+    ],
+    ids=["acknowledged", "unacknowledged", "failed-after-handing-over", "never-sent"],
+)
+def test_a_rewards_answer_is_sent_unknown_or_not_given_and_it_is_delivered_once(
+    raised, answer
+):
+    """No accidental doubles (PI, 2026-09-28). A reward the rig acknowledged is *sent*;
+    one it took and did not acknowledge -- or one whose send failed in a way that
+    cannot say whether it went -- is *unknown*, never *not delivered*, which would
+    invite the press that doubles it; only one that never left `wlx serve` is *not
+    delivered*, and says no reward was given. Each is handed to the sender once."""
+    sender = _Answers(raised)
+
+    assert serve._rewarded(ManualReward(by="jake"))(sender) == answer
+    assert sender.sent == [ManualReward(by="jake")]
+
+
+def test_a_reward_the_rig_takes_and_never_acknowledges_is_unknown_and_sent_once(
+    zmq_cleanup, server_cleanup
+):
+    """No accidental doubles, on real sockets (PI, 2026-09-28). The rig here is a ROUTER
+    socket, which reads every message and answers none, so it sees each one `wlx
+    serve` sends: one press is one POST and one reward command on the wire, and after
+    the reply timeout the page is told *unknown* and nothing sends it again. If a
+    retry is ever added to the command path, this is where it doubles a reward."""
+    import zmq
+
+    from wl_expcontroller.link import _decode_command
+
+    telemetry = _rig(zmq_cleanup)
+    ctx = zmq.Context()
+    rig = ctx.socket(zmq.ROUTER)
+    try:
+        rig.setsockopt(zmq.LINGER, 0)
+        port = rig.bind_to_random_port("tcp://127.0.0.1")
+        server = server_cleanup(
+            Server(
+                sub=telemetry.pub_endpoint,
+                req=f"tcp://127.0.0.1:{port}",
+                http=("127.0.0.1", 0),
+                token=TOKEN,
+                reply_timeout_s=0.3,
+            )
+        )
+        server.start()
+        try:
+            answer = _post(server.address[1], {"kind": "reward", "by": "jake"})
+            seen: list = []
+            # Several reply timeouts, and the command thread's reset, after the answer.
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                if rig.poll(50, zmq.POLLIN):
+                    seen.append(rig.recv_multipart())
+        finally:
+            server.close()
+    finally:
+        rig.close(linger=0)
+        ctx.term()
+
+    assert answer == REWARD_UNKNOWN
+    assert [_decode_command(frames[-1]) for frames in seen] == [
+        ManualReward(by="jake (box, unverified)")
+    ]
+
+
+def test_e2e_a_reward_pressed_while_paused_is_one_correct_trial_reward_on_the_record(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    """PI, 2026-09-28, end to end. While trials run, the page's *give reward* is greyed,
+    and a press that reaches the rig anyway is refused on the feed. Paused, the button
+    is live; the POST it sends crosses `wlx serve`'s command thread to the held
+    session, which gives exactly one `reward_correct` -- and the next frame's fluid
+    total, the page, `controls.jsonl` and the recorded event stream all show it, while
+    the trial count stands still."""
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        port = run.server.address[1]
+        running = run.frame(lambda f: f.trial_index >= 2)
+        with _stream(port) as response:
+            greyed = next(_events(response))["frags"]["controls"]
+        assert run.post({"kind": "reward", "by": "jake"}) == (
+            200, {"status": "sent", "said": REWARD_SENT}
+        )
+        refused = run.frame(lambda f: any(r.name == "reward" for r in f.refusals))
+        assert run.post({"kind": "pause", "by": "jake"})[0] == 200
+        paused = run.frame(lambda f: f.paused_at is not None)
+        with _stream(port) as response:
+            live = next(_events(response))["frags"]["controls"]
+        assert run.post({"kind": "reward", "by": "jake"})[0] == 200
+        given = run.frame(lambda f: any(c.kind == "reward" for c in f.controls))
+        with _stream(port) as response:
+            shown = next(_events(response))["frags"]["controls"]
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        ended = run.ended()
+    run.finished()
+
+    assert running.stop_kind is None
+    assert 'data-cmd="reward" disabled' in greyed
+    (refusal,) = [r for r in refused.refusals if r.name == "reward"]
+    assert refusal.by == "jake (box, unverified)"
+    assert "the session is not paused" in refusal.why
+    assert '<button type="button" class="btn" data-cmd="reward">give reward</button>' in live
+    assert given.paused_at is not None and given.trial_index == paused.trial_index
+    assert given.fluid_session_ml == pytest.approx(paused.fluid_session_ml + REWARD_ML)
+    assert f"fluid session {given.fluid_session_ml:.2f} mL" in shown
+    assert ended.fluid_session_ml == pytest.approx(given.fluid_session_ml)
+    assert ended.trial_index == paused.trial_index
+    pause, reward, stop = run.controls()
+    assert (pause["kind"], reward["kind"], stop["kind"]) == ("pause", "reward", "stop")
+    assert reward["by"] == "jake (box, unverified)"
+    assert (reward["ml"], reward["entry"]) == (REWARD_ML, "reward_correct")
+    assert reward["trial_index"] == paused.trial_index
+    assert reward["at"] == given.last_reward_at
+    codes = run.cards[0].codes
+    assert codes.count(MANUAL_REWARD_CODE) == 1
+    at = codes.index(MANUAL_REWARD_CODE)
+    assert codes.index(PAUSE_CODE) < at
+    assert FIX_ON not in codes[at:], "no trial ran after the pause"
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider --continue-on-collection-errors tests/test_link.py tests/test_taskd.py tests/test_web.py tests/test_serve.py`
+Expected: four files fail to collect, `4 errors` — `ImportError: cannot import name 'ManualReward'` from `wl_expcontroller.link` in `test_link.py`, `test_taskd.py` and `test_serve.py`, and `cannot import name 'REWARD_ONLY_PAUSED'` from `wl_expcontroller.web` in `test_web.py`.
+
+- [ ] **Step 3: Implement**
+
+The event code, allocated as Task 5 allocated 4131–4133 (Plan decision 16):
+
+In `tasks/allocation.py`, replace:
+
+```python
+        4133: "OPERATOR_MARK",
+    },
+```
+
+with:
+
+```python
+        4133: "OPERATOR_MARK",
+        # A person's manual reward, given while paused (PI, 2026-09-28), strobed
+        # before its delivery as `REWARD_COMMANDED` precedes a task's reward, so the
+        # recording tells it from a task's reward and from a panel press (S6 §4). In
+        # this range for the reason the three above are; wl-exptasks owns the final
+        # numbering (P4d-2b spec §5.6).
+        4134: "MANUAL_REWARD",
+    },
+```
+
+The command, on the wire as every simple control is:
+
+In `wl_expcontroller/link.py`, in `Pause`, replace:
+
+```python
+    and nothing is rewarded until `Resume`, while the out-of-cage clock keeps running
+    and still ends the session. `taskd.Session._hold` is what it does."""
+```
+
+with:
+
+```python
+    and the task rewards nothing until `Resume` -- a person may give a `ManualReward`
+    meanwhile (PI, 2026-09-28) -- while the out-of-cage clock keeps running and still
+    ends the session. `taskd.Session._hold` is what it does."""
+```
+
+In `wl_expcontroller/link.py`, replace:
+
+```python
+    KIND: ClassVar[str] = "cancel"
+
+    by: str
+
+
+Command = SetParameter | Stop | Pause | Resume | Mark | ScheduleStop | CancelScheduledStop
+```
+
+with:
+
+```python
+    KIND: ClassVar[str] = "cancel"
+
+    by: str
+
+
+@dataclass(frozen=True, slots=True)
+class ManualReward:
+    """One press of the page's *give reward* (P4d-2b b2a, amended 2026-09-28; the PI: "I
+    want to be able to give manual rewards during pause").
+
+    **One press, one reward, the size a correct trial pays** -- the PI's answer to how
+    much, "Same as a correct trial" -- so it carries who pressed it and nothing else:
+    the size is the bounded config's `reward_correct`, read by `taskd` when it gives
+    the reward, and nothing a console sends can set it. `taskd.Session._manual_reward`
+    gives it only while the session is held paused, and refuses it with a sentence at
+    any other time. **Never sent twice**: `wlx serve` answers one it cannot confirm
+    *unknown*, and nothing on the command path re-sends a command."""
+
+    KIND: ClassVar[str] = "reward"
+
+    by: str
+
+
+Command = (
+    SetParameter
+    | Stop
+    | Pause
+    | Resume
+    | Mark
+    | ScheduleStop
+    | CancelScheduledStop
+    | ManualReward
+)
+```
+
+In `wl_expcontroller/link.py`, in `_encode_command`, replace:
+
+```python
+    elif isinstance(command, (Stop, Pause, Resume, CancelScheduledStop)):
+```
+
+with:
+
+```python
+    elif isinstance(command, (Stop, Pause, Resume, CancelScheduledStop, ManualReward)):
+```
+
+In `wl_expcontroller/link.py`, in `_decode_command`, replace:
+
+```python
+    simple = {command.KIND: command for command in (Stop, Pause, Resume, CancelScheduledStop)}
+```
+
+with:
+
+```python
+    simple = {
+        command.KIND: command
+        for command in (Stop, Pause, Resume, CancelScheduledStop, ManualReward)
+    }
+```
+
+A command handed over and not acknowledged, told apart from one never sent:
+
+In `wl_expcontroller/link.py`, replace:
+
+```python
+REPLY_TIMEOUT_S = 15.0
+
+
+class ZmqCommands:
+```
+
+with:
+
+```python
+REPLY_TIMEOUT_S = 15.0
+
+
+class Unacknowledged(NotDelivered):
+    """A command handed to a connected rig that did not acknowledge it within the reply
+    timeout (P4d-2b b2a, amended 2026-09-28). Unlike a `NotDelivered` raised before the
+    send, it **may still be applied** at the rig's next boundary. A `NotDelivered`, so
+    every caller that catches that still does; `wlx serve` tells the two apart for a
+    manual reward (`serve._rewarded`), which it answers *unknown*, because a reward
+    that may have been given must not invite a second press."""
+
+
+class ZmqCommands:
+```
+
+In `wl_expcontroller/link.py`, in `ZmqCommands`, replace:
+
+```python
+    which is why that sentence says so rather than calling it lost.
+```
+
+with:
+
+```python
+    which is why that sentence says so rather than calling it lost, and why it is
+    raised as `Unacknowledged`, which a caller can tell from a command never sent.
+
+    **Nothing here sends a command twice**, and nothing may (PI, 2026-09-28): a manual
+    reward is a command, and a re-send after a timeout would double a reward the rig
+    had already given. A test in `tests/test_serve.py` puts a socket that answers
+    nothing where the rig is, and counts what reaches the wire.
+```
+
+In `wl_expcontroller/link.py`, in `ZmqCommands.deliver`, replace:
+
+```python
+            self._reset()
+            raise NotDelivered(
+```
+
+with:
+
+```python
+            self._reset()
+            raise Unacknowledged(
+```
+
+The session. The entry one press delivers:
+
+In `wl_expcontroller/taskd.py`, replace:
+
+```python
+PAUSE_HOUSEKEEPING_S = 0.5
+
+```
+
+with:
+
+```python
+PAUSE_HOUSEKEEPING_S = 0.5
+
+#: The bounded config's entry one manual reward delivers (PI, 2026-09-28): asked how
+#: much one press gives, he chose "Same as a correct trial" -- `reward_correct`, the
+#: entry the reference tasks pay a correct trial from, at the value it holds when the
+#: press is given. **The only one**: a config without it refuses the press by name,
+#: and no other entry stands in (`Session._manual_reward`).
+MANUAL_REWARD_ENTRY = "reward_correct"
+
+```
+
+In `wl_expcontroller/taskd.py`, in `Session.controls`, replace:
+
+```python
+        -- from the tasks that add them -- `mark`, `note`, `schedule`, `cancel`,
+        `scheduled_stop` and `set` (a staged setting applied). `at` is the session's anchored clock; `said` is the
+```
+
+with:
+
+```python
+        -- from the tasks that add them -- `mark`, `note`, `schedule`, `cancel`,
+        `scheduled_stop`, `set` (a staged setting applied) and `reward` (a manual
+        reward given while paused). `at` is the session's anchored clock; `said` is the
+```
+
+`_hold` drains the only commands a held session hears, so it alone says `held`:
+
+In `wl_expcontroller/taskd.py`, in `Session._hold`, replace:
+
+```python
+        """**Paused** (P4d-2b spec §5.1): no trial runs and nothing is rewarded, while
+        once per housekeeping pass the loop drains commands -- resume, stop, marks,
+        schedules, settings -- publishes a frame, and asks `_ends` whether the
+        out-of-cage limit has arrived, ending the session on it as between trials.
+        The out-of-cage clock runs on the wall throughout, since nothing here stops
+        it.
+
+        **Nothing is rewarded because nothing can be**: a reward is a trial's action
+        (`run.Effects.reward`), and no trial runs here. **Nothing is drawn** for the
+        same reason: a stimulus is shown only by a trial, so the display the task's
+        trials draw on shows its background with nothing on it (spec §5.0). There is
+        no display process yet to be told so -- S4's is not built (docs/CHECKPOINT.md:
+        "a frame on screen" is blocked on a panel) -- and when there is, this is the
+        pause it must show; the hardware verification list says so.
+```
+
+with:
+
+```python
+        """**Paused** (P4d-2b spec §5.1): no trial runs and the task rewards nothing,
+        while once per housekeeping pass the loop drains commands -- resume, stop,
+        marks, schedules, settings, and a person's manual reward -- publishes a frame,
+        and asks `_ends` whether the out-of-cage limit has arrived, ending the session
+        on it as between trials. The out-of-cage clock runs on the wall throughout,
+        since nothing here stops it.
+
+        **The task rewards nothing because it cannot**: its reward is a trial's action
+        (`run.Effects.reward`), and no trial runs here. **A person may**, one
+        correct-trial reward per press (PI, 2026-09-28): the commands drained here are
+        the only ones a held session hears, so only they reach `_command` with
+        `held=True`, which is what `_manual_reward` gives a reward for. `_ends`, asked
+        later in this same pass, then ends the session if that reward reached a
+        scheduled "stop after X mL" -- without waiting for a resume, and with the
+        out-of-cage limit asked first, as always.
+
+        **Nothing is drawn**, because a stimulus is shown only by a trial: the display
+        the task's trials draw on shows its background with nothing on it (spec §5.0).
+        There is no display process yet to be told so -- S4's is not built
+        (docs/CHECKPOINT.md: "a frame on screen" is blocked on a panel) -- and when
+        there is, this is the pause it must show; the hardware verification list says
+        so.
+```
+
+In `wl_expcontroller/taskd.py`, in `Session._hold`, replace:
+
+```python
+            for command in self.link.drain():
+                self._command(command, index)
+            publish()
+```
+
+with:
+
+```python
+            for command in self.link.drain():
+                self._command(command, index, held=True)
+            publish()
+```
+
+The reward itself, beside the other controls, on the path a task's reward takes:
+
+In `wl_expcontroller/taskd.py`, replace:
+
+```python
+
+    def _refuse(self, name: str, by: str, why: str) -> None:
+```
+
+with:
+
+```python
+
+    def _manual_reward(self, by: str, index: int, held: bool) -> None:
+        """**A manual reward, given while paused** (PI, 2026-09-28: "I want to be able to
+        give manual rewards during pause"). Asked how much one press gives: "Same as a
+        correct trial" -- one delivery of the bounded config's `MANUAL_REWARD_ENTRY`,
+        at the value it holds now, **through the path a task's reward takes**:
+        `welfare.Rig.reward`, then `Welfare.deliver`, which charges it before the valve
+        opens and counts it in `commanded`, `deliveries` and `last_delivery_wall_at`.
+        So it is on the fluid total, the time since the last reward, and a scheduled
+        stop after X mL, which `_hold` asks `_ends` about in this same pass.
+        `MANUAL_REWARD` is strobed first, as a task strobes `REWARD_COMMANDED` before
+        its `Reward`, and one `reward` row goes to the record, with the mL given, at
+        the instant the reward was commanded.
+
+        **Only while held** (`held`: drained by `_hold`). Refused, with a sentence and
+        nothing given, when the session is stopping -- a `Stop` ahead of it in the
+        drain -- or not paused -- trials running, or a `Resume` ahead of it -- or
+        paused in this same drain and not yet held; when the bounded config has no
+        `MANUAL_REWARD_ENTRY`, which **no other entry replaces**; and when the
+        allocation has no `MANUAL_REWARD` code, since the recording could not show it.
+        A session that has ended refuses it in `_command`, as every command.
+
+        **A pump fault is not caught**, as `welfare.Rig` catches none for a task's
+        reward: the session ends on it as a fault, with the reward charged.
+
+        Welfare-critical (`docs/design/architecture.md`): it delivers fluid."""
+        if self.stopped_because:
+            self._refuse(
+                "reward",
+                by,
+                f"the session is stopping ({self.stopped_because}); no reward was given",
+            )
+            return
+        if self.paused_at is None:
+            self._refuse(
+                "reward",
+                by,
+                "the session is not paused, and a manual reward is given only while it "
+                "is; no reward was given",
+            )
+            return
+        if not held:
+            self._refuse(
+                "reward",
+                by,
+                "the session's pause has not begun holding yet, and a manual reward is "
+                "given only while it is; no reward was given -- press again once the "
+                "page shows the session paused",
+            )
+            return
+        if MANUAL_REWARD_ENTRY not in self.spec.bounds.ceilings:
+            self._refuse(
+                "reward",
+                by,
+                f"this subject's bounded config has no {MANUAL_REWARD_ENTRY!r} entry, so "
+                f"a manual reward has no size, and it is never taken from another "
+                f"entry; no reward was given",
+            )
+            return
+        code = self._code("MANUAL_REWARD")
+        if code is None:
+            self._refuse(
+                "reward",
+                by,
+                "this session's allocation has no MANUAL_REWARD event code, so the "
+                "recording could not show the reward; no reward was given",
+            )
+            return
+        ml = self.spec.bounds.value(MANUAL_REWARD_ENTRY)
+        self.card.emit(code)
+        self.rig.reward(MANUAL_REWARD_ENTRY)
+        self._control(
+            "reward",
+            by,
+            f"{ml:g} mL of {MANUAL_REWARD_ENTRY}, given while paused before trial {index}",
+            index,
+            at=self.welfare.last_delivery_wall_at,
+            ml=ml,
+            entry=MANUAL_REWARD_ENTRY,
+        )
+
+    def _refuse(self, name: str, by: str, why: str) -> None:
+```
+
+In `wl_expcontroller/taskd.py`, replace:
+
+```python
+    def _command(self, command, index: int) -> None:
+```
+
+with:
+
+```python
+    def _command(self, command, index: int, held: bool = False) -> None:
+```
+
+In `wl_expcontroller/taskd.py`, in `Session._command`, replace:
+
+```python
+        the post-loop phase but a refusal.
+        """
+```
+
+with:
+
+```python
+        the post-loop phase but a refusal.
+
+        **`held` is true only for a command `_hold` drained** (P4d-2b b2a, amended
+        2026-09-28): the session held paused at this boundary. Only a manual reward
+        reads it (`_manual_reward`): the PI's manual reward is given while paused, and
+        never while a pause drained in this same pass has yet to hold.
+        """
+```
+
+In `wl_expcontroller/taskd.py`, in `Session._command`, replace:
+
+```python
+        if isinstance(command, _link.CancelScheduledStop):
+            self._cancel(command.by, index)
+            return
+```
+
+with:
+
+```python
+        if isinstance(command, _link.CancelScheduledStop):
+            self._cancel(command.by, index)
+            return
+        if isinstance(command, _link.ManualReward):
+            self._manual_reward(command.by, index, held)
+            return
+```
+
+The record:
+
+In `wl_expcontroller/record.py`, replace:
+
+```python
+#: mark's stamp and its note, a schedule, a cancellation, and a scheduled stop firing.
+```
+
+with:
+
+```python
+#: mark's stamp and its note, a schedule, a cancellation, a scheduled stop firing, and
+#: a manual reward given while paused, with its mL (PI, 2026-09-28).
+```
+
+In `wl_expcontroller/record.py`, replace:
+
+```python
+#: own codes (`PAUSE`, `RESUME`, `OPERATOR_MARK`) by order and instant, or to nothing.
+```
+
+with:
+
+```python
+#: own codes (`PAUSE`, `RESUME`, `OPERATOR_MARK`, `MANUAL_REWARD`) by order and
+#: instant, or to nothing.
+```
+
+`wlx serve`: the body, and the answers that never invite a second press:
+
+In `wl_expcontroller/serve.py`, replace:
+
+```python
+    "cancel": frozenset(),
+```
+
+with:
+
+```python
+    "cancel": frozenset(),
+    "reward": frozenset(),
+```
+
+In `wl_expcontroller/serve.py`, in `parse_command`, replace:
+
+```python
+        "cancel": _link.CancelScheduledStop,
+    }[kind](by=by)
+```
+
+with:
+
+```python
+        "cancel": _link.CancelScheduledStop,
+        "reward": _link.ManualReward,
+    }[kind](by=by)
+```
+
+In `wl_expcontroller/serve.py`, replace:
+
+```python
+            "sent; try again"
+        ),
+    },
+)
+```
+
+with:
+
+```python
+            "sent; try again"
+        ),
+    },
+)
+#: What the page is told when the rig has a manual reward (PI, 2026-09-28). Whether
+#: it was given, and how much, is the changes feed's and the fluid total's to show.
+REWARD_SENT = (
+    "sent: the rig has the reward command; the changes feed and the fluid total show "
+    "whether it was given"
+)
+#: What the page is told when the rig took a manual reward and did not acknowledge it
+#: (PI, 2026-09-28: no accidental doubles). It may have been given, so it is neither
+#: *not delivered*, which would invite a second press, nor sent again.
+REWARD_UNKNOWN = (
+    504,
+    {
+        "status": "unknown",
+        "said": (
+            "unknown: the rig took the reward command and did not acknowledge it, so "
+            "whether the reward was given is not known, and it was not sent again; "
+            "check the session's fluid total before pressing again"
+        ),
+    },
+)
+```
+
+In `wl_expcontroller/serve.py`, in `_delivered`, replace:
+
+```python
+        return 200, {"status": "sent", "said": SENT}
+
+    return work
+```
+
+with:
+
+```python
+        return 200, {"status": "sent", "said": SENT}
+
+    return work
+
+
+def _rewarded(command: _link.ManualReward) -> Callable[[object], tuple[int, dict]]:
+    """The command thread's work for a manual reward (PI, 2026-09-28): delivered
+    **once**, like every command -- nothing on this path re-sends one, and a reward
+    must never be the first thing that does -- and answered without guessing. *Sent*
+    when the rig acknowledged it; *unknown* when it was handed over and not
+    acknowledged (`link.Unacknowledged`), or failed in a way that cannot say whether
+    it went, since it may already have been given; *not delivered* only when it never
+    left, saying no reward was given."""
+
+    def work(commands) -> tuple[int, dict]:
+        try:
+            commands.deliver(command)
+        except _link.Unacknowledged:
+            return REWARD_UNKNOWN
+        except _link.NotDelivered as exc:
+            return not_delivered(f"{exc}; no reward was given")
+        except Exception:  # noqa: BLE001 -- a reward that may have gone is unknown
+            return REWARD_UNKNOWN
+        return 200, {"status": "sent", "said": REWARD_SENT}
+
+    return work
+```
+
+In `wl_expcontroller/serve.py`, in `Server.dispatch`, replace:
+
+```python
+        if isinstance(request, MarkSignal):
+            return self._signal(request)
+```
+
+with:
+
+```python
+        if isinstance(request, MarkSignal):
+            return self._signal(request)
+        if isinstance(request, _link.ManualReward):
+            # Its own answers, never a re-send (PI, 2026-09-28): see `_rewarded`.
+            return self._commands.submit(_rewarded(request))
+```
+
+The page: the button, what became of the last press, and a script that sends one reward per click:
+
+In `wl_expcontroller/web.py`, replace:
+
+```python
+NO_MARK_ENDPOINT = (
+    "this console was started without the session's mark endpoint: give wlx serve "
+    "--link PUB,REP,MARK, as wlx run was given it"
+)
+```
+
+with:
+
+```python
+NO_MARK_ENDPOINT = (
+    "this console was started without the session's mark endpoint: give wlx serve "
+    "--link PUB,REP,MARK, as wlx run was given it"
+)
+#: Why *give reward* is greyed while trials run: the rig gives a manual reward only
+#: while the session is paused (PI, 2026-09-28; `taskd.Session._manual_reward`).
+REWARD_ONLY_PAUSED = "a manual reward is given only while the session is paused: pause first"
+```
+
+In `wl_expcontroller/web.py`, replace:
+
+```python
+def _controls(frame: Telemetry | None, view: View) -> str:
+    """Pause or resume, mark, and stop (spec §5.2), while a session runs.
+
+    **Pause or resume by the session's state**, never a toggle: the page sends what
+    the button says, so a double click sends the same command twice, and the rig
+    refuses the second with a sentence (`taskd.Session._pause`). **Stop** opens the
+    page's confirm step. **Mark** is greyed on its own when this console has no mark
+    endpoint. **Everywhere but the box**, every control is greyed with the §2
+    sentence, which is also said beside them."""
+    if frame is None:
+        return '<span class="nm">controls · no session</span>'
+    if frame.stop_kind is not None:
+        return '<span class="nm">controls · the session has ended</span>'
+    off = _off(view)
+    mark_off = off or ("" if view.can_mark else f' disabled title="{_e(NO_MARK_ENDPOINT)}"')
+    cmd, label = ("resume", "resume (P)") if frame.paused_at is not None else ("pause", "pause (P)")
+    note = "" if view.can_write else f'<span class="nm">{CONTROLS_AT_THE_BOX}</span>'
+    return (
+        f'<button type="button" class="btn" data-cmd="{cmd}"{off}>{label}</button>'
+        f'<button type="button" class="btn" data-cmd="mark"{mark_off}>mark (M)</button>'
+        f'<button type="button" class="btn danger" data-cmd="stop"{off}>stop…</button>'
+        f"{note}"
+    )
+```
+
+with:
+
+```python
+def _reward_button(frame: Telemetry, view: View) -> str:
+    """The manual reward's button (PI, 2026-09-28): live only while the session is
+    paused, since the rig gives a manual reward only then
+    (`taskd.Session._manual_reward`); greyed with `REWARD_ONLY_PAUSED` while trials
+    run, and with the §2 sentence away from the box. **One button and no key**: a
+    click is one command, and the script holds the button until that command's
+    answer."""
+    paused = frame.paused_at is not None
+    off = _off(view) or ("" if paused else f' disabled title="{_e(REWARD_ONLY_PAUSED)}"')
+    return f'<button type="button" class="btn" data-cmd="reward"{off}>give reward</button>'
+
+
+def _reward_answer(frame: Telemetry) -> str:
+    """While paused, what became of the last press (PI, 2026-09-28), from the frames
+    the paused loop publishes: the session's fluid total, the newest reward given
+    with its size, and the newest press refused with the rig's sentence -- *last*,
+    since a refusal carries no time, as on a parameter card. Nothing while trials
+    run, when the button is greyed."""
+    if frame.paused_at is None:
+        return ""
+    said = [f"fluid session {frame.fluid_session_ml:.2f} mL"]
+    given = [control for control in frame.controls if control.kind == "reward"]
+    if given:
+        said.append(f"last given {_clock_time(given[-1].at)}: {_e(given[-1].said)}")
+    refused = [refusal for refusal in frame.refusals if refusal.name == "reward"]
+    if refused:
+        said.append(f"last refused: {_e(refused[-1].why)}")
+    return f'<span class="nm">{" · ".join(said)}</span>'
+
+
+def _controls(frame: Telemetry | None, view: View) -> str:
+    """Pause or resume, mark, give reward, and stop (spec §5.2), while a session runs.
+
+    **Pause or resume by the session's state**, never a toggle: the page sends what
+    the button says, so a double click sends the same command twice, and the rig
+    refuses the second with a sentence (`taskd.Session._pause`). **Stop** opens the
+    page's confirm step. **Mark** is greyed on its own when this console has no mark
+    endpoint, and **give reward** while trials run (`_reward_button`). **Everywhere
+    but the box**, every control is greyed with the §2 sentence, which is also said
+    beside them."""
+    if frame is None:
+        return '<span class="nm">controls · no session</span>'
+    if frame.stop_kind is not None:
+        return '<span class="nm">controls · the session has ended</span>'
+    off = _off(view)
+    mark_off = off or ("" if view.can_mark else f' disabled title="{_e(NO_MARK_ENDPOINT)}"')
+    cmd, label = ("resume", "resume (P)") if frame.paused_at is not None else ("pause", "pause (P)")
+    note = "" if view.can_write else f'<span class="nm">{CONTROLS_AT_THE_BOX}</span>'
+    return (
+        f'<button type="button" class="btn" data-cmd="{cmd}"{off}>{label}</button>'
+        f'<button type="button" class="btn" data-cmd="mark"{mark_off}>mark (M)</button>'
+        f"{_reward_button(frame, view)}"
+        f'<button type="button" class="btn danger" data-cmd="stop"{off}>stop…</button>'
+        f"{_reward_answer(frame)}{note}"
+    )
+```
+
+In `wl_expcontroller/web.py`, in `_SCRIPT`, replace:
+
+```python
+  var markNo = null;
+```
+
+with:
+
+```python
+  var markNo = null;
+  var rewarding = false;
+  var REWARD_LOST = "unknown: this page lost wlx serve's answer, so whether the reward was given is not known, and it was not sent again; check the session's fluid total before pressing again";
+```
+
+In `wl_expcontroller/web.py`, in `_SCRIPT`, replace:
+
+```python
+    if (node) { node.innerHTML = html; }
+  }
+```
+
+with:
+
+```python
+    if (node) { node.innerHTML = html; }
+    if (id === "controls") { holdReward(); }
+  }
+```
+
+In `wl_expcontroller/web.py`, in `_SCRIPT`, replace:
+
+```python
+  function post(command, then) {
+    if (!canWrite) { return; }
+    var by = name || askName();
+    if (!by) {
+      tell("not sent: give your name first -- every command records who sent it", "crit");
+      return;
+    }
+```
+
+with:
+
+```python
+  function post(command, then, after) {
+    var done = after || function () {};
+    if (!canWrite) { done(); return; }
+    var by = name || askName();
+    if (!by) {
+      tell("not sent: give your name first -- every command records who sent it", "crit");
+      done();
+      return;
+    }
+```
+
+In `wl_expcontroller/web.py`, in `_SCRIPT`, replace:
+
+```python
+    }).catch(function () {
+      tell("not delivered: this page could not reach wlx serve", "crit");
+    });
+  }
+```
+
+with:
+
+```python
+    }).catch(function () {
+      tell(command.kind === "reward" ? REWARD_LOST : "not delivered: this page could not reach wlx serve", "crit");
+    }).then(done);
+  }
+```
+
+In `wl_expcontroller/web.py`, in `_SCRIPT`, replace:
+
+```python
+  function command(cmd) {
+    if (cmd === "stop") { el("stop-confirm").hidden = false; }
+    else if (cmd === "mark") { mark(); }
+    else { post({ kind: cmd }); }
+  }
+```
+
+with:
+
+```python
+  function holdReward() {
+    var button = el("controls").querySelector('[data-cmd="reward"]');
+    if (rewarding && button && !button.disabled) {
+      button.disabled = true;
+      button.setAttribute("data-held", "1");
+    }
+  }
+  function reward() {
+    var button = el("controls").querySelector('[data-cmd="reward"]');
+    if (!button || button.disabled || rewarding) { return; }
+    rewarding = true;
+    holdReward();
+    post({ kind: "reward" }, null, function () {
+      rewarding = false;
+      var held = el("controls").querySelector('[data-cmd="reward"][data-held]');
+      if (held) { held.removeAttribute("data-held"); held.disabled = false; }
+    });
+  }
+  function command(cmd) {
+    if (cmd === "stop") { el("stop-confirm").hidden = false; }
+    else if (cmd === "mark") { mark(); }
+    else if (cmd === "reward") { reward(); }
+    else { post({ kind: cmd }); }
+  }
+```
+
+- [ ] **Step 4: Run the tests, then the suite, then check the script parses**
+
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_link.py tests/test_taskd.py tests/test_web.py tests/test_serve.py`
+Expected: all pass.
+Run: `for i in 1 2 3; do WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_serve.py -k "reward_pressed_while_paused or never_acknowledges"; done`
+Expected: 2 passed each time — the end to end and the wire count, which run threads and sockets.
+Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
+Expected: **1388 passed**.
+Python cannot run the script, so check at least that it parses, if Node is on the machine:
+Run: `python -c "from wl_expcontroller.web import _SCRIPT; open('/tmp/b2a-page.js', 'w').write(_SCRIPT)" && node --check /tmp/b2a-page.js`
+Expected: no output, exit 0. (Task 16 Step 4 clicks the button in a browser.)
+
+- [ ] **Step 5: Show the new tests can fail**
+
+Every function this task adds or changes, neutered by the harness one at a time and read by its line (CLAUDE.md: `N failed` is a test noticing; `N errors` or `timed out` is not). Do nothing else in the worktree while each runs:
+
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/taskd.py _manual_reward`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/taskd.py _command`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/taskd.py _hold`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/link.py _encode_command`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/link.py _decode_command`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/link.py deliver`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/serve.py parse_command`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/serve.py _rewarded`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/serve.py dispatch`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/web.py _reward_button`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/web.py _reward_answer`
+Run: `WLX_REQUIRE_PREPROC=1 python tools/mutate.py --returns None wl_expcontroller/web.py _controls`
+Expected, each: `baseline: 1388 passed`; then `caught    <function>    N failed, … <- tests/…`, never `N errors` and never `timed out`; then `restored: 1388 passed`. For the four functions this task adds, the `<-` names this task's tests. A changed function breaks older tests too, and the harness names only the first three failures, so the scratch run also ran each mutant against the four test files with `-rf` and read which of this task's tests were among them. What the scratch run read (2026-09-28, a copy of the branch tip with Tasks 1–13 applied, four lanes in parallel copies on one development machine):
+
+| Function | Harness line | This task's tests among the failures |
+|---|---|---|
+| `taskd._manual_reward` (new) | `11 failed, 1377 passed` | all 11: every `test_a_manual_reward_*`, the staged-size and pump-fault tests, the end to end |
+| `taskd._command` | `80 failed, 1308 passed` | 12: the ten `taskd` reward tests, the post-loop refusal, the end to end |
+| `taskd._hold` | `22 failed, 1366 passed` | 10: every paused-reward `taskd` test (not *while-running*, which never holds), the end to end |
+| `link._encode_command` | `39 failed, 1349 passed` | 4: the wire test, the unacknowledged test, the ROUTER count, the end to end |
+| `link._decode_command` | `77 failed, 1311 passed` | 6: the wire test, the three no-name refusals, the ROUTER count, the end to end |
+| `link.deliver` | `22 failed, 1366 passed` | 3: the unacknowledged test, the ROUTER count, the end to end |
+| `serve.parse_command` | `49 failed, 1339 passed` | 4: the reward parse, the refused `ml`, the ROUTER count, the end to end |
+| `serve._rewarded` (new) | `6 failed, 1382 passed` | all 6: the four answers, the ROUTER count, the end to end |
+| `serve.dispatch` | `19 failed, 1369 passed` | 2: the ROUTER count, the end to end |
+| `web._reward_button` (new) | `4 failed, 1384 passed` | all 4: both amended running-session tests, the button test, the end to end |
+| `web._reward_answer` (new) | `2 failed, 1386 passed` | both: the answer test, the end to end |
+| `web._controls` | `16 failed, 1372 passed` | 5: the three `test_web` controls tests, the stream test, the end to end |
+
+The script's reward logic has no Python function to neuter; `test_the_script_sends_one_reward_per_click_and_holds_the_button_until_its_answer` pins its text, and Task 16 Step 4 clicks it.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add tasks/allocation.py wl_expcontroller/link.py wl_expcontroller/taskd.py wl_expcontroller/record.py wl_expcontroller/serve.py wl_expcontroller/web.py tests/test_link.py tests/test_taskd.py tests/test_web.py tests/test_serve.py
+git commit -m "Give a manual reward during a pause: one correct-trial reward per press, counted, strobed, recorded, and never sent twice"
+```
+
+---
+
+### Task 14: The measurement
 
 **Why:** spec §5.4 and CLAUDE.md: no timing claim without a measurement. A script in `tools/` measures the per-frame mark check's cost in the frame loop, with and without it, and commits its result under `docs/measurements/`; the effect on real frame timing goes onto the hardware verification list, as V12 in `docs/validation.md`. **This plan states no number**: the number is the script's output, produced when this task runs (Plan decision 1).
 
@@ -10297,7 +12013,7 @@ def test_a_small_measurement_reports_both_loops_the_check_and_its_allocation():
 
 
 def test_the_command_line_writes_the_report_where_it_is_told(tmp_path, capsys):
-    """`main` is how Task 13 commits the number, so the file `--out` names gets the
+    """`main` is how Task 14 commits the number, so the file `--out` names gets the
     report the options asked for, and the terminal says where it went."""
     out = tmp_path / "measurements" / "mark-check.md"
 
@@ -10610,14 +12326,14 @@ if __name__ == "__main__":
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider tests/test_measure_mark_check.py`
 Expected: 4 passed.
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider`
-Expected: **1365 passed**.
+Expected: **1392 passed**.
 
 - [ ] **Step 5: Measure, read it, and commit it with the script**
 
 On a quiet machine — no mutation sweep, no suite, no build running beside it, since whatever else the CPU is doing lands in the numbers:
 
 Run: `python tools/measure_mark_check.py --out "docs/measurements/dev-machine/$(date +%Y-%m-%d)-mark-check.md"`
-Expected: `wrote docs/measurements/dev-machine/<today>-mark-check.md`. Read it: the table's three rows, the median added per frame, and the allocation paragraph, whose "still held" figure is `0`. **Quote its numbers nowhere else** except as that file's, with its conditions; Task 15 Step 6 hands them to the PI.
+Expected: `wrote docs/measurements/dev-machine/<today>-mark-check.md`. Read it: the table's three rows, the median added per frame, and the allocation paragraph, whose "still held" figure is `0`. **Quote its numbers nowhere else** except as that file's, with its conditions; Task 16 Step 6 hands them to the PI.
 
 ```bash
 git add tools/measure_mark_check.py tests/test_measure_mark_check.py docs/validation.md docs/measurements/dev-machine/
@@ -10626,7 +12342,7 @@ git commit -m "Measure what the per-frame mark check costs in the trial loop, an
 
 ---
 
-### Task 14: Write it down
+### Task 15: Write it down
 
 **Why:** CLAUDE.md — a change that invalidates `architecture.md`, `pitfalls.md` or a spec updates them in the same branch, and a session ends by leaving the repo resumable. `architecture.md`'s console row still says writes are "slice b2", its commands are `SetParameter`/`Stop`, and its welfare-critical list must name what joins it (Plan decision 13). S9a §7 gains the mark socket and the command thread, §8 the controls, §9 schema 8's panes and its history bullet. `pitfalls.md` gains the one risk b2a opened — a browser page that can write — and P3's note the one per-frame call b2a added. **No ADR is written**: the transport is ADR-0003's, untouched (a third socket on the same link), and the pyzmq floor is an inventory row (Task 3), not a new dependency.
 
@@ -10650,7 +12366,7 @@ binds a ZMQ PUB socket for `Telemetry` and a REP socket for `SetParameter`/`Stop
 with:
 
 ```markdown
-binds a ZMQ PUB socket for `Telemetry`, a REP socket for its commands — `SetParameter` and `Stop`, and since P4d-2b b2a `Pause`, `Resume`, `Mark` (a mark's note), `ScheduleStop` and `CancelScheduledStop`, each checked where it is decoded — and, given a third endpoint, a PULL socket for an operator's mark signal, which the trial loop checks once per frame (ADR-0003's transport, untouched: a third socket on the same link).
+binds a ZMQ PUB socket for `Telemetry`, a REP socket for its commands — `SetParameter` and `Stop`, and since P4d-2b b2a `Pause`, `Resume`, `Mark` (a mark's note), `ScheduleStop`, `CancelScheduledStop` and `ManualReward` (a manual reward, given only while paused), each checked where it is decoded — and, given a third endpoint, a PULL socket for an operator's mark signal, which the trial loop checks once per frame (ADR-0003's transport, untouched: a third socket on the same link).
 ```
 
 In `docs/design/architecture.md`, replace:
@@ -10679,7 +12395,7 @@ with:
 ```markdown
 **In code, that is `wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`, and
 four functions in `wl_expcontroller/cli.py`, plus one line inside a fifth — and, since
-P4d-2b b2a, two functions in `wl_expcontroller/taskd.py`.** Both modules
+P4d-2b b2a, three functions in `wl_expcontroller/taskd.py`.** Both modules
 ```
 
 In `docs/design/architecture.md`, replace:
@@ -10693,18 +12409,23 @@ with:
 
 ```markdown
 prompt goes. A change to either module, to those four functions, to that one line, or to
-the two `taskd` functions below, is a change requiring review; a change elsewhere is not.
+the three `taskd` functions below, is a change requiring review; a change elsewhere is not.
 
-**The two `taskd` functions are `Session._ends` and `Session._hold`** (P4d-2b b2a,
-2026-09-27). `_ends` is the one place the trial loop asks `welfare.must_stop`, between
+**The three `taskd` functions are `Session._ends`, `Session._hold` and
+`Session._manual_reward`** (P4d-2b b2a, 2026-09-27; the third since the PI's 2026-09-28
+amendment). `_ends` is the one place the trial loop asks `welfare.must_stop`, between
 trials and on every pass of a paused session alike, and where a scheduled stop — "after X
 mL this session" among them, read from `welfare.session_total()` — ends a session; it asks
 the limit first, so a session at its limit ends as `limit`. `_hold` is the paused loop:
-no trial runs, so nothing is rewarded, and each pass still drains, publishes and asks
-`_ends`. Both call `welfare` unchanged, and neither holds a clock or a limit of its own;
-they are on this list because a plausible mistake in either — the limit asked on one path
-and not the other, a paused session that forgot to ask — ends a session late or rewards
-an animal the operator stopped, and passes every refusal `welfare` has.
+no trial runs, so the task rewards nothing; each pass still drains, publishes and asks
+`_ends`; and the commands it drains are the only ones a manual reward is given for.
+`_manual_reward` gives one: a person's press of *give reward* while paused, one delivery
+of the bounded config's `reward_correct` through `welfare.Rig.reward`, strobed
+`MANUAL_REWARD` first and refused at any other time. All three call `welfare` unchanged,
+and none holds a clock or a limit of its own; they are on this list because a plausible
+mistake in any — the limit asked on one path and not the other, a paused session that
+forgot to ask, a reward given while trials run or paid from another entry — ends a session
+late or rewards an animal when nobody meant it to, and passes every refusal `welfare` has.
 ```
 
 The protocols list:
@@ -10781,7 +12502,8 @@ shown.
 
 **Since P4d-2b b2a (2026-09-27) the feed is on the page**, rendered in Python like every
 pane: staged changes, then the control events — each setting applied, each pause and
-resume, each mark and its note, each schedule and cancellation — newest first with when
+resume, each mark and its note, each schedule and cancellation, and each manual reward
+given while paused — newest first with when
 and who, then the refusals. The session keeps the last `link.CONTROL_HISTORY` of those
 events for the feed and counts what fell off (`controls_dropped`); `controls.jsonl` in the
 session record keeps every one.
@@ -10801,7 +12523,7 @@ with:
 | Trials per minute | **Derived by `wlx serve`**, from `trial_index` over the last five minutes of frames, labeled derived on the page, bounding nothing — the one console number not in the record, and it says so |
 | Paused, and since when | `Session.paused_at` → `Telemetry.paused_at` (schema 8), the instant on the session's anchored clock, `None` while trials run. Set at the boundary a `Pause` was drained at; the pill says *paused · since HH:MM:SS* only while the session runs |
 | Scheduled stop | `Session.scheduled_stop` → `Telemetry.scheduled_stop` (kind, target, who, and `said`, the rig's own words, which the stop reason reuses). Shown on the strip while it is held, with a cancel button; spent when it fires |
-| Changes feed: control events | `Session.controls` → `Telemetry.controls` and `controls_dropped` (schema 8): the last 50 stops, pauses, resumes, marks, notes, schedules, cancellations and applied settings, with who and when. The record (`controls.jsonl`, and `parameter_changes.jsonl` for settings) keeps all of them |
+| Changes feed: control events | `Session.controls` → `Telemetry.controls` and `controls_dropped` (schema 8): the last 50 stops, pauses, resumes, marks, notes, schedules, cancellations, manual rewards and applied settings, with who and when. The record (`controls.jsonl`, and `parameter_changes.jsonl` for settings) keeps all of them |
 ```
 
 §9's schema history:
@@ -10944,31 +12666,35 @@ check's measured cost. In order: his answers; the fast-forward to `main`; then b
 sign-in through wl-works, designed in full from the P4d-2b spec §5.7 once b2a has shipped.
 
 - **What was built** (plan `docs/superpowers/plans/2026-09-27-p4d2b-b2a-controls.md`):
-  M8 closed where commands are decoded; five new commands on the link, each with `by`;
-  pause and resume, held at a trial boundary; a mark stamped in the frame it reaches the
-  rig, on a third loopback socket, with its note joined by number; a scheduled stop by
-  clock time, trials or fluid, held by `taskd`; `controls.jsonl`; telemetry schema 8;
+  M8 closed where commands are decoded; six new commands on the link, each with `by`;
+  pause and resume, held at a trial boundary; a manual reward while paused, one
+  correct-trial reward per press (the PI's one change at his review of the plan,
+  2026-09-28); a mark stamped in the frame it reaches the rig, on a third loopback socket,
+  with its note joined by number; a scheduled stop by clock time, trials or fluid, held by
+  `taskd`; `controls.jsonl`; telemetry schema 8;
   `wlx console` and the page rendering all of it; `POST /commands` under spec §2's four
   checks, the `Host` check on every request, and `wlx serve`'s command and mark threads;
   the end to end; and `tools/measure_mark_check.py` with its first result and V12.
-- **Welfare-critical, and waiting on the PI:** while paused nothing is rewarded and the
-  out-of-cage limit still ends the session; a scheduled stop, "after X mL" included, can
-  end a session; reward size can be set from the page, still capped by its ceiling; and
-  the M8 fix. `taskd.Session._ends` and `_hold` joined the welfare-critical list
-  (`architecture.md`). `welfare.py`, `bounds.py` and the `cli` welfare functions did not
-  change.
-- **The plan's fifteen decisions** are in its header: the mark socket and its `EVENTS`
+- **Welfare-critical, and waiting on the PI:** while paused the task rewards nothing, a
+  person may give one correct-trial reward per press (`reward_correct`, counted in the
+  fluid total and toward "stop after X mL"), and the out-of-cage limit still ends the
+  session; a scheduled stop, "after X mL" included, can end a session; reward size can be
+  set from the page, still capped by its ceiling; and the M8 fix. `taskd.Session._ends`,
+  `_hold` and `_manual_reward` joined the welfare-critical list (`architecture.md`).
+  `welfare.py`, `bounds.py` and the `cli` welfare functions did not change.
+- **The plan's sixteen decisions** are in its header: the mark socket and its `EVENTS`
   check, verified in pyzmq 27.2.0's source; `--link PUB,REP[,MARK]`; random mark numbers
   below 2**53; the mark's two rows; the pause's housekeeping loop; the schedule's rules
   (exactly now is tomorrow's, with the date said); `controls.jsonl`; `PAUSE`, `RESUME`,
   `OPERATOR_MARK` at 4131–4133; schema 8; `wlx serve`'s threads and answers; the `Host`
-  check's names; the page; the welfare list; M8; and a test-only speedup.
+  check's names; the page; the welfare list; M8; a test-only speedup; and the manual
+  reward during a pause (`MANUAL_REWARD` at 4134; only while held; never re-sent).
 - **The display during a pause is structural**: no trial runs, so nothing is drawn. No
   display process exists to show the task's background yet; V12 item 3 proves it on a rig.
 - **Carried forward from b2a:** the mark check's frame effect is V12, unmeasured until a
   rig exists; a note typed after the session ended is refused with the post-loop sentence,
   so it is lost from the record (the stamp is kept); the page's script is checked by
-  `node --check` and by eye (Task 15 Step 4), never by pytest.
+  `node --check` and by eye (Task 16 Step 4), never by pytest.
 - **Three bounds a test here needs, found by the plan's pre-flight sweep printing `timed
   out`:** a simulated session with a mark socket runs fewer trials a second than one
   without (every frame pays for the check), so a trial budget sized for b1's session held
@@ -10980,7 +12706,7 @@ sign-in through wl-works, designed in full from the P4d-2b spec §5.7 once b2a h
   trial and calls no `idle`, so neither the trial budget nor `_Scripted`'s wait budget
   moves — `_Scripted` also counts drains (`PASS_BUDGET`).
 
-The gate's result and the test count are added here in the plan's Task 15 Step 3.
+The gate's result and the test count are added here in the plan's Task 16 Step 3.
 
 ## What moved on 2026-09-27, afternoon: b1 merged, b2 designed, the camera, CI
 
@@ -11017,14 +12743,15 @@ with:
 ## 1. The thing that needs a person, not a session — P4d-2b b2a, awaiting the PI
 
 **Branch `p4d2b-b2a-controls` is welfare-critical** (CLAUDE.md; P4d-2b spec §5.5) and does
-not merge until the PI approves the four items the plan's Task 15 Step 6 gives him, in
-plain terms: (1) while paused, nothing is rewarded, and the out-of-cage limit still ends
-the session; (2) a scheduled stop, "after X mL" included, can end a session; (3) reward
-size can be changed from the console page, still capped by its approved ceiling; (4) the
-M8 fix — a malformed setting is refused and never ends the session. He is also asked about
-the per-frame mark check's measured cost (the spec's rule: a check that measurably
-disturbs frames goes back to him before b2a ships). Record his answers here, and move this
-section below as the record once he has.
+not merge until the PI approves the four items the plan's Task 16 Step 6 gives him, in
+plain terms: (1) while paused, the task rewards nothing, a person may give one
+correct-trial reward per press (his one change at his review of the plan, 2026-09-28), and
+the out-of-cage limit still ends the session; (2) a scheduled stop, "after X mL" included,
+can end a session; (3) reward size can be changed from the console page, still capped by
+its approved ceiling; (4) the M8 fix — a malformed setting is refused and never ends the
+session. He is also asked about the per-frame mark check's measured cost (the spec's rule:
+a check that measurably disturbs frames goes back to him before b2a ships). Record his
+answers here, and move this section below as the record once he has.
 
 ## 1b. The thing that needed a person — P4d-2b b1, approved and merged 2026-09-27
 ```
@@ -11074,7 +12801,7 @@ git commit -m "Record the controls from the box, and what the PI is asked to app
 
 ---
 
-### Task 15: Prove it, look at it, and hand it to the PI
+### Task 16: Prove it, look at it, and hand it to the PI
 
 **Files:** `docs/CHECKPOINT.md` (Step 3). Nothing else, unless a step finds a survivor or a defect; then the owning task's files, with a test that fails without the fix.
 
@@ -11083,7 +12810,7 @@ git commit -m "Record the controls from the box, and what the PI is asked to app
 - [ ] **Step 1: The whole suite, three times**
 
 Run: `WLX_REQUIRE_PREPROC=1 python -m pytest -q -p no:cacheprovider -rs` three times in a row.
-Expected: all pass each time, and the `-rs` summary lists no skip from `test_health.py` or `test_serve.py`. **1365 passed** if nothing was added after Task 13 (Task 14 adds no test).
+Expected: all pass each time, and the `-rs` summary lists no skip from `test_health.py` or `test_serve.py`. **1392 passed** if nothing was added after Task 14 (Task 15 adds no test).
 
 - [ ] **Step 2: The full mutation sweep, before the merge, read line by line**
 
@@ -11114,17 +12841,17 @@ Either way it takes hours. Do not commit to the branch while it runs (the sweep 
 WLX_REQUIRE_PREPROC=1 python tools/mutate.py --all --returns None tools/measure_mark_check.py
 ```
 
-Read its lines the same way as the shards': `_trial`, `_session_check`, `_timed_trial`, `_spread`, `measure`, `report` and `main` each `caught … N failed` with a `<-` naming a test in `tests/test_measure_mark_check.py` (the pre-flight's first sweep found `main` `SURVIVED`; Task 13 now tests it).
+Read its lines the same way as the shards': `_trial`, `_session_check`, `_timed_trial`, `_spread`, `measure`, `report` and `main` each `caught … N failed` with a `<-` naming a test in `tests/test_measure_mark_check.py` (the pre-flight's first sweep found `main` `SURVIVED`; Task 14 now tests it).
 
 Then read every line of every shard's log, not its exit code:
 - Zero `SURVIVED` and zero `SKIPPED`.
 - Every `caught` shows `N failed` and a `<-` naming tests. `N errors`, a timeout, or a single unrelated test does not count as caught.
-- For each function this plan added or changed, find its line and check that the `<-` names a test this plan wrote for it: in `link.py`, `_actor`, `_setting`, `check_schedule`, `_instant`, `_mark`, `_encode_command`, `_decode_command`, `drain`, `_refuse`, `mark_signal`, `_take_mark`, `idle`, `signal`, `deliver`, `_open`, `_reset`, `of`, `encode`, `_telemetry_from`, and `ZmqConsole`'s and `ZmqCommands`' `__init__`; in `taskd.py`, `_next_occurrence`, `_gap`, `set`, `_command`, `_control`, `_feed`, `_code`, `_pause`, `_resume`, `_stamp`, `_settle_stamps`, `_check_marks`, `_mark_note`, `_schedule`, `_cancel`, `_ends`, `_hold`, `_apply_staged`, `controls`, `run`; `run.run_trial`; `record.control`; `cli.render` and `cli.main`; `health._state_text`; in `web.py`, `_clock_time`, `_state`, `_off`, `_scheduled`, `_strip`, `_controls`, `_changes`, `_step`, `_field`, `_params`, `fragments`, `page`; in `serve.py`, `host_name`, `names_loopback`, `box_names`, `_person`, `parse_command`, `not_delivered`, `Outbox`'s methods, `_delivered`, `make_handler`, `_host_ok`, `may_write`, `_from_the_box`, `_refuse_method`, `do_POST`, `_command`, `do_GET`, `dispatch`, `_signal`, `_remember`, `_recall`, `start`, `close`, `parse_link`, `run`.
+- For each function this plan added or changed, find its line and check that the `<-` names a test this plan wrote for it: in `link.py`, `_actor`, `_setting`, `check_schedule`, `_instant`, `_mark`, `_encode_command`, `_decode_command`, `drain`, `_refuse`, `mark_signal`, `_take_mark`, `idle`, `signal`, `deliver`, `_open`, `_reset`, `of`, `encode`, `_telemetry_from`, and `ZmqConsole`'s and `ZmqCommands`' `__init__`; in `taskd.py`, `_next_occurrence`, `_gap`, `set`, `_command`, `_control`, `_feed`, `_code`, `_pause`, `_resume`, `_stamp`, `_settle_stamps`, `_check_marks`, `_mark_note`, `_schedule`, `_cancel`, `_ends`, `_hold`, `_manual_reward`, `_apply_staged`, `controls`, `run`; `run.run_trial`; `record.control`; `cli.render` and `cli.main`; `health._state_text`; in `web.py`, `_clock_time`, `_state`, `_off`, `_scheduled`, `_strip`, `_reward_button`, `_reward_answer`, `_controls`, `_changes`, `_step`, `_field`, `_params`, `fragments`, `page`; in `serve.py`, `host_name`, `names_loopback`, `box_names`, `_person`, `parse_command`, `not_delivered`, `Outbox`'s methods, `_delivered`, `_rewarded`, `make_handler`, `_host_ok`, `may_write`, `_from_the_box`, `_refuse_method`, `do_POST`, `_command`, `do_GET`, `dispatch`, `_signal`, `_remember`, `_recall`, `start`, `close`, `parse_link`, `run`.
 - A survivor gets a test that fails without it, in the owning task's test file. A function nothing can test is deleted, not exempted.
 
 - [ ] **Step 3: Record what the gate said**
 
-In `docs/CHECKPOINT.md`'s b2a entry from Task 14, add the gate's result as read in Step 2 — modules swept, `SURVIVED`/`SKIPPED` counts, and any survivor found and how it was closed — the by-hand sweep of `tools/measure_mark_check.py` the same way, and the passed count from Step 1; update the Status table's test count to the same number.
+In `docs/CHECKPOINT.md`'s b2a entry from Task 15, add the gate's result as read in Step 2 — modules swept, `SURVIVED`/`SKIPPED` counts, and any survivor found and how it was closed — the by-hand sweep of `tools/measure_mark_check.py` the same way, and the passed count from Step 1; update the Status table's test count to the same number.
 
 ```bash
 git add docs/CHECKPOINT.md
@@ -11161,7 +12888,8 @@ Open `http://127.0.0.1:8080/` and confirm, writing down what was seen:
 6. **Stop.** The stop button asks *stop at the next trial boundary?*; *cancel* closes it; *stop* ends the session: *ended · operator*, the banner *stopped by NAME (box, unverified)*, and the controls say *the session has ended*.
 7. **Away from the box.** Start another session and `wlx serve` with `--http 0.0.0.0:8080`, and open the page from another machine on the LAN by the box's name: every control is greyed and says *controls work only at the rig PC until remote sign-in arrives*. From the box, open `http://<the box's name>:8080/`: greyed too (a write needs a `Host` naming loopback). `curl -s -H 'Host: evil.example' http://127.0.0.1:8080/` answers 421 with JSON.
 8. **Not delivered.** Start a third session, and kill its `wlx run` outright (`kill -9`, so it publishes nothing more): the page still shows it running until it greys. Press **P**: *not delivered: no rig is connected on …*, after about a second.
-9. `controls.jsonl` in the session directory holds every pause, resume, mark, note and schedule above, each note with `pressed_at`, `received_at`, `stamped_at` and both gaps.
+9. **Give reward** (Task 13). While trials run, *give reward* is greyed and its title says why. Pause, and it is live, followed by *fluid session N mL*. Click it once: it greys at once and stays grey until the answer, the line says *sent: the rig has the reward command…*, and within a second the fluid total beside it and on *Runtime* rises by `reward_correct` (0.05 mL under `tasks/twelve_hour_bounds.py`), *last given HH:MM:SS: 0.05 mL of reward_correct, given while paused before trial T* appears, the feed lists it with the name, and the trial number stands still. Double-click it: one reward, not two. Stop `wlx serve` with Ctrl-C and click it: the line says *unknown: this page lost wlx serve's answer…* or *not delivered…*, never *sent*, and the fluid total has not moved; start `wlx serve` again. Resume: the button greys again.
+10. `controls.jsonl` in the session directory holds every pause, resume, mark, note, reward and schedule above, each note with `pressed_at`, `received_at`, `stamped_at` and both gaps, and each reward with its `ml`.
 
 If any of these fails, fix it in the owning task with a test where Python can reach it, and repeat this step.
 
@@ -11177,11 +12905,11 @@ Then read the branch's push run (`gh run list --branch p4d2b-b2a-controls --even
 
 Give the PI numbered items to approve, in plain terms, through the question UI (memory: he wants items, not files, and his decisions asked in the UI):
 
-1. **While paused, nothing is rewarded, and the out-of-cage limit still ends the session.** A pause holds the session at the end of a trial. No trial runs, so no reward can be given; every half second the rig still checks the out-of-cage limit exactly as it does between trials, and ends the session on it. The clock keeps running while paused. Pinned by `test_nothing_is_rewarded_while_paused`, `test_the_out_of_cage_limit_still_ends_a_paused_session` and `test_e2e_the_limit_ends_a_session_paused_in_front_of_it`.
+1. **While paused, the task rewards nothing, a person at the box may give one correct-trial reward per press, and the out-of-cage limit still ends the session** (item 1 as amended at his 2026-09-28 review). A pause holds the session at the end of a trial. No trial runs, so the task gives no reward. A press of *give reward* then gives exactly what a correct trial pays now — the bounded config's `reward_correct`, through the same path a task's reward takes — counted in the fluid total and toward a "stop after X mL", which ends the session there if it is reached; strobed as its own event code and recorded with who pressed it. At any other time — while trials run, while a pause is still on its way, after the session has ended — a press is refused with a sentence and nothing is given; a config with no `reward_correct` gives nothing; and a press whose answer was lost is reported as unknown, never sent again, with the fluid total to check before pressing again. Every half second the rig still checks the out-of-cage limit exactly as it does between trials, and ends the session on it; the clock keeps running while paused. Pinned by `test_nothing_is_rewarded_while_paused`, `test_the_out_of_cage_limit_still_ends_a_paused_session`, `test_e2e_the_limit_ends_a_session_paused_in_front_of_it`, Task 13's `test_a_manual_reward_*` tests, `test_a_reward_the_rig_takes_and_never_acknowledges_is_unknown_and_sent_once` and `test_e2e_a_reward_pressed_while_paused_is_one_correct_trial_reward_on_the_record`.
 2. **A scheduled stop can end a session**, at a clock time, after a number of trials, or after a number of mL this session (read from the same session fluid the console shows). It ends the session like the stop button, naming who set it; the limit is checked first. Pinned by the `test_*scheduled*`/`test_a_stop_*` tests in `test_taskd.py` and `test_e2e_each_kind_of_scheduled_stop_ends_the_session_with_its_reason`.
 3. **Reward size can be changed from the console page, still capped by its approved ceiling**: the same path `wlx console --set` uses, checked when offered and applied at the next trial, and only from the box. Pinned by `test_a_console_command_moving_reward_volume_goes_through_its_ceiling` (b1's) and b2a's write tests.
 4. **The M8 fix: a malformed setting is refused and never ends the session.** A value that is not a number was able to end a session; now it is refused with a sentence, at the link and again at the session. Pinned by the Task 1 tests and `test_e2e_a_malformed_setting_is_refused_on_the_feed_and_the_session_runs_on`.
 
-And ask, as its own question: **the per-frame mark check's cost** — give him the numbers from Task 13's `docs/measurements/dev-machine/<date>-mark-check.md` as they stand, say that they are CPU time on a development machine and not frame timing, and that V12 measures frames on a rig, which does not exist yet. The spec's rule is that a check that measurably disturbs frames goes back to him before b2a ships; ask whether b2a may ship with V12 on the hardware list, or should wait for it — naming the alternative Plan decision 1 describes (a listener thread) if he would rather not have a socket call in the frame at all.
+And ask, as its own question: **the per-frame mark check's cost** — give him the numbers from Task 14's `docs/measurements/dev-machine/<date>-mark-check.md` as they stand, say that they are CPU time on a development machine and not frame timing, and that V12 measures frames on a rig, which does not exist yet. The spec's rule is that a check that measurably disturbs frames goes back to him before b2a ships; ask whether b2a may ship with V12 on the hardware list, or should wait for it — naming the alternative Plan decision 1 describes (a listener thread) if he would rather not have a socket call in the frame at all.
 
 It merges to `main` by fast-forward only after he approves items 1–4 and answers the question.
