@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Which calibration constellation should the calibration block present?
 
-Run: `python3 tools/calibration_design.py` from the repository root, with a
-`wl-preproc` checkout beside this one. Results are committed under
-`docs/measurements/2026-09-05-calibration-constellation.md`; regenerate that file
-from this script rather than editing its numbers by hand.
+Run: `python3 tools/calibration_design.py [--setup NAME]` from the repository root,
+with a `wl-preproc` checkout beside this one. Each setup is the source of one record
+under `docs/measurements/dev-machine/` (`SETUPS` names it); regenerate a record from
+this script rather than editing its numbers by hand. The default, `2026-09-05`, is the
+31.5-inch stereoscope that record was measured on, and still regenerates it byte for
+byte.
 
 **Two things are measured, and they are not the same question.**
 
@@ -27,8 +29,10 @@ bench data. **No number printed here is a claim about our hardware.**
 
 from __future__ import annotations
 
+import argparse
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -61,6 +65,8 @@ except ImportError as exc:  # pragma: no cover - operator-facing
         f"second definition free to drift from the one that gates a session."
     ) from exc
 
+from tasks.rig import RIG  # noqa: E402
+from wl_expcontroller.calibration import DIRECT_REGION_DEG, REACH  # noqa: E402
 from wl_expcontroller.geometry import Geometry  # noqa: E402
 
 #: The geometry the 2026-09-05 record was measured on: S0's 31.5-inch 16:9 panel (an
@@ -91,10 +97,91 @@ MARGIN = 0.85
 #: actually land, not over the whole panel.
 MAX_TESTED_DEG = 16.0
 
+#: Where a window can land, which the tested disc is clipped to; `None` when the disc
+#: lies inside the field whole. On 2026-09-05 the field was the extent itself.
+FIELD: tuple[float, float] | None = (HALF_H, HALF_V)
+
+#: What section 7 calls the extent the constellation is scaled to.
+EXTENT = "Per-eye field"
+
+#: The reach sections 1, 2 and 4-7 lay their designs out at: section 3's choice.
+SHOWN_REACH = 0.75
+
 #: Per-fixation scatter: where the animal's gaze actually sits relative to the
 #: target centre, not sample noise within a fixation. An assumption, swept in
 #: `fixations_per_target` rather than asserted.
 FIXATION_NOISE_DEG = 0.35
+
+
+
+@dataclass(frozen=True)
+class Setup:
+    """What one record measures: the extent the constellation is scaled to (the
+    per-eye field on 2026-09-05; a calibration region since the direct-view spec's
+    §6), where a window can land, and the reach the record chose."""
+
+    record: str
+    extent: str
+    half: tuple[float, float]
+    field: tuple[float, float] | None
+    max_tested_deg: float
+    reach: float
+
+
+#: The stereoscope's record is measured at the drawing's `E` = 1.6 cm. Its ±12° mask
+#: is inside the viewport at every IPD the drawing tabulates, so `E` moves nothing here.
+_STEREOSCOPE = RIG.stereoscope(half_ipd_cm=1.6)
+
+SETUPS: dict[str, Setup] = {
+    "2026-09-05": Setup(
+        record="2026-09-05-calibration-constellation.md",
+        extent="Per-eye field",
+        half=(HALF_H, HALF_V),
+        field=(HALF_H, HALF_V),
+        max_tested_deg=16.0,
+        reach=0.75,
+    ),
+    # Direct view's region, ±15°, where the stimuli go (direct-view spec §6). Windows
+    # land out to ±16°, the detection tasks' range in direct view; that disc lies inside
+    # the ±30.5° × ±18.4° field, clear of the housings near (±30°, −18°), so nothing is
+    # clipped -- and the field itself is not built here, because direct view refuses to
+    # exist without the housings, which are unmeasured (`tasks/rig.py`).
+    "direct": Setup(
+        record="2026-09-28-calibration-constellation-direct.md",
+        extent="Calibration region, direct view",
+        half=(DIRECT_REGION_DEG, DIRECT_REGION_DEG),
+        field=None,
+        max_tested_deg=16.0,
+        reach=REACH["direct"],
+    ),
+    # The mask, which is the stereoscope's field and its calibration region at once.
+    # Windows land anywhere inside it, so the tested disc runs to its half-angle.
+    "stereoscope": Setup(
+        record="2026-09-28-calibration-constellation-stereoscope.md",
+        extent="Calibration region, stereoscope (the mask)",
+        half=(_STEREOSCOPE.half_field_h_deg, _STEREOSCOPE.half_field_v_deg),
+        field=(_STEREOSCOPE.half_field_h_deg, _STEREOSCOPE.half_field_v_deg),
+        max_tested_deg=RIG.mask_deg,
+        reach=REACH["stereoscope"],
+    ),
+}
+
+
+def use(name: str) -> Setup:
+    """Point every section at one setup. The sections read module globals, as they
+    did when there was one setup, so the 2026-09-05 run is unchanged line for line."""
+    global HALF_H, HALF_V, FIELD, MAX_TESTED_DEG, EXTENT, SHOWN_REACH
+    setup = SETUPS[name]
+    HALF_H, HALF_V = setup.half
+    FIELD = setup.field
+    MAX_TESTED_DEG = setup.max_tested_deg
+    EXTENT = setup.extent
+    SHOWN_REACH = setup.reach
+    return setup
+
+
+def _pct(reach: float) -> str:
+    return "%d%%" % round(100 * reach)
 
 
 # ---------------------------------------------------------------------------
@@ -176,8 +263,10 @@ def diagonals(reach: float, fraction: float) -> np.ndarray:
     return scaled([f, -f, f, -f], [f, f, -f, -f])
 
 
-def augmented(reach: float = 0.75, fraction: float = 0.50) -> np.ndarray:
-    """The recommended constellation: a 3x3 plus four intermediates."""
+def augmented(reach: float | None = None, fraction: float = 0.50) -> np.ndarray:
+    """The recommended constellation: a 3x3 plus four intermediates, at the setup's
+    reach unless told otherwise."""
+    reach = SHOWN_REACH if reach is None else reach
     return np.vstack([grid(3, reach=reach), diagonals(reach, fraction)])
 
 
@@ -197,15 +286,17 @@ def predict(raw: np.ndarray, coefficients: np.ndarray, model: CalibrationModel) 
 
 def tested_region(step: int = 24) -> np.ndarray:
     """Where a window can actually land: a disc out to `MAX_TESTED_DEG`, clipped
-    to the panel. Not the panel's corners, which no task reaches."""
+    to the field. Not the panel's corners, which no task reaches."""
     angles = np.linspace(0, 2 * np.pi, 72, endpoint=False)
     rings = []
     for eccentricity in np.linspace(0.5, MAX_TESTED_DEG, step):
         points = np.column_stack(
             [eccentricity * np.cos(angles), eccentricity * np.sin(angles)]
         )
-        inside = (np.abs(points[:, 0]) <= HALF_H) & (np.abs(points[:, 1]) <= HALF_V)
-        rings.append(points[inside])
+        if FIELD is not None:
+            inside = (np.abs(points[:, 0]) <= FIELD[0]) & (np.abs(points[:, 1]) <= FIELD[1])
+            points = points[inside]
+        rings.append(points)
     return np.vstack(rings)
 
 
@@ -263,7 +354,7 @@ def section_conditioning() -> None:
         "ring of 8 + centre": ring(8, centre=True),
         "3x3, spanning the field": grid(3),
         "3x3, 60% of the field": grid(3, reach=0.6),
-        "3x3 @75% + 4 intermediates": augmented(),
+        "3x3 @%s + 4 intermediates" % _pct(SHOWN_REACH): augmented(),
     }
     print("| constellation | affine | second-order | verdict |")
     print("|---|---|---|---|")
@@ -286,7 +377,7 @@ def section_honesty(rng: np.random.Generator) -> None:
         "ring of 8 + centre": ring(8, centre=True),
         "3x3, 60% of the field": grid(3, reach=0.6),
         "3x3, spanning the field": grid(3),
-        "3x3 @75% + 4 intermediates": augmented(),
+        "3x3 @%s + 4 intermediates" % _pct(SHOWN_REACH): augmented(),
     }.items():
         p95, _, residual = field_error(targets, OPTICS["moderate"], 10, rng)
         print("| %s | %.3f | %.3f | %.1fx |" % (name, residual, p95, p95 / residual))
@@ -310,12 +401,12 @@ def section_count(rng: np.random.Generator) -> None:
     budget = 130
     print("P95 error (deg) over the tested region; total fixations held at %d.\n" % budget)
     designs = {
-        "3x3 @75% (9)": grid(3, reach=0.75),
+        "3x3 @%s (9)" % _pct(SHOWN_REACH): grid(3, reach=SHOWN_REACH),
         "3x3 + intermediates @0.35 (13)": augmented(fraction=0.35),
         "3x3 + intermediates @0.50 (13)": augmented(fraction=0.50),
         "3x3 + intermediates @0.70 (13)": augmented(fraction=0.70),
         "3x3 + intermediates at corners (13)": augmented(fraction=1.00),
-        "5x5 @75% (25)": grid(5, reach=0.75),
+        "5x5 @%s (25)" % _pct(SHOWN_REACH): grid(5, reach=SHOWN_REACH),
     }
     print("| design | n | fix/target | " + " | ".join(OPTICS) + " |")
     print("|---" * (len(OPTICS) + 3) + "|")
@@ -333,7 +424,7 @@ def section_dropout(rng: np.random.Generator) -> None:
     print("the %.2f gate. **This is the whole case for thirteen points.**\n"
           % MIN_CONDITIONING[CalibrationModel.SECOND_ORDER])
     designs = {
-        "3x3 @75% (9)": grid(3, reach=0.75),
+        "3x3 @%s (9)" % _pct(SHOWN_REACH): grid(3, reach=SHOWN_REACH),
         "3x3 + intermediates @0.50 (13)": augmented(fraction=0.50),
         "3x3 + intermediates @0.70 (13)": augmented(fraction=0.70),
     }
@@ -367,8 +458,8 @@ def section_held_out(rng: np.random.Generator) -> None:
     print("estimate cannot resolve it. `spread` is the standard deviation of the")
     print("held-out estimate across repeats of the SAME calibration: a gate whose")
     print("reading moves that much between identical sessions cannot be acted on.\n")
-    fit_targets = grid(3, reach=0.75)
-    test_targets = diagonals(0.75, 0.50)
+    fit_targets = grid(3, reach=SHOWN_REACH)
+    test_targets = diagonals(SHOWN_REACH, 0.50)
     region = tested_region()
     print("| optics | held-out estimate | spread | true RMS | error |")
     print("|---|---|---|---|---|")
@@ -395,7 +486,7 @@ def section_held_out(rng: np.random.Generator) -> None:
 def section_recommended() -> None:
     print("\n## 7. The constellation this recommends\n")
     targets = augmented()
-    print("Per-eye field: +/-%.2f deg horizontal, +/-%.2f deg vertical.\n" % (HALF_H, HALF_V))
+    print("%s: +/-%.2f deg horizontal, +/-%.2f deg vertical.\n" % (EXTENT, HALF_H, HALF_V))
     print("| role | x (deg) | y (deg) | eccentricity |")
     print("|---|---|---|---|")
     rows = [
@@ -409,7 +500,10 @@ def section_recommended() -> None:
         print("| %s | %.2f | %.2f | %.2f |" % (label, x, y, np.hypot(x, y)))
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--setup", choices=sorted(SETUPS), default="2026-09-05")
+    use(parser.parse_args(argv).setup)
     rng = np.random.default_rng(20260905)
     print("# Calibration constellation: measurements\n")
     print("Generated by `tools/calibration_design.py`. Do not edit the numbers by hand.\n")

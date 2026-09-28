@@ -22,10 +22,10 @@ calibration, merged that same day.
 **Decided 2026-09-27, design pending: a pupil and corneal-reflection fallback beyond the
 DPI's reach** (PI). The OpenIrisDPI paper puts P4's visibility at about 10° of gaze in
 macaques. The lab's stimuli go to about 15°, and this spec's own calibration targets already
-reach 8.4–12.6° in the stereoscope on the PG27UCDM with the screen at 50 cm
-(`calibration.constellation`; 10.8–16.3° on the 31.5" panel,
-`docs/research/2026-09-27-panel-27-vs-32.md`). Where P4 cannot be vouched
-for, gaze comes from `pupil − CR1` instead:
+reach 10.8–15.3° in direct view and 10.2–14.4° through the stereoscope's ±12° mask on the
+PG27UCDM with the screen at 50 cm (`calibration.constellation`, per setup since 2026-09-28,
+§2; 10.8–16.3° on the 31.5" panel, `docs/research/2026-09-27-panel-27-vs-32.md`). Where P4
+cannot be vouched for, gaze comes from `pupil − CR1` instead:
 - the tracker already reports both;
 - the fallback has its own calibration map;
 - every sample carries which method produced it.
@@ -101,6 +101,18 @@ each of which this section previously got wrong or left open:
 70%, 85% and 100% under every optics assumption swept. Pushing targets to the panel edge is
 *worse than* pulling them in: the corners sit near 21° eccentricity, outside the disc any task
 uses, and their leverage drags the quadratic away from where stimuli actually go.
+
+**Amended 2026-09-28: the constellation is placed per setup** (`2026-09-28-direct-view-design.md`
+§6). The same 3×3 plus four intermediates, scaled to a **calibration region** rather than the
+field: **±15° × ±15° in direct view**, the stimulus range, since 75% of direct view's ±30.5°
+field would put targets beyond both the stimuli and P4; and **the mask's ±12° in the
+stereoscope**. `tools/calibration_design.py` was rerun for each, by 2026-09-05's method, and each
+setup has its own reach (`calibration.REACH`): **85% in direct view, 100% in the stereoscope**,
+inside the same 0.85 margin. **Both are close calls**: each won under three of the four optics
+assumptions and lost the fourth by 0.001°. The records are
+`docs/measurements/dev-machine/2026-09-28-calibration-constellation-direct.md` and
+`…-stereoscope.md`; the 75% above is the 2026-09-05 record's, on the 31.5-inch stereoscope, and
+stands as written.
 
 ---
 

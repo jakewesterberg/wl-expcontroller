@@ -351,30 +351,48 @@ class GazeCalibration:
         return "\n".join(lines) + "\n"
 
 
-#: Fractions of the per-eye half-field. Measured, not chosen: see
-#: `docs/measurements/dev-machine/2026-09-05-calibration-constellation.md`.
-#: `REACH` at 0.75 beat 0.6, 0.7, 0.85 and 1.0 under every optics assumption swept --
-#: pushing targets to the panel edge is worse than pulling them in, because the
-#: corners sit outside the disc any task uses and their leverage drags the quadratic
-#: away from where stimuli actually go. `INTERMEDIATE` at 0.5 beat 0.35, 0.7 and 1.0
-#: on dropout survival and conditioning, at identical accuracy.
+#: Direct view's calibration region, ±15° × ±15° (direct-view spec §6): the PI's
+#: stimulus range, "out to about 15°" (2026-09-27), inside the ±18.4° vertical field.
+#: The whole field would put targets far beyond both the stimuli and P4's reach.
+DIRECT_REGION_DEG = 15.0
+
+#: Fractions of each setup's calibration region (`region`), inside `MARGIN`. Measured
+#: per setup, not chosen (direct-view spec §6): see the two 2026-09-28 records under
+#: `docs/measurements/dev-machine/`. **Both are close calls**: each reach won under
+#: three of four optics assumptions and lost the fourth by 0.001°. A single `REACH` of
+#: 0.75 was measured on the 31.5-inch stereoscope (the 2026-09-05 record, which stands
+#: as written). `INTERMEDIATE` at 0.5 beat 0.35, 0.7 and 1.0 on dropout survival and
+#: conditioning there, and still does in both setups, at accuracy within 0.01° of the
+#: best.
 MARGIN = 0.85
-REACH = 0.75
+REACH: dict[str, float] = {"direct": 0.85, "stereoscope": 1.0}
 INTERMEDIATE = 0.50
+
+
+def region(geometry: Geometry) -> tuple[float, float]:
+    """The half-extents, in degrees, that `geometry`'s constellation is placed over.
+
+    **Per setup** (direct-view spec §6): ±15° × ±15° in direct view, where the stimuli
+    go, and the mask in the stereoscope -- which is the field `geometry` already reports.
+    """
+    if geometry.view == "direct":
+        return (DIRECT_REGION_DEG, DIRECT_REGION_DEG)
+    return (geometry.half_field_h_deg, geometry.half_field_v_deg)
 
 
 def constellation(
     geometry: Geometry,
-    reach: float = REACH,
+    reach: float | None = None,
     intermediate: float = INTERMEDIATE,
     margin: float = MARGIN,
 ) -> tuple[tuple[float, float], ...]:
     """The thirteen targets the calibration block presents, in degrees.
 
     A 3x3 grid plus four intermediates on the diagonals, scaled to each axis of the
-    per-eye field separately -- which is **taller than it is wide**, because
-    splitting the panel halves each eye's width and keeps its full height. A grid
-    square in degrees would be the wrong shape for it.
+    setup's calibration region separately (`region`), at that setup's `REACH` unless
+    `reach` is given. The rig's two regions are square; the bare optics' field is
+    **taller than it is wide**, because splitting the panel halves each eye's width
+    and keeps its full height, which is why the axes stay separate.
 
     **Thirteen rather than nine buys survival, not accuracy.** At equal animal cost
     the two are indistinguishable. Nine points fitting six parameters has three to
@@ -387,8 +405,10 @@ def constellation(
     plus a centre is worse than it looks rather than degenerate -- it passes the gate
     at 0.1697 while leaving the radial term resting on a single contrast.
     """
-    half_h = geometry.half_field_h_deg * margin
-    half_v = geometry.half_field_v_deg * margin
+    extent_h, extent_v = region(geometry)
+    half_h = extent_h * margin
+    half_v = extent_v * margin
+    reach = REACH[geometry.view] if reach is None else reach
     outer_x, outer_y = reach * half_h, reach * half_v
     inner_x, inner_y = intermediate * outer_x, intermediate * outer_y
 

@@ -11,12 +11,16 @@ from __future__ import annotations
 
 import math
 import os
+from dataclasses import replace
 
 import pytest
 
+from tasks.rig import RIG
 from wl_expcontroller.calibration import (
+    DIRECT_REGION_DEG,
     MIN_CONDITIONING,
     RAW_DEFINITION,
+    REACH,
     EyeMap,
     Fixation,
     GazeCalibration,
@@ -27,8 +31,9 @@ from wl_expcontroller.calibration import (
     constellation,
     fit_eye,
     n_terms,
+    region,
 )
-from wl_expcontroller.geometry import Geometry
+from wl_expcontroller.geometry import Geometry, Housing
 
 GEOMETRY = Geometry.stereoscope(
     panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
@@ -137,6 +142,70 @@ def test_a_ring_cannot_carry_a_second_order_map():
     )
     assert conditioning(ring, Model.SECOND_ORDER) == pytest.approx(0.0, abs=1e-9)
     assert conditioning(ring, Model.AFFINE) > MIN_CONDITIONING[Model.AFFINE]
+
+
+# ---------------------------------------------------------------------------
+# The constellation per setup (direct-view spec §6)
+# ---------------------------------------------------------------------------
+
+#: The rig in direct view, with **stand-in housings**: the real ones are unmeasured
+#: (direct-view spec §9 item 1). One per bottom corner, 4 × 3 cm with a 0.5 cm margin.
+DIRECT = replace(
+    RIG,
+    housings=(
+        Housing(left_cm=0.0, right_cm=4.0, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
+        Housing(left_cm=54.997, right_cm=58.997, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
+    ),
+).direct()
+
+#: The rig's stereoscope at `E` = 1.6 cm, stopped by its ±12° mask.
+MASKED = RIG.stereoscope(half_ipd_cm=1.6)
+
+
+def test_each_setup_places_its_constellation_over_its_own_region():
+    """±15° × ±15° in direct view, where the stimuli go, and the mask's ±12° in the
+    stereoscope -- never direct view's whole field, which would put targets far
+    beyond both the stimuli and P4's reach. The bare optics keep their own field."""
+    assert DIRECT_REGION_DEG == 15.0
+    assert region(DIRECT) == (15.0, 15.0)
+    assert region(MASKED) == (12.0, 12.0)
+    assert region(GEOMETRY) == (GEOMETRY.half_field_h_deg, GEOMETRY.half_field_v_deg)
+
+
+def test_each_setup_gets_the_reach_its_record_chose():
+    """85% in direct view and 100% in the stereoscope, each a close call its 2026-09-28
+    record says so about. The outer targets sit at reach × margin × region."""
+    assert REACH == {"direct": 0.85, "stereoscope": 1.0}
+
+    direct, masked = constellation(DIRECT), constellation(MASKED)
+
+    assert max(abs(x) for x, _ in direct) == pytest.approx(0.85 * 0.85 * 15.0)
+    assert max(abs(y) for _, y in direct) == pytest.approx(0.85 * 0.85 * 15.0)
+    assert max(abs(x) for x, _ in masked) == pytest.approx(0.85 * 12.0)
+    assert max(abs(y) for _, y in masked) == pytest.approx(0.85 * 12.0)
+
+
+def test_a_reach_given_still_overrides_the_setups():
+    widest = max(abs(x) for x, _ in constellation(MASKED, reach=0.5))
+    assert widest == pytest.approx(0.5 * 0.85 * 12.0)
+
+
+def test_every_target_of_both_setups_can_be_shown():
+    for geometry in (DIRECT, MASKED):
+        for x, y in constellation(geometry):
+            assert geometry.can_show(x, y), f"({x:.2f}, {y:.2f}) in {geometry.view}"
+
+
+def test_both_setups_carry_the_second_order_map_and_survive_losing_four():
+    """Scaling moves where the targets are, never whether they constrain the model:
+    each setup's thirteen condition the quadratic basis, and so do its first nine."""
+    for geometry in (DIRECT, MASKED):
+        targets = constellation(geometry)
+        assert len(targets) == 13
+        assert conditioning(targets, Model.SECOND_ORDER) >= MIN_CONDITIONING[Model.SECOND_ORDER]
+        assert conditioning(targets[:9], Model.SECOND_ORDER) >= MIN_CONDITIONING[
+            Model.SECOND_ORDER
+        ]
 
 
 def test_the_constellation_survives_losing_four_targets():
