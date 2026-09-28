@@ -26,6 +26,7 @@ from wl_expcontroller.link import (
     Absent,
     CancelScheduledStop,
     CommandRefused,
+    Control,
     FrameError,
     Mark,
     NotDelivered,
@@ -36,6 +37,8 @@ from wl_expcontroller.link import (
     Resume,
     SCHEMA,
     ScheduleStop,
+    ScheduledStop,
+    SchemaMismatch,
     Simulated,
     SetParameter,
     Staged,
@@ -156,6 +159,13 @@ def _session_with(
         # number rather than the `None`-before-`open()` case on this stand-in.
         opened_wall_at=0.0,
         ended_wall_at=None,
+        # Stand-ins for what schema 8 reads (P4d-2b b2a): a running session, not
+        # paused, nothing scheduled, no control yet -- `Session.paused_at`,
+        # `.scheduled_stop`, `.controls` and `.controls_dropped`.
+        paused_at=None,
+        scheduled_stop=None,
+        controls=(),
+        controls_dropped=0,
     )
 
 
@@ -1096,7 +1106,7 @@ def test_schema_7_reads_the_configuration_from_the_session():
 
     telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
 
-    assert telemetry.schema == SCHEMA == 7
+    assert telemetry.schema == SCHEMA
     assert telemetry.task == "tasks/fixation_detection.py"
     assert telemetry.allocation == "tasks/allocation.py"
     assert telemetry.bounds_config == "subjects/A/bounds.py"
@@ -1890,3 +1900,75 @@ def test_a_console_built_to_read_only_has_no_command_socket(zmq_cleanup):
     link.publish(_telemetry())
     console.close()
     assert console._sub.closed and console._ctx.closed
+
+
+# ---------------------------------------------------------------------------
+# Schema 8 (P4d-2b b2a): what the controls need on the page (spec §5.1)
+# ---------------------------------------------------------------------------
+
+
+def test_schema_8_reads_the_pause_the_schedule_and_the_feed_from_the_session():
+    """Whether the session is paused and since when, the scheduled stop (kind,
+    target, who, and its words), and the bounded list of recent control events --
+    each read from the `Session` the record is written from."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    session.paused_at = 1_700_000_100.0
+    session.scheduled_stop = ("trials", 48.0, "jake (box, unverified)", "after trial 48")
+    session.controls = (
+        ("pause", "jake (box, unverified)", 1_700_000_100.0, "paused at trial 40"),
+        ("mark", "", 1_700_000_101.5, "mark 1 stamped while paused, before trial 40"),
+    )
+    session.controls_dropped = 3
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=40)
+
+    assert telemetry.schema == SCHEMA == 8
+    assert telemetry.paused_at == 1_700_000_100.0
+    assert telemetry.scheduled_stop == ScheduledStop(
+        kind="trials", target=48.0, by="jake (box, unverified)", said="after trial 48"
+    )
+    assert telemetry.controls == (
+        Control("pause", "jake (box, unverified)", 1_700_000_100.0, "paused at trial 40"),
+        Control("mark", "", 1_700_000_101.5, "mark 1 stamped while paused, before trial 40"),
+    )
+    assert telemetry.controls_dropped == 3
+
+
+def test_a_running_session_with_nothing_scheduled_says_so_with_none():
+    telemetry = _telemetry()
+
+    assert telemetry.paused_at is None
+    assert telemetry.scheduled_stop is None
+    assert telemetry.controls == () and telemetry.controls_dropped == 0
+
+
+def test_schema_8_survives_the_wire_with_its_absences_intact():
+    """The golden round trip, both ways round: everything populated, and every new
+    field at its absence."""
+    populated = _telemetry(
+        paused_at=1_700_000_100.0,
+        scheduled_stop=ScheduledStop("clock", 1_700_003_600.0, "jake", "at 14:30"),
+        controls=(
+            Control("note", "jake", 1_700_000_102.0, 'mark 1: "<b>bubble</b>"'),
+            Control("resume", "sam", 1_700_000_200.0, "resumed after 1:40 paused"),
+        ),
+        controls_dropped=7,
+    )
+    bare = _telemetry()
+
+    for original in (populated, bare):
+        restored = decode(encode(original))
+        assert restored == original
+        assert all(type(c) is Control for c in restored.controls)
+    assert type(decode(encode(populated)).scheduled_stop) is ScheduledStop
+    assert decode(encode(bare)).scheduled_stop is None
+    assert decode(encode(bare)).paused_at is None
+
+
+def test_a_schema_7_frame_is_refused_by_a_schema_8_reader():
+    """§3's schema rule: a reader built for 8 refuses 7 by name, before touching a
+    field (`SchemaMismatch`), and says which it reads."""
+    old = encode(replace(_telemetry(), schema=7))
+
+    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 8"):
+        decode(old)

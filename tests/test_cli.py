@@ -650,6 +650,9 @@ def _telemetry(**overrides) -> Telemetry:
     rewarded and no outcome yet: `last_reward_at` is `None` and `recent_outcomes`
     empty, so a test that does not ask for either sees their *none yet* lines.
 
+    Schema 8's (P4d-2b b2a) default to a running session that is not paused, has
+    nothing scheduled and no control yet -- the quiet case, as above.
+
     `schema=SCHEMA`, not a stale literal (fix round 1, I3): `decode` now refuses any
     other value before touching a single other field (`link.SchemaMismatch`), and
     `test_console_renders_a_refusal_that_actually_crossed_the_wire` below sends this
@@ -694,6 +697,10 @@ def _telemetry(**overrides) -> Telemetry:
         wall_at=1_700_000_000.0,
         last_reward_at=None,
         recent_outcomes=(),
+        paused_at=None,
+        scheduled_stop=None,
+        controls=(),
+        controls_dropped=0,
     )
     return replace(base, **overrides) if overrides else base
 
@@ -1084,7 +1091,7 @@ def test_console_shows_a_schema_mismatch_as_a_sentence_not_a_traceback(
         f"expected 1, got {result.get('exit_code')!r}: {captured.err}"
     )
     assert "console: a telemetry frame carried schema 6" in captured.err
-    assert "this console reads schema 7" in captured.err
+    assert f"this console reads schema {SCHEMA}" in captured.err
     assert "Traceback" not in captured.err
 
 

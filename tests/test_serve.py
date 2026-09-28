@@ -33,7 +33,7 @@ from _frames import ENDPOINT, frame
 from _zmq_release import _every_zmq_context_released  # noqa: F401
 from wl_expcontroller import serve
 from wl_expcontroller.cli import main
-from wl_expcontroller.link import Stop, ZmqConsole, ZmqLink
+from wl_expcontroller.link import SCHEMA, Stop, ZmqConsole, ZmqLink
 from wl_expcontroller.serve import CLOSED, QUEUE_DEPTH, Hub, Server, make_handler, on_box
 from wl_expcontroller.web import FONTS, FRAGMENT_IDS, font_bytes
 
@@ -866,8 +866,8 @@ def test_health_over_http_is_wl_preprocs_health_response():
 #: What `Server._listen` hands `Hub.reject` for a schema-6 `wlx run` beside this
 #: `wlx serve` -- the case the final review probed, where every frame is refused.
 REFUSED = (
-    "a telemetry frame carried schema 6, and this console reads schema 7, so it is "
-    "not shown"
+    f"a telemetry frame carried schema 6, and this console reads schema {SCHEMA}, so "
+    f"it is not shown"
 )
 
 
@@ -1391,12 +1391,12 @@ def test_a_frame_this_console_cannot_read_is_shown_as_refused_not_guessed(
         why = _until_refused(
             server, lambda: link.publish(replace(frame(), schema=6)), "schema 6"
         )
-        assert "this console reads schema 7" in why
+        assert f"this console reads schema {SCHEMA}" in why
         assert server.hub.snapshot(on_box=True, stale_after_s=30.0)[0] is None
 
         why = _until_refused(
             server,
-            lambda: link._pub.send(msgpack.packb({"schema": 7}, use_bin_type=True)),
+            lambda: link._pub.send(msgpack.packb({"schema": SCHEMA}, use_bin_type=True)),
             "could not be decoded",
         )
         assert "KeyError" in why
@@ -1482,7 +1482,7 @@ def test_a_real_schema_6_frame_is_refused_by_name_not_a_keyerror(
             ),
             "schema 6",
         )
-        assert "this console reads schema 7" in why
+        assert f"this console reads schema {SCHEMA}" in why
         assert "KeyError" not in why
         assert "could not be decoded" not in why
     finally:
