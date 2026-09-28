@@ -2999,6 +2999,42 @@ def test_a_mark_in_a_trial_that_faults_is_still_recorded(tmp_path, monkeypatch):
     assert (stamp["mark"], stamp["trial_index"], stamp["frame"]) == (8, 0, 1)
 
 
+def test_a_stamp_that_cannot_be_written_as_the_session_closes_still_closes_the_record(
+    tmp_path, monkeypatch
+):
+    """The b2a final review: the close-time stamp write ran ahead of `record.close()`
+    in `run()`'s `finally`, so a write that raised -- a full disk, say -- skipped the
+    close, leaving the trial file open and a truncated refusal log without its
+    notice row. The write's error still propagates; the record is closed first."""
+    from wl_expcontroller import record, taskd
+
+    def faults(trial, world, frame_period, values=None, effects=None, each_frame=None):
+        each_frame(1)
+        raise RuntimeError("the display went away")
+
+    def refuses(self, *args, **kwargs):
+        raise OSError("no space left on device")
+
+    closed = []
+    close = record.SessionRecord.close
+
+    def counted(self) -> None:
+        closed.append(self)
+        close(self)
+
+    monkeypatch.setattr(taskd, "run_trial", faults)
+    monkeypatch.setattr(record.SessionRecord, "control", refuses)
+    monkeypatch.setattr(record.SessionRecord, "close", counted)
+    link = Simulated()
+    link.marks.extend([0, 8])  # nothing at the boundary; mark 8 in frame 1
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    with pytest.raises(OSError, match="no space left on device"):
+        session.run()
+
+    assert len(closed) == 1
+
+
 # ---------------------------------------------------------------------------
 # P4d-2b b2a: the scheduled stop (spec §5.1), held by `taskd`
 # ---------------------------------------------------------------------------

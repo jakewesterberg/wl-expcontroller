@@ -1748,11 +1748,15 @@ class Session:
         finally:
             # A trial that faulted or was interrupted has no boundary after it, so
             # the marks its frames stamped -- already strobed -- are written here,
-            # while the record is still open (P4d-2b b2a).
-            if self._stamps:
-                self._settle_stamps(self._index)
-            record.close()
-            self._record = None
+            # while the record is still open (P4d-2b b2a). **The close does not
+            # depend on that write** (the b2a final review): a write that raises --
+            # a full disk -- still propagates, after the record is closed.
+            try:
+                if self._stamps:
+                    self._settle_stamps(self._index)
+            finally:
+                record.close()
+                self._record = None
 
     def await_return(self, give_up: threading.Event, heartbeat: float = 1.0) -> None:
         """Keep a rig session's out-of-cage clock visible until the animal is home.
