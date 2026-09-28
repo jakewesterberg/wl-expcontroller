@@ -2998,8 +2998,10 @@ class _Session:
     subscription is live, before it sends anything. From then on libzmq queues what
     arrives on its own I/O thread, with no GIL, up to the socket's high-water mark:
     1,000 messages, pyzmq 27.2.0 and libzmq 4.3.5's default as read in this venv on
-    2026-09-28. A session here publishes one frame per boundary, ends at
-    `CONTROL_TRIAL_BUDGET` trials at the latest, and is drained at every wait."""
+    2026-09-28. A session here publishes one frame per boundary. Only `seen` reads
+    `recorder`, so a test that uses it does its waiting on the console with `frame`
+    and reads the recorder afterwards; what it reads is bounded by how few trials the
+    session runs before the test stops it."""
 
     def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, bounds=TWELVE_HOURS,
                  session_id="2027-01-14_21", cleanup=None):
@@ -3091,7 +3093,6 @@ class _Session:
         early fails its test then, rather than after the full wait."""
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
-            self._record()
             latest = self.server.hub.snapshot(on_box=True, stale_after_s=30.0)[0]
             if latest is not None and predicate(latest):
                 return latest
@@ -3101,29 +3102,33 @@ class _Session:
         ended = "" if self.runner.is_alive() else "; wlx run had ended"
         raise AssertionError(f"no frame within {seconds} s satisfied {predicate}{ended}")
 
-    def _record(self) -> None:
-        """Move every frame waiting on `recorder` onto `frames`, without blocking."""
-        while True:
-            try:
-                self.frames.append(self.recorder.receive())
-            except TimeoutError:
-                return
-
     def seen(self, predicate, seconds: float = 20.0):
         """The first frame `wlx run` published, from the last one this returned on, for
-        which `predicate` is true, read from `frames` -- so a state that lasted one
+        which `predicate` is true, read from `recorder` -- so a state that lasted one
         frame is found however long this thread was kept from looking. Fails as
-        `frame` does otherwise, and as soon, once `wlx run` has ended."""
+        `frame` does otherwise, and as soon, once `wlx run` has ended and every frame
+        it published has been read.
+
+        **One frame at a time, each checked as it arrives.** It used to drain every
+        waiting frame before checking any, and `frame` drained too. On CI, decoding
+        fell behind publishing, so a wait returned only once the recorder caught up.
+        That could be hundreds of trials after the frame it wanted, or never before
+        `CONTROL_TRIAL_BUDGET` ended the session: runs `36477904368` and
+        `36477917775`, which failed the staged/applied test on every attempt."""
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
-            self._record()
             while self._looked < len(self.frames):
                 if predicate(self.frames[self._looked]):
                     return self.frames[self._looked]
                 self._looked += 1
+            try:
+                self.frames.append(self.recorder.receive())
+                continue
+            except TimeoutError:
+                pass
             if not self.runner.is_alive():
                 deadline = min(deadline, time.monotonic() + LAST_FRAME_S)
-            time.sleep(0.01)
+            time.sleep(0.005)
         ended = "" if self.runner.is_alive() else "; wlx run had ended"
         raise AssertionError(
             f"no frame published within {seconds} s satisfied {predicate}{ended}"
@@ -3152,15 +3157,27 @@ def test_e2e_a_setting_is_staged_then_applied_at_the_next_trial(
     **Read from every frame the session published** (`_Session.seen`; the b2a final
     fix wave). The staged row is on one frame, a single trial of simulated time, and
     polling the console's latest frame missed it on CI's two-vCPU runners. That is
-    also what lets this say *the next trial* rather than *some later frame*."""
+    also what lets this say *the next trial* rather than *some later frame*.
+
+    **But the waiting is done on the console, and the recorder is read afterwards**
+    (after runs `36477904368` and `36477917775`). The applied value holds still, so
+    the console cannot miss it, and the stop goes as soon as it is there. Read while
+    the session ran, the recorder lagged it on CI, and the stop went out after the
+    trial budget had ended the session."""
+
+    def applied_value(frame):
+        return any(p.name == "fix_hold" and p.value == 0.4 for p in frame.params)
+
     with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
-        # On the recorder, not the console: the POST must follow its subscription.
-        run.seen(lambda f: f.trial_index >= 1)
+        # The recorder's first frame: its subscription is live, so nothing the POST
+        # causes is published before it can hear it.
+        run.seen(lambda f: True)
         assert run.post({"kind": "set", "by": "jake", "name": "fix_hold", "value": 0.4})[0] == 200
+        run.frame(applied_value)
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        run.ended()
         staged = run.seen(lambda f: any(s.name == "fix_hold" for s in f.staged))
-        applied = run.seen(
-            lambda f: any(p.name == "fix_hold" and p.value == 0.4 for p in f.params)
-        )
+        applied = run.seen(applied_value)
         (row,) = staged.staged
         assert (row.name, row.was, row.now, row.by) == (
             "fix_hold", 0.3, 0.4, "jake (box, unverified)"
@@ -3172,8 +3189,6 @@ def test_e2e_a_setting_is_staged_then_applied_at_the_next_trial(
             c.kind == "set" and c.by == "jake (box, unverified)" and c.said.startswith("fix_hold 0.30 → 0.40")
             for c in applied.controls
         )
-        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
-        run.ended()
     run.finished()
 
 
