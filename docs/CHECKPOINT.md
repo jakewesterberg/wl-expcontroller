@@ -359,7 +359,7 @@ ledger keeps the running offset.
   `taskd` and `wlx check` call `check()` without a geometry. Part 2 fixes that.
 - **Found and fixed on main:** `--changed-only` swept nothing when a push also touched a shared
   file (`334f6db`).
-- **Still to read:** the first sharded nightly (not yet started by GitHub at 09:00 UTC); a
+- **Still to read:** the first sharded nightly (not yet started by GitHub at 08:33 UTC; its schedule has run hours late before); a
   watcher saves its logs to the session scratchpad.
 - **Carried:** re-run `tools/calibration_design.py` per setup (the spec's §6) — the geometry
   rework found 85% reach winning under two of four assumptions on the new panel; the ridge
