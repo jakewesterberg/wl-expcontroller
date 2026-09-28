@@ -643,8 +643,16 @@ class Outbox:
             return BUSY
         while not job.done.wait(OUTBOX_POLL_S):
             if not self.thread.is_alive():
-                # Queued after the thread answered its last job and left: nobody
-                # will answer this one, so it is answered here.
+                # Fix round 1, Important 4: the thread may have answered this very
+                # job and then exited between `wait` timing out and this check --
+                # `job.done.set()` always happens before the thread's `_run`
+                # returns (`_answer` sets it; the `finally` drain sets it for
+                # anything still queued), so if it is set now, trust the job's own
+                # answer over "closing." Only a job queued *after* the thread had
+                # already left -- one the drain never saw either -- is answered
+                # here.
+                if job.done.is_set():
+                    break
                 return not_delivered("wlx serve is closing")
         return job.answer
 

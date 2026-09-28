@@ -2630,6 +2630,39 @@ def test_a_job_submitted_to_a_stopped_outbox_is_answered_not_delivered():
     )
 
 
+def test_a_job_answered_just_as_its_thread_exits_is_not_reported_closing(monkeypatch):
+    """Fix round 1, Important 4. `submit`'s wait loop timed out and then read
+    `self.thread.is_alive()` as `False` -- true whenever the thread answered a job
+    and then exited between the two checks -- and reported the job *closing*
+    even though it had a real answer.
+
+    Reproduced deterministically, with no real thread or timing dependency: a
+    `threading.Event` standing in for `job.done` reports the timeout `wait`'s
+    caller actually saw, but -- as a departing thread's very last act would --
+    lands the job's answer and its own `set()` before returning that `False`. A
+    `thread` double whose `is_alive()` is always `False` stands in for "the
+    thread has already exited" without ever starting or stopping a real one."""
+    answer = (200, {"status": "sent", "said": "answered just in time"})
+
+    class _RacyDone(threading.Event):
+        def wait(self, timeout=None) -> bool:
+            job.answer = answer
+            self.set()
+            return False  # the timeout `submit`'s caller actually observed
+
+    class _DeadThread:
+        def is_alive(self) -> bool:
+            return False
+
+    outbox = Outbox("test-outbox", lambda: None, 2, threading.Event())
+    outbox.thread = _DeadThread()
+    job = serve._Job(lambda built: None)
+    job.done = _RacyDone()
+    monkeypatch.setattr(serve, "_Job", lambda work: job)
+
+    assert outbox.submit(lambda built: None) == answer
+
+
 def _until(predicate, seconds: float) -> bool:
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
