@@ -4,10 +4,12 @@
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
-> **This file describes `main`.** P4d-2b slice b1 fast-forwarded onto `main` on
-> 2026-09-27 (`207b170..7b01992`). Work in flight lives on branch `p4d2b-b2a-controls`
-> (the b2 design, approved, and its plan); see "What moved on 2026-09-27, afternoon".
-> Run `git branch --show-current` before believing a line about a branch.
+> **This file describes `main`, plus one branch that is not on it yet.** The newest entry,
+> "What moved on 2026-09-28, P4d-2b slice b2a", describes `p4d2b-b2a-controls`, which waits
+> for the PI's approval of its welfare items (`docs/next-session.md` §1) and has not merged;
+> `main`'s copy of this file does not have that entry. The entries below it are on `main`:
+> P4d-2b slice b1 fast-forwarded onto `main` on 2026-09-27 (`207b170..7b01992`). Run
+> `git branch --show-current` before believing a line about a branch.
 >
 > **Earlier, 2026-09-20:** `p4d1-console-link` was reviewed, approved by the
 > PI and **fast-forwarded onto `main`**, which moved `300d7d1` → `08adfa2`
@@ -325,9 +327,66 @@ figure was one low. In order:
 
 ---
 
+## What moved on 2026-09-28, P4d-2b slice b2a: controls from the box
+
+**Resume here:** b2a is built on branch `p4d2b-b2a-controls` and waits for the PI's
+approval of its four welfare items (`docs/next-session.md` §1) and his answer on the mark
+check's measured cost. In order: his answers; the fast-forward to `main`; then b2b, remote
+sign-in through wl-works, designed in full from the P4d-2b spec §5.7 once b2a has shipped.
+
+- **What was built** (plan `docs/superpowers/plans/2026-09-27-p4d2b-b2a-controls.md`):
+  M8 closed where commands are decoded; six new commands on the link, each with `by`;
+  pause and resume, held at a trial boundary; a manual reward while paused, one
+  correct-trial reward per press (the PI's one change at his review of the plan,
+  2026-09-28); a mark stamped in the frame it reaches the rig, on a third loopback socket,
+  with its note joined by number; a scheduled stop by clock time, trials or fluid, held by
+  `taskd`; `controls.jsonl`; telemetry schema 8;
+  `wlx console` and the page rendering all of it; `POST /commands` under spec §2's four
+  checks, the `Host` check on every request, and `wlx serve`'s command and mark threads;
+  the end to end; and `tools/measure_mark_check.py` with its first result and V12.
+- **What the task reviews added, beyond the plan:** refusal sentences bounded to
+  TEXT_LIMIT; the refusal cap restored for malformed settings; a resume after a stop
+  refused; an mL schedule ending at its amount and refusing one already reached; no stale
+  schedule on an ended session's frame; wire text stripped of control characters on the
+  terminal console; a double click unable to toggle a pause or give two rewards; the
+  arrows kept inside the range they show; the write gate's peer check actually tested and
+  every malformed body answered in JSON; no manual reward past a due mL stop.
+- **Welfare-critical, and waiting on the PI:** while paused the task rewards nothing, a
+  person may give one correct-trial reward per press (`reward_correct`, counted in the
+  fluid total and toward "stop after X mL"), and the out-of-cage limit still ends the
+  session; a scheduled stop, "after X mL" included, can end a session; reward size can be
+  set from the page, still capped by its ceiling; and the M8 fix. `taskd.Session._ends`,
+  `_hold` and `_manual_reward` joined the welfare-critical list (`architecture.md`).
+  `welfare.py`, `bounds.py` and the `cli` welfare functions did not change.
+- **The plan's sixteen decisions** are in its header: the mark socket and its `EVENTS`
+  check, verified in pyzmq 27.2.0's source; `--link PUB,REP[,MARK]`; random mark numbers
+  below 2**53; the mark's two rows; the pause's housekeeping loop; the schedule's rules
+  (exactly now is tomorrow's, with the date said); `controls.jsonl`; `PAUSE`, `RESUME`,
+  `OPERATOR_MARK` at 4131–4133; schema 8; `wlx serve`'s threads and answers; the `Host`
+  check's names; the page; the welfare list; M8; a test-only speedup; and the manual
+  reward during a pause (`MANUAL_REWARD` at 4134; only while held; never re-sent).
+- **The display during a pause is structural**: no trial runs, so nothing is drawn. No
+  display process exists to show the task's background yet; V12 item 3 proves it on a rig.
+- **Carried forward from b2a:** the mark check's frame effect is V12, unmeasured until a
+  rig exists; a note typed after the session ended is refused with the post-loop sentence,
+  so it is lost from the record (the stamp is kept); the page's script is checked by
+  `node --check` and by eye (Task 16 Step 4), never by pytest.
+- **Three bounds a test here needs, found by the plan's pre-flight sweep printing `timed
+  out`:** a simulated session with a mark socket runs fewer trials a second than one
+  without (every frame pays for the check), so a trial budget sized for b1's session held
+  each of b2a's end to end tests past 50 s under a broken command path —
+  `tests/test_serve.py`'s `CONTROL_TRIAL_BUDGET` is theirs, and `_Session.frame` stops
+  waiting once `wlx run` has ended; `Outbox.submit` waits as long as its thread lives,
+  so a test calling it on its own thread hangs rather than fails when a job goes
+  unanswered — call it through `_submitted`; and a paused loop that stops waiting runs no
+  trial and calls no `idle`, so neither the trial budget nor `_Scripted`'s wait budget
+  moves — `_Scripted` also counts drains (`PASS_BUDGET`).
+
+The gate's result and the test count are added here in the plan's Task 16 Step 3.
+
 ## What moved on 2026-09-27, afternoon: b1 merged, b2 designed, the camera, CI
 
-**Resume here:** the b2a implementation plan, on branch `p4d2b-b2a-controls` (worktree
+**Where b2a stood when this entry was made:** the b2a implementation plan, on branch `p4d2b-b2a-controls` (worktree
 `.claude/worktrees/p4d2b-b2a`), at `docs/superpowers/plans/2026-09-27-p4d2b-b2a-controls.md`.
 **As of 2026-09-28** it is committed, pre-flighted (every step re-applied in a scratch copy
 of 2026-09-27's `main`: 1362 passed after Task 13, 241 functions caught, 0 survived; its
@@ -2136,7 +2195,7 @@ runs out of context before it produces anything.**
 | **P4c** | Parquet derivation at close ~~; the `labhost` endpoint~~ (`labhost` moved under `console`, ADR-0008 — see P4d-2) | Contract-tested against `wl-preproc`'s published schema | S10 | nothing. Independently ready to pick up; `trials.jsonl` now carries block and condition per row, so the derivation has what it needs |
 | ~~P4d-1~~ | ~~The console link: telemetry out, commands in, over a real socket~~ | **done 2026-09-19** — `Session` gains a `Link` port drained once per trial boundary, never per frame; `link.py`'s `Telemetry`/`Staged`/`Refused` message and `SetParameter`/`Stop` commands; `ZmqLink`/`ZmqConsole` over ZMQ PUB/SUB + REQ/REP; `wlx console` as a terminal client. Not welfare-critical and built to stay that way. Three items found and deliberately left open; **one of them (a pump fault publishing nothing) was closed by the PI on 2026-09-19 and one was widened by the same decisions** — see "What moved" above | — | — |
 | **P4d-2a** | Close the out-of-cage interval: both ends recorded as wall instants, the return taken at `wlx run`'s terminal as the ELN's stand-in, the clock published after the loop, and a separate in-session clock | **On `main` (`0c18827`), approved by the PI 2026-09-26** | `docs/superpowers/specs/2026-09-26-P4d2a-return-to-cage-design.md` §7, §10 | **the PI's review** |
-| **P4d-2b** | The browser console and `GET /health` (S9a §7), with the `labhost` endpoint it carries (`labhost` is a surface of `console`, not its own process), in six slices b1–b6 | **b1 on `main` since 2026-09-27** (PI-approved, fast-forwarded). **b2 designed, 2026-09-27**: the spec's §5, on branch `p4d2b-b2a-controls` — b2a (controls from the box) is planned there next, b2b (remote sign-in through wl-works) after it. Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0; §4 is b1, on telemetry schema 7; §5 is b2. b3–b6 each get a section as they are designed | that spec | **b2a's plan, then its execution** (close M8 first) |
+| **P4d-2b** | The browser console and `GET /health` (S9a §7), with the `labhost` endpoint it carries (`labhost` is a surface of `console`, not its own process), in six slices b1–b6 | **b1 on `main` since 2026-09-27** (PI-approved, fast-forwarded). **b2 designed, 2026-09-27**, and **split** (PI): **b2a, controls from the box, is built on branch `p4d2b-b2a-controls`** and waits for the PI's approval of its four welfare items (spec §5.5); b2b, remote sign-in through wl-works, is designed from §5.7 after b2a ships. Spec `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md`: §1–§4 approved, with the mockup rulings held in §4.0; §4 is b1, on telemetry schema 7; §5 is b2. b3–b6 each get a section as they are designed | that spec | **b2a: the PI's review, then the fast-forward to `main`** |
 | P5 | Display adapter, stereo viewports, photodiode patches | Photodiode-ready display | S4, optics | **hardware — ADR-0002 deferred to V1** |
 | **P6** | Eye ingest, calibration, saccade detection | Replay-driven gaze, and a calibration map `wl-preproc` can read | S5 | ~~their reader~~ nothing |
 | | → ingest | **done 2026-09-01** — protocol verified from source, loopback-tested | — | — |

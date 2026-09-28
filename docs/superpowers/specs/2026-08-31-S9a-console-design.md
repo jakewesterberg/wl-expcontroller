@@ -195,6 +195,7 @@ animal is completing, which is the rule `welfare.Rig` already follows for pump f
        ▼                                                  ▼
 browser ──HTTP + SSE──►  console  ──ZMQ REQ/REP (commands)──►  taskd ──► world, devices
                       ├ OAuth client + local credential  ◄──ZMQ PUB (telemetry)──┘
+                      │                 ──ZMQ PUSH/PULL (mark signal)──►
                       ├ the page, SSE fan-out
                       └ /health  (the labhost surface)
 ```
@@ -207,6 +208,20 @@ accepted: when not served over HTTP/2, a browser holds at most six server-sent-e
 connections per browser and domain, and both Chrome and Firefox have marked that "Won't fix"
 (MDN, "Using server-sent events", read 2026-09-27, page last modified 2026-09-03). `wlx serve`
 speaks HTTP/1.0, so the limit applies: a seventh console tab on one box in one browser stalls.
+
+**Writes from the box, and one socket per thread** (P4d-2b spec §2, §5.3; built in slice
+b2a, 2026-09-28). `POST /commands` is accepted only from the box's own page — a loopback
+peer, a `Host` naming loopback, the page's `Origin`, JSON — and every request is answered
+only when its `Host` names this console. The console's telemetry thread reads, its command
+thread alone owns the REQ socket and tells the page *sent* only when `taskd` has
+acknowledged, and its mark thread sends an operator's mark on a third socket, ahead of
+every command, for `taskd` to stamp in the frame it arrives.
+
+**A deployment note on the `Host` check.** `wlx serve` finds the box's own names by
+resolving its host names, not by listing its network interfaces, so on a box whose
+`/etc/hosts` maps its hostname to `127.0.1.1` (Debian's default) its LAN address is
+missing and LAN viewers — and wl-works' `/health` poll by IP — get 421 until the console
+is started with `--allow-host <that address>`.
 
 **Two processes, and the split was already mandatory.** §1 of S9: *"`taskd` and `console`
 are separate processes under all conditions. The hot loop never renders a plot, serves a
@@ -275,6 +290,14 @@ Three things replace it:
 Last-write-wins within an ITI, both writes recorded with their actors, and the resolution
 shown.
 
+**Since P4d-2b b2a (2026-09-28) the feed is on the page**, rendered in Python like every
+pane: staged changes, then the control events — each setting applied, each pause and
+resume, each mark and its note, each schedule and cancellation, and each manual reward
+given while paused — newest first with when
+and who, then the refusals. The session keeps the last `link.CONTROL_HISTORY` of those
+events for the feed and counts what fell off (`controls_dropped`); `controls.jsonl` in the
+session record keeps every one.
+
 **"Staged" means one thing: validated, and not yet applied** (PI, 2026-09-19). A change of
 either kind — an ordinary task parameter or a welfare-bounded value such as
 `reward_correct` — is refused or accepted at the moment it is offered, and applied at the
@@ -336,6 +359,9 @@ defence is structural rather than careful.
 | Correct / trials, on the strip | `Telemetry.outcomes["correct"]` plus `["correct_reject"]`, over `trial_index`: **the one rollup, ruled for the strip only** (PI, 2026-09-26: both are the right answer on their trial). The Working? pane and `/health` count every outcome as it occurred |
 | Parameter row | `Session.parameters` → `Telemetry.params`: the task's own `Param` declarations with their values, then the welfare ceilings a console may stage; writes return through `Session.set` |
 | Trials per minute | **Derived by `wlx serve`**, from `trial_index` over the last five minutes of frames, labeled derived on the page, bounding nothing — the one console number not in the record, and it says so |
+| Paused, and since when | `Session.paused_at` → `Telemetry.paused_at` (schema 8), the instant on the session's anchored clock, `None` while trials run. Set at the boundary a `Pause` was drained at; the pill says *paused · since HH:MM:SS* only while the session runs |
+| Scheduled stop | `Session.scheduled_stop` → `Telemetry.scheduled_stop` (kind, target, who, and `said`, the rig's own words, which the stop reason reuses). Shown on the strip while it is held, with a cancel button; spent when it fires |
+| Changes feed: control events | `Session.controls` → `Telemetry.controls` and `controls_dropped` (schema 8): the last 50 stops, pauses, resumes, marks, notes, schedules, cancellations, manual rewards and applied settings, with who and when. The record (`controls.jsonl`, and `parameter_changes.jsonl` for settings) keeps all of them |
 | Drops, staleness | `eye`'s staleness accounting |
 
 **If the console needs a number that is not in those objects, the fix is to add it to the
@@ -400,8 +426,8 @@ is the behaviour that matters; the frame only means a stranger can read what hap
 the screen, which is this spec's own rule for an abort reason.
 
 Schema-versioned with golden-file tests, which ADR-0003 already requires. **`SCHEMA` is
-7 as of 2026-09-26** (P4d-2b b1; `wall_at` arrived in it on 2026-09-27, ledger Ruling
-1), and every bump since 2 is the same case: a field that still decodes and no longer
+8 as of 2026-09-28** (P4d-2b b2a), and every bump since 2 is the same case: a field
+that still decodes and no longer
 means what it did, or a new one whose absence a console built against the old number
 would misread. `link.SCHEMA`'s comment carries the same history.
 
@@ -425,6 +451,10 @@ would misread. `link.SCHEMA`'s comment carries the same history.
   and `recent_outcomes` arrived. Nothing changed meaning; a schema-7 reader cannot decode a
   schema-6 frame, which lacks them, so `wlx serve` refuses it and says so on its page rather
   than guessing.
+- **8 (2026-09-28, P4d-2b b2a):** `paused_at`, `scheduled_stop` (`ScheduledStop`: kind,
+  target, who, and its words), `controls` (`Control`: kind, who, when, and its words) and
+  `controls_dropped` arrived — the controls from the box. Nothing changed meaning; each
+  reader refuses the other's schema by name.
 
 Trial-rate telemetry on one topic; the replica's display-rate stream, if V11 permits one, on
 a separate droppable topic.

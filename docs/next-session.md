@@ -95,7 +95,20 @@ closed, verified 2026-09-06 by reading the runs.
 
 ---
 
-## 1. The thing that needed a person — P4d-2b b1, approved and merged 2026-09-27
+## 1. The thing that needs a person, not a session — P4d-2b b2a, awaiting the PI
+
+**Branch `p4d2b-b2a-controls` is welfare-critical** (CLAUDE.md; P4d-2b spec §5.5) and does
+not merge until the PI approves the four items the plan's Task 16 Step 6 gives him, in
+plain terms: (1) while paused, the task rewards nothing, a person may give one
+correct-trial reward per press (his one change at his review of the plan, 2026-09-28), and
+the out-of-cage limit still ends the session; (2) a scheduled stop, "after X mL" included,
+can end a session; (3) reward size can be changed from the console page, still capped by
+its approved ceiling; (4) the M8 fix — a malformed setting is refused and never ends the
+session. He is also asked about the per-frame mark check's measured cost (the spec's rule:
+a check that measurably disturbs frames goes back to him before b2a ships). Record his
+answers here, and move this section below as the record once he has.
+
+## 1b. The thing that needed a person — P4d-2b b1, approved and merged 2026-09-27
 
 **The PI approved all three questions put to him on 2026-09-27**, asked in plain terms
 through the question UI. They were item 1, "approve, merge after checks" -- b1
@@ -626,19 +639,17 @@ Three things S9a §6–§10 depends on that nobody has built:
 
 ---
 
-## 6. P4d-2a is on `main`; P4d-2b b1 is built; b2 is next
+## 6. P4d-2b b1 is on `main`; b2a is built; b2b is next
 
-**2026-09-27.** b1 is built on branch `p4d2b-b1-read-only-console`, and the PI approved
-its welfare item that day (§1 above): it fast-forwards onto `main` once the mutation gate
-and CI are clean. **b2 is next** after that — writes from the box (spec §2's
-four conditions on `POST /commands`, the `NAME (box, unverified)` attribution, and the
-greyed controls' sentence), per spec §4.0's slice list, and it first closes P4d-2a's M8
-(`SetParameter.value`'s type) before any write ships. The command thread that owns the REQ
-socket arrives with b2 (`serve.py`'s module docstring names it). **Ask the PI while
-designing b2:** should the `Host` check spec §2 requires for writes also apply to reads?
-DNS rebinding could let a page open in a lab browser read the LAN-open `/` and `/events`.
-The rest of what b1 carries forward is listed in `docs/CHECKPOINT.md`'s 2026-09-27 entry,
-under "Carried forward from b1". What follows is the
+**2026-09-28.** b2a — controls from the box — is built on branch `p4d2b-b2a-controls` and
+waits for the PI (§1 above). What it built and what it carries forward are in
+`docs/CHECKPOINT.md`'s b2a entry. **b2b is next** after it merges: remote sign-in through
+wl-works, designed in full as its own section of the P4d-2b spec from what §5.7 already
+decided — the browser holds the wl-works access token, the rig verifies it — and it needs
+a registered client per rig and a network route from each rig to wl-works, neither of
+which is this repository's. The question this section used to carry, whether the `Host`
+check applies to reads, was answered in spec §2 (2026-09-27): every request, and b2a
+builds it. What follows is the
 2026-09-19 account of P4d-1 and of P4d-2 as one package, kept as the record.
 
 **What moved, 2026-09-19 (`p4d1-console-link`, on top of `p4b-session-management`).**

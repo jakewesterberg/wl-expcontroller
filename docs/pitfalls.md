@@ -26,6 +26,7 @@ the moment it becomes someone's active job. Review this file at every milestone 
 | **P19** | **A colour nobody measured reaches a methods section** | **High** | Device-independent colour only; refuse it without a photometer calibration naming its observer |
 | **P20** | **Generated structure nobody reads** | Medium | Anything a parameter generates — array items, their windows — needs a check, because no author will ever look at it |
 | **P21** | **A guardrail nothing calls, behind a comment that went stale** | **High** | A safety component needs a *consumer* in the same commit, and a test that the consumer is on the only path — see expanded note |
+| **P22** | **A browser page that can write is a page any site can try to make write** | **High** | Spec §2's four checks on every write, the `Host` check on every request, the rig's own validation behind them — see expanded note |
 
 ## Expanded notes
 
@@ -49,6 +50,12 @@ rig-contract layer instead.
 `gc.freeze()` after startup; SCHED_FIFO + CPU isolation for `taskd`; profile with py-spy
 under load. The console is a separate process precisely so no UI or plotting work can
 share the hot loop's runtime.
+
+**Since P4d-2b b2a the frame does one thing for the console** (2026-09-28): it asks the
+link's mark socket whether an operator's mark is waiting (`link.ZmqLink.mark_signal`, one
+`getsockopt(EVENTS)`), so a mark is stamped in the frame it arrives. It allocates nothing
+it keeps; what it costs a frame's CPU is `tools/measure_mark_check.py`'s to say, on the
+machine it runs on, and what it does to real frames is V12's, on a rig.
 
 **P4a — Display timing measured off-rig is not evidence.** A display spike on a macOS
 laptop showed a thin glfw stack at 36% long frames against PsychoPy's 1.8%, which reads
@@ -255,3 +262,18 @@ mutation-testing `welfare.py`, and the sweep reported every `deliver` caught —
 inserted after it and every definition of a name is neutered together. So the
 welfare-critical route from a task to the pump was reported covered without one test
 being consulted. Read a gate's *output*, not its exit code.
+
+**P22 — A browser page that can write.** P4d-2b b2a put controls on a page served to the
+lab network, and a page that can post a command is a page another site can try to make
+post one: a cross-site form or `fetch` from a tab open in the rig PC's browser, or a
+hostile name rebound to the box's address (DNS rebinding), whose requests then look
+same-origin to the browser. Mitigation, all of it tested (`tests/test_serve.py`): a write
+is accepted only from a loopback peer, with a `Host` naming loopback, the page's own
+`Origin`, and `Content-Type: application/json` — which a cross-site request cannot send
+without a preflight this server never approves (spec §2); **every** request, reads
+included, is answered only when its `Host` names this console, so a rebound name gets a
+421 and no page (spec §5.3); and behind both, `taskd` validates every command as it
+decodes it (M8) and `bounds` holds every ceiling whoever asks. The actor recorded from the
+box is `NAME (box, unverified)`, because a forgeable name that looks verified is worse
+than none (S9a §6). Signed-in writes from other machines are b2b's, and bring their own
+token checks.

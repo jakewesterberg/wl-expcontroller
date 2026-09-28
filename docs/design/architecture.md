@@ -67,7 +67,7 @@ are detected at the display surface.
 | Component | Runs on | Language | Job | Simulator |
 |---|---|---|---|---|
 | `taskd` | Task PC (Linux) | Python | Trial execution, display, gaze logic, DIO, session record | Full headless run against replayed/synthetic inputs |
-| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and records the actor** — anybody attached has full access, with visibility rather than a lock (S9a §8); `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008). **The link exists** (`wl_expcontroller/link.py`, P4d-1, 2026-09-19): `taskd` holds a `Link` port, drained and published once per trial boundary and never per frame, whose live implementation (`ZmqLink`) binds a ZMQ PUB socket for `Telemetry` and a REP socket for `SetParameter`/`Stop` commands (ADR-0003's transport, untouched). `ZmqConsole` is the other end. Reached today by `wlx run --link PUB,REP` and a terminal client, `wlx console --sub PUB --req REP --as WHO`. **The browser console exists, read-only** (P4d-2b slice b1, 2026-09-26): `wlx serve --link PUB,REP --http HOST:PORT --health-token-file PATH` is its own process — a stdlib `ThreadingHTTPServer`, one `ZmqConsole` on a telemetry thread, server-sent events to each browser from a bounded queue, and every pane rendered in Python (`web.py`) so the page's script only swaps fragments. The wl-works fonts are bundled and served by the box, so the page never reaches the internet (PI, 2026-09-26). Reads are open to the LAN; writes from the box are slice b2, and OAuth is P4d-3 | Runs against a fake `taskd` (`link.Simulated`), or a real one over loopback sockets |
+| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and records the actor** — anybody attached has full access, with visibility rather than a lock (S9a §8); `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008). **The link exists** (`wl_expcontroller/link.py`, P4d-1, 2026-09-19): `taskd` holds a `Link` port, drained and published once per trial boundary and never per frame, whose live implementation (`ZmqLink`) binds a ZMQ PUB socket for `Telemetry`, a REP socket for its commands — `SetParameter` and `Stop`, and since P4d-2b b2a `Pause`, `Resume`, `Mark` (a mark's note), `ScheduleStop`, `CancelScheduledStop` and `ManualReward` (a manual reward, given only while paused), each checked where it is decoded — and, given a third endpoint, a PULL socket for an operator's mark signal, which the trial loop checks once per frame (ADR-0003's transport, untouched: a third socket on the same link). `ZmqConsole` is the other end. Reached today by `wlx run --link PUB,REP` and a terminal client, `wlx console --sub PUB --req REP --as WHO`. **The browser console exists, read-only** (P4d-2b slice b1, 2026-09-26): `wlx serve --link PUB,REP --http HOST:PORT --health-token-file PATH` is its own process — a stdlib `ThreadingHTTPServer`, one `ZmqConsole` on a telemetry thread, server-sent events to each browser from a bounded queue, and every pane rendered in Python (`web.py`) so the page's script only swaps fragments. The wl-works fonts are bundled and served by the box, so the page never reaches the internet (PI, 2026-09-26). Reads are open to the LAN. **Writes come from the box** (P4d-2b slice b2a, 2026-09-28): `POST /commands` is accepted only from a loopback peer, with a `Host` naming loopback, the page's own `Origin` and `Content-Type: application/json` (spec §2), and recorded as `NAME (box, unverified)`; every request is answered only when its `Host` names this console (`--allow-host` adds names). `wlx serve` owns each socket on one thread — a read-only telemetry thread, a command thread whose REQ socket waits for `taskd`'s acknowledgment (*sent*, *not delivered*, *busy*), and a mark thread that sends the signal ahead of every command. Writes from people signed in to wl-works are slice b2b | Runs against a fake `taskd` (`link.Simulated`), or a real one over loopback sockets |
 | `neurofeatd` | Acquisition PC | C++ | SpikeGLX `fetchLatest` on the filtered AP stream -> MUA features -> ZMQ PUB | Synthetic feature publisher |
 | `rhxfeatd` | Intan host | C++/Rust | RHX Spike Output socket -> features -> ZMQ PUB; bounded reader | Synthetic spike-raster publisher |
 | `labhost` | Task PC | Python | The pull-only endpoint wl-works polls — **a surface of `console` since 2026-09-19, not its own process** (S9a §7): same server, separate path, separate auth. Served as `GET /health` by `wlx serve` (`health.py`, P4d-2b b1): `HealthResponse` schema 1, contract-tested against wl-preproc's own model; a bearer token read from a file outside the repository, compared with `hmac.compare_digest`, one `401` for every credential failure — the rules of wl-preproc's `responder/handler.py`. Exactly one reading is featured, the most urgent (PI, 2026-09-26), because wl-works shows only the first | Contract tests |
@@ -78,7 +78,8 @@ fluid and session-duration accounting (a fluid **floor**, an out-of-cage **ceili
 token-to-fluid conversion, stimulation bounds and gating, and the bounded-config loader.
 
 **In code, that is `wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`, and
-four functions in `wl_expcontroller/cli.py`, plus one line inside a fifth.** Both modules
+four functions in `wl_expcontroller/cli.py`, plus one line inside a fifth — and, since
+P4d-2b b2a, three functions in `wl_expcontroller/taskd.py`.** Both modules
 are kept small deliberately: everything in them can hurt an animal if it is wrong, and a
 small file is one a person can actually read before signing it off. **The four functions
 are `cli._wall_clock_time`, `cli._clock_or_now`, `cli._settle_return` and
@@ -94,8 +95,27 @@ caller on** -- which is why `main`'s `session.left_cage(at=departure,
 confirmed=note is not None, ...)` line is on this list too, one line inside a function
 that is otherwise ordinary. They stay in `cli.py`, which is where the terminal is, until
 the wl-works ELN records both ends of the interval (P4d-2a spec §10) and the return
-prompt goes. A change to either module, to those four functions, or to that one line, is
-a change requiring review; a change elsewhere is not.
+prompt goes. A change to either module, to those four functions, to that one line, or to
+the three `taskd` functions below, is a change requiring review; a change elsewhere is not.
+
+**The three `taskd` functions are `Session._ends`, `Session._hold` and
+`Session._manual_reward`** (P4d-2b b2a, 2026-09-28; the third since the PI's 2026-09-28
+amendment). `_ends` is the one place the trial loop asks `welfare.must_stop`, between
+trials and on every pass of a paused session alike, and where a scheduled stop — "after X
+mL this session" among them, read from `welfare.session_total()` — ends a session; it asks
+the limit first, so a session at its limit ends as `limit`. `_hold` is the paused loop:
+no trial runs, so the task rewards nothing; each pass still drains, publishes and asks
+`_ends`; and the commands it drains are the only ones a manual reward is given for.
+`_manual_reward` gives one: a person's press of *give reward* while paused, one delivery
+of the bounded config's `reward_correct` through `welfare.Rig.reward`, strobed
+`MANUAL_REWARD` first and refused at any other time. `Session._command` passes `held`
+through from `_hold` to `_manual_reward`, and its default `False` makes any other caller
+refuse a reward — so a change to that pass-through is also a change to welfare-critical
+behavior. All three call `welfare` unchanged, and none holds a clock or a limit of its
+own; they are on this list because a plausible
+mistake in any — the limit asked on one path and not the other, a paused session that
+forgot to ask, a reward given while trials run or paid from another entry — ends a session
+late or rewards an animal when nobody meant it to, and passes every refusal `welfare` has.
 
 The split between the two is what keeps each reviewable. `bounds.py` is **pure** — the
 ceilings, the daily *floor*, and the arithmetic of whether a number is past one or short of
@@ -209,8 +229,10 @@ display layer that per-trial scenes do not reset.
 - **Neural features** (`neurofeatd`/`rhxfeatd` -> taskd): ZMQ PUB/SUB, msgpack,
   schema-versioned; feature vector, channel-map hash, source sample index, publisher
   monotonic time, sequence number. Latest-wins.
-- **Control/telemetry** (console <-> taskd): ZMQ REQ/REP for commands, PUB for telemetry.
-  Bearer token, rate limit, and a write-arbitration rule for concurrent writers.
+- **Control/telemetry** (console <-> taskd): ZMQ REQ/REP for commands, PUB for telemetry,
+  and PUSH/PULL for an operator's mark signal — eight bytes, read by the trial loop once
+  per frame and stamped in the frame it arrives (P4d-2b b2a). Bearer token, rate limit,
+  and a write-arbitration rule for concurrent writers.
 - **Browser** (browser <-> console): HTTP, with server-sent events carrying rendered HTML
   fragments to the page (P4d-2b spec §1). WebSockets are deferred to the replica pane, if
   V11 shows a browser can carry it at display rate.
