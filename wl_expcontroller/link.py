@@ -1760,10 +1760,16 @@ class ZmqConsole:
     def __init__(
         self,
         pub_endpoint: str,
-        req_endpoint: str,
+        req_endpoint: str | None,
         settle_s: float = 0.05,
         receive_timeout_s: float = 5.0,
     ):
+        """Connect SUB to `pub_endpoint` and REQ to `req_endpoint`.
+
+        **`req_endpoint` may be `None`** (P4d-2b b2a): a console that only reads --
+        `wlx serve`'s telemetry thread, whose commands go through `ZmqCommands` on a
+        thread of their own, so that each socket has one owning thread (spec §2) --
+        opens no REQ socket, and `send` refuses."""
         import zmq
 
         self._ctx = zmq.Context()
@@ -1785,13 +1791,15 @@ class ZmqConsole:
         self._sub.setsockopt(zmq.RCVTIMEO, int(receive_timeout_s * 1000))
         self._sub.connect(pub_endpoint)
 
-        self._req = self._ctx.socket(zmq.REQ)
-        self._sockets.append(self._req)
-        self._req.setsockopt(zmq.LINGER, 0)
-        # Same ceiling as the SUB socket above, same reasoning -- see send()'s
-        # docstring for why a bounded read happens there at all.
-        self._req.setsockopt(zmq.RCVTIMEO, 5000)
-        self._req.connect(req_endpoint)
+        self._req = None
+        if req_endpoint is not None:
+            self._req = self._ctx.socket(zmq.REQ)
+            self._sockets.append(self._req)
+            self._req.setsockopt(zmq.LINGER, 0)
+            # Same ceiling as the SUB socket above, same reasoning -- see send()'s
+            # docstring for why a bounded read happens there at all.
+            self._req.setsockopt(zmq.RCVTIMEO, 5000)
+            self._req.connect(req_endpoint)
         #: Whether the last send() has a reply on this socket still unread. REQ's
         #: state machine forbids a second send() before the first send's reply is
         #: read -- see send()'s docstring.
@@ -1827,6 +1835,11 @@ class ZmqConsole:
         """
         import zmq
 
+        if self._req is None:
+            raise RuntimeError(
+                "this console was built to read only, with no command endpoint, so it "
+                "cannot send"
+            )
         if self._awaiting_reply:
             try:
                 self._req.recv()
@@ -1934,6 +1947,110 @@ class ZmqMarks:
         self._finalizer.detach()
 
     def __enter__(self) -> "ZmqMarks":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
+
+#: How long `wlx serve` waits for the rig to acknowledge a command before it tells
+#: the page the command was not delivered. `taskd` reads commands only at a trial
+#: boundary (P4d-2b spec §5.1) -- and once per housekeeping interval while paused --
+#: so this has to outlast a trial, and a reply can take that long on a working rig.
+#: A responsiveness choice, not a measurement of this system.
+REPLY_TIMEOUT_S = 15.0
+
+
+class ZmqCommands:
+    """The console side of the command path, for a sender that must know whether each
+    command arrived (P4d-2b b2a): `wlx serve`'s command thread owns one.
+
+    `ZmqConsole.send` reads the previous reply lazily, one send behind, because `wlx
+    console` sends and then watches on one thread. This reads each reply before
+    `deliver` returns: the page is told *sent* only when `taskd` has acknowledged
+    receipt, and *not delivered* when it has not (spec §5.3).
+
+    **Two ways not to be delivered, told apart.** With `IMMEDIATE` set, the REQ socket
+    queues only to a completed connection, so with no rig connected `deliver` says so
+    once the connect timeout passes rather than waiting for a reply that cannot come
+    (a scratchpad probe, 2026-09-27; pinned by
+    `test_with_no_rig_connected_a_command_is_not_delivered`). With a rig connected and
+    no reply within the reply timeout, the command **was handed over and was not
+    acknowledged**: it may still be drained and applied at the rig's next boundary,
+    which is why that sentence says so rather than calling it lost.
+
+    **After a timeout the socket is reset** (spec §5.3): a REQ socket may not send
+    again before it reads a reply, so the old one is closed and a new one opened and
+    connected in its place, and removed from and added to the list the finalizer
+    holds, so that list never grows.
+    """
+
+    def __init__(
+        self,
+        req_endpoint: str,
+        reply_timeout_s: float = REPLY_TIMEOUT_S,
+        connect_timeout_s: float = CONNECT_TIMEOUT_S,
+    ):
+        import zmq
+
+        self._ctx = zmq.Context()
+        self._sockets: list = []
+        self._finalizer = weakref.finalize(self, _release, self._ctx, self._sockets)
+        #: Where this sends, named in every sentence `deliver` raises.
+        self.endpoint = req_endpoint
+        self._reply_s = reply_timeout_s
+        self._connect_ms = int(connect_timeout_s * 1000)
+        self._req = self._open()
+
+    def _open(self):
+        """A REQ socket, appended to the release list the moment it exists."""
+        import zmq
+
+        req = self._ctx.socket(zmq.REQ)
+        self._sockets.append(req)
+        req.setsockopt(zmq.LINGER, 0)
+        req.setsockopt(zmq.IMMEDIATE, 1)
+        req.setsockopt(zmq.RCVTIMEO, int(self._reply_s * 1000))
+        req.connect(self.endpoint)
+        return req
+
+    def deliver(self, command: Command) -> None:
+        """Send `command` and wait for the rig's acknowledgment. Returns once it
+        arrives; raises `NotDelivered` otherwise, with the sentence the page shows."""
+        import zmq
+
+        payload = _encode_command(command)
+        if not self._req.poll(self._connect_ms, zmq.POLLOUT):
+            raise NotDelivered(f"not delivered: no rig is connected on {self.endpoint}")
+        try:
+            self._req.send(payload, flags=zmq.DONTWAIT)
+        except zmq.Again as exc:
+            raise NotDelivered(
+                f"not delivered: no rig is connected on {self.endpoint}"
+            ) from exc
+        try:
+            self._req.recv()
+        except zmq.Again as exc:
+            self._reset()
+            raise NotDelivered(
+                f"not delivered: the rig did not acknowledge it within "
+                f"{self._reply_s:g} s. It may still be applied at the rig's next trial "
+                f"boundary; the changes feed will show it if it is"
+            ) from exc
+
+    def _reset(self) -> None:
+        """Close the REQ socket that is owed a reply and open a fresh one."""
+        old = self._req
+        old.close(linger=0)
+        self._sockets.remove(old)
+        self._req = self._open()
+
+    def close(self) -> None:
+        """See `ZmqLink.close` -- same reasoning, same shape."""
+        _release(self._ctx, self._sockets)
+        self._finalizer.detach()
+
+    def __enter__(self) -> "ZmqCommands":
         return self
 
     def __exit__(self, *exc_info: object) -> None:
