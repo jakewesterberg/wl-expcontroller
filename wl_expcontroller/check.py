@@ -1052,6 +1052,43 @@ def _view_faults(trial: Trial, geometry: Geometry | None) -> list[Finding]:
     return findings
 
 
+def _has_rds(looks) -> bool:
+    """Whether an appearance is a random-dot stereogram, or carries one.
+
+    `_appearances` reports an `Array` as itself -- it is an `Appearance`, so it
+    passes that check's `isinstance` test -- not as whatever is nested in its
+    `looks`/`among`. An array of stereograms is still stereo content (review I1(b)),
+    so this looks one level into an `Array` the way `_appearances` does not.
+    """
+    if isinstance(looks, RDS):
+        return True
+    if isinstance(looks, Array):
+        return isinstance(looks.looks, RDS) or isinstance(looks.among, RDS)
+    return False
+
+
+def _disparity_is_zero(value, trial: Trial) -> bool:
+    """Whether a disparity value is provably zero (review I1(a)).
+
+    A literal is zero only at exactly `0.0`. A parameter is zero only if it is
+    *declared* and its whole domain is zero: every `choices` entry is `0.0`, or
+    `low == high == 0.0`. An undeclared parameter -- one `_ranges` cannot see because
+    it has neither a two-sided range nor `choices` -- is not provably anything, so it
+    counts as stereo content rather than failing open the way `_widest`'s `(0, 0)`
+    fallback did.
+    """
+    if not isinstance(value, P):
+        return float(value) == 0.0
+    param = next((p for p in trial.params if p.name == value.name), None)
+    if param is None:
+        return False
+    if param.choices:
+        return all(choice == 0.0 for choice in param.choices)
+    if param.low is not None and param.high is not None:
+        return param.low == 0.0 and param.high == 0.0
+    return False
+
+
 def _stereo_content(trial: Trial) -> list[str]:
     """Everything a task shows that only the stereoscope can: disparity, a
     random-dot stereogram (direct-view spec §3), and a stimulus shown to one eye.
@@ -1059,11 +1096,10 @@ def _stereo_content(trial: Trial) -> list[str]:
     **Parameter choices count**, for `_appearances`' reason: an appearance only a
     parameter selects is as real as one written into a `Show`.
     """
-    ranges = _ranges(trial)
     found = [
         "it can show a random-dot stereogram"
         for looks in _appearances(trial)
-        if isinstance(looks, RDS)
+        if _has_rds(looks)
     ]
     for state, action in actions_of(trial):
         if isinstance(action, Show):
@@ -1072,8 +1108,8 @@ def _stereo_content(trial: Trial) -> list[str]:
             name, carrier = action.stimulus, action
         else:
             continue
-        if not isinstance(carrier.disparity, Unchanged) and any(
-            value != 0.0 for value in _widest(carrier.disparity, ranges)
+        if not isinstance(carrier.disparity, Unchanged) and not _disparity_is_zero(
+            carrier.disparity, trial
         ):
             found.append(f"state {state!r} gives {name!r} disparity")
         if not isinstance(carrier.eye, Unchanged) and carrier.eye != "both":

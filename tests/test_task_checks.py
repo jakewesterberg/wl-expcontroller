@@ -527,7 +527,9 @@ def _task(*enter, view="either", params=()) -> Trial:
 
 def test_a_task_is_either_until_it_says_otherwise():
     """The default is safe because check 8 runs against whichever setup the session
-    chose: an undeclared task in the stereoscope is held to the mask."""
+    chose -- once direct view part 2 passes the session's geometry; until then only
+    the tests run it -- so an undeclared task in the stereoscope is held to the
+    mask."""
     assert _task().view == "either"
     assert check(_task(), geometry=DIRECT) == []
     assert check(_task(), geometry=GEOMETRY) == []
@@ -558,6 +560,20 @@ def test_a_disparity_parameter_counts_when_its_range_can_leave_zero():
     assert check(_task(Update("s", disparity=P("d")), params=pinned)) == []
 
 
+def test_a_disparity_parameter_declared_by_choices_counts():
+    """Review I1(a): a disparity parameter with no `low`/`high` -- declared by
+    `choices` instead -- is not the `(0, 0)` `_widest` falls back to for an
+    undeclared range. `taskd` would accept any listed choice, so the checker must
+    count the non-zero ones as stereo content too."""
+    choices = [Param("d", unit="deg", choices=(-0.4, 0.0, 0.4))]
+    pinned = [Param("d", unit="deg", choices=(0.0,))]
+
+    assert [f.code for f in check(_task(Update("s", disparity=P("d")), params=choices))] == [
+        "needs-stereoscope"
+    ]
+    assert check(_task(Update("s", disparity=P("d")), params=pinned)) == []
+
+
 def test_a_shown_stereogram_or_one_a_parameter_can_choose_needs_the_stereoscope():
     """A random-dot stereogram has no content but its disparity. One reachable only
     through a parameter's choices is as real as one written into a `Show`."""
@@ -566,6 +582,19 @@ def test_a_shown_stereogram_or_one_a_parameter_can_choose_needs_the_stereoscope(
     updated = _task(Update("s", looks=RDS()))
 
     for trial in (shown, chosen, updated):
+        (finding,) = check(trial)
+        assert finding.code == "needs-stereoscope"
+        assert "random-dot stereogram" in finding.detail
+
+
+def test_a_stereogram_inside_an_arrays_looks_or_among_needs_the_stereoscope():
+    """Review I1(b): `_appearances` reports the `Array` itself, not the `RDS`
+    nested in its `looks`/`among` -- so an array of stereograms in an "either" task
+    must still be found, whichever slot carries the `RDS`."""
+    as_looks = _task(Show(Stimulus("arr", at=(0.0, 0.0), looks=Array(looks=RDS()))))
+    as_among = _task(Show(Stimulus("arr", at=(0.0, 0.0), looks=Array(among=RDS()))))
+
+    for trial in (as_looks, as_among):
         (finding,) = check(trial)
         assert finding.code == "needs-stereoscope"
         assert "random-dot stereogram" in finding.detail
