@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-109.**
+**Next free ID: XC-113.**
 
 ## Brainstorms queued for the PI
 
@@ -89,6 +89,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-059** The same three-line comment sits in `tasks/fixation_detection.py` and `tasks/adaptive_detection.py`. — 2026-09-28, [direct view part 1 plan](superpowers/plans/2026-09-28-direct-view-part1.md), Task 6 review — waits on: nothing
 - **XC-060** `wlx serve` has no process-level restart test; a manual check covers it. — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing
 - **XC-061** macOS lets overlapping binds succeed where Linux refuses them, so a port clash on the rig may not reproduce on a Mac. — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing
+- **XC-109** Rename the local folder `~/GitHub/wl-expcontroller` to `~/GitHub/wl-xcon`, moving this project's Claude memory folder (keyed on the path) and repairing the worktrees, so `wlo` finds wl-xcon by its slug. — 2026-09-28, [wl-orchestrator known-gaps](https://github.com/jakewesterberg/wl-orchestrator/blob/main/docs/known-gaps.md) — waits on: XC-053
 
 ## Needs the rig
 
@@ -142,3 +143,6 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-106** wl-stack: adopt the `rig/*` roles, `rig/cam` included. — 2026-08-31, [S0 §8 item 1](superpowers/specs/2026-08-31-S0-hosts-and-hardware-design.md#8-open-items) (also S11 §6 item 2) — waits on: wl-stack
 - **XC-107** wl-touchtrain: the kiosk's hardware and machine class, and whether its reduced sync module mints a session id or emits a barcode. — 2026-09-19, [next-session §3e](next-session.md#3e-what-the-console-needs-that-does-not-exist-yet) (also S13 §6 item 2, S11 §6 item 3) — waits on: wl-touchtrain
 - **XC-108** Move `tasks/` and the provisional allocation to wl-xtasks. — 2026-08-31, [CHECKPOINT, "What exists"](CHECKPOINT.md#what-exists) — waits on: wl-xtasks having a library to load
+- **XC-110** wl-juicer: carry the three renames (wl-xcon, wl-xviz, wl-xtasks) into its current code and docs once it is back on `main`. — 2026-09-28, [wl-orchestrator `d8b9ccb`](https://github.com/jakewesterberg/wl-orchestrator/commit/d8b9ccb) — waits on: wl-juicer's branch `wl-juicer-build` merging
+- **XC-111** wl-trajectortree: carry the three renames into its current code and docs once it is back on `main`. — 2026-09-28, [wl-orchestrator `d8b9ccb`](https://github.com/jakewesterberg/wl-orchestrator/commit/d8b9ccb) — waits on: wl-trajectortree's branch `polish-the-last-five` merging
+- **XC-112** wl-works: carry the three renames into its live documents and tests. — 2026-09-28, [wl-orchestrator `d8b9ccb`](https://github.com/jakewesterberg/wl-orchestrator/commit/d8b9ccb) — waits on: the PI's confirmation in the wl-works session
