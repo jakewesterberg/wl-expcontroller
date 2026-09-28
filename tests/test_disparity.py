@@ -127,13 +127,12 @@ def test_form_disparity_counts_toward_the_off_screen_check():
     extreme of its corrugation -- and only that eye's, which on a split-screen
     stereoscope is a stimulus the animal fuses on one side and loses on the other.
     """
-    from wl_expcontroller.geometry import Geometry
+    from tasks.rig import RIG
 
-    geometry = Geometry.stereoscope(
-        panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
-    )
-    safe = a_task(RDS(form=Corrugation(sf=0.5, amplitude=0.2)), at=(12.5, 0.0))
-    extreme = a_task(RDS(form=Corrugation(sf=0.5, amplitude=8.0)), at=(12.5, 0.0))
+    # The rig's stereoscope at `E` = 1.6 cm, stopped by its ±12° mask.
+    geometry = RIG.stereoscope(half_ipd_cm=1.6)
+    safe = a_task(RDS(form=Corrugation(sf=0.5, amplitude=0.2)), at=(11.5, 0.0))
+    extreme = a_task(RDS(form=Corrugation(sf=0.5, amplitude=8.0)), at=(11.5, 0.0))
 
     assert "stimulus-off-screen" not in codes(safe, geometry=geometry)
     assert "stimulus-off-screen" in codes(extreme, geometry=geometry)

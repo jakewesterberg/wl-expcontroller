@@ -303,8 +303,14 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
     split-screen stereoscope that is a stimulus the animal fuses on one side and loses
     on the other, a far stranger failure than simply not seeing it.
 
+    **Against the setup's own field** (direct-view spec §2, §4): the whole panel less
+    the light sensors' housings in direct view, the mask through the stereoscope. A
+    stimulus under a housing is refused exactly as one off the panel is.
+
     Skipped when no geometry is supplied: a task is not wrong for being checked
-    without a rig, it is unchecked, and the caller knows which it wanted.
+    without a rig, it is unchecked, and the caller knows which it wanted. **No caller
+    outside the tests supplies one yet**: `taskd` and `wlx check` call `check()`
+    without a geometry until direct view part 2 passes the session's in.
     """
     if geometry is None:
         return []
@@ -360,7 +366,8 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
                 f"state {name!r} shows a stimulus at ({described}) which can reach "
                 f"{bad[0][0]:.1f}, {bad[0][1]:.1f} -- outside the "
                 f"\u00b1{geometry.half_field_h_deg:.1f}\u00b0 \u00d7 "
-                f"\u00b1{geometry.half_field_v_deg:.1f}\u00b0 field"
+                f"\u00b1{geometry.half_field_v_deg:.1f}\u00b0 {geometry.view} field"
+                + (", less the light sensors' housings" if geometry.housings else "")
                 + (
                     f", with disparity {stimulus.disparity}"
                     if stimulus.disparity

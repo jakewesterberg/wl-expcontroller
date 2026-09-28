@@ -29,9 +29,10 @@ from wl_expcontroller.task import (
 from wl_expcontroller.check import check
 from dataclasses import replace
 
+from tasks.rig import RIG
 from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.components import Registry
-from wl_expcontroller.geometry import Geometry
+from wl_expcontroller.geometry import Geometry, Housing
 
 
 def test_a_state_no_transition_can_reach_is_reported():
@@ -260,11 +261,19 @@ def test_a_resolving_custom_component_is_accepted_but_flagged_for_review():
     assert findings[0].blocking is False
 
 
-#: The PG27UCDM through the stereoscope, the screen at 50 cm and E = 1.6 cm: a 63.15 cm
-#: path and a ±13.15° × ±14.77° field per eye.
-GEOMETRY = Geometry.stereoscope(
-    panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
-)
+#: The rig's stereoscope (`tasks/rig.py`) at the drawing's `E` = 1.6 cm: a 63.15 cm path,
+#: and the ±13.15° × ±14.77° viewport stopped by the PI's ±12° mask.
+GEOMETRY = RIG.stereoscope(half_ipd_cm=1.6)
+
+#: The rig in direct view, with **stand-in housings**: the real ones are unmeasured
+#: (direct-view spec §9 item 1). One per bottom corner, 4 × 3 cm with a 0.5 cm margin.
+DIRECT = replace(
+    RIG,
+    housings=(
+        Housing(left_cm=0.0, right_cm=4.0, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
+        Housing(left_cm=54.997, right_cm=58.997, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
+    ),
+).direct()
 
 
 def test_a_stimulus_outside_the_field_is_refused():
@@ -300,13 +309,13 @@ def test_disparity_can_push_one_eye_off_screen_from_a_legal_cyclopean_position()
         states=[
             State(
                 "show",
-                enter=[Show(Stimulus("s", at=(12.65, 0.0), disparity=2.0))],
+                enter=[Show(Stimulus("s", at=(11.5, 0.0), disparity=2.0))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
     )
 
-    assert GEOMETRY.can_show(12.65, 0.0), "the cyclopean position is legal"
+    assert GEOMETRY.can_show(11.5, 0.0), "the cyclopean position is legal"
 
     findings = check(trial, geometry=GEOMETRY)
 
@@ -414,7 +423,7 @@ def test_a_position_parameter_whose_range_leaves_the_field_is_refused():
 def test_a_position_parameter_whose_range_stays_inside_the_field_is_accepted():
     trial = Trial(
         start="show",
-        params=[Param("ecc", unit="deg", low=-12.5, high=12.5)],
+        params=[Param("ecc", unit="deg", low=-11.5, high=11.5)],
         states=[
             State(
                 "show",
@@ -425,3 +434,67 @@ def test_a_position_parameter_whose_range_stays_inside_the_field_is_accepted():
     )
 
     assert check(trial, geometry=GEOMETRY) == []
+
+
+# ---------------------------------------------------------------------------
+# Check 8 against each setup's own field (direct-view spec §2, §4)
+# ---------------------------------------------------------------------------
+
+
+def _showing(at, params=()) -> Trial:
+    return Trial(
+        start="show",
+        params=list(params),
+        states=[
+            State(
+                "show",
+                enter=[Show(Stimulus("s", at=at))],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+
+def test_a_stimulus_under_a_light_sensors_housing_is_refused_in_direct_view():
+    """Direct-view spec §4: "check 8 refuses a stimulus that could overlap a housing,
+    exactly as it refuses one off the panel." The position is on the panel; the
+    housing covers it."""
+    findings = check(_showing((-29.0, -17.0)), geometry=DIRECT)
+
+    assert [f.code for f in findings] == ["stimulus-off-screen"]
+    assert "direct field, less the light sensors' housings" in findings[0].detail
+
+
+def test_a_range_that_can_reach_a_housing_is_refused():
+    """Over the declared range, as check 8 always reasons: a target an experimenter
+    can slide into the corner is refused before anyone does."""
+    trial = _showing(
+        (P("x"), -17.0), params=[Param("x", unit="deg", low=-29.0, high=0.0)]
+    )
+
+    assert [f.code for f in check(trial, geometry=DIRECT)] == ["stimulus-off-screen"]
+    assert check(_showing((P("x"), 0.0), trial.params), geometry=DIRECT) == []
+
+
+def test_direct_view_shows_what_the_stereoscopes_mask_stops():
+    """The reference detection tasks' ±16°, which the interim narrowed to ±12° for the
+    stereoscope. Direct view takes it; the mask refuses it, and says which field."""
+    trial = _showing((P("ecc"), 0.0), params=[Param("ecc", unit="deg", low=-16.0, high=16.0)])
+
+    assert check(trial, geometry=DIRECT) == []
+    (finding,) = check(trial, geometry=GEOMETRY)
+    assert finding.code == "stimulus-off-screen"
+    assert "±12.0° × ±12.0° stereoscope field" in finding.detail
+
+
+def test_the_mask_refuses_what_the_bare_viewport_would_show():
+    """Held to the rig's field, not the optics': 12.5° is inside the viewport's ±13.15°
+    and behind the mask, so an animal would never see it."""
+    viewport = Geometry.stereoscope(
+        panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
+    )
+
+    assert check(_showing((12.5, 0.0)), geometry=viewport) == []
+    assert [f.code for f in check(_showing((12.5, 0.0)), geometry=GEOMETRY)] == [
+        "stimulus-off-screen"
+    ]
