@@ -2461,8 +2461,15 @@ def test_a_stop_is_recorded_with_who_and_when(tmp_path):
 def test_nothing_is_rewarded_while_paused(tmp_path):
     """Human review item 1 (spec §5.5): while paused, nothing is rewarded. No trial
     runs, so no `Reward` action reaches the pump, and the session's fluid stands
-    still. Paused after six trials, so what stands still is not zero."""
+    still. Paused after six trials, so what stands still is not zero.
+
+    `before` is read at the moment the pause is decided -- before `_pause` runs and
+    before `_hold`'s `while` is entered -- because `seen`'s first reading is taken
+    inside the first `idle`, which is after both. A delivery added in `_pause`, or
+    at the top of `_hold` ahead of the loop, would land between `before` and
+    `seen[0]` and pass unseen by `seen` alone (review item 2)."""
     seen: list = []
+    before: list = []
     link = _Scripted(script={4: [Resume(by="jake")]}, step=10.0)
     session, wall = _walled(tmp_path, link, trials=9)
     link.wall = wall
@@ -2478,6 +2485,13 @@ def test_nothing_is_rewarded_while_paused(tmp_path):
     def pause_after_six(condition, values, result) -> None:
         ran[0] += 1
         if ran[0] == 6:
+            before.append(
+                (
+                    session.welfare.session_total(),
+                    session.welfare.deliveries,
+                    len(session.pump.delivered),
+                )
+            )
             link.queue(Pause(by="jake"))
 
     session.observe = pause_after_six
@@ -2487,6 +2501,7 @@ def test_nothing_is_rewarded_while_paused(tmp_path):
     assert len(seen) == 4
     assert seen[0][0] > 0.0, "choose a pause point after a reward"
     assert len(set(seen)) == 1, f"fluid moved while paused: {seen}"
+    assert seen[0] == before[0], "fluid moved between deciding to pause and the first reading"
 
 
 def test_the_out_of_cage_limit_still_ends_a_paused_session(tmp_path):
@@ -2507,6 +2522,48 @@ def test_the_out_of_cage_limit_still_ends_a_paused_session(tmp_path):
     clocks = [frame.out_of_cage_seconds for frame in link.published]
     assert clocks == sorted(clocks) and clocks[-1] > 800.0, "the clock kept running"
     assert link.published[-1].stop_kind == "limit"
+
+
+def test_the_limit_still_ends_a_paused_session_with_refused_commands_on_the_way(tmp_path):
+    """Regression (review round 1, item 3a): a refused command drained on a paused
+    pass must not change when the out-of-cage limit ends the session. `_ends` is
+    asked at the end of every pass in `_hold`, busy or not, so a `SetParameter` for
+    an undeclared parameter -- refused, changing nothing -- drained on every pass on
+    the way to the limit still lets it land on the same wait as with no commands at
+    all (`test_the_out_of_cage_limit_still_ends_a_paused_session`)."""
+    refuse = [SetParameter(name="not_a_parameter", value=1.0, by="jake")]
+    link = _Scripted(script={1: refuse, 2: refuse, 3: refuse}, step=300.0)
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "limit"
+    assert session.stopped_because.startswith("out_of_cage")
+    assert len(link.waits) == 3, "the limit still lands on the third wait, same as with no commands"
+    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    assert len(session.refusals) == 3
+
+
+def test_the_limit_still_ends_a_paused_session_when_a_resume_lands_the_same_pass(tmp_path):
+    """Regression (review round 1, item 3b): a resume landing in the same drain as
+    the pass that crosses the out-of-cage limit does not race it. `_resume` clears
+    `paused_at` and strobes `RESUME`, then `_hold` asks `_ends` before it loops back
+    to check `paused_at` again, so the limit still ends the session on that same
+    pass and `run()` never reaches a trial."""
+    link = _Scripted(script={3: [Resume(by="jake")]}, step=300.0)
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "limit"
+    assert session.stopped_because.startswith("out_of_cage")
+    assert len(link.waits) == 3, "the limit still lands on the third wait, same as with no resume"
+    assert RESUME_CODE in session.card.codes, "the resume still strobed before the limit ended it"
+    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran after the pause"
 
 
 def test_a_setting_staged_while_paused_applies_when_trials_resume(tmp_path):
@@ -2576,6 +2633,30 @@ def test_a_pause_pressed_after_a_stop_is_refused_and_the_session_ends(tmp_path):
     assert (name, by) == ("pause", "jake")
     assert "the session is stopping (stopped by sam)" in why
     assert PAUSE_CODE not in session.card.codes
+
+
+def test_a_resume_pressed_after_a_stop_is_refused_and_the_session_ends(tmp_path):
+    """Important review item 1: a resume that reaches a paused session after a stop
+    in the same drain resumes nothing. Both land in one drain, inside `_hold`; the
+    stop ends the session at that boundary, and the resume is refused with a
+    sentence -- mirroring `_pause`'s guard -- rather than strobing `RESUME`, writing
+    a "resumed" row for a pause that never ended, and clearing `paused_at` on a
+    session whose own field contract says a stop keeps it set."""
+    link = _Scripted(script={2: [Stop(by="sam"), Resume(by="jake")]})
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert RESUME_CODE not in session.card.codes
+    assert [row["kind"] for row in _controls_rows(session)] == ["pause", "stop"]
+    ((name, by, why),) = session.refusals
+    assert (name, by) == ("resume", "jake")
+    assert "the session is already stopping" in why
+    assert session.paused_at is not None, "a stop keeps paused_at, as the field says"
+    assert session.stopped_because == "stopped by sam"
+    assert session.stop_kind == "operator"
 
 
 def test_a_pause_is_refused_when_the_allocation_cannot_mark_it(tmp_path):

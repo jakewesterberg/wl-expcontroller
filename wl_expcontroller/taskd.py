@@ -816,7 +816,21 @@ class Session:
     def _resume(self, by: str, index: int) -> None:
         """End the pause: `_hold` returns and `run()` goes back to the top of its
         loop, which applies whatever was staged while paused before the next trial
-        runs (spec §5.1). Strobed, so the recording shows where the gap ends."""
+        runs (spec §5.1). Strobed, so the recording shows where the gap ends.
+
+        **Refused when a stop is already on its way**: mirroring `_pause`'s guard,
+        a `Stop` drained ahead of this in the same pass ends the session at that
+        boundary regardless, and a resume here would strobe `RESUME`, write a
+        "resumed" row for a pause that never ended, and clear `paused_at` on a
+        session `_hold`'s field contract says should keep it, as the truth of how
+        it ended (Important review item 1)."""
+        if self.stopped_because:
+            self._refuse(
+                "resume",
+                by,
+                "the session is already stopping, so a resume changes nothing",
+            )
+            return
         if self.paused_at is None:
             self._refuse("resume", by, "the session is not paused; this resume changes nothing")
             return
@@ -855,7 +869,7 @@ class Session:
         trials draw on shows its background with nothing on it (spec §5.0). There is
         no display process yet to be told so -- S4's is not built (docs/CHECKPOINT.md:
         "a frame on screen" is blocked on a panel) -- and when there is, this is the
-        pause it must show; the hardware verification list says so.
+        pause it must show: V12 item 3 in `docs/validation.md`, not yet written.
 
         Returns when the session resumes, or with `stopped_because` set when it must
         end; `run()` reads which."""
