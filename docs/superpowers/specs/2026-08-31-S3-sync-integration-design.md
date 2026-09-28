@@ -180,11 +180,13 @@ reach the recorders as edges plus analog copies.
 **Placement now has a geometric answer.** Both patches must sit outside both eyes' viewports,
 or the flip patch — alternating every refresh — is a flickering distractor in one eye's field.
 Naively impossible, since two viewports tile the panel exactly. The answer is a **bottom strip
-2.18 cm tall and full panel width**, created by stopping the far-mirror aperture to ±17.0°
-vertical — vertical field is the surplus dimension, so it costs nothing that matters. See
-`2026-08-31-stereoscope-optics-drawing.md` §5, which also gives the fallbacks and the trade
-against nasal field. Confirmed with `wl-sync` before mirrors are mounted, and verified dark to
-each eye at bring-up rather than assumed from geometry.
+the full panel width**, created by stopping the field vertically — vertical field is the
+surplus dimension, so it costs nothing that matters. Its height depends on the stop, which is
+not yet chosen: 1.90 cm with the vertical field stopped to the horizontal's ±14.51°, 6.60 cm at
+the ±10° the stereoscope needs (PI, 2026-09-27). See `2026-08-31-stereoscope-optics-drawing.md`
+§5, which also gives where the stop can sit and the trade against nasal field. Confirmed with
+`wl-sync` before mirrors are mounted, and verified dark to each eye at bring-up rather than
+assumed from geometry.
 
 **Cameras** take the barcode as a timebase to record, not a trigger — they free-run, and the
 sync box captures their `ExposureActive` strobes on GPIO 26/27. **We do not trigger cameras and

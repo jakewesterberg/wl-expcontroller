@@ -176,10 +176,9 @@ as for the panel before it:
 - **No FHD/480 mode is listed.**
 - **Full-field luminance and color accuracy are unpublished**, so V9 measures them.
 
-**§5.2's geometry and the stereoscope optics drawing must be recomputed for 26.5".** The
-comparison also found that the drawing's relations undersize M1 and M2 enough to clip the
-field's corners, and that its nasal-clip formula is wrong. Both are recorded in the
-comparison report and still to be fixed. §5.2 below still shows the 31.5" figures.
+**§5.2's geometry and the stereoscope optics drawing were recomputed for the PG27UCDM on
+2026-09-28.** The drawing's revision also fixes the two errors the comparison found in its
+relations: mirror sizes that clipped the field's corners, and a wrong nasal-clip formula.
 
 **The PG32UCDM Gen 3, chosen 2026-09-26 and replaced 2026-09-27.** ASUS lists:
 - a 31.5" **Tandem QD-OLED** panel at 4K/240;
@@ -205,7 +204,7 @@ item 4. Three things remain:
 - **Unpublished figures:** full-field luminance at 100% APL and color depth are not listed,
   so they are unverified until V9 measures them.
 
-Its §5.2 geometry was computed from the 31.5" viewable diagonal.
+§5.2's geometry was computed from its 31.5" viewable diagonal until 2026-09-28.
 
 **Considered the same day:**
 - The **Samsung Odyssey OLED G8 G80SH** (`LS32HG802SNXZA`; QD-OLED, "DP 2.1 (UHBR20)",
@@ -235,37 +234,59 @@ performance "cannot be assumed or guaranteed" even across units of one model.
 
 ### 5.2 Geometry, as a formula
 
-Written parametrically so a panel change is a recompute, not a redesign. For a 16:9 panel of
-diagonal `L`, split vertically, viewed at distance `D` **along the folded optical path**:
+Written parametrically so a panel change is a recompute, not a redesign. For a panel whose
+active area is `W` × `H`, split vertically, viewed at distance `D` **along the folded optical
+path**:
 
 ```
-half_width  = 0.2179 * L      (each eye's viewport half-width)
-half_height = 0.2451 * L
+half_width  = W / 4           (each eye's viewport half-width)
+half_height = H / 2
 theta_H = atan(half_width  / D)      field per eye = +/- theta_H
 theta_V = atan(half_height / D)                     +/- theta_V
 px_per_deg = (W_px / 2) / (2 * theta_H_degrees)
 ```
 
-For a 31.5" panel (`L` = 80.0 cm; half-width 17.44 cm, half-height 19.61 cm):
+**Use the maker's active area, not the diagonal.** For an exact 16:9 panel of diagonal `L` the
+half-extents are `0.2179 * L` and `0.2451 * L`, the form this section first used. ASUS publishes
+the PG27UCDM's active area as "589.97 x 332.93 mm"
+([spec page](https://rog.asus.com/us/monitors/27-to-31-5-inches/rog-swift-oled-pg27ucdm/spec/),
+read 2026-09-28), which is 1.772:1 rather than 16:9, and its "26.5-inch viewable" is rounded (the
+area's own diagonal is 26.67 in). The diagonal form fed 26.5 in would put each edge 0.6–0.9%
+short.
+
+For the PG27UCDM (half-width 14.75 cm, half-height 16.65 cm):
 
 | D | Field per eye (H × V) | 4K mode | FHD/480 mode |
 |---|---|---|---|
-| 45 cm | ±21.2° × ±23.5° | 45 px/deg | 23 px/deg |
-| 50 cm | ±19.2° × ±21.4° | 50 px/deg | 25 px/deg |
-| **57 cm** | **±17.0° × ±19.0°** | **56 px/deg** | **28 px/deg** |
-| 65 cm | ±15.0° × ±16.8° | 64 px/deg | 32 px/deg |
+| 45 cm | ±18.2° × ±20.3° | 53 px/deg | 26 px/deg |
+| 50 cm | ±16.4° × ±18.4° | 58 px/deg | 29 px/deg |
+| **57 cm** | **±14.5° × ±16.3°** | **66 px/deg** | **33 px/deg** |
+| 65 cm | ±12.8° × ±14.4° | 75 px/deg | 38 px/deg |
 
-**Build for 57 cm** (ruled 2026-08-31). At 57.3 cm one centimetre on the screen subtends one
-degree — `1/tan(1°) = 57.29` — which is why it is the field's standing convention. The
-arithmetic benefit is largely vestigial now that software does the trigonometry, and the
-identity is a small-angle one that breaks down off-centre (at 20° eccentricity, 20° is 20.9 cm,
-not 20 cm — a 4.5% error, so it must never be treated as linear across the field). What
-survives is comparability with the literature and the ability to catch a gross geometry error
-by eye. Against 50 cm it trades 2.2° of horizontal field for 6 px/deg, and ±17° still holds a
-six-item array at 10° eccentricity with 7° of margin. A six-item array at the stated 10° maximum eccentricity sits inside
-±19° with room to roughly double it, at 1.2 arcmin/pixel. The viewport is 8:9, so horizontal
-eccentricity is the binding dimension — the cost of 16:9, and not binding on anything in the
-stated program. Path lengths are **measured per eye**, not derived (V9): the two folded paths
+The px/deg columns are the formula's mean across the viewport. At 57 cm a pixel at the center
+subtends 0.93 arcmin, 64.8 px/deg. The PG27UCDM lists no FHD/480 mode (§5.1), so that column is
+the formula's alone. The 31.5" panel this section described until 2026-09-28 gave ±17.0° ×
+±19.0° and 56 px/deg at 57 cm.
+
+**The stereoscope needs ±10°** (PI, 2026-09-27: "for the stereoscope setup +/- 10 deg is enough,
+most of the experiments will not be in the stereoscope"). The field above is the most the panel
+gives; where it is stopped is set out, not chosen, in the optics drawing's §5.
+
+**Build for 57 cm** (ruled 2026-08-31; **reaffirmed by the PI 2026-09-28 after comparing 50
+cm**). His reasons: ±10° is enough, so 50 cm's wider field buys nothing; 57 cm is sharper, with
+finer whole-pixel disparity steps (0.93 against 1.06 arcmin per pixel at the center); and it
+keeps the 1 cm ≈ 1° convention for checking the built rig. At 57.3 cm one centimeter on the
+screen subtends one degree — `1/tan(1°) = 57.29` — which is why it is the field's standing
+convention. The arithmetic benefit is largely vestigial now that software does the
+trigonometry, and the identity is a small-angle one that breaks down off-center (at 20°
+eccentricity, 20° is 20.9 cm, not 20 cm — a 4.5% error, so it must never be treated as linear
+across the field). What survives is comparability with the literature and the ability to catch
+a gross geometry error by eye. Against 50 cm it trades 1.9° of horizontal field for 7.8 px/deg,
+and ±14.5° still holds a six-item array at 10° eccentricity with 4.5° of margin. The same array
+sits inside ±16.3° vertically, at 0.93 arcmin per pixel. (This paragraph said 1.2 arcmin before
+2026-09-28, which was the 31.5" panel's figure at 50 cm; at 57 cm it was 1.1.) The viewport is
+8:9, so horizontal eccentricity is the binding dimension — the cost of 16:9, and not binding on
+anything in the stated program. Path lengths are **measured per eye**, not derived (V9): the two folded paths
 are equal only if the mirrors are, and mirror angles set vergence, so alignment is a
 calibrated parameter with a Nonius/vernier procedure rather than an assumed symmetry.
 
@@ -276,8 +297,8 @@ which is why dual-mode panels offer both. That gives a real experimental trade:
 
 | Mode | Per eye @57 cm | Frame quantum | Suits |
 |---|---|---|---|
-| 4K | 1920×2160, 56 px/deg | 4.2 ms @240, 8.3 ms @120 | Disparity, fine gratings, natural images |
-| FHD | 960×1080, 28 px/deg | **2.08 ms** | Saccade-contingent updates, fast timing |
+| 4K | 1920×2160, 66 px/deg | 4.2 ms @240, 8.3 ms @120 | Disparity, fine gratings, natural images |
+| FHD | 960×1080, 33 px/deg | **2.08 ms** | Saccade-contingent updates, fast timing |
 
 Consequences: **V1 runs in every mode the rig will use**; each mode carries its own
 calibration and deg/pixel; the mode is recorded in the session snapshot; and gaze-contingent

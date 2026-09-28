@@ -22,7 +22,8 @@ calibration, merged that same day.
 **Decided 2026-09-27, design pending: a pupil and corneal-reflection fallback beyond the
 DPI's reach** (PI). The OpenIrisDPI paper puts P4's visibility at about 10° of gaze in
 macaques. The lab's stimuli go to about 15°, and this spec's own calibration targets already
-reach 10.8–16.3° (`docs/research/2026-09-27-panel-27-vs-32.md`). Where P4 cannot be vouched
+reach 9.2–13.9° in the stereoscope on the PG27UCDM (`calibration.constellation`; 10.8–16.3° on
+the 31.5" panel, `docs/research/2026-09-27-panel-27-vs-32.md`). Where P4 cannot be vouched
 for, gaze comes from `pupil − CR1` instead:
 - the tracker already reports both;
 - the fallback has its own calibration map;
@@ -212,8 +213,8 @@ faces of one thing: **the map changes during a session.**
   correction is indistinguishable from an artifact.
 - Toggling drift correction is a logged parameter change.
 - **The optics are part of the mapping's validity.** S0's stereoscope is adjustable per animal
-  (`a = 3.27·E`), so a mirror-carriage change invalidates the map exactly as a recalibration
-  does. Mirror geometry and both measured optical paths sit beside the mapping version in the
+  (`a = E(1 + 1/tan θ)`, optics drawing §4), so a mirror-carriage change invalidates the map
+  exactly as a recalibration does. Mirror geometry and both measured optical paths sit beside the mapping version in the
   session snapshot.
 
 **Gaze windows are specified in cyclopean degrees**, with per-eye mapping to viewport pixels
