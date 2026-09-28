@@ -694,6 +694,21 @@ def test_a_method_the_stdlib_does_not_know_gets_json_not_its_html_page():
     assert b"<" not in known + unknown
 
 
+def test_a_method_the_stdlib_does_not_know_with_a_foreign_host_is_421():
+    """Fix round 1, Important 3 (security review): an unknown method reaches
+    `send_error` directly, bypassing `do_GET`/`do_POST`'s own `Host` check -- so a
+    DNS-rebound request answered 405 instead of 421, the one path the other two
+    methods already close. A request with no `Host` at all is unaffected -- this
+    file's own pin, above, stays 405."""
+    hub = _hub()
+    with _served(hub) as port:
+        foreign = _raw(port, b"BREW / HTTP/1.0\r\nHost: evil.example\r\n\r\n")
+
+    assert foreign.startswith(b"HTTP/1.0 421")
+    assert b'"misdirected request"' in foreign
+    assert b"evil" not in foreign
+
+
 def test_a_malformed_request_gets_no_html_and_no_echo():
     hub = _hub()
     with _served(hub) as port:

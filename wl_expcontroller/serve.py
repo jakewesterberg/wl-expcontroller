@@ -818,8 +818,20 @@ def make_handler(
             **An unknown method is 405 on a known path and 404 elsewhere**, where
             wl-preproc answers 401: every one of its paths needs the token, and here
             only `GET /health` does -- the pages are open to the LAN (spec §2).
+
+            **A foreign `Host` still answers 421 here too** (fix round 1, security
+            review Important 3): an unknown method never reaches `do_GET`/`do_POST`,
+            so it bypassed their own `Host` check entirely -- `BREW /` with `Host:
+            evil.example` used to answer 405. A request with no `Host` at all keeps
+            its existing 405/404 unchanged (`test_a_method_the_stdlib_does_not_know_
+            gets_json_not_its_html_page`'s own pin: an HTTP/1.0 client that sends
+            none).
             """
             if code == 501:
+                given = self.headers.get("Host") if self.headers else None
+                if given is not None and host_name(given) not in self._hosts:
+                    self._send_json(421, _MISDIRECTED)
+                    return
                 code = 405 if getattr(self, "path", None) in _ROUTES else 404
             self._send_json(code, _ERRORS.get(code, _FALLBACK))
 
