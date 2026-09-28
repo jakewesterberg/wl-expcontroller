@@ -1729,3 +1729,36 @@ def test_simulated_hands_over_each_queued_mark_once():
     assert link.mark_signal() == 4
     assert link.idle(10.0) == 5, "a simulated idle never waits"
     assert link.mark_signal() == 0
+
+
+def test_the_refusal_cap_also_bounds_a_repeatedly_malformed_setting(zmq_cleanup):
+    """Task 1's review (ledgered ruling): `drain()`'s `except CommandRefused` branch
+    -- every `set` that decodes fine and fails `_setting`, such as a boolean value --
+    appended straight to `self.refused` with no `REFUSAL_HISTORY` trim, while the
+    generic `except Exception` branch beside it did trim. A console retrying the same
+    bad write could grow `self.refused` without bound through that one branch, which
+    `test_a_repeatedly_malformed_packet_is_capped_not_unbounded` (above) never
+    exercised -- it sends packets `_decode_command` cannot decode at all, the
+    `except Exception` path, never a `CommandRefused`. `_refuse` (this task) is the
+    one place both branches trim now; this pins the branch that used to bypass it,
+    through a real REQ/REP round trip rather than a call to `drain()` in-process."""
+    import msgpack
+
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    sent = 80
+    for _ in range(sent):
+        console._req.send(
+            msgpack.packb(
+                {"kind": "set", "name": "fix_hold", "value": True, "by": "jake"},
+                use_bin_type=True,
+            )
+        )
+        console._awaiting_reply = True
+        _drain_until(link)
+        console._req.recv()
+        console._awaiting_reply = False
+
+    assert len(link.refused) == REFUSAL_HISTORY
+    assert link.refused_dropped == sent - REFUSAL_HISTORY
