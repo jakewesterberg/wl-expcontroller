@@ -903,15 +903,21 @@ MARK_LIMIT = 2**64 - 1
 #: The longest note a mark may carry. A bound on one packet's reach into the record
 #: and every frame, not a rule about what a person may say.
 NOTE_LIMIT = 500
+#: The largest whole number of trials a scheduled stop may take: the wire's own
+#: signed-integer range (msgpack's largest `int64`). Without a ceiling, a `trials`
+#: count of `2**64` or more used to pass this check, be queued, and only then fail
+#: inside msgpack on the command thread -- a validation failure reported as a
+#: delivery one (fix round 1, security review Important 2).
+TRIALS_LIMIT = 2**63 - 1
 _HHMM = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]")
 
 
 def check_schedule(kind: object, value: object) -> str | None:
     """Why a scheduled stop of `kind` at `value` is refused, or `None` when it is
-    one: `"clock"` takes `"HH:MM"`, `"trials"` a whole number of at least one, and
-    `"fluid"` a finite number of mL above zero. **The one rule**, asked where the
-    wire decodes a `ScheduleStop` and again by `taskd.Session` of one that reached it
-    without the wire."""
+    one: `"clock"` takes `"HH:MM"`, `"trials"` a whole number from one to
+    `TRIALS_LIMIT`, and `"fluid"` a finite number of mL above zero. **The one
+    rule**, asked where the wire decodes a `ScheduleStop` and again by
+    `taskd.Session` of one that reached it without the wire."""
     if kind == "clock":
         if isinstance(value, str) and _HHMM.fullmatch(value):
             return None
@@ -920,20 +926,28 @@ def check_schedule(kind: object, value: object) -> str | None:
             f"as 14:30, and {value!r} is not one"
         )
     if kind == "trials":
-        if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
-            return None
-        return (
-            f"a scheduled stop after trials takes a whole number of trials, at least "
-            f"one, and {value!r} is not one"
-        )
-    if kind == "fluid":
         if (
-            isinstance(value, (int, float))
+            isinstance(value, int)
             and not isinstance(value, bool)
-            and math.isfinite(value)
-            and value > 0
+            and 1 <= value <= TRIALS_LIMIT
         ):
             return None
+        return (
+            f"a scheduled stop after trials takes a whole number of trials, from 1 "
+            f"to {TRIALS_LIMIT}, and {value!r} is not one"
+        )
+    if kind == "fluid":
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            try:
+                # A Python `int` too large to become a `float` at all (`10**400`,
+                # say) raises `OverflowError` from `math.isfinite` itself rather
+                # than answering; treated as "not finite" (fix round 1, security
+                # review Important 2, the same shape `_setting` already guards).
+                finite = math.isfinite(value)
+            except OverflowError:
+                finite = False
+            if finite and value > 0:
+                return None
         return (
             f"a scheduled stop after fluid takes a number of mL above zero, and "
             f"{value!r} is not one"
