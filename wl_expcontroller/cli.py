@@ -105,6 +105,20 @@ def _clock(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+def _time_of_day(at: float) -> str | None:
+    """A frame's instant as this host's local clock time, `HH:MM:SS`, or `None` when
+    there is none to show: not a number, or finite and too far out for
+    `time.localtime`, which raises `OverflowError`, `OSError` or `ValueError` for it,
+    by platform and by how far (the b2a final review). A frame's field that cannot be
+    shown is said to be unknown by `render`, never a crash of the screen."""
+    if not math.isfinite(at):
+        return None
+    try:
+        return time.strftime("%H:%M:%S", time.localtime(at))
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 #: What `--out-of-cage-at` accepts, named once so the flag's help, its refusal and
 #: this module's tests all quote the same list.
 _TIME_FORMATS = "HH:MM, HH:MM:SS, or an ISO 8601 date-time such as 2027-01-13T22:40"
@@ -856,16 +870,14 @@ def render(frame: _link.Telemetry) -> str:
     # a match against the field's own wire spelling.
     lines.append(f"  phase: {_printable(frame.phase).replace('_', ' ')}")
     # Schema 8 (P4d-2b b2a). The pause's instant as a clock time on this host, like
-    # the last reward's; one that is not a number is `unknown`, never a crash.
+    # the last reward's; one this host cannot show is `unknown`, never a crash.
+    paused_at = None if frame.paused_at is None else _time_of_day(frame.paused_at)
     if frame.paused_at is None:
         lines.append("  paused: no")
-    elif not math.isfinite(frame.paused_at):
+    elif paused_at is None:
         lines.append("  paused: since an unknown time")
     else:
-        lines.append(
-            f"  paused: since "
-            f"{time.strftime('%H:%M:%S', time.localtime(frame.paused_at))}"
-        )
+        lines.append(f"  paused: since {paused_at}")
     # The rig's own words for it, never recomposed here from `kind` and `target`.
     lines.append(
         "  scheduled stop: none"
@@ -943,16 +955,17 @@ def render(frame: _link.Telemetry) -> str:
     # When the last reward was commanded, kept once the pump returned, as a clock time
     # on this host (P4d-2b spec §4.1). None yet is said, never printed as a time; an
     # instant that is not a number -- `welfare.deliver` stores one rather than refusing
-    # it, since it bounds nothing -- is `unknown`, where `time.localtime` raised (m1).
+    # it, since it bounds nothing -- is `unknown`, where `time.localtime` raised (m1),
+    # and so is a finite one too far out for it (the b2a final review).
+    rewarded_at = (
+        None if frame.last_reward_at is None else _time_of_day(frame.last_reward_at)
+    )
     if frame.last_reward_at is None:
         lines.append("  last reward: none yet")
-    elif not math.isfinite(frame.last_reward_at):
+    elif rewarded_at is None:
         lines.append("  last reward: unknown")
     else:
-        lines.append(
-            f"  last reward: at "
-            f"{time.strftime('%H:%M:%S', time.localtime(frame.last_reward_at))}"
-        )
+        lines.append(f"  last reward: at {rewarded_at}")
     for row in frame.params:
         # `name` and `unit` are always text; `value` is a number for most rows but a
         # categorical choice's own text for others (`ParamRow.value: float | str |

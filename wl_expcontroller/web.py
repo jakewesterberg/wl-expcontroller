@@ -166,10 +166,16 @@ def _pct(part: float, whole: float) -> float:
 def _clock_time(at: float | None) -> str:
     """A session instant as this host's local clock time, `HH:MM:SS`, as `cli.render`
     prints the last reward: formatting an instant the frame carries, never reading a
-    clock. One that is not a number is `—`, never a crash of every pane."""
+    clock. One that is not a number is `—`, never a crash of every pane -- and so is a
+    finite one too far out for `time.localtime`, which raises `OverflowError`,
+    `OSError` or `ValueError` for it, by platform and by how far (the b2a final
+    review)."""
     if at is None or not math.isfinite(at):
         return "—"
-    return time.strftime("%H:%M:%S", time.localtime(at))
+    try:
+        return time.strftime("%H:%M:%S", time.localtime(at))
+    except (OverflowError, OSError, ValueError):
+        return "—"
 
 
 def _state(frame: Telemetry | None) -> str:

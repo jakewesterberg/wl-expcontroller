@@ -175,6 +175,25 @@ def test_a_reward_instant_that_is_not_a_number_reads_unknown_not_a_crash(at):
     assert tuple(parts) == FRAGMENT_IDS
 
 
+@pytest.mark.parametrize("at", [1e20, 1e18, -1e18], ids=["past-time_t", "1e18", "-1e18"])
+def test_a_finite_instant_this_host_cannot_show_is_a_dash_not_a_crash(at):
+    """The b2a final review: `_clock_time` refused only NaN and inf, and a finite
+    instant `time.localtime` cannot convert raised out of `fragments` -- on this
+    macOS host, 2026-09-28, `OverflowError` for 1e20 and `OSError` for +-1e18 --
+    which ends every stream and `GET /`, as m1's non-finite reward did. A pause's
+    instant and a control's are both on the wire."""
+    parts = fragments(
+        frame(paused_at=at, controls=(Control("pause", "jake", at, "paused before trial 3"),)),
+        view(),
+    )
+
+    assert parts["state"] == (
+        '<span class="pill warn" data-state="paused">paused · since —</span>'
+    )
+    assert "— · paused before trial 3 · jake" in parts["rt-changes"]
+    assert tuple(parts) == FRAGMENT_IDS
+
+
 def test_before_the_first_trial_the_strip_says_so_not_zero():
     """Before the first trial the strip's correct cell says *no trials yet*: its
     percentage would be 0/0, and neither `0%` nor `NaN` may stand in for a count

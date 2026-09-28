@@ -2980,6 +2980,18 @@ def test_console_says_a_pause_instant_that_is_not_a_number_is_unknown(at):
     ).splitlines()
 
 
+@pytest.mark.parametrize("at", [1e20, 1e18, -1e18], ids=["past-time_t", "1e18", "-1e18"])
+def test_console_says_a_finite_instant_this_host_cannot_show_is_unknown(at):
+    """The b2a final review: only NaN and inf were guarded, and a finite instant
+    `time.localtime` cannot convert -- `OverflowError` for 1e20 and `OSError` for
+    +-1e18 on this macOS host, 2026-09-28 -- raised out of `render`, and `wlx
+    console` with it. Both instants are on the wire."""
+    rendered = render(_telemetry(paused_at=at, last_reward_at=at)).splitlines()
+
+    assert "  paused: since an unknown time" in rendered
+    assert "  last reward: unknown" in rendered
+
+
 def test_console_names_the_scheduled_stop_and_who_set_it():
     rendered = render(
         _telemetry(
