@@ -151,8 +151,10 @@ screen forces. The comparison (`docs/research/2026-09-27-panel-27-vs-32.md`) fou
 The PI chose the 27-inch with those numbers in hand.
 
 **Direct-view geometry at 57 cm** (the comparison's figures): about ±27° × ±16°, at about
-65 px/deg. That leaves roughly a degree of vertical margin beyond a 15° target, so **the
-direct-view viewing distance is still open** and is set in the direct-view design.
+65 px/deg. That leaves roughly a degree of vertical margin beyond a 15° target, so the
+direct-view viewing distance was left to the direct-view design. **The PI has since fixed the
+screen at 50 cm from the eyes, physically, in both setups** (2026-09-28, §5.2); direct view's own
+geometry is being designed with him.
 
 ASUS lists, per the spec page and product page read 2026-09-27:
 - a **26.5" Tandem QD-OLED**, "Latest 4th-gen QD-OLED", 3840 × 2160 at 240 Hz, 0.153 mm
@@ -254,40 +256,48 @@ read 2026-09-28), which is 1.772:1 rather than 16:9, and its "26.5-inch viewable
 area's own diagonal is 26.67 in). The diagonal form fed 26.5 in would put each edge 0.6–0.9%
 short.
 
+**The screen is 50 cm from the eyes, physically, in both setups** (PI, 2026-09-28): "I want the
+screen to be the same physical distance from the animal in stereoscope and the direct viewing.
+The stereoscope is a device that is removable and everything else is fixed." The screen is fixed
+in place, on a locked arm or stand with a stop, measured once at setup and re-checked in the
+regular rig checks.
+
+**So the stereoscope's optical path is about 63 cm:** `D = Z + HW − E`, 63.15 cm at `E` = 1.6 cm
+and 62.85–63.25 cm over IPD 30–38 mm, because the periscope adds its lateral run `HW − E`
+(optics drawing §3, §4.4). `D` in the formula is that folded path, and it is per animal. The
+path was ruled 57 cm on 2026-08-31 and reaffirmed on 2026-09-28 after comparing 50 cm; the same
+day the PI fixed the physical distance instead, and the path followed.
+
 For the PG27UCDM (half-width 14.75 cm, half-height 16.65 cm):
 
 | D | Field per eye (H × V) | 4K mode | FHD/480 mode |
 |---|---|---|---|
 | 45 cm | ±18.2° × ±20.3° | 53 px/deg | 26 px/deg |
 | 50 cm | ±16.4° × ±18.4° | 58 px/deg | 29 px/deg |
-| **57 cm** | **±14.5° × ±16.3°** | **66 px/deg** | **33 px/deg** |
+| 57 cm | ±14.5° × ±16.3° | 66 px/deg | 33 px/deg |
+| **63.15 cm** (the stereoscope, `E` = 1.6 cm) | **±13.1° × ±14.8°** | **73 px/deg** | **37 px/deg** |
 | 65 cm | ±12.8° × ±14.4° | 75 px/deg | 38 px/deg |
 
-The px/deg columns are the formula's mean across the viewport. At 57 cm a pixel at the center
-subtends 0.93 arcmin, 64.8 px/deg. The PG27UCDM lists no FHD/480 mode (§5.1), so that column is
-the formula's alone. The 31.5" panel this section described until 2026-09-28 gave ±17.0° ×
-±19.0° and 56 px/deg at 57 cm.
+The px/deg columns are the formula's mean across the viewport. Through the stereoscope a pixel
+at the center subtends 0.84 arcmin, 71.7 px/deg. The PG27UCDM lists no FHD/480 mode (§5.1), so
+that column is the formula's alone. The 31.5" panel this section described until 2026-09-28
+gave ±17.0° × ±19.0° and 56 px/deg at 57 cm.
 
 **The stereoscope needs ±10°** (PI, 2026-09-27: "for the stereoscope setup +/- 10 deg is enough,
-most of the experiments will not be in the stereoscope"). The field above is the most the panel
-gives; it is stopped by a removable mask at the panel, starting at ±12° (PI, 2026-09-28; the
-optics drawing's §5).
+most of the experiments will not be in the stereoscope"). Through it the panel gives ±13.15° ×
+±14.77° at `E` = 1.6 cm. That field is stopped by a removable mask at the panel, starting at
+±12° (PI, 2026-09-28; the optics drawing's §5), 1.15° inside its horizontal edge.
 
-**Build for 57 cm** (ruled 2026-08-31; **reaffirmed by the PI 2026-09-28 after comparing 50
-cm**). His reasons: ±10° is enough, so 50 cm's wider field buys nothing; 57 cm is sharper, with
-finer whole-pixel disparity steps (0.93 against 1.06 arcmin per pixel at the center); and it
-keeps the 1 cm ≈ 1° convention for checking the built rig. At 57.3 cm one centimeter on the
-screen subtends one degree — `1/tan(1°) = 57.29` — which is why it is the field's standing
-convention. The arithmetic benefit is largely vestigial now that software does the
-trigonometry, and the identity is a small-angle one that breaks down off-center (at 20°
-eccentricity, 20° is 20.9 cm, not 20 cm — a 4.5% error, so it must never be treated as linear
-across the field). What survives is comparability with the literature and the ability to catch
-a gross geometry error by eye. Against 50 cm it trades 1.9° of horizontal field for 7.8 px/deg,
-and ±14.5° still holds a six-item array at 10° eccentricity with 4.5° of margin. The same array
-sits inside ±16.3° vertically, at 0.93 arcmin per pixel. (This paragraph said 1.2 arcmin before
-2026-09-28, which was the 31.5" panel's figure at 50 cm; at 57 cm it was 1.1.) The viewport is
-8:9, so horizontal eccentricity is the binding dimension — the cost of 16:9, and not binding on
-anything in the stated program. Path lengths are **measured per eye**, not derived (V9): the two folded paths
+**The 1 cm ≈ 1° convention does not hold through the stereoscope.** At 57.3 cm one centimeter on
+the screen subtends one degree (`1/tan(1°) = 57.29`); at 63.15 cm it subtends 0.91°. The
+convention was always a small-angle identity that breaks down off-center (at 20° eccentricity,
+20° is 20.9 cm, not 20 cm — a 4.5% error), and software does the trigonometry, so a gross
+geometry error is caught against the measured path. ±13.15° holds a six-item array at 10°
+eccentricity with 3.1° of margin, 2° inside the ±12° mask, and the same array sits inside ±14.8°
+vertically, at 0.84 arcmin per pixel. (This paragraph said 1.2 arcmin before 2026-09-28, which
+was the 31.5" panel's figure at 50 cm; at 57 cm it was 1.1.) The viewport is 8:9, so horizontal
+eccentricity is the binding dimension — the cost of 16:9, and not binding on anything in the
+stated program. Path lengths are **measured per eye**, not derived (V9): the two folded paths
 are equal only if the mirrors are, and mirror angles set vergence, so alignment is a
 calibrated parameter with a Nonius/vernier procedure rather than an assumed symmetry.
 
@@ -296,10 +306,10 @@ calibrated parameter with a Nonius/vernier procedure rather than an assumed symm
 4K and FHD/480 carry **identical pixel rates** (~30 Gbps at 10-bit for 4K/120 and FHD/480),
 which is why dual-mode panels offer both. That gives a real experimental trade:
 
-| Mode | Per eye @57 cm | Frame quantum | Suits |
+| Mode | Per eye, stereoscope (D ≈ 63 cm) | Frame quantum | Suits |
 |---|---|---|---|
-| 4K | 1920×2160, 66 px/deg | 4.2 ms @240, 8.3 ms @120 | Disparity, fine gratings, natural images |
-| FHD | 960×1080, 33 px/deg | **2.08 ms** | Saccade-contingent updates, fast timing |
+| 4K | 1920×2160, 73 px/deg | 4.2 ms @240, 8.3 ms @120 | Disparity, fine gratings, natural images |
+| FHD | 960×1080, 37 px/deg | **2.08 ms** | Saccade-contingent updates, fast timing |
 
 Consequences: **V1 runs in every mode the rig will use**; each mode carries its own
 calibration and deg/pixel; the mode is recorded in the session snapshot; and gaze-contingent

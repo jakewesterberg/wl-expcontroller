@@ -125,10 +125,10 @@ every refresh and is therefore a frame clock. Both are fixed in copper (`wl-sync
 - The flip patch **alternates on every refresh, unconditionally**, including during blanks,
   aborts, pauses and error states. A frame clock that stops during an abort is not a frame clock.
 - Both patches live in the **bottom strip**, the full panel width, created by stopping the field
-  vertically (optics drawing §5): 1.90 cm tall with the vertical field stopped to the
-  horizontal's ±14.51°, 6.60 cm at the ±10° requirement; the stop is **set by a removable mask at the panel, starting at ±12°** (PI, 2026-09-28; optics drawing §5),
-  which makes it 4.53 cm. Outside
-  both viewports, so neither is visible to either eye.
+  vertically. The stop is **a removable mask at the panel, starting at ±12°** (PI, 2026-09-28;
+  optics drawing §5), which makes the strip 3.22 cm tall with the screen fixed 50 cm from the
+  eyes: 1.90 cm with the mask at the full viewport's ±13.15°, 5.51 cm at the ±10° requirement.
+  Outside both viewports, so neither is visible to either eye.
 - **Verified dark to each eye at bring-up**, not assumed from geometry — a stray reflection off a
   mirror edge would put the flip patch back into the field, and that is a V9 item.
 - The task patch is driven by the display module from the scene's own onset, so a task cannot

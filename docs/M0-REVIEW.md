@@ -65,7 +65,7 @@ Six things that changed the design, all found by reading neighbouring repositori
 |---|---|---|
 | 7 | **Measure IPD per animal** | Sets the whole stereoscope geometry via `a = E(1 + 1/tan θ)` (optics drawing §4; corrected 2026-09-28 from `3.27·E`) |
 | ~~8~~ | ~~Chair and head-post clearance~~ **Answered: build to it and find out.** Fallback tabulated if the muzzle fouls it | ✔ |
-| 9 | **Photodiode patch placement** confirmed against the real optics | Bottom strip × full width: 1.90 cm with the vertical field stopped to the horizontal's ±14.51°, 6.60 cm at the ±10° requirement. The stop is **set by a removable mask at the panel, starting at ±12°** (PI, 2026-09-28; optics drawing §5), so 4.53 cm |
+| 9 | **Photodiode patch placement** confirmed against the real optics | Bottom strip × full width. The stop is **a removable mask at the panel, starting at ±12°** (PI, 2026-09-28; optics drawing §5), so 3.22 cm with the screen fixed 50 cm from the eyes: 1.90 cm with the mask at the full viewport's ±13.15°, 5.51 cm at the ±10° requirement |
 | 10 | **Tandem panel: is burn-in protection fully defeatable?** | Disqualifying if not — pixel-shift silently corrupts a calibrated gaze mapping. **More load-bearing now that fixation jitter is rejected**, since mitigation is entirely hardware-side |
 | 11 | **Sustained full-field luminance at 100% APL** for that panel | The number that decides how low we sit, and therefore panel lifetime |
 
