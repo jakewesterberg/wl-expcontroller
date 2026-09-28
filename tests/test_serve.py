@@ -3280,13 +3280,22 @@ def test_e2e_a_mark_is_strobed_in_its_trial_and_recorded_with_three_instants_and
         status, signal = run.post({"kind": "mark", "by": "jake", "pressed_at": pressed})
         assert (status, signal["status"]) == (200, "signaled")
         run.frame(lambda f: any(c.kind == "mark" for c in f.controls))
+        # **Paused once the stamp has landed** (the b2a final fix wave's residual). The
+        # mark itself must go while trials run, since where it is strobed is the claim;
+        # the note and the stop need not. Sent while trials ran, they left the session
+        # three HTTP round trips to outlast `CONTROL_TRIAL_BUDGET`, and one CI run
+        # (`36435219146`, mutation job) ended it first ("wlx run had ended"). Paused,
+        # no trial is spent however slowly they arrive.
+        assert run.post({"kind": "pause", "by": "jake"})[0] == 200
+        run.frame(lambda f: f.paused_at is not None)
         assert run.post({"kind": "note", "by": "jake", "mark": signal["mark"], "note": "sneeze"})[0] == 200
         run.frame(lambda f: any(c.kind == "note" for c in f.controls))
         assert run.post({"kind": "stop", "by": "jake"})[0] == 200
         run.ended()
     run.finished()
 
-    stamp, note, stop = run.controls()
+    stamp, pause, note, stop = run.controls()
+    assert pause["kind"] == "pause"
     assert (stamp["kind"], stamp["mark"], stamp["number"]) == ("mark", signal["mark"], 1)
     assert (stop["kind"], stop["by"]) == ("stop", "jake (box, unverified)")
     codes = run.cards[0].codes
