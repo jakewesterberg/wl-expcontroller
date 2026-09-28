@@ -37,6 +37,7 @@ which absence it is looking at. `welfare.Deployment` has the table.
 from __future__ import annotations
 
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,6 +78,33 @@ def _gap(later: float | None, earlier: float | None) -> float | None:
     if later is None or earlier is None:
         return None
     return later - earlier
+
+
+def _next_occurrence(hhmm: str, wall: float) -> float:
+    """The first instant after `wall` at which this host's local clock reads `hhmm`
+    (P4d-2b spec §5.1: "the next occurrence of that time, within 24 hours").
+
+    **`wall` is the session's anchored clock** (`Session.wall_now`), so a scheduled
+    stop is read on the clock every welfare instant is on, and a host clock stepped
+    mid-session moves it no more than it moves the out-of-cage limit. Local time is
+    the host's zone, as the departure mark's clock time is (`cli._wall_clock_time`),
+    and `time.mktime` with `tm_isdst=-1` lets the platform say whether daylight
+    saving applies on the day, and rolls day 32 into the next month.
+
+    **Exactly now counts as past**: `hhmm` read at 14:30:00 names tomorrow's 14:30,
+    because the spec's occurrence is the next one. The schedule's own words then
+    carry the date (`Session._schedule`), so the slip is read, not waited for."""
+    hour, minute = (int(part) for part in hhmm.split(":"))
+    today = time.localtime(wall)
+    for days in (0, 1):
+        target = time.mktime(
+            (today.tm_year, today.tm_mon, today.tm_mday + days, hour, minute, 0, 0, 0, -1)
+        )
+        if target > wall:
+            return target
+    # Unreachable: tomorrow's `hhmm` is after `wall` on every calendar day. Said
+    # rather than looped past, so a platform where it is not fails here, by name.
+    raise ValueError(f"no occurrence of {hhmm} after {wall} within a day")
 
 
 @dataclass
@@ -262,6 +290,12 @@ class Session:
     #: How many control events fell off the far end of `_controls`. Rolled into
     #: `Telemetry.controls_dropped`, so a cap can never read as a quiet session.
     controls_dropped: int = field(init=False, default=0)
+    #: The scheduled stop, held here so a closed page cannot lose it (P4d-2b spec
+    #: §5.1): `(kind, target, by, said)`, or `None`. `target` is an instant on the
+    #: session's anchored clock (`clock`), a trial count (`trials`) or mL this
+    #: session (`fluid`); `said` is its words, used by the feed, the strip and the
+    #: stop reason alike. One at a time: a new schedule replaces it.
+    scheduled_stop: tuple | None = field(init=False, default=None)
     #: `OPERATOR_MARK`'s code, looked up once when `run()` starts so the frame never
     #: searches the allocation; `None` when the allocation has none (P4d-2b b2a).
     _mark_code: int | None = field(init=False, default=None, repr=False)
@@ -773,21 +807,21 @@ class Session:
         self,
         kind: str,
         by: str,
-        said: str,
+        feed: str,
         index: int,
         at: float | None = None,
         **detail: object,
     ) -> float:
-        """One control event: onto the changes feed and into the session record, at
-        `at` on the session's anchored clock -- now, unless the event was stamped
-        earlier (a mark, in its frame) -- which it returns (P4d-2b spec §5.1).
-        `index` is the trial it happened in or, between trials, the trial about to
-        run; `detail` is the record row's own fields."""
+        """One control event: onto the changes feed, saying `feed`, and into the
+        session record, at `at` on the session's anchored clock -- now, unless the
+        event was stamped earlier (a mark, in its frame) -- which it returns (P4d-2b
+        spec §5.1). `index` is the trial it happened in or, between trials, the trial
+        about to run; `detail` is the record row's own fields."""
         if at is None:
             at = self.wall_now()
         if len(self._controls) == self._controls.maxlen:
             self.controls_dropped += 1
-        self._controls.append((kind, by, at, said))
+        self._controls.append((kind, by, at, feed))
         if self._record is not None:
             self._record.control(kind, by, at, index, **detail)
         return at
@@ -952,19 +986,102 @@ class Session:
             stamped_after_received_s=_gap(stamped_at, command.received_at),
         )
 
-    def _ends(self) -> bool:
+    def _schedule(self, command, index: int) -> None:
+        """Hold a scheduled stop (P4d-2b spec §5.1), replacing any before it.
+
+        `link.check_schedule` is asked again here -- the wire asked it of a command
+        that crossed it -- so a schedule that reached the session another way meets
+        the same rule. The target is fixed now: a clock time's next occurrence on
+        the session's anchored clock, a trial count from the trials run so far, or
+        mL this session."""
+        why = _link.check_schedule(command.kind, command.value)
+        if why is not None:
+            self._refuse("schedule", command.by, f"{why}, so it is refused")
+            return
+        if self.stopped_because:
+            self._refuse(
+                "schedule",
+                command.by,
+                f"the session is stopping ({self.stopped_because}); a schedule is not "
+                f"applied",
+            )
+            return
+        if command.kind == "clock":
+            wall = self.wall_now()
+            target = _next_occurrence(command.value, wall)
+            said = f"at {command.value}"
+            if time.localtime(target)[:3] != time.localtime(wall)[:3]:
+                said += f" on {time.strftime('%Y-%m-%d', time.localtime(target))}"
+        elif command.kind == "trials":
+            target = float(index + command.value)
+            said = f"after trial {index + command.value}"
+        else:
+            target = float(command.value)
+            said = f"after {command.value:g} mL this session"
+        replaced = self.scheduled_stop
+        self.scheduled_stop = (command.kind, target, command.by, said)
+        self._control(
+            "schedule",
+            command.by,
+            f"scheduled stop {said}" + (f", replacing {replaced[3]}" if replaced else ""),
+            index,
+            stop=command.kind,
+            target=target,
+            said=said,
+            replaced=replaced[3] if replaced else None,
+        )
+
+    def _cancel(self, by: str, index: int) -> None:
+        """Remove the scheduled stop (spec §5.1), or say there is none."""
+        if self.scheduled_stop is None:
+            self._refuse("cancel", by, "there is no scheduled stop to cancel; nothing changed")
+            return
+        said = self.scheduled_stop[3]
+        self.scheduled_stop = None
+        self._control(
+            "cancel", by, f"cancelled the scheduled stop {said}", index, cancelled=said
+        )
+
+    def _ends(self, index: int) -> bool:
         """Whether the session must end at this boundary, with its reason and kind
-        set: the out-of-cage limit, `welfare.must_stop`, read on the wall as ever
-        (P4d-2a spec §10). **One place for it**, asked between trials and on every
-        pass of the paused loop alike (P4d-2b spec §5.1: "ending the session on it
-        exactly as between trials"), so the limit cannot be enforced in one of the
-        two and not the other."""
-        stop = self.welfare.must_stop(self.wall_now())
+        set. **One place for it**, asked between trials and on every pass of the
+        paused loop alike (P4d-2b spec §5.1: "ending the session on it exactly as
+        between trials"), so neither can be enforced on one path and not the other.
+
+        **The out-of-cage limit first**, `welfare.must_stop`, read on the wall as
+        ever (P4d-2a spec §10): a session at its limit ends as `limit` even when a
+        schedule fell due at the same check. **Then the scheduled stop**, which ends
+        the session like the stop button -- `stop_kind` `operator`, the reason
+        *scheduled stop (...) set by NAME* -- when its clock time has come on the
+        session's anchored clock, `index` trials have run, or `welfare`'s session
+        fluid has reached it. `welfare` is read, never asked to decide."""
+        wall = self.wall_now()
+        stop = self.welfare.must_stop(wall)
         if stop:
             self.stopped_because = stop
             self.stop_kind = "limit"
             return True
-        return False
+        if self.scheduled_stop is None:
+            return False
+        kind, target, by, said = self.scheduled_stop
+        due = (
+            wall >= target
+            if kind == "clock"
+            else index >= target
+            if kind == "trials"
+            else self.welfare.session_total() >= target
+        )
+        if not due:
+            return False
+        self.stopped_because = f"scheduled stop ({said}) set by {by}"
+        self.stop_kind = "operator"
+        # Spent: the stop reason says it now, and a console no longer offers to
+        # cancel a stop that has happened.
+        self.scheduled_stop = None
+        self._control(
+            "scheduled_stop", by, self.stopped_because, index, stop=kind, target=target
+        )
+        return True
 
     def _hold(self, index: int, publish) -> None:
         """**Paused** (P4d-2b spec §5.1): no trial runs and nothing is rewarded, while
@@ -996,7 +1113,7 @@ class Session:
             publish()
             if self.stopped_because:
                 return
-            if self._ends():
+            if self._ends(index):
                 publish()
                 return
 
@@ -1065,6 +1182,12 @@ class Session:
             return
         if isinstance(command, _link.Mark):
             self._mark_note(command, index)
+            return
+        if isinstance(command, _link.ScheduleStop):
+            self._schedule(command, index)
+            return
+        if isinstance(command, _link.CancelScheduledStop):
+            self._cancel(command.by, index)
             return
         if not isinstance(command, _link.SetParameter):
             # A command this session has no branch for -- a newer console's -- is
@@ -1320,7 +1443,7 @@ class Session:
                 # The wall, not `now()` (P4d-2a spec §10): one clock read replacing
                 # another at the same trial boundary, never per frame. `_ends` is
                 # the same question the paused loop asks.
-                if self._ends():
+                if self._ends(index):
                     publish()
                     break
                 if self.paused_at is not None:
