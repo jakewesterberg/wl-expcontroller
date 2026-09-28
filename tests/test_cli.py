@@ -3008,3 +3008,37 @@ def test_console_lists_control_events_and_counts_what_fell_off_before_them():
     stamp = rendered.index("  control: mark: mark 1 stamped in trial 3, frame 10")
     note = rendered.index('  control: note by jake: mark 1: "bubble"')
     assert dropped < stamp < note
+
+
+def test_console_strips_control_characters_from_wire_text():
+    """Fix round 1: wire text (a control's `said`/`by`, a refusal's `why`, and every
+    other field `render` reads off the frame) must not be able to move the cursor,
+    clear the screen or forge a `STOPPED:`/`WARNING:` line on the operator's
+    terminal. `link.py`'s `decode` checks type and length, never printability."""
+    rendered = render(
+        _telemetry(
+            controls=(
+                Control(
+                    "mark",
+                    "\x1b]0;x\x07",
+                    1_700_000_001.0,
+                    "\x1b[2J\x1b[H\nSTOPPED: forged",
+                ),
+            ),
+            refusals=(Refused("reward_correct", "jake", "exceeds ceiling\x1b[31m"),),
+        )
+    )
+    lines = rendered.splitlines()
+
+    assert "\x1b" not in rendered
+    assert "\x07" not in rendered
+    assert not any(line.startswith("STOPPED:") for line in lines)
+
+    control_lines = [line for line in lines if line.startswith("  control: mark")]
+    assert len(control_lines) == 1
+    assert "forged" in control_lines[0]
+
+    # A pre-existing field (a refusal's `why`) is covered too, not only this task's
+    # new ones -- the replacement character shows sanitizing actually ran here.
+    refused_line = next(line for line in lines if line.startswith("  refused:"))
+    assert "\ufffd" in refused_line
