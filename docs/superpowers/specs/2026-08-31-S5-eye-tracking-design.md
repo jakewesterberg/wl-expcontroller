@@ -263,7 +263,7 @@ version like any other.
 Under ADR-0005 there will be no `.bhv2`, so a second reader is needed — and the format should be
 ours to write and theirs to read, not a binary they must reverse-engineer.
 
-Proposed: a small text file in `expcontroller/` carrying, per eye, the `CalibrationModel`, the
+Proposed: a small text file in `xcon/` carrying, per eye, the `CalibrationModel`, the
 coefficients in their basis order, the target constellation used, the measured conditioning, the
 RMS residual from `validate_map`, and the mapping version. Every field is one they already
 compute or consume.

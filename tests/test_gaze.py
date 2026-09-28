@@ -60,7 +60,7 @@ def _targets() -> tuple[tuple[float, float], ...]:
 #: `WLX_REQUIRE_PREPROC=1`, which is what CI sets. Same guard as `test_calibration.py`.
 _REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
 try:
-    from wl_preproc.eye.expcontroller import read_expcontroller_map as _read_their_map
+    from wl_preproc.eye.xcon import read_xcon_map as _read_their_map
 except ImportError as exc:  # pragma: no cover - exercised by the CI job
     if _REQUIRED:
         raise AssertionError(
@@ -689,7 +689,7 @@ def test_a_calibration_session_writes_the_file_wl_preprocs_reader_accepts(tmp_pa
 
     written = driver.write(session.directory)
 
-    assert written == tmp_path / "2027-01-14_01" / "expcontroller" / "eye_calibration.yaml"
+    assert written == tmp_path / "2027-01-14_01" / "xcon" / "eye_calibration.yaml"
     assert _read_their_map(written) is not None
 
 

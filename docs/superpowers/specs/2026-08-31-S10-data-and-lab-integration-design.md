@@ -14,7 +14,7 @@
 <root>/<YYYY-MM-DD_NN>/
 ├── session_manifest.yaml
 ├── syncbox/  spikeglx/  rhs/  ohdpi/  bcam/     ← SYSTEMS, each with a DONE marker
-└── expcontroller/                                ← ours
+└── xcon/                                         ← ours (`expcontroller/` until 2026-09-28)
 ```
 
 **We are deliberately not a `SYSTEMS` member.** Their reasoning: members need a `DONE` marker, an
@@ -63,7 +63,7 @@ describes one subject, so with two animals a day the session id must change when
 (S3 §2). That is a consequence of their frozen contract, not our preference.
 
 **Who writes the manifest is deliberately not ours to decide** (PI, 2026-08-31) and is raised in
-the `wl-preproc` handover. It sits at the directory root rather than under `expcontroller/`, and
+the `wl-preproc` handover. It sits at the directory root rather than under `xcon/`, and
 this package is deliberately kept outside `SYSTEMS`, so a file written by us at the root would cut
 across that separation.
 

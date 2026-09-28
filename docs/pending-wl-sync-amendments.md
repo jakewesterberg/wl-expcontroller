@@ -18,7 +18,7 @@ all three (S3 §3).
 `wl_sync/session.py` mints `YYYY-MM-DD_NN` and its own docstring states the consumers:
 *"Everything downstream — the rig directory layout, the ELN, wl-preproc — consumes it."*
 `wl-preproc/contracts/paths.py` imports `SessionId` from this package and keys the whole session
-directory on it, and `wl-expcontroller` writes into `expcontroller/` beneath that directory.
+directory on it, and `wl-expcontroller` writes into `xcon/` beneath that directory.
 
 **But nothing offers the value to another host.** The date half is derivable; `_NN` is not. A
 task controller starting up has no way to know which session it is in.

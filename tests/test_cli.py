@@ -200,7 +200,7 @@ def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "correct" in out
-    assert (tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl").exists()
+    assert (tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl").exists()
 
 
 def test_wlx_run_refuses_a_session_that_does_not_say_how_long_the_animal_was_out(
@@ -520,7 +520,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     assert result["exit_code"] == 0
 
     changes_path = (
-        tmp_path / "2027-01-14_04" / "expcontroller" / "parameter_changes.jsonl"
+        tmp_path / "2027-01-14_04" / "xcon" / "parameter_changes.jsonl"
     )
     changes = [json.loads(line) for line in changes_path.read_text().splitlines()]
     fix_hold_changes = [c for c in changes if c["name"] == "fix_hold"]
@@ -531,7 +531,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     # P4d-2a spec §10, Task 8: no terminal, so the interval closes at once rather
     # than waiting on `await_return` for a return nothing here can ever send.
     # Task 9: `session ended` follows it, from `cli.main`'s outer `finally`.
-    notes_path = tmp_path / "2027-01-14_04" / "expcontroller" / "welfare_notes.jsonl"
+    notes_path = tmp_path / "2027-01-14_04" / "xcon" / "welfare_notes.jsonl"
     notes = [json.loads(line) for line in notes_path.read_text().splitlines()]
     assert notes[-1]["kind"] == "session ended"
     assert notes[-2]["kind"] == "return not recorded"
@@ -1737,7 +1737,7 @@ def _run_args(tmp_path, *extra: str) -> list:
 
 
 def _notes(tmp_path) -> list:
-    path = tmp_path / "2027-01-14_01" / "expcontroller" / "welfare_notes.jsonl"
+    path = tmp_path / "2027-01-14_01" / "xcon" / "welfare_notes.jsonl"
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text().splitlines() if line]
@@ -2307,7 +2307,7 @@ def test_a_head_fixed_run_whose_frames_outran_the_wall_takes_the_return(
     assert _kinds(tmp_path) == [
         "session opened", "departure", "returned", "session ended",
     ]
-    trials = tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+    trials = tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
     assert len(trials.read_text().splitlines()) == 200, "the loop ran every trial"
 
 
@@ -2898,6 +2898,6 @@ def test_wlx_run_records_which_bounded_config_it_ran_under(tmp_path):
 
     assert exit_code == 0
     config = json.loads(
-        (tmp_path / "2027-01-14_09" / "expcontroller" / "config.json").read_text()
+        (tmp_path / "2027-01-14_09" / "xcon" / "config.json").read_text()
     )
     assert config["versions"]["bounds"] == BOUNDS

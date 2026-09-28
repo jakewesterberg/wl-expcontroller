@@ -1,6 +1,6 @@
 """The session record on disk.
 
-Written into `<root>/<YYYY-MM-DD_NN>/expcontroller/`, which `wl-preproc`'s frozen
+Written into `<root>/<YYYY-MM-DD_NN>/xcon/`, which `wl-preproc`'s frozen
 path contract already reserves for us by name -- **deliberately outside `SYSTEMS`**,
 because a member needs a `DONE` marker, an `AcquisitionSystem` row and a timebase
 extractor, and *"an experiment controller's log carries no barcode and needs no
@@ -22,7 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
-EXPCONTROLLER_DIRNAME = "expcontroller"
+#: The session's folder: `wl_preproc.contracts.paths.XCON_DIRNAME`, copied rather than
+#: imported, because nothing on a task PC imports `wl-preproc`. It was `expcontroller`
+#: until 2026-09-28, when the package became wl-xcon (PI) and wl-preproc renamed its
+#: constant first. `tests/test_record.py` reads theirs and fails if the two drift.
+XCON_DIRNAME = "xcon"
 
 #: How many refusal rows one session writes before it stops writing them (PI,
 #: 2026-09-19).
@@ -143,7 +147,7 @@ class SessionRecord:
 
     @classmethod
     def open(cls, root: Path, session_id: str, subject: str) -> SessionRecord:
-        directory = Path(root) / session_id / EXPCONTROLLER_DIRNAME
+        directory = Path(root) / session_id / XCON_DIRNAME
         directory.mkdir(parents=True, exist_ok=True)
         return cls(
             directory=directory,

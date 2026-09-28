@@ -3,7 +3,7 @@
 **The model is not ours.** `wl-preproc/wl_preproc/eye/calibration.py` fixed it before
 this file existed -- `AFFINE` is `[1, dx, dy]`, `SECOND_ORDER` is
 `[1, dx, dy, dx², dy², dx·dy]`, taken from OpenIrisDPI's own tutorial notebook -- and
-`wl_preproc/eye/expcontroller.py` fixed the file we write it into. We supply the
+`wl_preproc/eye/xcon.py` fixed the file we write it into. We supply the
 *procedure*: which targets to present, how to refuse a constellation that cannot
 carry the model, and how to serialise the result. Read their source before changing
 anything here; their README does not describe it (CLAUDE.md, trap 1).
@@ -306,7 +306,7 @@ def _yaml_float(value: float) -> str:
 
 @dataclass(frozen=True, slots=True)
 class GazeCalibration:
-    """A session's map, in the shape `wl_preproc.eye.expcontroller` reads.
+    """A session's map, in the shape `wl_preproc.eye.xcon` reads.
 
     `targets` is file-wide and `left`/`right` are independent, matching their reader
     exactly: one constellation was presented, and whether it produced a usable fit

@@ -205,7 +205,7 @@ def test_a_different_seed_gives_a_different_session(tmp_path):
 def test_a_session_writes_its_record_and_its_config(tmp_path):
     _session(_spec(tmp_path, trials=20)).run()
 
-    directory = tmp_path / "2027-01-14_01" / "expcontroller"
+    directory = tmp_path / "2027-01-14_01" / "xcon"
     trials = (directory / "trials.jsonl").read_text().splitlines()
     config = json.loads((directory / "config.json").read_text())
 
@@ -231,7 +231,7 @@ def test_the_m1_gate_one_thousand_deterministic_trials_with_full_outputs(tmp_pat
     census = _session(spec).run()
 
     trials = (
-        tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+        tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
     ).read_text().splitlines()
 
     assert len(trials) == 1_000
@@ -614,7 +614,7 @@ def test_each_trial_records_the_condition_it_actually_ran(tmp_path):
     rows = [
         json.loads(line)
         for line in (
-            tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+            tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
         ).read_text().splitlines()
     ]
 
@@ -673,7 +673,7 @@ def test_a_live_write_is_staged_and_applied_at_a_trial_boundary(tmp_path):
     rows = [
         json.loads(line)
         for line in (
-            tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+            tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
         ).read_text().splitlines()
     ]
     assert rows[0]["params"]["fix_hold"] == 0.5
@@ -690,7 +690,7 @@ def test_a_live_write_is_recorded_with_its_origin(tmp_path):
     changes = [
         json.loads(line)
         for line in (
-            tmp_path / "2027-01-14_01" / "expcontroller" / "parameter_changes.jsonl"
+            tmp_path / "2027-01-14_01" / "xcon" / "parameter_changes.jsonl"
         ).read_text().splitlines()
     ]
     assert changes == [

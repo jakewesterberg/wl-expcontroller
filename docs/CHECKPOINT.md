@@ -354,6 +354,20 @@ figure was one low. In order:
   part 1 was clean and green (1429 passed), but CHECKPOINT will conflict (b2a's Task 15 edits the
   branch's older copy), so merge that file by hand.
 - Both ledgers (git-ignored) are `.superpowers/sdd/<plan>/progress.md` inside each worktree.
+- **wl-preproc renamed its side on its `main` at ~18:00 UTC** (`0aa4928`):
+  `wl_preproc.eye.expcontroller.read_expcontroller_map` is now `wl_preproc.eye.xcon.read_xcon_map`,
+  and the session folder is `XCON_DIRNAME = "xcon"`. The old names no longer resolve, and CI checks
+  out their `main`, so this broke our import in `tests/test_gaze.py` and `tests/test_calibration.py`.
+  **`main` is fixed in the commit that adds this line**, which also closes XC-097: `record.XCON_DIRNAME = "xcon"`,
+  and `tests/test_record.py` reads their constant with `ast`. It does not import it, because their
+  `contracts/paths.py` imports `wl_sync`, which CI does not check out. That test was proved to fail
+  both on a drifted name and against their pre-rename source. **The b2a branch still has the old
+  imports and the `"expcontroller"` path literals, so its CI will be red until it is rebased onto
+  this.** Its worktree's `wl-preproc` link points at a pre-rename snapshot, `f7095aa`, in the
+  session scratchpad, so its running agents see a stable tree. After the rebase:
+  - point the link back at `~/GitHub/wl-preproc`;
+  - run `git grep -n 'expcontroller"\|EXPCONTROLLER_DIRNAME\|eye.expcontroller'` for anything b2a added;
+  - count what the rebase lands on from the rebased suite, not from the plan.
 
 b2a is being executed subagent-driven on `p4d2b-b2a-controls` (worktree
 `.claude/worktrees/p4d2b-b2a`). Its SDD ledger (`.superpowers/sdd/2026-09-27-p4d2b-b2a-controls/

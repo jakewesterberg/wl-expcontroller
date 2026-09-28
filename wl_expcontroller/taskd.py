@@ -47,7 +47,7 @@ from wl_expcontroller.check import check
 from wl_expcontroller.cli import _load_allocation, _load_trial
 from wl_expcontroller.codes import Allocation
 from wl_expcontroller.dio import Absent as NoCard
-from wl_expcontroller.record import EXPCONTROLLER_DIRNAME, SessionRecord, welfare_note
+from wl_expcontroller.record import XCON_DIRNAME, SessionRecord, welfare_note
 from wl_expcontroller.scheduler import Block, Condition, Scheduler
 from wl_expcontroller.simulate import Census, Subject, Tally, prepare
 from wl_expcontroller.run import run_trial
@@ -266,7 +266,7 @@ class Session:
     def directory(self) -> Path:
         """Where this session's files go. The record's directory, so anything a
         session derives at close lands beside the record it derives from."""
-        return Path(self.spec.root) / self.spec.session_id / EXPCONTROLLER_DIRNAME
+        return Path(self.spec.root) / self.spec.session_id / XCON_DIRNAME
 
     def now(self) -> float:
         if self.clock is not None:

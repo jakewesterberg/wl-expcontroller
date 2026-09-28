@@ -360,7 +360,7 @@ try:
     import numpy as np
 
     from wl_preproc.eye import calibration as their_calibration
-    from wl_preproc.eye.expcontroller import read_expcontroller_map
+    from wl_preproc.eye.xcon import read_xcon_map
 except ImportError as exc:  # pragma: no cover - exercised by the CI job
     if _REQUIRED:
         raise AssertionError(
@@ -371,7 +371,7 @@ except ImportError as exc:  # pragma: no cover - exercised by the CI job
             f"verified"
         ) from exc
     their_calibration = None
-    read_expcontroller_map = None
+    read_xcon_map = None
 
 _contract = pytest.mark.skipif(
     their_calibration is None,
@@ -449,7 +449,7 @@ def test_the_file_we_write_is_the_file_they_read(tmp_path):
     path = tmp_path / "calibration.yaml"
     path.write_text(GazeCalibration(3, constellation(GEOMETRY), left, right).to_yaml())
 
-    online = read_expcontroller_map(path)
+    online = read_xcon_map(path)
     assert online is not None, "their reader declined the file we wrote"
     assert online.left is not None and online.right is not None
     assert online.left.model.value == Model.SECOND_ORDER.value
@@ -467,7 +467,7 @@ def test_one_eye_alone_is_a_valid_file(tmp_path):
     path = tmp_path / "calibration.yaml"
     path.write_text(GazeCalibration(1, constellation(GEOMETRY), left=left).to_yaml())
 
-    online = read_expcontroller_map(path)
+    online = read_xcon_map(path)
     assert online is not None
     assert online.left is not None
     assert online.right is None
@@ -483,7 +483,7 @@ def test_a_coefficient_small_enough_to_need_an_exponent_survives_the_round_trip(
     path = tmp_path / "calibration.yaml"
     path.write_text(GazeCalibration(1, constellation(GEOMETRY), left=eye).to_yaml())
 
-    online = read_expcontroller_map(path)
+    online = read_xcon_map(path)
     assert online is not None, "their reader declined a file with exponent floats"
     assert online.left is not None
     assert all(isinstance(v, float) for v in online.left.x)
@@ -501,7 +501,7 @@ def test_they_decline_a_file_claiming_a_different_raw_feature(tmp_path):
     path = tmp_path / "calibration.yaml"
     path.write_text(text)
 
-    assert read_expcontroller_map(path) is None
+    assert read_xcon_map(path) is None
 
 
 def test_the_constellation_becomes_one_scheduler_condition_per_target():

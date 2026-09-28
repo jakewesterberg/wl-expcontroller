@@ -1,13 +1,17 @@
 """The session record.
 
-Written into `<root>/<YYYY-MM-DD_NN>/expcontroller/`, the directory `wl-preproc`'s
+Written into `<root>/<YYYY-MM-DD_NN>/xcon/`, the directory `wl-preproc`'s
 frozen path contract already reserves for us -- deliberately outside `SYSTEMS`, so
 we write no DONE marker and never block session-complete detection.
 """
 
 from __future__ import annotations
 
+import ast
+import importlib.util
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -18,12 +22,62 @@ def test_the_record_lands_where_wl_preproc_expects_it(tmp_path):
     with SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A"):
         pass
 
-    directory = tmp_path / "2027-01-14_01" / "expcontroller"
+    directory = tmp_path / "2027-01-14_01" / "xcon"
     assert directory.is_dir()
     assert not (directory / "DONE").exists(), (
         "we are not a SYSTEMS member; a DONE marker here would make ingest wait "
         "for a system that has no timebase extractor"
     )
+
+
+#: A missing checkout skips locally and fails under `WLX_REQUIRE_PREPROC=1`, which CI
+#: sets -- the same guard as `test_gaze.py` and `test_calibration.py`.
+_REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
+
+
+def _their_folder_name() -> str | None:
+    """`wl_preproc.contracts.paths.XCON_DIRNAME`, read by the parser.
+
+    **Not imported**: that module imports `wl_sync` for `SessionId`, and CI checks out
+    wl-preproc but not wl-sync. The constant is a string literal, so the assignment in
+    their source is the same fact without running their module. Anything other than a
+    plain literal assignment raises: the constant moving is exactly what this test is
+    here to notice, and it must not pass because it could not find it.
+    """
+    spec = importlib.util.find_spec("wl_preproc")
+    if spec is None or not spec.submodule_search_locations:
+        return None
+    source = Path(next(iter(spec.submodule_search_locations))) / "contracts" / "paths.py"
+    for node in ast.parse(source.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            target, value = node.target, node.value
+        else:
+            continue
+        if isinstance(target, ast.Name) and target.id == "XCON_DIRNAME":
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                return value.value
+            raise AssertionError(f"{source}: XCON_DIRNAME is no longer a string literal")
+    raise AssertionError(f"{source} no longer defines XCON_DIRNAME")
+
+
+def test_the_record_lands_in_the_folder_wl_preproc_reads(tmp_path):
+    """Their reader finds our files by this folder name alone (`schema/eye.py::
+    _find_xcon_log` globs `<session>/xcon/*.yaml`), so a drift here is not an error
+    anywhere: the pipeline would simply find no calibration file. It was
+    renamed once already, on 2026-09-28."""
+    theirs = _their_folder_name()
+    if theirs is None:
+        if _REQUIRED:
+            raise AssertionError(
+                "WLX_REQUIRE_PREPROC=1 but wl-preproc is not importable; the folder "
+                "our record lands in is only right if it is the one they read"
+            )
+        pytest.skip("wl-preproc checkout not beside this repo; the contract cannot run")
+
+    with SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A") as record:
+        assert record.directory == tmp_path / "2027-01-14_01" / theirs
 
 
 def test_a_trial_is_on_disk_before_the_session_ends(tmp_path):
@@ -34,7 +88,7 @@ def test_a_trial_is_on_disk_before_the_session_ends(tmp_path):
     record.trial(index=1, outcome="correct", params={"fix_hold": 0.3})
 
     written = (
-        tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+        tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
     ).read_text()
 
     assert json.loads(written.strip())["outcome"] == "correct"
@@ -50,7 +104,7 @@ def test_every_trial_carries_its_whole_resolved_parameter_set(tmp_path):
     rows = [
         json.loads(line)
         for line in (
-            tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+            tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
         ).read_text().splitlines()
     ]
 
@@ -65,7 +119,7 @@ def test_the_subject_is_on_every_trial_not_only_in_a_header(tmp_path):
     record.trial(index=1, outcome="correct", params={})
 
     row = json.loads(
-        (tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl").read_text()
+        (tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl").read_text()
     )
 
     assert row["subject"] == "A"
@@ -87,7 +141,7 @@ def test_the_config_snapshot_records_the_whole_precedence_chain(tmp_path):
     )
 
     written = json.loads(
-        (tmp_path / "2027-01-14_01" / "expcontroller" / "config.json").read_text()
+        (tmp_path / "2027-01-14_01" / "xcon" / "config.json").read_text()
     )
 
     assert written["resolved"]["fix_hold"] == 0.3
@@ -103,7 +157,7 @@ def test_a_parameter_change_is_recorded_against_the_sequence_number_it_strobed(t
     record.parameter_change(sequence=7, name="fix_hold", was=0.3, now=0.5, by="console")
 
     row = json.loads(
-        (tmp_path / "2027-01-14_01" / "expcontroller" / "parameter_changes.jsonl")
+        (tmp_path / "2027-01-14_01" / "xcon" / "parameter_changes.jsonl")
         .read_text()
     )
 
@@ -120,7 +174,7 @@ def test_a_crash_leaves_every_trial_written_so_far(tmp_path):
     del record  # no close(), no __exit__ -- the process died
 
     lines = (
-        tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+        tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
     ).read_text().splitlines()
 
     assert len(lines) == 5
@@ -169,7 +223,7 @@ def test_a_simulated_session_writes_a_real_session_directory(tmp_path):
     )
 
     rows = (
-        tmp_path / "2027-01-14_01" / "expcontroller" / "trials.jsonl"
+        tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
     ).read_text().splitlines()
 
     assert len(rows) == 50
@@ -217,7 +271,7 @@ def test_a_welfare_note_is_written_before_the_record_is_open(tmp_path):
     it happened is also what makes it survive every later refusal, which is exactly
     when somebody will want to know what the operator was told and what they did.
     """
-    directory = tmp_path / "2027-01-14_01" / "expcontroller"
+    directory = tmp_path / "2027-01-14_01" / "xcon"
     assert not directory.exists()
 
     welfare_note(
@@ -246,7 +300,7 @@ def test_a_welfare_note_says_the_time_in_words_a_person_can_read(tmp_path):
     one in force **at that instant**, for the reason `wlx run`'s session-start line
     resolves it that way.
     """
-    directory = tmp_path / "s" / "expcontroller"
+    directory = tmp_path / "s" / "xcon"
     welfare_note(
         directory,
         kind="departure confirmed",
@@ -271,7 +325,7 @@ def test_welfare_notes_are_not_capped_like_refusals(tmp_path):
     generated by a person typing at a prompt, at most once per session, and a
     departure amendment that fell off the end of a file would be the one row somebody
     goes looking for."""
-    directory = tmp_path / "s" / "expcontroller"
+    directory = tmp_path / "s" / "xcon"
     for index in range(REFUSAL_LOG_LIMIT + 5):
         welfare_note(
             directory,
@@ -295,7 +349,7 @@ def test_a_welfare_note_is_not_written_into_either_file_beside_it(tmp_path):
     recording clock, and the out-of-cage marks are deliberately not event-coded (PI,
     2026-09-20) -- so such a row would look alignable and be nothing of the kind.
     `refusals.jsonl` is for writes that did not happen, and is capped."""
-    directory = tmp_path / "s" / "expcontroller"
+    directory = tmp_path / "s" / "xcon"
     welfare_note(
         directory,
         kind="departure confirmed",

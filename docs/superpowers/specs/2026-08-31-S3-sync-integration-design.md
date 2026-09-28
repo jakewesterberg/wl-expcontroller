@@ -105,11 +105,12 @@ Raised with `wl-sync` and `wl-preproc` as an amendment (§9).
 <root>/<YYYY-MM-DD_NN>/
 ├── session_manifest.yaml
 ├── syncbox/   spikeglx/   rhs/   ohdpi/   bcam/     <- SYSTEMS, each with a DONE marker
-└── expcontroller/                                    <- ours, EXPCONTROLLER_DIRNAME
+└── xcon/                                             <- ours, XCON_DIRNAME
 ```
 
 Their comment: *"Named for the ROLE, not the vendor … MonkeyLogic writes a `.bhv2` here today,
-and `wl-expcontroller` will write whatever it writes."*
+and `wl-xcon` will write whatever it writes."* The folder was `expcontroller/` until
+wl-preproc renamed it on 2026-09-28, when this package became wl-xcon.
 
 **We are deliberately not a `SYSTEMS` member**, and that is load-bearing rather than cosmetic.
 `SYSTEMS` members need a `DONE` marker, an `AcquisitionSystem` row, and a timebase extractor —

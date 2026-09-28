@@ -605,7 +605,7 @@ this being four subsystems that drift.
 JSONL trial/event log; behavioral tables (parquet); complete config snapshot including the
 resolved parameter set, bounded config, gaze mapping versions, task version and code
 version; the plot declaration; the parameter-change log; and — **not** a DONE marker. S3 §5: `wl-preproc`'s frozen path contract places us at
-`<root>/<YYYY-MM-DD_NN>/expcontroller/`, deliberately outside `SYSTEMS`, so we write no marker
+`<root>/<YYYY-MM-DD_NN>/xcon/`, deliberately outside `SYSTEMS`, so we write no marker
 and never block session-complete detection. Raw neural data never touches the task PC.
 
 ### 12.3 wl-works and the ELN

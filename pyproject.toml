@@ -21,7 +21,7 @@ wlx = "wl_expcontroller.cli:main"
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 # What the CONTRACT tests need in order to import wl-preproc's own modules -- not
-# what this package needs. Their `eye/expcontroller.py` reads YAML, so proving our
+# what this package needs. Their `eye/xcon.py` reads YAML, so proving our
 # writer against their reader means having their reader importable. Deliberately the
 # minimum: `pip install -e ./wl-preproc` would pull DataJoint, Kilosort and
 # SpikeInterface, which is exactly the pipeline stack `tests/conftest.py` says has no
