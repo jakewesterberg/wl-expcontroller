@@ -327,7 +327,7 @@ figure was one low. In order:
 
 ## What moved on 2026-09-28: the screen, the stereoscope, direct view, and b2a under way
 
-**Resume here (state at 2026-09-28 ~17:00 UTC, written ahead of a possible loss of connection):**
+**Resume here (state at 2026-09-28 14:20 UTC, written ahead of a possible loss of connection):**
 - **b2a** (`p4d2b-b2a-controls`, worktree `.claude/worktrees/p4d2b-b2a`): Tasks 1–12 of 16 complete and
   reviewed (pushed to origin at `73c4da3`). **Task 13, the manual reward, was mid-implementation**
   with uncommitted edits in the worktree and a mutation sweep running. On resume: if a sweep's
