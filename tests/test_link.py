@@ -1737,17 +1737,25 @@ def test_the_refusal_cap_also_bounds_a_repeatedly_malformed_setting(zmq_cleanup)
     appended straight to `self.refused` with no `REFUSAL_HISTORY` trim, while the
     generic `except Exception` branch beside it did trim. A console retrying the same
     bad write could grow `self.refused` without bound through that one branch, which
-    `test_a_repeatedly_malformed_packet_is_capped_not_unbounded` (above) never
-    exercised -- it sends packets `_decode_command` cannot decode at all, the
+    `test_a_flood_of_undecodable_packets_cannot_grow_the_link_without_bound` (above)
+    never exercised -- it sends packets `_decode_command` cannot decode at all, the
     `except Exception` path, never a `CommandRefused`. `_refuse` (this task) is the
     one place both branches trim now; this pins the branch that used to bypass it,
-    through a real REQ/REP round trip rather than a call to `drain()` in-process."""
+    through a real REQ/REP round trip rather than a call to `drain()` in-process.
+
+    **`REFUSAL_HISTORY + 5`, not more (fix round 1, measured).** Past the cap,
+    `_drain_until`'s success condition -- `len(self.refused)` growing since the call
+    started -- can never fire again, because `_refuse`'s trim holds the list's length
+    flat at `REFUSAL_HISTORY`. Every packet sent after that point then burns the
+    helper's whole retry budget (tries * pause, ~0.65-0.7 s) waiting for a growth that
+    cannot happen, the same way the sibling test above bounds its own count for the
+    same reason."""
     import msgpack
 
     link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
     console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
 
-    sent = 80
+    sent = REFUSAL_HISTORY + 5
     for _ in range(sent):
         console._req.send(
             msgpack.packb(
