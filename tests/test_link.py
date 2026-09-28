@@ -23,6 +23,7 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
     REFUSAL_HISTORY,
     Absent,
+    CommandRefused,
     FrameError,
     ParamRow,
     Refused,
@@ -35,6 +36,8 @@ from wl_expcontroller.link import (
     Telemetry,
     ZmqConsole,
     ZmqLink,
+    _decode_command,
+    _encode_command,
     decode,
     encode,
 )
@@ -1227,3 +1230,94 @@ def test_a_frame_error_with_no_message_names_only_the_exception_type():
         )
     else:
         raise AssertionError("msgpack's one reserved byte did not raise FrameError")
+
+
+# ---------------------------------------------------------------------------
+# M8 (P4d-2a's review, closed in P4d-2b b2a): a setting's value is checked where
+# the command is decoded
+# ---------------------------------------------------------------------------
+
+
+def _packed(**fields) -> bytes:
+    import msgpack
+
+    return msgpack.packb(fields, use_bin_type=True)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [True, False, None, [0.4], {"v": 0.4}, float("nan"), float("inf"), float("-inf")],
+)
+def test_a_setting_that_is_not_a_real_number_or_a_word_is_refused_where_it_is_decoded(
+    value,
+):
+    """M8: `SetParameter.value` was a type hint nothing enforced, so a string reached
+    `bounds._finite`, raised `TypeError`, and `run()`'s fault handler ended the whole
+    session. A value is a finite real number that is not a `bool`, or a word for a
+    categorical parameter; anything else is refused here, naming the parameter and
+    the sender, so the refusal a console shows says whose write it was."""
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(kind="set", name="fix_hold", value=value, by="jake"))
+
+    assert refused.value.name == "fix_hold"
+    assert refused.value.by == "jake"
+    assert "'fix_hold' was sent" in refused.value.why
+    assert "the session runs on" in refused.value.why
+
+
+def test_a_whole_number_decodes_as_a_float_and_a_word_as_itself():
+    """A browser's JSON gives `1` for one and `0.5` for a half; both are numbers. A
+    categorical choice travels as its word, and `Session.set` checks it against the
+    task's `choices`."""
+    whole = _decode_command(_packed(kind="set", name="fix_window", value=2, by="jake"))
+    word = _decode_command(_packed(kind="set", name="shape", value="penguin", by="jake"))
+
+    assert whole == SetParameter(name="fix_window", value=2.0, by="jake")
+    assert type(whole.value) is float
+    assert word == SetParameter(name="shape", value="penguin", by="jake")
+
+
+@pytest.mark.parametrize("by", [None, "", "   ", 7])
+def test_a_command_that_does_not_say_who_sent_it_is_refused(by):
+    """S9a §6: every write records its actor. A packet with no usable `by` is refused
+    by name rather than recorded as written by nobody."""
+    fields = {"kind": "set", "name": "fix_hold", "value": 0.4}
+    if by is not None:
+        fields["by"] = by
+
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(**fields))
+
+    assert refused.value.name == "fix_hold"
+    assert refused.value.by == "<unknown>"
+    assert "who sent it" in refused.value.why
+
+
+def test_a_setting_with_no_parameter_name_is_refused():
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(kind="set", name="", value=0.4, by="jake"))
+
+    assert refused.value.name == "<transport>"
+    assert "no parameter name" in refused.value.why
+
+
+def test_a_malformed_setting_over_the_wire_is_a_refusal_naming_it_and_the_link_goes_on(
+    zmq_cleanup,
+):
+    """The path, not the piece: a real packet on a real socket, a refusal that names
+    the parameter and the sender (so the feed says whose write it was), and a channel
+    that still carries the next command."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    # `True`, not a word: a word is a categorical choice on the wire, and whether it
+    # is one of this parameter's choices is `Session.set`'s to say.
+    console._req.send(_packed(kind="set", name="fix_hold", value=True, by="jake"))
+    console._awaiting_reply = True
+    commands = _drain_until(link)
+
+    assert commands == []
+    assert [(r.name, r.by) for r in link.refused] == [("fix_hold", "jake")]
+
+    console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
+    assert _drain_until(link) == [SetParameter(name="fix_hold", value=0.4, by="jake")]

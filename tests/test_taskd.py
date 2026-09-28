@@ -2220,3 +2220,70 @@ def test_the_config_snapshot_names_the_bounded_config_it_ran_under(tmp_path):
 
     config = json.loads((session.directory / "config.json").read_text())
     assert config["versions"]["bounds"] == "subjects/A/bounds.py"
+
+
+# ---------------------------------------------------------------------------
+# M8 (P4d-2b b2a): a malformed setting is refused and never ends the session
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "said"),
+    [
+        ("fix_hold", "abc", "'fix_hold' takes a number (s)"),
+        ("fix_hold", True, "'fix_hold' takes a number (s)"),
+        ("reward_correct", "lots", "'reward_correct' is a welfare ceiling and takes a number"),
+        ("reward_correct", False, "'reward_correct' is a welfare ceiling and takes a number"),
+    ],
+)
+def test_a_malformed_setting_is_refused_and_the_session_runs_on(tmp_path, name, value, said):
+    """M8, the backstop behind the decoder: a value that is not a number reaches
+    `Session.set` only from inside this process (the wire refuses it first), and it is
+    refused with a sentence rather than raising `TypeError` out of `bounds._finite`,
+    which `run()`'s fault handler turned into the end of the session."""
+    link = Simulated()
+    link.queue(SetParameter(name=name, value=value, by="jake"))
+    session = _session(_spec(tmp_path, trials=5), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    assert [(n, b) for n, b, _ in session.refusals] == [(name, "jake")]
+    assert said in session.refusals[0][2]
+
+
+def test_a_type_error_in_a_setting_is_a_refusal_not_a_fault(tmp_path, monkeypatch):
+    """The spec's second half of M8: `Session._command` refuses on a `TypeError` too,
+    so no check `set` does not yet make can end a session with an animal in the
+    chair."""
+
+    def raises(self, name, value, by):
+        raise TypeError("must be real number, not list")
+
+    monkeypatch.setattr(Session, "set", raises)
+    link = Simulated()
+    link.queue(SetParameter(name="fix_hold", value=[0.4], by="jake"))
+    session = _session(_spec(tmp_path, trials=5), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    (refusal,) = session.refusals
+    assert refusal[:2] == ("fix_hold", "jake")
+    assert "could not be checked" in refusal[2]
+    assert "must be real number, not list" in refusal[2]
+
+
+def test_a_malformed_ceiling_write_is_recorded_as_asked(tmp_path):
+    """A refused write to a welfare ceiling goes to the session record (PI,
+    2026-09-19), a malformed one included, with what was asked written as it came."""
+    link = Simulated()
+    link.queue(SetParameter(name="reward_correct", value="lots", by="jake"))
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    session.run()
+
+    (row,) = _refusal_rows(session)
+    assert row["name"] == "reward_correct"
+    assert row["asked"] == "lots"
+    assert row["by"] == "jake"

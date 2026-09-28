@@ -37,6 +37,7 @@ question nobody could actually answer.
 from __future__ import annotations
 
 import ipaddress
+import math
 import time
 import weakref
 from dataclasses import dataclass, field
@@ -678,10 +679,15 @@ def _telemetry_from(data: dict) -> Telemetry:
 @dataclass(frozen=True, slots=True)
 class SetParameter:
     """A parameter change offered by a console. Validated by `Session.set`, which is
-    the one write path -- this carries the request, never a second validator."""
+    the one write path -- this carries the request, never a second validator.
+
+    **`value` is a `float` or, for a categorical parameter, a `str`** -- and since
+    M8 (P4d-2b b2a) the wire enforces the type before this object exists
+    (`_setting`). Whether the value is in range, or one of the choices, stays
+    `Session.set`'s question."""
 
     name: str
-    value: float
+    value: float | str
     by: str
 
 
@@ -724,6 +730,82 @@ def _encode_command(command: Command) -> bytes:
     return msgpack.packb(payload, use_bin_type=True)
 
 
+class CommandRefused(ValueError):
+    """A command that decoded and cannot be built as sent (M8, closed in P4d-2b b2a).
+
+    Carries what the packet said of the parameter and of the sender, where it said
+    them, so the `Refused` row `ZmqLink.drain` makes from it names both: a console's
+    feed then says whose write was refused and which setting it was for, not
+    `<transport>` by `<unknown>`. `why` is a complete sentence."""
+
+    def __init__(self, name: str, by: str, why: str) -> None:
+        super().__init__(why)
+        self.name = name
+        self.by = by
+        self.why = why
+
+
+#: The longest parameter name, actor, or categorical value a command may carry. A
+#: bound on what one packet can put into a refusal row, the record and every frame,
+#: not a rule about names: nothing a person types is this long.
+TEXT_LIMIT = 200
+
+
+def _actor(by: object, name: str) -> str:
+    """`by`, when it is a name: a non-empty string no longer than `TEXT_LIMIT`.
+
+    S9a §6: every welfare-affecting write records its actor, and a write from nobody
+    is refused rather than recorded as written by nobody. `name` is what the refusal
+    is filed under -- the parameter for a setting, the command's kind otherwise."""
+    if not isinstance(by, str) or not by.strip() or len(by) > TEXT_LIMIT:
+        raise CommandRefused(
+            name,
+            "<unknown>",
+            f"a {name!r} command must say who sent it (`by`, a name of at most "
+            f"{TEXT_LIMIT} characters; S9a §6), and this one did not, so it is refused",
+        )
+    return by
+
+
+def _setting(value: object, name: str, by: str) -> float | str:
+    """**M8.** A setting's value: a finite real number that is not a `bool`, returned
+    as a `float`, or a word for a categorical parameter, returned as itself.
+
+    `SetParameter.value` was a type hint nothing enforced. A string reached
+    `bounds._finite`, raised `TypeError`, and `Session._command` did not catch it, so
+    `run()`'s fault handler ended the session over a malformed setting. Checked here,
+    where the bytes become a command, the bad value is a refusal with a sentence and
+    the session runs on. `bool` is refused although Python counts it as an `int`:
+    `True` was accepted as `1.0`. Whether a word is one of the parameter's choices is
+    `Session.set`'s to decide, since only the task knows them."""
+    if isinstance(value, str):
+        if len(value) > TEXT_LIMIT:
+            raise CommandRefused(
+                name,
+                by,
+                f"{name!r} was sent a word of {len(value)} characters; a categorical "
+                f"choice is at most {TEXT_LIMIT}, so it is refused and the session "
+                f"runs on",
+            )
+        return value
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise CommandRefused(
+            name,
+            by,
+            f"{name!r} was sent {value!r}: a setting is a finite number, or a word "
+            f"for a categorical parameter, and this is neither, so it is refused and "
+            f"the session runs on",
+        )
+    if not math.isfinite(value):
+        raise CommandRefused(
+            name,
+            by,
+            f"{name!r} was sent {value!r}, which is not a real number: it would "
+            f"defeat every range check, so it is refused and the session runs on",
+        )
+    return float(value)
+
+
 def _decode_command(payload: bytes) -> Command:
     """The inverse of `_encode_command`. `ZmqLink.drain` is the only caller.
 
@@ -732,15 +814,29 @@ def _decode_command(payload: bytes) -> Command:
     kind this file does not implement, exactly as it would have before `Task 4`
     ever added it -- there is no special case for it here to keep it from being a
     special case.
+
+    **Every field is checked here, before a command exists** (M8, P4d-2b b2a): a
+    command that decoded and is malformed raises `CommandRefused`, naming what it
+    could of the parameter and the sender; bytes that are not a command at all raise
+    whatever `msgpack` or the dict raised, and `drain` refuses those as before.
     """
     import msgpack
 
     data = msgpack.unpackb(payload, raw=False)
     kind = data["kind"]
     if kind == "set":
-        return SetParameter(name=data["name"], value=data["value"], by=data["by"])
+        name = data.get("name")
+        if not isinstance(name, str) or not name or len(name) > TEXT_LIMIT:
+            raise CommandRefused(
+                "<transport>",
+                data["by"] if isinstance(data.get("by"), str) else "<unknown>",
+                f"a setting arrived with no parameter name it could be for "
+                f"({name!r}), so it is refused",
+            )
+        by = _actor(data.get("by"), name)
+        return SetParameter(name=name, value=_setting(data.get("value"), name, by), by=by)
     if kind == "stop":
-        return Stop(by=data["by"])
+        return Stop(by=_actor(data.get("by"), "stop"))
     raise ValueError(f"unknown command kind on the wire: {kind!r}")
 
 
@@ -1163,6 +1259,12 @@ class ZmqLink:
             self._rep.send(b"received")
             try:
                 commands.append(_decode_command(raw))
+            except CommandRefused as refused:
+                # M8: a command that decoded and is malformed, named by what it
+                # said of itself -- which setting, and who sent it.
+                self.refused.append(
+                    Refused(name=refused.name, by=refused.by, why=refused.why)
+                )
             except Exception as exc:  # noqa: BLE001 -- deliberately broad, see above
                 self.refused.append(
                     Refused(name="<transport>", by="<unknown>", why=f"could not decode command: {exc}")

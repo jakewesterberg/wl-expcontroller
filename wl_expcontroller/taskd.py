@@ -609,6 +609,16 @@ class Session:
         mis-attribute fluid, which is the thing this method was changed to stop.
         """
         if name in self.spec.bounds.ceilings:
+            # M8 (P4d-2b b2a): a ceiling takes a number. A word reached
+            # `bounds._finite` and raised `TypeError` out of this method, which
+            # `run()`'s fault handler turned into the end of the session; `True`
+            # was accepted as 1.0. Refused here, before `bounds` is asked, with the
+            # sentence a console shows.
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise Exceeded(
+                    f"{name!r} is a welfare ceiling and takes a number; {value!r} is "
+                    f"not one, so it is refused and the previous value stands"
+                )
             # Checked here, assigned by `_apply_staged()` -- `bounds.validate` moves
             # nothing. An ordinary parameter's checks below are the same shape.
             self.spec.bounds.validate(name, value)
@@ -626,22 +636,35 @@ class Session:
             )
         if not declared.live:
             raise Exceeded(f"{name!r} is declared not live-editable by this task")
-        if declared.choices and value not in declared.choices:
-            raise Exceeded(f"{name!r} may only be one of {declared.choices}")
-        # **The same hole as the welfare path, on the task's own declaration.** The
-        # range check below is two ordered comparisons, and `nan` is `False` against
-        # both -- so a declared range accepts a value no range contains. This is not
-        # a welfare-critical file and a `nan` fixation window is a broken trial
-        # rather than a hurt animal, but it is the identical defect and it enters
-        # from the identical place: a console over the wire, or `--set` on a
-        # command line. `bounds._finite` is the same guard the ceilings use.
-        _finite(f"{name!r}", value)
-        low, high = declared.low, declared.high
-        if (low is not None and value < low) or (high is not None and value > high):
-            raise Exceeded(
-                f"{name!r} is declared over [{low}, {high}] {declared.unit} and "
-                f"{value} is outside it"
-            )
+        if declared.choices:
+            if value not in declared.choices:
+                raise Exceeded(f"{name!r} may only be one of {declared.choices}")
+        else:
+            # M8 (P4d-2b b2a): a numeric parameter takes a number, and a word used
+            # to reach `_finite` below and raise `TypeError` instead of this
+            # sentence. `bool` is refused although Python counts it as an `int`.
+            # A categorical parameter skips the numeric checks: its value is one of
+            # its choices, which may be words, and `_finite` raised on those too.
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise Exceeded(
+                    f"{name!r} takes a number ({declared.unit}); {value!r} is not "
+                    f"one, so it is refused and the previous value stands"
+                )
+            # **The same hole as the welfare path, on the task's own declaration.**
+            # The range check below is two ordered comparisons, and `nan` is
+            # `False` against both -- so a declared range accepts a value no range
+            # contains. This is not a welfare-critical file and a `nan` fixation
+            # window is a broken trial rather than a hurt animal, but it is the
+            # identical defect and it enters from the identical place: a console
+            # over the wire, or `--set` on a command line. `bounds._finite` is the
+            # same guard the ceilings use.
+            _finite(f"{name!r}", value)
+            low, high = declared.low, declared.high
+            if (low is not None and value < low) or (high is not None and value > high):
+                raise Exceeded(
+                    f"{name!r} is declared over [{low}, {high}] {declared.unit} and "
+                    f"{value} is outside it"
+                )
         self._staged.append((name, self.spec.values.get(name), value, by, False))
 
     @property
@@ -751,17 +774,34 @@ class Session:
             return
         try:
             self.set(command.name, command.value, by=command.by)
-        except Exceeded as refused:
+        except (Exceeded, TypeError) as refused:
+            # **M8's backstop** (P4d-2b b2a): `TypeError` too. The wire refuses a
+            # malformed value before it becomes a command (`link._setting`) and
+            # `set` refuses what it knows is not a number, so this catches only a
+            # check neither of them makes yet -- and a session never ends with an
+            # animal in the chair because a setting was malformed.
+            why = (
+                str(refused)
+                if isinstance(refused, Exceeded)
+                else f"{command.name!r} could not be checked ({type(refused).__name__}: "
+                f"{refused}), so it is refused and the session runs on"
+            )
             if command.name in self.spec.bounds.ceilings and self._record is not None:
                 self._record.refusal(
                     name=command.name,
-                    asked=command.value,
+                    # As asked, when it can be written as asked; `repr` otherwise,
+                    # so the row is written whatever the value was.
+                    asked=(
+                        command.value
+                        if isinstance(command.value, (int, float, str))
+                        else repr(command.value)
+                    ),
                     by=command.by,
-                    why=str(refused),
+                    why=why,
                     trial_index=index,
                     session_seconds=self.now(),
                 )
-            self._refuse(command.name, command.by, str(refused))
+            self._refuse(command.name, command.by, why)
 
     def _params(self) -> dict[str, Param]:
         trial = self._trial if self._trial is not None else self._load()
