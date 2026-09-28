@@ -3631,3 +3631,37 @@ def test_a_pump_that_fails_a_manual_reward_faults_the_session_as_a_tasks_would(t
     assert link.published[-1].stop_kind == "fault"
     assert (session.welfare.commanded, session.welfare.deliveries) == (0.15, 1)
     assert session.card.codes[-1] == REWARD_CODE
+
+
+def test_a_second_manual_reward_in_the_same_drain_as_one_that_reaches_a_fluid_stop_is_refused(
+    tmp_path,
+):
+    """Welfare-critical review round 1 of Task 13 (2026-09-28). The reviewer's probe:
+    target 0.15 mL, two presses drained in the same pass, 0.30 mL delivered before
+    this fix. There is one REQ socket and `REWARD_HOLD_MS` on the page, so it cannot
+    send two in one drain -- but another loopback peer can, and the check must not
+    depend on the page being the only sender. The first reward reaches the fluid
+    stop; the second, drained in the same pass, finds it already due and is refused
+    before any strobe or delivery -- exactly one delivery, and the session ends by
+    the schedule, as one press alone does."""
+    link = _Scripted(script={1: [ManualReward(by="jake"), ManualReward(by="jake")]})
+    link.queue(ScheduleStop(kind="fluid", value=0.15, by="sam"))
+    link.queue(Pause(by="jake"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "operator"
+    assert session.stopped_because == "scheduled stop (after 0.15 mL this session) set by sam"
+    assert session.welfare.session_total() == pytest.approx(0.15), "exactly one delivery"
+    assert session.welfare.deliveries == 1
+    assert session.card.codes.count(REWARD_CODE) == 1, "nothing strobed for the refused press"
+    (reward_row,) = _manual_rows(session)
+    assert reward_row["by"] == "jake"
+    ((name, by, why),) = [r for r in session.refusals if r[0] == "reward"]
+    assert (name, by) == ("reward", "jake")
+    assert why == (
+        "the session has reached its scheduled stop after 0.15 mL this session, so no "
+        "reward is given; it ends at this pass"
+    )

@@ -1026,12 +1026,18 @@ def test_a_welfare_ceiling_displays_its_own_decimals_not_rounded_to_two():
 def test_the_script_pins_the_box_only_write_guard():
     """The review found neither half of this pinned: the script reads `can-write`
     from `<body>`, and `post` -- the one function every command goes through --
-    refuses to send anything when it says this page may not write."""
+    refuses to send anything when it says this page may not write, before it does
+    anything else. Welfare-critical review round 1 (2026-09-28): a plain `in`
+    passed with the guard moved below `tell("sending...")`, so this pins its
+    position again -- the guard is the first thing `post` does, right after `done`
+    is resolved."""
     assert 'var canWrite = body.getAttribute("data-can-write") === "1";' in _SCRIPT
     post_body = re.search(
         r"function post\(command, then, after\) \{(.*?)\n  \}", _SCRIPT, re.S
     ).group(1)
-    assert "if (!canWrite) { done(); return; }" in post_body
+    assert post_body.strip().startswith(
+        "var done = after || function () {};\n    if (!canWrite) { done(); return; }"
+    )
 
 
 # --- P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause -------------
@@ -1124,7 +1130,12 @@ def test_a_double_click_on_give_reward_gives_only_one_reward():
     handler's own branch, never inside `command` or `post`, so a deliberate second
     press a second later still gives another reward."""
     assert "var REWARD_HOLD_MS = 1000;" in _SCRIPT
-    assert _SCRIPT.count("not a measurement") == 2
+    assert (
+        "// Housekeeping, not a measurement (R2, 2026-09-28): the same double click's span as\n"
+        "  // TOGGLE_HOLD_MS, since a reward's answer can return well inside it on loopback,\n"
+        "  // leaving the button live again before a double click's second click lands.\n"
+        "  var REWARD_HOLD_MS = 1000;"
+    ) in _SCRIPT
     assert "var lastRewardAt = -Infinity;" in _SCRIPT
     assert "function rewardAllowed(detail) {" in _SCRIPT
     assert (
