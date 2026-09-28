@@ -2287,3 +2287,26 @@ def test_a_malformed_ceiling_write_is_recorded_as_asked(tmp_path):
     assert row["name"] == "reward_correct"
     assert row["asked"] == "lots"
     assert row["by"] == "jake"
+
+
+def test_a_command_the_session_does_not_act_on_is_refused_not_a_fault(tmp_path):
+    """A command type `_command` has no branch for -- a newer console's, say -- is
+    refused under its kind and the session runs on, the rule `drain` already applies
+    to an unknown kind on the wire."""
+
+    class Recenter:
+        KIND = "recenter"
+
+        def __init__(self, by: str) -> None:
+            self.by = by
+
+    link = Simulated()
+    link.queue(Recenter(by="jake"))
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    assert session.refusals == [
+        ("recenter", "jake", "a 'recenter' command is not one this session acts on, so it is refused")
+    ]

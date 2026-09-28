@@ -23,7 +23,12 @@ from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
     REFUSAL_HISTORY,
     Absent,
+    CancelScheduledStop,
     CommandRefused,
+    Mark,
+    Pause,
+    Resume,
+    ScheduleStop,
     FrameError,
     ParamRow,
     Refused,
@@ -1379,3 +1384,102 @@ def test_the_no_name_refusal_records_unknown_when_by_is_missing_entirely():
         _decode_command(_packed(kind="set", name="", value=0.4))
 
     assert refused.value.by == "<unknown>"
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a: the five controls on the wire (spec §5.1)
+# ---------------------------------------------------------------------------
+
+_CONTROLS = [
+    Pause(by="jake (box, unverified)"),
+    Resume(by="jake (box, unverified)"),
+    Mark(mark=7, note="reward line bubble", by="jake (box, unverified)",
+         pressed_at=1_700_000_000.25, received_at=1_700_000_000.5),
+    Mark(mark=2**64 - 1, note="", by="jake", pressed_at=None, received_at=None),
+    ScheduleStop(kind="clock", value="14:30", by="jake"),
+    ScheduleStop(kind="trials", value=40, by="jake"),
+    ScheduleStop(kind="fluid", value=12.5, by="jake"),
+    CancelScheduledStop(by="jake"),
+]
+
+
+@pytest.mark.parametrize("command", _CONTROLS, ids=lambda c: type(c).__name__)
+def test_each_control_survives_the_wire_with_who_sent_it(command):
+    """Spec §5.1: `SetParameter | Stop` gains `Pause`, `Resume`, `Mark`,
+    `ScheduleStop` and `CancelScheduledStop`, each carrying `by`."""
+    restored = _decode_command(_encode_command(command))
+
+    assert restored == command
+    assert type(restored) is type(command)
+
+
+def test_the_controls_cross_a_real_socket_in_order(zmq_cleanup):
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    seen = []
+    for command in _CONTROLS:
+        console.send(command)
+        seen += _drain_until(link)
+
+    assert seen == _CONTROLS
+
+
+def test_each_command_names_its_kind():
+    """What a refusal is filed under, and what `taskd` names in its feed."""
+    assert [type(c).KIND for c in _CONTROLS] == [
+        "pause", "resume", "mark", "mark", "schedule", "schedule", "schedule", "cancel",
+    ]
+    assert Stop.KIND == "stop" and SetParameter.KIND == "set"
+
+
+@pytest.mark.parametrize(
+    ("fields", "name", "said"),
+    [
+        ({"kind": "pause"}, "pause", "who sent it"),
+        ({"kind": "resume", "by": ""}, "resume", "who sent it"),
+        ({"kind": "cancel", "by": 3}, "cancel", "who sent it"),
+        ({"kind": "mark", "mark": 0, "note": "", "by": "jake"}, "mark", "mark number"),
+        ({"kind": "mark", "mark": -1, "note": "", "by": "jake"}, "mark", "mark number"),
+        ({"kind": "mark", "mark": True, "note": "", "by": "jake"}, "mark", "mark number"),
+        ({"kind": "mark", "mark": "3", "note": "", "by": "jake"}, "mark", "mark number"),
+        ({"kind": "mark", "mark": 3, "note": None, "by": "jake"}, "mark", "note"),
+        ({"kind": "mark", "mark": 3, "note": "x" * 501, "by": "jake"}, "mark", "note"),
+        ({"kind": "mark", "mark": 3, "note": "", "by": "jake", "pressed_at": "now"}, "mark", "pressed_at"),
+        ({"kind": "mark", "mark": 3, "note": "", "by": "jake", "received_at": float("nan")}, "mark", "received_at"),
+        ({"kind": "schedule", "stop": "blocks", "value": 3, "by": "jake"}, "schedule", "clock, trials or fluid"),
+        ({"kind": "schedule", "stop": "clock", "value": "25:00", "by": "jake"}, "schedule", "HH:MM"),
+        ({"kind": "schedule", "stop": "clock", "value": "9:05", "by": "jake"}, "schedule", "HH:MM"),
+        ({"kind": "schedule", "stop": "clock", "value": 1430, "by": "jake"}, "schedule", "HH:MM"),
+        ({"kind": "schedule", "stop": "trials", "value": 0, "by": "jake"}, "schedule", "whole number of trials"),
+        ({"kind": "schedule", "stop": "trials", "value": 2.5, "by": "jake"}, "schedule", "whole number of trials"),
+        ({"kind": "schedule", "stop": "trials", "value": True, "by": "jake"}, "schedule", "whole number of trials"),
+        ({"kind": "schedule", "stop": "fluid", "value": 0, "by": "jake"}, "schedule", "mL"),
+        ({"kind": "schedule", "stop": "fluid", "value": float("inf"), "by": "jake"}, "schedule", "mL"),
+        ({"kind": "schedule", "stop": "fluid", "value": "5", "by": "jake"}, "schedule", "mL"),
+    ],
+)
+def test_a_malformed_control_is_refused_by_name_where_it_is_decoded(fields, name, said):
+    """The M8 rule for every control: a field that is the wrong type or out of its
+    domain is a refusal with a sentence, filed under the command's kind, never a
+    command that faults the session later."""
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(**fields))
+
+    assert refused.value.name == name
+    assert said in refused.value.why
+
+
+def test_check_schedule_is_the_one_rule_for_what_a_schedule_may_be():
+    """`taskd` asks the same question of a schedule that reached it without the
+    wire (`link.Simulated`), so there is one rule for it."""
+    from wl_expcontroller.link import check_schedule
+
+    assert check_schedule("clock", "00:00") is None
+    assert check_schedule("clock", "23:59") is None
+    assert check_schedule("trials", 1) is None
+    assert check_schedule("fluid", 0.01) is None
+    assert "HH:MM" in check_schedule("clock", "24:00")
+    assert "whole number" in check_schedule("trials", 1.0)
+    assert "mL" in check_schedule("fluid", -2.0)
+    assert "clock, trials or fluid" in check_schedule("never", 1)

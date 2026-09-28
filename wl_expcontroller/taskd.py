@@ -761,7 +761,7 @@ class Session:
         """
         if self.phase != "running":
             self._refuse(
-                "stop" if isinstance(command, _link.Stop) else command.name,
+                command.name if isinstance(command, _link.SetParameter) else command.KIND,
                 command.by,
                 "the session has ended and is waiting for the animal's return to its "
                 "cage, which is marked at wlx run's terminal; a command sent now is "
@@ -771,6 +771,17 @@ class Session:
         if isinstance(command, _link.Stop):
             self.stopped_because = f"stopped by {command.by}"
             self.stop_kind = "operator"
+            return
+        if not isinstance(command, _link.SetParameter):
+            # A command this session has no branch for -- a newer console's -- is
+            # refused under its kind, as `drain` refuses an unknown kind on the
+            # wire, and the session runs on.
+            self._refuse(
+                command.KIND,
+                command.by,
+                f"a {command.KIND!r} command is not one this session acts on, so it "
+                f"is refused",
+            )
             return
         try:
             self.set(command.name, command.value, by=command.by)

@@ -40,8 +40,9 @@ import ipaddress
 import math
 import time
 import weakref
+import re
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from wl_expcontroller.welfare import DAILY_FLUID, OUT_OF_CAGE
 
@@ -686,6 +687,10 @@ class SetParameter:
     (`_setting`). Whether the value is in range, or one of the choices, stays
     `Session.set`'s question."""
 
+    #: The command's kind on the wire, and what a refusal of it is filed under
+    #: when it names no parameter (P4d-2b b2a). A class attribute, not a field.
+    KIND: ClassVar[str] = "set"
+
     name: str
     value: float | str
     by: str
@@ -697,10 +702,138 @@ class Stop:
     animal completed must not be aborted, which is the rule `welfare.Rig` follows for
     pump faults."""
 
+    KIND: ClassVar[str] = "stop"
+
     by: str
 
 
-Command = SetParameter | Stop
+@dataclass(frozen=True, slots=True)
+class Pause:
+    """Hold the session at the next trial boundary (P4d-2b spec §5.1): no trial runs
+    and nothing is rewarded until `Resume`, while the out-of-cage clock keeps running
+    and still ends the session. `taskd.Session._hold` is what it does."""
+
+    KIND: ClassVar[str] = "pause"
+
+    by: str
+
+
+@dataclass(frozen=True, slots=True)
+class Resume:
+    """End a pause: trials run again from the next pass of the loop, with any setting
+    staged while paused applied first (P4d-2b spec §5.1)."""
+
+    KIND: ClassVar[str] = "resume"
+
+    by: str
+
+
+@dataclass(frozen=True, slots=True)
+class Mark:
+    """The **note** half of an operator's mark (P4d-2b spec §5.1).
+
+    The mark itself is a signal on its own socket -- `mark`, eight bytes, sent the
+    moment M is pressed and stamped by `taskd` in the frame it arrives, with the
+    `OPERATOR_MARK` event code strobed in that frame. This command follows it on the
+    ordinary command path, is drained at the next boundary like every command, and is
+    joined to its stamp by `mark`.
+
+    - `mark`: the signal's number, `1` to `2**64 - 1`; `0` is never a mark (it is
+      what `Link.mark_signal` answers when none is waiting).
+    - `note`: what the person typed after pressing M; empty when they pressed Esc.
+    - `pressed_at`: when M was pressed, **on the browser's clock**, POSIX seconds;
+      `None` when the console that sent this never knew.
+    - `received_at`: when `wlx serve` received the signal, **on its host's clock**;
+      `None` when this `wlx serve` was restarted between the signal and the note.
+
+    The two instants are on two clocks and the stamp is on a third (the session's
+    anchored one); the record keeps all three and their gaps, and hides neither.
+    """
+
+    KIND: ClassVar[str] = "mark"
+
+    mark: int
+    note: str
+    by: str
+    pressed_at: float | None
+    received_at: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduleStop:
+    """Stop the session later, held by `taskd` so a closed page cannot lose it (P4d-2b
+    spec §5.1). One of three `kind`s, each with its `value`:
+
+    - `"clock"`: `"HH:MM"`, 24-hour; `taskd` stops at the next occurrence of that
+      time on the session's anchored clock, within 24 hours.
+    - `"trials"`: a whole number of further trials, counted from when `taskd`
+      accepts the schedule.
+    - `"fluid"`: mL this session, as `welfare.session_total()` reports it.
+
+    `check_schedule` is the rule for what `value` may be. A new schedule replaces the
+    one before it."""
+
+    KIND: ClassVar[str] = "schedule"
+
+    kind: str
+    value: str | int | float
+    by: str
+
+
+@dataclass(frozen=True, slots=True)
+class CancelScheduledStop:
+    """Remove the scheduled stop, if there is one."""
+
+    KIND: ClassVar[str] = "cancel"
+
+    by: str
+
+
+Command = SetParameter | Stop | Pause | Resume | Mark | ScheduleStop | CancelScheduledStop
+
+#: The kinds of scheduled stop, in the order a person is offered them.
+SCHEDULE_KINDS = ("clock", "trials", "fluid")
+#: The largest mark number: the signal is eight bytes, unsigned.
+MARK_LIMIT = 2**64 - 1
+#: The longest note a mark may carry. A bound on one packet's reach into the record
+#: and every frame, not a rule about what a person may say.
+NOTE_LIMIT = 500
+_HHMM = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]")
+
+
+def check_schedule(kind: object, value: object) -> str | None:
+    """Why a scheduled stop of `kind` at `value` is refused, or `None` when it is
+    one: `"clock"` takes `"HH:MM"`, `"trials"` a whole number of at least one, and
+    `"fluid"` a finite number of mL above zero. **The one rule**, asked where the
+    wire decodes a `ScheduleStop` and again by `taskd.Session` of one that reached it
+    without the wire."""
+    if kind == "clock":
+        if isinstance(value, str) and _HHMM.fullmatch(value):
+            return None
+        return (
+            f"a scheduled stop at a clock time takes HH:MM on a 24-hour clock, such "
+            f"as 14:30, and {value!r} is not one"
+        )
+    if kind == "trials":
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+            return None
+        return (
+            f"a scheduled stop after trials takes a whole number of trials, at least "
+            f"one, and {value!r} is not one"
+        )
+    if kind == "fluid":
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+            and value > 0
+        ):
+            return None
+        return (
+            f"a scheduled stop after fluid takes a number of mL above zero, and "
+            f"{value!r} is not one"
+        )
+    return f"a scheduled stop is by clock, trials or fluid, and {kind!r} is none of them"
 
 
 def _encode_command(command: Command) -> bytes:
@@ -723,8 +856,24 @@ def _encode_command(command: Command) -> bytes:
 
     if isinstance(command, SetParameter):
         payload = {"kind": "set", "name": command.name, "value": command.value, "by": command.by}
-    elif isinstance(command, Stop):
-        payload = {"kind": "stop", "by": command.by}
+    elif isinstance(command, (Stop, Pause, Resume, CancelScheduledStop)):
+        payload = {"kind": command.KIND, "by": command.by}
+    elif isinstance(command, Mark):
+        payload = {
+            "kind": "mark",
+            "mark": command.mark,
+            "note": command.note,
+            "by": command.by,
+            "pressed_at": command.pressed_at,
+            "received_at": command.received_at,
+        }
+    elif isinstance(command, ScheduleStop):
+        payload = {
+            "kind": "schedule",
+            "stop": command.kind,
+            "value": command.value,
+            "by": command.by,
+        }
     else:
         raise TypeError(f"no wire encoding for {command!r}")
     return msgpack.packb(payload, use_bin_type=True)
@@ -847,9 +996,66 @@ def _decode_command(payload: bytes) -> Command:
             )
         by = _actor(data.get("by"), name)
         return SetParameter(name=name, value=_setting(data.get("value"), name, by), by=by)
-    if kind == "stop":
-        return Stop(by=_actor(data.get("by"), "stop"))
+    simple = {command.KIND: command for command in (Stop, Pause, Resume, CancelScheduledStop)}
+    if kind in simple:
+        return simple[kind](by=_actor(data.get("by"), kind))
+    if kind == "mark":
+        return _mark(data)
+    if kind == "schedule":
+        by = _actor(data.get("by"), "schedule")
+        why = check_schedule(data.get("stop"), data.get("value"))
+        if why is not None:
+            raise CommandRefused("schedule", by, f"{why}, so it is refused")
+        return ScheduleStop(kind=data["stop"], value=data["value"], by=by)
     raise ValueError(f"unknown command kind on the wire: {kind!r}")
+
+
+def _instant(data: dict, key: str, by: str) -> float | None:
+    """`pressed_at` or `received_at`: absent or `None` is `None`; otherwise a finite
+    number of POSIX seconds, or the mark is refused."""
+    value = data.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise CommandRefused(
+            "mark",
+            by,
+            f"a mark's {key} is POSIX seconds or nothing, and {value!r} is neither, "
+            f"so it is refused",
+        )
+    return float(value)
+
+
+def _mark(data: dict) -> Mark:
+    """A `Mark` from the wire, every field checked (the M8 rule, for the note)."""
+    by = _actor(data.get("by"), "mark")
+    number = data.get("mark")
+    if (
+        isinstance(number, bool)
+        or not isinstance(number, int)
+        or not 1 <= number <= MARK_LIMIT
+    ):
+        raise CommandRefused(
+            "mark",
+            by,
+            f"a mark's note must name its mark number, 1 to {MARK_LIMIT}, and "
+            f"{number!r} is not one, so it is refused",
+        )
+    note = data.get("note")
+    if not isinstance(note, str) or len(note) > NOTE_LIMIT:
+        raise CommandRefused(
+            "mark",
+            by,
+            f"a mark's note is text of at most {NOTE_LIMIT} characters, and this one "
+            f"is not, so it is refused",
+        )
+    return Mark(
+        mark=number,
+        note=note,
+        by=by,
+        pressed_at=_instant(data, "pressed_at", by),
+        received_at=_instant(data, "received_at", by),
+    )
 
 
 class Link(Protocol):
