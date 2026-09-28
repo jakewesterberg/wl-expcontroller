@@ -370,6 +370,19 @@ ledger keeps the running offset.
   switches (the eyes' maps disagree slightly, so a switch jumps); never substituting eyes in
   dichoptic tasks. The quality signal most naturally comes from P10's tracker, so hold it before
   P10's design. Raw data from both eyes is always recorded; this is online control only.
+- **Queued for a brainstorm with the PI (his request, 2026-09-28): automated color calibration
+  and gray-tone linearization, built into the rig.** What exists: `photometry.py` specifies
+  color device-independently (xyY, DKL) against a measured `Calibration` (primaries, background,
+  **one** `gamma` exponent, the observer's luminous efficiency), and check faults a color outside
+  the panel's gamut; S4 §9 defines the stimulus-calibration record and id a session runs against
+  (per-mode gamma per panel half), and §10 lists a gamma/luminance ramp test screen. What does
+  not: any measured calibration, an instrument, a procedure, automation, or a per-channel
+  transfer (a QD-OLED is not a power law, and its ABL makes luminance depend on how much of the
+  screen is lit). To put to him: the instrument (a tristimulus colorimeter measures for a human
+  observer; macaque-weighted luminance needs spectra, i.e. a spectroradiometer: the expensive,
+  science-facing fork); measuring at the eye point (automatable with the screen fixed at 50 cm,
+  and through each periscope for the stereoscope); what the automated run fits and records; how
+  often, and what a session does with a stale calibration (OLED warm-up, drift, burn-in).
 - **Carried:** re-run `tools/calibration_design.py` per setup (the spec's §6) — the geometry
   rework found 85% reach winning under two of four assumptions on the new panel; the ridge
   softens the ±12° mask's nasal edge for pupils over about 2.9 mm, which the per-animal carriage
