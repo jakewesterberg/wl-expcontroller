@@ -942,24 +942,43 @@ def test_the_script_holds_a_parameter_card_it_is_being_typed_into():
 
 
 def test_a_double_click_or_one_within_the_hold_cannot_toggle_pause_or_resume():
-    """The review: pause/resume is sent by the button on screen at each click, and a
-    fresh `controls` fragment can put a different button under a fast second click
-    (spec §5.2: "never a toggle"). The click handler now ignores a pause/resume click
-    that is a double click (`e.detail > 1`) or lands within `TOGGLE_HOLD_MS` of the
-    last one this page sent, before `command` is ever called."""
+    """The review, round 2: the **P** key (`pauseOrResume`, wired from `keydown`)
+    called `command` directly and was not covered by round 1's click-only guard -- a
+    rapid double **P** is not an `e.repeat` (that only filters OS key-autorepeat, not
+    two independent keydowns) and could reproduce the same toggle. One
+    `toggleAllowed` helper now guards both routes: it refuses a click's own double
+    (`detail > 1`) or anything within `TOGGLE_HOLD_MS` of the last pause/resume this
+    page sent, and stamps that instant only on success. `command` itself is called
+    only after the helper allows it, from both the click handler and
+    `pauseOrResume`."""
     assert "var TOGGLE_HOLD_MS = 1000;" in _SCRIPT
+    helper = re.search(
+        r"function toggleAllowed\(detail\) \{(.*?)\n  \}", _SCRIPT, re.S
+    ).group(1)
+    assert "detail > 1" in helper
+    assert "now - lastToggleAt < TOGGLE_HOLD_MS" in helper
+    assert "return false;" in helper
+    assert "lastToggleAt = now;" in helper
+    assert "return true;" in helper
+    assert helper.index("return false;") < helper.index("lastToggleAt = now;")
+    assert helper.index("lastToggleAt = now;") < helper.index("return true;")
+
     handler = re.search(
         r'document\.addEventListener\("click", function \(e\) \{(.*?)\n  \}\);',
         _SCRIPT,
         re.S,
     ).group(1)
     assert 'cmd === "pause" || cmd === "resume"' in handler
-    assert "e.detail > 1" in handler
-    assert "now - lastToggleAt < TOGGLE_HOLD_MS" in handler
-    assert "lastToggleAt = now;" in handler
+    assert "toggleAllowed(e.detail)" in handler
     # Only pause/resume are guarded -- mark, stop and cancel are unaffected.
-    assert handler.index('if (cmd === "pause"') > handler.index("var cmd =")
-    assert handler.index("command(cmd);") > handler.index("lastToggleAt = now;")
+    assert handler.index('cmd === "pause"') > handler.index("var cmd =")
+    assert handler.index("toggleAllowed(e.detail)") < handler.index("command(cmd);")
+
+    pause_or_resume = re.search(
+        r"function pauseOrResume\(\) \{(.*?)\n  \}", _SCRIPT, re.S
+    ).group(1)
+    assert "toggleAllowed(" in pause_or_resume
+    assert pause_or_resume.index("toggleAllowed(") < pause_or_resume.index("command(")
 
 
 def test_the_arrows_round_before_clamping_and_write_the_edge_exactly():
