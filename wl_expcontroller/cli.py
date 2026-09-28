@@ -14,6 +14,7 @@ import math
 import sys
 import threading
 import time
+import unicodedata
 from collections.abc import Callable
 from contextlib import nullcontext
 from datetime import datetime
@@ -695,6 +696,29 @@ def _with_unit(text: str, unit: str) -> str:
     return f"{text} {unit}" if unit else text
 
 
+def _printable(text: str) -> str:
+    """A wire-sourced string, made safe for a terminal: every C0/C1 control
+    character (Unicode category `Cc` -- ESC, CR, LF, DEL and the C1 controls
+    including CSI, U+009B) and every bidirectional override/isolate character
+    (U+202A-U+202E, U+2066-U+2069) is replaced with U+FFFD. `link.py`'s `decode`
+    checks a wire string's type and length, never its printability; text off the
+    wire must not be able to move the cursor, clear the screen or forge a
+    `STOPPED:`/`WARNING:` line on the console that is supposed to show them.
+
+    Compared by code point (`ord`), never by embedding the bidi override/isolate
+    characters themselves as literals in this file -- the hazard this function
+    keeps off the *terminal* has no place in the *source* either.
+    """
+    return "".join(
+        "\ufffd"
+        if unicodedata.category(ch) == "Cc"
+        or 0x202A <= ord(ch) <= 0x202E
+        or 0x2066 <= ord(ch) <= 0x2069
+        else ch
+        for ch in text
+    )
+
+
 def render(frame: _link.Telemetry) -> str:
     """One screen's worth of a `Telemetry` frame -- S9a §4's panes this slice has
     data for: fluid, chair, trials by outcome, what is still owed, staged changes
@@ -788,22 +812,33 @@ def render(frame: _link.Telemetry) -> str:
     the recent control events, each with who sent it, below the staged rows. A capped
     feed says so above its rows, as the refusal feed does. Absences are words again:
     *no*, *none*.
+
+    **Every wire-sourced string is run through `_printable` before it reaches this
+    screen** (fix round 1, IMPORTANT). `link.py`'s `decode` checks a string's type
+    and length, never its printability, and a box-local peer's mark note, `by`,
+    refusal reason or any other free text is echoed here verbatim otherwise. Left
+    unescaped, a control character can move the terminal's cursor or clear its
+    screen, and an embedded newline can forge a line of this function's own output
+    -- including a `STOPPED:` or `WARNING:` line nothing actually raised. Numbers
+    this function formats itself, and the lines and labels it composes itself, need
+    no such treatment; only text read off `frame` (or an object reached from it)
+    does.
     """
     lines = [
-        f"session {frame.session_id}  subject {frame.subject}  "
-        f"trial {frame.trial_index}  block {frame.block}",
+        f"session {_printable(frame.session_id)}  subject {_printable(frame.subject)}  "
+        f"trial {frame.trial_index}  block {_printable(frame.block)}",
     ]
     # Named rather than derived. Two of the three kinds answer `None` for chair time
     # for different reasons, and a console that worked out which from the pattern of
     # `None`s would be computing -- see this function's second paragraph.
-    lines.append(f"  deployment: {frame.deployment}")
+    lines.append(f"  deployment: {_printable(frame.deployment)}")
     # P4d-2b spec §3: S9a §3's configuration information. Named, never guessed: an
     # empty allocation is the provisional one (`_load_allocation`), and an empty
     # bounds path means the caller built `Bounds` in code.
     lines.append(
-        f"  task: {frame.task}"
-        f"  allocation: {frame.allocation or 'PROVISIONAL (none given)'}"
-        f"  bounds: {frame.bounds_config or 'not given'}"
+        f"  task: {_printable(frame.task)}"
+        f"  allocation: {_printable(frame.allocation) or 'PROVISIONAL (none given)'}"
+        f"  bounds: {_printable(frame.bounds_config) or 'not given'}"
     )
     # **The PI's second clock, apart from out-of-cage** (P4d-2a spec §10 item 3):
     # "only shown and recorded", never a bound, so it has no WARNING line of its
@@ -819,7 +854,7 @@ def render(frame: _link.Telemetry) -> str:
     # `running`/`awaiting_return`/`closed` (`taskd.Session.phase`) spelled with a
     # space rather than the internal underscore -- this line is for a person, not
     # a match against the field's own wire spelling.
-    lines.append(f"  phase: {frame.phase.replace('_', ' ')}")
+    lines.append(f"  phase: {_printable(frame.phase).replace('_', ' ')}")
     # Schema 8 (P4d-2b b2a). The pause's instant as a clock time on this host, like
     # the last reward's; one that is not a number is `unknown`, never a crash.
     if frame.paused_at is None:
@@ -835,16 +870,16 @@ def render(frame: _link.Telemetry) -> str:
     lines.append(
         "  scheduled stop: none"
         if frame.scheduled_stop is None
-        else f"  scheduled stop: {frame.scheduled_stop.said}, set by "
-        f"{frame.scheduled_stop.by}"
+        else f"  scheduled stop: {_printable(frame.scheduled_stop.said)}, set by "
+        f"{_printable(frame.scheduled_stop.by)}"
     )
     if frame.stopped_because:
-        lines.append(f"  STOPPED: {frame.stopped_because}")
+        lines.append(f"  STOPPED: {_printable(frame.stopped_because)}")
     # Beside the stop reason and above everything else, because that is where a
     # person looks when something is wrong. The session's own sentence, read from
     # `welfare.approaching_limit` and not rebuilt here (PI, 2026-09-20).
     if frame.duration_warning:
-        lines.append(f"  WARNING: {frame.duration_warning}")
+        lines.append(f"  WARNING: {_printable(frame.duration_warning)}")
 
     lines.append(f"  fluid session: {frame.fluid_session_ml:.2f} mL")
     lines.append(
@@ -900,7 +935,9 @@ def render(frame: _link.Telemetry) -> str:
     # and a direct contradiction of this function's own "nothing here is computed"
     # promise a few lines up. `frame.outcomes` and `frame.hangs` are read as they
     # are, with no total claimed; a reader who wants one can add what is on screen.
-    by_outcome = ", ".join(f"{name} {count}" for name, count in frame.outcomes.items())
+    by_outcome = ", ".join(
+        f"{_printable(name)} {count}" for name, count in frame.outcomes.items()
+    )
     lines.append(f"  trials: {by_outcome or 'none yet'}, hangs {frame.hangs}")
 
     # When the last reward was commanded, kept once the pump returned, as a clock time
@@ -917,25 +954,35 @@ def render(frame: _link.Telemetry) -> str:
             f"{time.strftime('%H:%M:%S', time.localtime(frame.last_reward_at))}"
         )
     for row in frame.params:
+        # `name` and `unit` are always text; `value` is a number for most rows but a
+        # categorical choice's own text for others (`ParamRow.value: float | str |
+        # None`) -- only the string case is wire text `_shown` would otherwise pass
+        # through untouched.
+        name = _printable(row.name)
+        unit = _printable(row.unit)
+        value = _printable(row.value) if isinstance(row.value, str) else row.value
         if row.bounded:
-            limit = f"(welfare ceiling {_with_unit(_shown(row.high), row.unit)})"
+            limit = f"(welfare ceiling {_with_unit(_shown(row.high), unit)})"
         elif row.low is None and row.high is None:
             limit = "(no declared range)"
         else:
             limit = (
                 f"(range {_edge(row.low)} to "
-                f"{_with_unit(_edge(row.high), row.unit)})"
+                f"{_with_unit(_edge(row.high), unit)})"
             )
         lines.append(
-            f"  param: {row.name} {_with_unit(_shown(row.value), row.unit)} {limit}"
+            f"  param: {name} {_with_unit(_shown(value), unit)} {limit}"
         )
     lines.append(
-        f"  recent (oldest first): {' '.join(frame.recent_outcomes)}"
+        f"  recent (oldest first): "
+        f"{' '.join(_printable(outcome) for outcome in frame.recent_outcomes)}"
         if frame.recent_outcomes
         else "  recent: none yet"
     )
 
-    still_owed = ", ".join(f"{name} {count}" for name, count in frame.owed.items())
+    still_owed = ", ".join(
+        f"{_printable(name)} {count}" for name, count in frame.owed.items()
+    )
     lines.append(f"  still owed: {still_owed or 'none'}")
 
     if frame.staged:
@@ -952,8 +999,8 @@ def render(frame: _link.Telemetry) -> str:
                 else "task parameter, applies at the next trial"
             )
             lines.append(
-                f"  staged: {change.name} {_value(change.was)} -> "
-                f"{_value(change.now)} by {change.by} ({kind})"
+                f"  staged: {_printable(change.name)} {_value(change.was)} -> "
+                f"{_value(change.now)} by {_printable(change.by)} ({kind})"
             )
     else:
         lines.append("  staged: none")
@@ -970,8 +1017,12 @@ def render(frame: _link.Telemetry) -> str:
                 f"(link.CONTROL_HISTORY)"
             )
         for control in frame.controls:
-            who = f" by {control.by}" if control.by else ""
-            lines.append(f"  control: {control.kind}{who}: {control.said}")
+            by = _printable(control.by)
+            who = f" by {by}" if by else ""
+            lines.append(
+                f"  control: {_printable(control.kind)}{who}: "
+                f"{_printable(control.said)}"
+            )
     else:
         lines.append("  controls: none")
 
@@ -985,7 +1036,10 @@ def render(frame: _link.Telemetry) -> str:
                 f"(link.REFUSAL_HISTORY)"
             )
         for refusal in frame.refusals:
-            lines.append(f"  refused: {refusal.name} by {refusal.by}: {refusal.why}")
+            lines.append(
+                f"  refused: {_printable(refusal.name)} by {_printable(refusal.by)}: "
+                f"{_printable(refusal.why)}"
+            )
     else:
         lines.append("  refused: none")
 
