@@ -74,7 +74,8 @@ def frame(**overrides) -> Telemetry:
 def view(**overrides) -> View:
     """A box viewer, alone, half a second after the frame arrived -- forty-two seconds
     after `frame()`'s last reward -- with a derived rate of twelve trials a minute, on
-    a console reading `ENDPOINT`."""
+    a console reading `ENDPOINT`. Since P4d-2b b2a it may write, as the box's own page
+    may, and its console has the session's mark endpoint."""
     base = View(
         frame_age_s=0.5,
         stale_after_s=30.0,
@@ -83,5 +84,7 @@ def view(**overrides) -> View:
         lan_viewers=0,
         rejected=None,
         endpoint=ENDPOINT,
+        can_write=True,
+        can_mark=True,
     )
     return replace(base, **overrides) if overrides else base

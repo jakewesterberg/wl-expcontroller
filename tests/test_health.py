@@ -635,3 +635,19 @@ def test_our_plain_text_is_theirs():
 @_contract
 def test_our_schema_version_is_theirs():
     assert HEALTH_SCHEMA == SCHEMA_VERSION
+
+
+def test_a_paused_session_is_said_to_be_paused_and_is_ok():
+    """P4d-2b b2a: a pause is a person's choice, not a fault, so the verdict stands;
+    the state reading says it, so wl-works does not read a held trial count as a
+    stalled rig."""
+    found = frame(paused_at=1_700_000_030.0)
+    values = {
+        r["key"]: r["value"]
+        for r in readings(
+            found, frame_age_s=1.0, stale_after_s=30.0, rejected=None, endpoint=ENDPOINT
+        )
+    }
+
+    assert values["state"] == "paused · trial 40 · block session"
+    assert verdict(found, frame_age_s=1.0, stale_after_s=30.0, rejected=None) == "ok"

@@ -12,6 +12,7 @@ from __future__ import annotations
 import fnmatch
 import html
 import re
+import time
 import tomllib
 from importlib import resources
 from pathlib import Path
@@ -19,12 +20,15 @@ from pathlib import Path
 import pytest
 
 from _frames import frame, view
-from wl_expcontroller.link import ParamRow, Refused, Staged
+from wl_expcontroller.link import Control, ParamRow, Refused, ScheduledStop, Staged
 from wl_expcontroller.web import (
     _SCRIPT,
+    CONTROLS_AT_THE_BOX,
+    DEBOUNCE_MS,
     FONTS,
     FRAGMENT_IDS,
     LEGEND,
+    NO_MARK_ENDPOINT,
     font_bytes,
     fragments,
     page,
@@ -584,7 +588,7 @@ def test_the_nonce_is_escaped_into_its_attribute():
 def test_the_page_tells_its_script_when_a_stream_is_stale():
     document = page(fragments(frame(), view()), stale_after_s=45.0, nonce="n0nce")
 
-    assert '<body data-stale-after="45">' in document
+    assert '<body data-stale-after="45" data-can-write="0" data-debounce-ms="600">' in document
 
 
 def test_the_right_column_is_honest_placeholders():
@@ -600,35 +604,44 @@ def test_the_right_column_is_honest_placeholders():
         assert text in document, text
 
 
-def test_nothing_on_the_page_writes():
-    """Spec §4.2: every write control is absent until its slice. The page's buttons
-    close and reopen its own stream; its inputs only choose a tab."""
+def test_the_page_writes_only_by_posting_json_to_commands():
+    """Spec §4.2, as amended by §5.2: the page's writes are the controls, and every
+    one goes through the script's one `fetch` -- a JSON `POST` to `/commands` -- and
+    never a form (the Content-Security-Policy's `form-action 'none'` refuses one
+    anyway). Its radio inputs still only choose a tab."""
     document = _document()
 
-    assert document.count("<button") == 2
-    assert 'id="close"' in document and 'id="reconnect"' in document
-    for absent in ("<form", "<textarea", "<select", "POST", "fetch("):
-        assert absent not in document, absent
-    inputs = re.findall(r"<input[^>]*>", document)
-    assert len(inputs) == 4
-    assert all('type="radio"' in field for field in inputs)
+    assert "<form" not in document and "<textarea" not in document
+    assert _SCRIPT.count("fetch(") == 1
+    assert 'fetch("/commands", {' in _SCRIPT
+    assert 'method: "POST"' in _SCRIPT
+    assert 'headers: { "Content-Type": "application/json" }' in _SCRIPT
+    radios = re.findall(r'<input type="radio"[^>]*>', document)
+    assert len(radios) == 4
 
 
-def test_the_script_does_only_what_spec_4_3_asks():
+def test_the_script_does_only_what_spec_4_3_and_5_2_ask():
+    """§4.3's stream, and §5.2's growth: it sends commands, debounces the arrows,
+    handles P and M, and asks for the name. It still renders nothing itself: every
+    `innerHTML` it writes is a fragment `wlx serve` rendered."""
     document = _document()
 
     for needle in (
         'new EventSource("/events")',
         'addEventListener("frame"',
-        "innerHTML",
         "stream stale · last frame ",
         "stream lost",
         'el("close")',
         'el("reconnect")',
         "source.close()",
+        'fetch("/commands", {',
+        "window.prompt(",
+        'k === "p"',
+        'k === "m"',
     ):
         assert needle in document, needle
     assert "disconnected · the session keeps running on the box" in document
+    assert re.findall(r"\.innerHTML = (\w+)", _SCRIPT) == ["html", "heldParams"]
 
 
 def test_the_stale_timer_runs_from_the_frames_age_not_from_arrival():
@@ -641,7 +654,12 @@ def test_the_stale_timer_runs_from_the_frames_age_not_from_arrival():
     skews the timer. The old `last = Date.now()` reset is what let a reconnect onto
     an old frame, or a refusal's wake-up, restart the clock."""
     assert "last = Date.now()" not in _SCRIPT
-    assert "Date.now()" not in _SCRIPT
+    timer = re.search(r"function check\(\) \{(.*?)\n  \}", _SCRIPT, re.S).group(1)
+    assert "Date.now()" not in timer
+    # The one `Date.now()` is the mark's `pressed_at`, the browser's clock, sent as
+    # such (spec §5.1) and never read against the stream.
+    assert _SCRIPT.count("Date.now()") == 1
+    assert "pressed_at: Date.now() / 1000" in _SCRIPT
     assert (
         "baseline = payload.age === null ? null : performance.now() - payload.age * 1000;"
         in _SCRIPT
@@ -670,3 +688,244 @@ def test_the_stream_banner_and_the_disconnect_dialog_start_hidden():
 
     assert '<div class="banner" id="stream" role="status" hidden></div>' in document
     assert re.search(r'<div class="scrim" id="gone"[^>]*hidden>', document)
+
+
+# --- P4d-2b b2a: the controls (spec §5.2) -------------------------------------------
+
+
+def _controls(**frame_overrides) -> str:
+    return fragments(frame(**frame_overrides), view())["controls"]
+
+
+def test_the_controls_offer_pause_mark_and_stop_while_running():
+    controls = _controls()
+
+    assert '<button type="button" class="btn" data-cmd="pause">pause (P)</button>' in controls
+    assert '<button type="button" class="btn" data-cmd="mark">mark (M)</button>' in controls
+    assert '<button type="button" class="btn danger" data-cmd="stop">stop…</button>' in controls
+    assert "disabled" not in controls
+
+
+def test_a_paused_session_offers_resume_and_says_since_when_in_its_pill():
+    at = 1_700_000_030.0
+    since = time.strftime("%H:%M:%S", time.localtime(at))
+    parts = fragments(frame(paused_at=at), view())
+
+    assert 'data-cmd="resume">resume (P)</button>' in parts["controls"]
+    assert 'data-cmd="pause"' not in parts["controls"]
+    assert parts["state"] == (
+        f'<span class="pill warn" data-state="paused">paused · since {since}</span>'
+    )
+
+
+def test_an_ended_session_is_not_shown_paused_and_offers_no_controls():
+    parts = fragments(frame(**STATES["returned"], paused_at=1_700_000_030.0), view())
+
+    assert 'data-state="ended"' in parts["state"]
+    assert "data-cmd" not in parts["controls"]
+    assert "the session has ended" in parts["controls"]
+
+
+def test_everywhere_but_the_box_the_controls_are_greyed_with_the_sentence():
+    """Spec §5.2 and §2: every control is disabled and says why, in the §2 sentence,
+    on the page a LAN viewer -- or the box's browser under another name -- is
+    served. Refused at `POST /commands` too; this is so nobody is offered a button
+    that cannot work."""
+    parts = fragments(
+        frame(scheduled_stop=ScheduledStop("trials", 48.0, "jake", "after trial 48")),
+        view(on_box=False, can_write=False),
+    )
+    written = parts["controls"] + parts["params"] + parts["strip"]
+
+    buttons = re.findall(r"<button[^>]*data-(?:cmd|dir)[^>]*>", written)
+    inputs = re.findall(r"<input[^>]*data-param[^>]*>", written)
+    assert buttons and inputs
+    assert all(" disabled" in tag for tag in buttons + inputs)
+    assert CONTROLS_AT_THE_BOX in parts["controls"]
+    assert CONTROLS_AT_THE_BOX == (
+        "controls work only at the rig PC until remote sign-in arrives"
+    )
+
+
+def test_a_console_without_the_mark_endpoint_greys_mark_alone():
+    controls = fragments(frame(), view(can_mark=False))["controls"]
+
+    assert re.search(r'data-cmd="mark" disabled title="[^"]+"', controls)
+    assert NO_MARK_ENDPOINT in html.unescape(controls)
+    assert re.search(r'data-cmd="pause">', controls)
+
+
+def test_each_parameter_card_has_arrows_and_an_input_with_its_step_and_range():
+    """Spec §5.2: up/down arrows and an input on each card. The step is the mockup's
+    rule by unit (mL 0.01, s 0.05, deg 0.1, else 0.01), and the input shows the value
+    at the step's decimals; a categorical card takes a word and has no arrows."""
+    params = fragments(
+        frame(
+            params=(
+                ParamRow("fix_hold", "s", 0.1, 1.0, 0.3, False),
+                ParamRow("reward_correct", "mL", 0.0, 0.4, 0.15, True),
+                ParamRow("fix_window", "deg", None, 5.0, 2.0, False),
+                ParamRow("target_looks", "", None, None, None, False),
+                ParamRow("shape", "", None, None, "penguin", False),
+            )
+        ),
+        view(),
+    )["params"]
+
+    assert (
+        '<input class="field mono" data-param="fix_hold" data-step="0.05" '
+        'data-min="0.1" data-max="1.0" inputmode="decimal" value="0.30" '
+        'aria-label="fix_hold">'
+    ) in params
+    assert 'data-param="reward_correct" data-step="0.01" data-min="0.0" data-max="0.4"' in params
+    assert 'data-param="fix_window" data-step="0.1" data-max="5.0" inputmode="decimal" value="2.0"' in params
+    assert 'data-param="target_looks" data-step="0.01" inputmode="decimal" value=""' in params
+    assert (
+        '<input class="field mono" data-param="shape" data-kind="word" value="penguin" '
+        'aria-label="shape">'
+    ) in params
+    assert params.count('data-dir="1"') == 4 and params.count('data-dir="-1"') == 4
+
+
+def test_a_refusal_shows_on_its_parameters_card_with_its_sentence():
+    params = fragments(
+        frame(
+            refusals=(
+                Refused("fix_hold", "jake", "first"),
+                Refused("fix_hold", "jake", "'fix_hold' is declared over [0.05, 2.0] s and 9 is outside it"),
+            )
+        ),
+        view(),
+    )["params"]
+
+    assert (
+        '<span class="rfs">last refused: &#x27;fix_hold&#x27; is declared over '
+        "[0.05, 2.0] s and 9 is outside it</span>"
+    ) in params
+    assert "first" not in params
+
+
+def test_the_strip_shows_a_scheduled_stop_with_who_set_it_and_a_cancel():
+    """Spec §5.2: while a schedule is active the strip shows it -- *stop at 14:30 ·
+    set by jake* -- with a cancel button."""
+    strip = fragments(
+        frame(scheduled_stop=ScheduledStop("clock", 1_700_003_600.0, "jake (box, unverified)", "at 14:30")),
+        view(),
+    )["strip"]
+
+    assert '<span class="lab">Scheduled</span><span class="val">stop at 14:30</span>' in strip
+    assert "set by jake (box, unverified)" in strip
+    assert '<button type="button" class="btn small" data-cmd="cancel">cancel</button>' in strip
+
+
+def test_with_nothing_scheduled_the_strip_keeps_its_four_cells():
+    strip = fragments(frame(), view())["strip"]
+
+    assert "Scheduled" not in strip
+    assert strip.count('<div class="row">') == 4
+
+
+def test_a_session_that_ended_another_way_shows_no_schedule_to_cancel():
+    strip = fragments(
+        frame(
+            **STATES["returned"],
+            scheduled_stop=ScheduledStop("trials", 48.0, "jake", "after trial 48"),
+        ),
+        view(),
+    )["strip"]
+
+    assert "Scheduled" not in strip and "data-cmd" not in strip
+
+
+def test_the_feed_lists_control_events_newest_first_with_who_and_counts_the_rest():
+    """Spec §5.2: the changes feed lists every setting change, refusal, pause, resume,
+    mark (with its note) and schedule, with who did it. Newest first, since it is
+    read to see what just happened; what fell off the cap is counted below them."""
+    at = 1_700_000_001.0
+    clock = time.strftime("%H:%M:%S", time.localtime(at))
+    changes = fragments(
+        frame(
+            controls=(
+                Control("mark", "", at, "mark 1 stamped in trial 3, frame 10"),
+                Control("note", "jake", at, 'mark 1: "bubble"'),
+                Control("set", "sam", at, "fix_hold 0.30 → 0.40, from trial 4"),
+            ),
+            controls_dropped=5,
+        ),
+        view(),
+    )["rt-changes"]
+
+    set_row = changes.index(f"{clock} · fix_hold 0.30 → 0.40, from trial 4 · sam")
+    note_row = changes.index(f"{clock} · mark 1: &quot;bubble&quot; · jake")
+    mark_row = changes.index(f"{clock} · mark 1 stamped in trial 3, frame 10</span>")
+    dropped = changes.index("5 earlier control event(s) not shown")
+    assert set_row < note_row < mark_row < dropped
+    assert '<span class="kind">note</span>' in changes
+
+
+def test_every_control_string_is_escaped():
+    """Review Focus 2 for b2a's strings: an actor's typed name, a note, a schedule's
+    words, and a parameter's name in the attributes its input carries."""
+    evil = frame(
+        controls=(Control(EVIL, EVIL, 1_700_000_001.0, EVIL),),
+        scheduled_stop=ScheduledStop(EVIL, 1.0, EVIL, EVIL),
+        params=(ParamRow(EVIL, EVIL, 0.0, 1.0, 0.5, False), ParamRow("w", "", None, None, EVIL, False)),
+        refusals=(Refused(EVIL, EVIL, EVIL),),
+    )
+
+    text = "".join(fragments(evil, view()).values())
+
+    assert "<script" not in text
+    assert EVIL not in text
+
+
+def test_the_page_tells_its_script_whether_it_may_write_and_the_debounce():
+    """The page is rendered per request, so the box's own page says it may write and
+    a LAN viewer's says it may not; the script reads both from `<body>`. The 600 ms
+    debounce is the mockup's, housekeeping and not a measurement."""
+    box = page(fragments(frame(), view()), stale_after_s=30.0, nonce="n0nce", can_write=True)
+    lan = page(
+        fragments(frame(), view(can_write=False)), stale_after_s=30.0, nonce="n0nce"
+    )
+
+    assert DEBOUNCE_MS == 600
+    assert '<body data-stale-after="30" data-can-write="1" data-debounce-ms="600">' in box
+    assert '<body data-stale-after="30" data-can-write="0" data-debounce-ms="600">' in lan
+    for control in ('id="sched-kind"', 'id="sched-value"', 'id="sched-set"', 'id="rename"'):
+        assert re.search(control + r"[^>]* disabled", lan), control
+        assert not re.search(control + r"[^>]* disabled", box), control
+
+
+def test_the_page_holds_the_stop_confirm_and_the_mark_note_hidden():
+    document = page(fragments(frame(), view()), stale_after_s=30.0, nonce="n0nce", can_write=True)
+
+    assert re.search(r'<div class="inline crit" id="stop-confirm"[^>]*hidden>', document)
+    assert "stop at the next trial boundary?" in document
+    assert re.search(r'<div class="inline info" id="mark-form"[^>]*hidden>', document)
+    assert 'id="mark-note" maxlength="500"' in document
+
+
+def test_the_script_debounces_the_arrows_and_keeps_p_and_m_out_of_text_boxes():
+    """Spec §5.2: a change is sent once the arrows stop being clicked, and the keys do
+    nothing while a text box has focus, or when held (a held key does not repeat)."""
+    assert "setTimeout(function () { delete timers[key]; send(input); }, debounceMs)" in _SCRIPT
+    assert "clearTimeout(timers[key]);" in _SCRIPT
+    assert "if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) { return; }" in _SCRIPT
+    assert '/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable' in _SCRIPT
+
+
+def test_the_script_asks_for_the_name_once_and_keeps_it_where_it_may():
+    """Spec §5.2: the box's browser asks once and remembers it locally. Storage can
+    be refused -- a private window -- so every read and write is in `try`; a prompt
+    refused or cleared sends nothing (Review Focus 6)."""
+    assert "try { return window.localStorage.getItem(NAME_KEY) || \"\"; } catch (e) { return \"\"; }" in _SCRIPT
+    assert "try { window.localStorage.setItem(NAME_KEY, given); } catch (e) { /* kept for this page only */ }" in _SCRIPT
+    assert "if (given === null) { return \"\"; }" in _SCRIPT
+    assert '"not sent: give your name first -- every command records who sent it"' in _SCRIPT
+
+
+def test_the_script_holds_a_parameter_card_it_is_being_typed_into():
+    """A frame that re-renders the parameter cards while a person types into one, or
+    while an arrow's debounce is pending, would replace the input under them; the
+    script holds the newest cards and swaps them in once the person is done."""
+    assert 'if (id === "params" && busy()) { heldParams = html; return; }' in _SCRIPT
