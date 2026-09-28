@@ -540,9 +540,18 @@ class Telemetry:
             recent_outcomes=session.recent_outcomes,
             # P4d-2b b2a (spec §5.1): the session's own, through its public surface.
             paused_at=session.paused_at,
+            # `None` once the session has ended, whatever ended it (fix round 1):
+            # a frame describes what a console may still act on, and an ended
+            # session has no schedule left to cancel. `_ends` only clears
+            # `Session.scheduled_stop` itself on the one path where the schedule
+            # fires; the out-of-cage limit, the stop button and natural completion
+            # all leave it set on the session -- Task 7's
+            # `test_the_limit_wins_when_it_and_a_schedule_fall_due_together` depends
+            # on that for the limit path -- so this hides it from the wire without
+            # touching the session's own record.
             scheduled_stop=(
                 None
-                if session.scheduled_stop is None
+                if session.scheduled_stop is None or session.stopped_because
                 else ScheduledStop(*session.scheduled_stop)
             ),
             controls=tuple(Control(*row) for row in session.controls),
