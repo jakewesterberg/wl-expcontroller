@@ -95,10 +95,17 @@ closed, verified 2026-09-06 by reading the runs.
 
 ---
 
-## 1. The thing that needs a person, not a session — P4d-2b b2a, awaiting the PI
+## 1. The thing that needed a person — P4d-2b b2a, approved 2026-09-28
 
-**Branch `p4d2b-b2a-controls` is welfare-critical** (CLAUDE.md; P4d-2b spec §5.5) and does
-not merge until the PI approves the four items the plan's Task 16 Step 6 gives him, in
+**The PI approved both questions put to him on 2026-09-28**, asked in plain terms through
+the question UI. Items 1–4: "Approve all four". The per-frame mark check's measured cost:
+"Ship, verify on rig". So b2a ships with V12 on the hardware list, and the check changes
+if V12 finds frames disturbed. The branch was rebased onto `main` first, and it merges by
+fast-forward once CI and the full mutation sweep on the rebased branch read green. What
+he was given:
+
+**Branch `p4d2b-b2a-controls` is welfare-critical** (CLAUDE.md; P4d-2b spec §5.5) and did
+not merge until the PI approved the four items the plan's Task 16 Step 6 gives him, in
 plain terms: (1) while paused, the task rewards nothing, a person may give one
 correct-trial reward per press (his one change at his review of the plan, 2026-09-28), and
 the out-of-cage limit still ends the session; (2) a scheduled stop, "after X mL" included,
@@ -109,9 +116,16 @@ list: (1) `taskd.Session._hold`, `_manual_reward` and `_ends`, and `Session._com
 `held` pass-through, which only `_hold` sets; (2) `_ends` and
 `_schedule`; (3) `Session.set`, which sends a ceiling's name to `bounds.validate`; (4)
 `link._setting`, `Session.set`'s type guards and the `except (Exceeded, TypeError)` line
-in `Session._command`. He is also asked about the per-frame mark check's measured cost (the spec's rule:
-a check that measurably disturbs frames goes back to him before b2a ships). Record his
-answers here, and move this section below as the record once he has.
+in `Session._command`. Item 1 as given to him also named its two edge cases:
+- a pump fault during a manual reward ends the session as a fault, as for a task's reward,
+  and the record then has no row naming who pressed;
+- a press that arrives in the same pass as the limit is given, and then the limit ends the
+  session.
+
+He was also asked about the per-frame mark check's measured cost, because the spec's rule
+is that a check which measurably disturbs frames goes back to him before b2a ships. The
+numbers are `docs/measurements/dev-machine/2026-09-28-mark-check.md`'s: CPU time on a
+development machine, not frame timing. His answers are recorded above.
 
 ## 1b. The thing that needed a person — P4d-2b b1, approved and merged 2026-09-27
 

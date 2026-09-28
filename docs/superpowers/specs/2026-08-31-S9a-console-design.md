@@ -225,9 +225,11 @@ behind another reaches the rig, in practice, at the boundary after the one ahead
 Up to `COMMAND_QUEUE_DEPTH` (4) wait behind the one in flight, and a further one is
 answered *busy*. So a stop posted behind queued settings or schedules takes effect that
 many trials late: in the probe, three schedules and a stop posted together landed at
-trials 17, 18, 19 and 20. The stop's confirm step still says *stop at the next trial
-boundary?*, which is exact only when nothing is queued ahead of it. Marks are not in
-this queue. Delivering what is queued at a single boundary is left to b2b.
+trials 17, 18, 19 and 20. So the stop's confirm step says *stop at a trial boundary,
+after any commands already sent?* (`c0d0ba4`). It said *stop at the next trial
+boundary?*, which was exact only when nothing was queued ahead of it. Marks are not in
+this queue. Delivering what is queued at a single boundary, and letting a stop go ahead
+of it, are left to b2b (XC-121).
 
 **A deployment note on the `Host` check.** `wlx serve` finds the box's own names by
 resolving its host names, not by listing its network interfaces, so on a box whose

@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-113.**
+**Next free ID: XC-140.**
 
 ## Brainstorms queued for the PI
 
@@ -57,6 +57,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-033** Design-check the custom trigger fan-out board, its lamp-strobe stage included. — 2026-09-27, [S0 §7.4](superpowers/specs/2026-08-31-S0-hosts-and-hardware-design.md#74-the-trigger-fan-out-board-custom-needs-a-design-check) — waits on: the primary camera's Line 2 low level, measured
 - **XC-034** A synthetic multi-stream session generator and V6's reconstruction round-trip, run in CI through wl-preproc's harness. — 2026-08-31, [validation V6](validation.md#v6--sync-reconstruction-round-trip) — waits on: nothing
 - **XC-035** S12's swap check: whether it needs a task, or a signal generator suffices. — 2026-08-31, [S12 §5 item 2](superpowers/specs/2026-08-31-S12-parity-and-swap-design.md#5-open-items) — waits on: nothing (roadmap M10)
+- **XC-121** Let a Stop jump the command queue instead of landing up to one trial boundary per queued command late, as part of b2b's pipelining. — 2026-09-28, [S9a §7](superpowers/specs/2026-08-31-S9a-console-design.md#7-processes-and-protocol); `c0d0ba4` — waits on: b2a's merge
 
 ## Deferred defects
 
@@ -72,6 +73,14 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-045** `wlx serve`'s startup line prints `http://0.0.0.0:PORT/` for a LAN bind, not an address a browser can use. — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing
 - **XC-046** `ZmqConsole`'s `receive_timeout_s` is not validated. — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing
 - **XC-047** The `Session` and `Rig` reference cycle is freed only by the cyclic collector, so a service holding sessions across runs must break it or manage GC around trials. — 2026-09-27, [`welfare.Rig`'s docstring](../wl_expcontroller/welfare.py) — waits on: XC-016
+- **XC-113** Refusals carry no time in telemetry, so the changes feed lists a refused row below older events and the reward line's "last refused" can sit stale beside a fresh "last given". — 2026-09-28, [taskd.py's `_refuse`](../wl_expcontroller/taskd.py) and [web.py's changes feed](../wl_expcontroller/web.py) — waits on: nothing
+- **XC-114** The first command on a new browser origin opens a native window.prompt for the operator's name, which freezes the tab and blocks the key handler until it is answered. — 2026-09-28, [web.py's `askName`](../wl_expcontroller/web.py) — waits on: nothing
+- **XC-115** A pump fault during a manual reward charges the delivery and strobes its code before the session record's reward row is written, so the row naming who pressed it is lost. — 2026-09-28, [taskd.py's `_manual_reward`](../wl_expcontroller/taskd.py) — waits on: nothing
+- **XC-116** A mark note's remembered pressed and received instants are popped as soon as the note is dispatched, so a client's retry of the same note carries them as unknown. — 2026-09-28, [serve.py's `dispatch` and `_recall`](../wl_expcontroller/serve.py) — waits on: nothing
+- **XC-117** A second Stop drained in one pass writes a second stop row and overwrites stopped_because with the second sender, discarding the first sender's record. — 2026-09-28, [taskd.py's `Session._command`](../wl_expcontroller/taskd.py) — waits on: nothing
+- **XC-118** A scheduled stop at a clock time inside a fall-back DST hour resolves 24.75 hours ahead, and a spring-forward gap time resolves however the host's C library does, unverified on the rig's platform. — 2026-09-28, [taskd.py's `_next_occurrence`](../wl_expcontroller/taskd.py) — waits on: nothing
+- **XC-119** wlx review's render prints task and allocation names straight from file-sourced task definitions, without the control-character stripping cli.render and web.py apply to every wire-sourced string. — 2026-09-28, [review.py's `render`](../wl_expcontroller/review.py) — waits on: nothing
+- **XC-120** A 403 or 413 response can close the connection with the request body unread, risking a TCP reset instead of the JSON refusal reaching the client. — 2026-09-28, [serve.py](../wl_expcontroller/serve.py) — waits on: nothing
 
 ## Debt
 
@@ -90,6 +99,22 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-060** `wlx serve` has no process-level restart test; a manual check covers it. — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing
 - **XC-061** macOS lets overlapping binds succeed where Linux refuses them, so a port clash on the rig may not reproduce on a Mac. — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing
 - **XC-109** Rename the local folder `~/GitHub/wl-expcontroller` to `~/GitHub/wl-xcon`, moving this project's Claude memory folder (keyed on the path) and repairing the worktrees, so `wlo` finds wl-xcon by its slug. — 2026-09-28, [wl-orchestrator known-gaps](https://github.com/jakewesterberg/wl-orchestrator/blob/main/docs/known-gaps.md) — waits on: XC-053
+- **XC-123** "greyed"/"greys" (UK spelling) appears 33 times across the product code (web.py, serve.py, cli.py), the tests and the P4d-2b spec, though CLAUDE.md requires US English. — 2026-09-28, [web.py](../wl_expcontroller/web.py) — waits on: nothing
+- **XC-124** CONTROL_TRIAL_BUDGET (1,000 trials, in tests/test_serve.py) is still a speed-dependent bound for every end-to-end test that posts a command while trials run. — 2026-09-28, [CHECKPOINT 2026-09-28, "controls from the box"](CHECKPOINT.md#what-moved-on-2026-09-28-p4d-2b-slice-b2a-controls-from-the-box) — waits on: nothing
+- **XC-125** Two decoded-command branches stay untested: a Stop with a blank by, and taskd's repr(command.value) fallback for a malformed ceiling write's asked field. — 2026-09-28, [taskd.py's `Session._command`](../wl_expcontroller/taskd.py) — waits on: nothing
+- **XC-126** ZmqConsole.send's docstring does not mention the RuntimeError it raises for a console built read-only, with no command endpoint. — 2026-09-28, [link.py's `ZmqConsole.send`](../wl_expcontroller/link.py) — waits on: nothing
+- **XC-127** `_decode_command` rebuilds its "simple" kind-name map on every call instead of once, a boundary-path cost rather than a hot-path one. — 2026-09-28, [link.py's `_decode_command`](../wl_expcontroller/link.py) — waits on: nothing
+- **XC-128** Session._resume reads the wall clock twice for one resume, since it does not pass at= to _control, so the paused-duration and the recorded instant could in principle disagree. — 2026-09-28, [taskd.py's `Session._resume`](../wl_expcontroller/taskd.py) — waits on: nothing
+- **XC-129** A mark's session number is len(self._stamped) + 1, coupled to signal numbers never repeating; a plain counter would decouple it. — 2026-09-28, [taskd.py's `Session._stamp`](../wl_expcontroller/taskd.py) — waits on: nothing
+- **XC-130** `test_a_mark_in_a_trial_that_faults_is_still_recorded` only exercises a fault in trial 0, so a mutant breaking `_settle_stamps` for any other trial index would survive. — 2026-09-28, [tests/test_taskd.py](../tests/test_taskd.py) — waits on: nothing
+- **XC-131** The `utc` test fixture's `monkeypatch.undo()` undoes every patch a test made, not only its own; `monkeypatch.context()` would scope it. — 2026-09-28, [tests/test_taskd.py](../tests/test_taskd.py) — waits on: nothing
+- **XC-132** No test asserts a frame's controls are present while controls_dropped is 0; only the empty feed and the non-zero-dropped cases are covered. — 2026-09-28, [tests/test_cli.py](../tests/test_cli.py) — waits on: nothing
+- **XC-133** The page's card inputs, arrows and the static schedule form stay clickable on an ended session or before any session starts; the rig refuses the command, so this is UX polish only. — 2026-09-28, [web.py](../wl_expcontroller/web.py) — waits on: nothing
+- **XC-134** A card's staged marker or refusal text is delayed while focus sits anywhere inside #params, since a clicked arrow keeps focus there. — 2026-09-28, [web.py](../wl_expcontroller/web.py) — waits on: nothing
+- **XC-135** `web._significant`'s `f"{v:g}"` formatting switches to scientific notation outside about [1e-4, 1e6) and keeps six significant digits; not reached by today's ceilings but not guarded either. — 2026-09-28, [web.py's `_significant`](../wl_expcontroller/web.py) — waits on: nothing
+- **XC-136** link.py's timeout and retry path is missing two tests: a wire-count assertion that a timed-out command is not resent, and a `deliver()` right after a connect-timeout NotDelivered on the no-reset path. — 2026-09-28, [link.py's `ZmqCommands.deliver`](../wl_expcontroller/link.py) — waits on: nothing
+- **XC-137** `--allow-host` values are stored exactly as given and never normalized through `host_name`, unlike every other name `box_names` builds. — 2026-09-28, [serve.py's `box_names`](../wl_expcontroller/serve.py) — waits on: nothing
+- **XC-138** tools/measure_mark_check.py's check-alone loop divides its call count by 20 with integer division, silently truncating for a count not divisible by 20. — 2026-09-28, [tools/measure_mark_check.py](../tools/measure_mark_check.py) — waits on: nothing
 
 ## Needs the rig
 
@@ -118,6 +143,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-084** The stereoscope's enclosure and baffling against ambient light. — 2026-08-31, [optics drawing §8 item 5](superpowers/specs/2026-08-31-stereoscope-optics-drawing.md#8-what-is-still-open) — waits on: the build
 - **XC-085** P9's bring-up checks: exposure stamps agree, 8 cameras for 12 hours, darkness at the eye with P1 and P4 unchanged, no added neural noise, a preview that never disturbs recording. — 2026-09-27, [P9 spec §6](superpowers/specs/2026-09-27-P9-camera-system-design.md#6-testing-and-bring-up) — waits on: the camera hardware
 - **XC-086** Measure the tracker's 940 nm light at the eye with a power meter, and choose the ND filter's OD from it. — 2026-09-27, [S0 §7.10](superpowers/specs/2026-08-31-S0-hosts-and-hardware-design.md#710-eye-light-drivers-and-the-safety-cap) — waits on: the eye-light hardware
+- **XC-139** V12: measure the console mark-check's effect on frame timing on a rig; the PI approved shipping b2a with it unverified on 2026-09-28. — 2026-09-28, [validation V12](validation.md#v12--console-controls-in-the-frame-loop-p4d-2b-b2a) — waits on: the rig
 
 ## Waiting on another repository
 
