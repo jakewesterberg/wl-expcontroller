@@ -10,6 +10,7 @@ from wl_expcontroller.task import (
     RDS,
     REMEMBERED,
     After,
+    Array,
     Entered,
     Bounded,
     Custom,
@@ -613,3 +614,36 @@ def test_a_view_that_is_no_setup_is_refused():
 
     assert finding.code == "unknown-view"
     assert "'stereo'" in finding.detail
+
+
+# ---------------------------------------------------------------------------
+# Check 8 on extent, not just centre, reaching a housing (Task 3 review)
+# ---------------------------------------------------------------------------
+
+
+def _showing_looks(at, looks) -> Trial:
+    return Trial(
+        start="show",
+        states=[
+            State(
+                "show",
+                enter=[Show(Stimulus("s", at=at, looks=looks))],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+
+def test_an_arrays_ring_reaching_a_housing_is_refused_even_though_its_centre_is_legal():
+    """Task 3 review: check 8 already refuses a stimulus whose *extent* reaches a
+    housing in direct view -- not only one whose centre sits under it. An `Array`'s
+    item ring makes the point without disparity, which would also trip the new
+    needs-stereoscope finding in direct view."""
+    centre = (-25.0, -16.0)
+    assert DIRECT.can_show(*centre), "the centre alone is legal"
+    assert check(_showing(centre), geometry=DIRECT) == []
+
+    (finding,) = check(_showing_looks(centre, Array(radius=2.0)), geometry=DIRECT)
+
+    assert finding.code == "stimulus-off-screen"
+    assert "direct field, less the light sensors' housings" in finding.detail
