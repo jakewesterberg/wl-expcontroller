@@ -388,6 +388,11 @@ operator picks the setup at session start (`2026-09-28-direct-view-design.md` §
   rectangle or its margin, as it refuses one off the panel. **It refuses to exist without the
   housings**, which are measured at build (direct-view spec §9 item 1). Through the
   stereoscope, `Geometry.stereoscope` takes the mask as `mask_deg`.
+- **The rig's settings are `tasks/rig.py`**, a `geometry.Rig`: the panel's active area, `Z`,
+  the mask's half-angle and the housings' rectangles, each with its margin. No rig
+  configuration existed before it. The housings are empty until measured, so direct view
+  refuses on this rig's settings. No session is checked against the file until
+  direct view part 2 (`wlx run --view`).
 
 ---
 

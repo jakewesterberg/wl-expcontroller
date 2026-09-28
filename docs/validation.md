@@ -94,6 +94,19 @@ at 100% APL. Re-run in full on any panel change, including between units of one 
 the JOV study this derives from states performance "cannot be assumed or guaranteed"
 across identical models.
 
+**Direct view** (added 2026-09-28, `2026-09-28-direct-view-design.md` §7):
+1. Measure `Z` at setup. Re-check it in the regular rig checks against the stop.
+2. Confirm from the animal's eye position that neither patch is visible: the housings cover
+   the flicker.
+3. Confirm the camera and light see the eye past the screen housing's bottom edge, with the
+   paper's 35°/25° layout, and past the muzzle, the juice spout and the chair front.
+4. Insert the stereoscope, and confirm that both lines are still clear and that the patches
+   are dark to both eyes through the mask.
+
+V1 already runs in every mode the rig uses (S0 §5.3). In direct view it covers luminance
+uniformity and ABL across the whole panel, as a within-image nonlinearity rather than
+interocular coupling.
+
 ## V10 — Pump calibration (millilitres per second of open time)
 New (2026-09-06). **Nothing in this repository converts a reward volume into a solenoid
 open time**, and until this is measured the real pump driver is deliberately not written

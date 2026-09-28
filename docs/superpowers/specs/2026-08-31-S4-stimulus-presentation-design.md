@@ -135,9 +135,14 @@ every refresh and is therefore a frame clock. Both are fixed in copper (`wl-sync
   vertically. The stop is **a removable mask at the panel, starting at ±12°** (PI, 2026-09-28;
   optics drawing §5), which makes the strip 3.22 cm tall with the screen fixed 50 cm from the
   eyes: 1.90 cm with the mask at the full viewport's ±13.15°, 5.51 cm at the ±10° requirement.
-  Outside both viewports, so neither is visible to either eye.
-- **Verified dark to each eye at bring-up**, not assumed from geometry — a stray reflection off a
-  mirror edge would put the flip patch back into the field, and that is a V9 item.
+  Outside both viewports, so neither is visible to either eye. They sit at one bottom corner of
+  it, the place they keep in direct view.
+- **In direct view there is no strip**: each patch is covered by its sensor's opaque housing, a
+  rectangle with a margin in the rig's settings that direct view's field excludes
+  (`geometry.Housing`, `tasks/rig.py`; `2026-09-28-direct-view-design.md` §4).
+- **Verified dark to each eye at bring-up, in both setups**, not assumed from geometry — a stray
+  reflection off a mirror edge would put the flip patch back into the field, and a housing that
+  leaks would show it in direct view. Both are V9 items.
 - The task patch is driven by the display module from the scene's own onset, so a task cannot
   forget it and cannot desynchronise it from what it drew.
 

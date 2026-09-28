@@ -190,6 +190,16 @@ with the mask at the full viewport's ±13.15°, and 5.51 cm at the ±10° the st
 `wl-sync` before mirrors are mounted, and verified dark to each eye at bring-up rather than
 assumed from geometry.
 
+**In both setups the patches sit at one place: a bottom corner** (`2026-09-28-direct-view-design.md`
+§4). The screen is fixed, so the sensors are mounted once and never moved. Through the stereoscope
+that corner is inside the masked bottom strip. **In direct view each sensor's opaque housing
+covers its patch**: the animal sees a small dark shape around (±30°, −18°), well outside the ±15°
+where stimuli go, and never the flicker. The housings are rectangles, each with a margin, in the
+rig's settings (`tasks/rig.py`), measured at build from the real sensors; direct view's field
+excludes them, so check 8 refuses a stimulus that could overlap one, and until they are measured
+direct view refuses to exist. The flicker is checked invisible from the animal's position in both
+setups at bring-up (V9).
+
 **Cameras** take the barcode as a timebase to record, not a trigger — they free-run, and the
 sync box captures their `ExposureActive` strobes on GPIO 26/27. **We do not trigger cameras and
 do not set their rate.**

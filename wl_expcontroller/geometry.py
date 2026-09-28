@@ -190,3 +190,45 @@ class Geometry:
             math.radians(y_deg)
         )
         return not any(housing.covers(x_cm, y_cm) for housing in self.housings)
+
+
+@dataclass(frozen=True, slots=True)
+class Rig:
+    """The rig's display settings: everything both setups' fields are built from
+    (direct-view spec §2), written in the rig's settings file, `tasks/rig.py`.
+
+    **The housings may be empty** while they are unmeasured (spec §9 item 1): then
+    `direct` refuses, because `Geometry` does, and the stereoscope still works -- its
+    mask hides the sensors.
+
+    **Nothing outside the tests builds a session's field from this yet.** `wlx run
+    --view`, which passes the chosen setup's field to `taskd`'s load-time check, is
+    direct view part 2, after P4d-2b slice b2a merges (both change session start).
+    """
+
+    panel_width_cm: float
+    panel_height_cm: float
+    #: `Z`: eye to screen, physical, the same in both setups (PI, 2026-09-28).
+    screen_distance_cm: float
+    #: The stereoscope's mask, as a half-angle (±12° to start, PI 2026-09-28).
+    mask_deg: float
+    housings: tuple[Housing, ...] = ()
+
+    def direct(self) -> Geometry:
+        return Geometry.direct(
+            self.panel_width_cm,
+            self.panel_height_cm,
+            screen_distance_cm=self.screen_distance_cm,
+            housings=self.housings,
+        )
+
+    def stereoscope(self, half_ipd_cm: float) -> Geometry:
+        """Through the stereoscope, for one subject's half-IPD, `E`, which comes from
+        its record (spec §2)."""
+        return Geometry.stereoscope(
+            self.panel_width_cm,
+            self.panel_height_cm,
+            screen_distance_cm=self.screen_distance_cm,
+            half_ipd_cm=half_ipd_cm,
+            mask_deg=self.mask_deg,
+        )

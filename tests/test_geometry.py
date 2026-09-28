@@ -12,8 +12,11 @@ the suite as a collection error rather than as a failed assertion.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
+from tasks.rig import RIG
 from wl_expcontroller.geometry import Geometry, Housing
 
 #: The PG27UCDM through the stereoscope, the screen at 50 cm, `E` = 1.6 cm
@@ -251,3 +254,43 @@ def test_the_mask_covers_pixels_and_does_not_rescale_them():
         STEREOSCOPE.pixels_per_degree(horizontal_pixels=1920)
     )
     assert MASKED.pixels_per_degree(horizontal_pixels=1920) == pytest.approx(73.02, abs=0.005)
+
+
+# ---------------------------------------------------------------------------
+# The rig's settings (direct-view spec §2), `tasks/rig.py`
+# ---------------------------------------------------------------------------
+
+
+def test_the_rigs_settings_are_its_screen_its_distance_and_its_mask():
+    """"The rig's settings hold everything the geometry needs": the PG27UCDM's
+    published active area, `Z` = 50 cm in both setups, and the mask at ±12° (PI,
+    2026-09-28)."""
+    assert (RIG.panel_width_cm, RIG.panel_height_cm) == (58.997, 33.293)
+    assert RIG.screen_distance_cm == 50.0
+    assert RIG.mask_deg == 12.0
+
+
+def test_the_rigs_housings_are_unmeasured_so_direct_view_refuses_on_its_settings():
+    """NOT YET MEASURED (direct-view spec §9 item 1), and this pins it: when the
+    housings are written into `tasks/rig.py`, this fails, and is replaced by a test of
+    the measured rectangles. Until then no task passes direct view on this rig."""
+    assert RIG.housings == ()
+    with pytest.raises(ValueError, match="§9 item 1"):
+        RIG.direct()
+
+
+def test_the_rig_gives_direct_view_the_panel_at_z_and_its_housings():
+    assert replace(RIG, housings=HOUSINGS).direct() == DIRECT
+
+
+def test_the_rig_gives_the_stereoscope_its_mask_and_the_subjects_path():
+    """`E` comes from the subject's record (spec §2), so the stereoscope's field is
+    built per subject; the mask is the rig's and stops it at every IPD the drawing
+    tabulates."""
+    assert RIG.stereoscope(half_ipd_cm=1.6) == MASKED
+    assert RIG.stereoscope(half_ipd_cm=1.9).viewing_distance_cm == pytest.approx(
+        62.849, abs=0.001
+    )
+    for half_ipd_cm in (1.5, 1.6, 1.9):
+        field = RIG.stereoscope(half_ipd_cm=half_ipd_cm)
+        assert (field.half_field_h_deg, field.half_field_v_deg) == (12.0, 12.0)
