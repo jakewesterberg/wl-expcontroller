@@ -1211,7 +1211,7 @@ E2E_TRIAL_BUDGET = 20_000
 def _trial_budget(monkeypatch, allowed: int) -> None:
     """Fail the session a test starts once it has run `allowed` trials: `taskd`'s
     `run_trial` raises past that, so the session faults, publishes that it did, and
-    `wlx run` ends -- `tests/test_cli.py`'s budget, for the one test here that runs a
+    `wlx run` ends -- `tests/test_cli.py`'s budget, for the tests here that run a
     session. The session's own clocks stay under test."""
     from wl_expcontroller import taskd
 
@@ -2934,3 +2934,433 @@ def test_a_setting_whose_integer_overflows_a_float_is_refused_not_raised():
     assert "the session runs on" in answer["said"]
     assert dispatch.seen == []
     assert still_serving == 200
+
+
+# --- P4d-2b b2a end to end: a real `wlx run --link`, a real `wlx serve`, and POST
+# /commands the way the page sends them (spec §5.4) ----------------------------------
+
+#: The three framework codes b2a allocates (`tasks/allocation.py`), and the first code
+#: `fixation_detection` strobes in a trial.
+PAUSE_CODE, RESUME_CODE, MARK_CODE, FIX_ON = 4131, 4132, 4133, 4096
+#: `fixation_detection`'s trial-ending markers (`codes._standing_outcomes`).
+MARKERS = {34, 35, 36, 37, 38}
+
+#: **Ruling 10, sized for these sessions.** Each one below is ended by the page's
+#: `stop`, its schedule or its limit within about a hundred trials: 27 to 84 over three
+#: runs of these twelve tests in the plan's pre-flight, 2026-09-27. b1's
+#: `E2E_TRIAL_BUDGET` is sized for b1's session, which has no mark socket; a session
+#: with one runs fewer trials a second in the simulator, every frame paying for the
+#: mark check Task 14 measures. There, b1's 20,000 trials took about 20 s without one,
+#: and 1,000 took a few seconds with one (scratch readings on one loaded machine, not
+#: claims about this system). Under b1's budget, a mutant that breaks the command path
+#: -- `taskd.Session._command` neutered -- held each of these tests past 50 s, its 20 s
+#: frame wait and then its 30 s join, and the suite past the mutation harness's 300 s:
+#: a timeout, which no test noticed.
+CONTROL_TRIAL_BUDGET = 1_000
+
+#: How long `_Session.frame` still waits once `wlx run` has ended, for the last frame
+#: it published to reach the console.
+LAST_FRAME_S = 2.0
+
+
+def _three_endpoints(zmq_cleanup) -> tuple[str, str, str]:
+    """A free PUB/REP/mark triple on loopback, bound by a throwaway link and released."""
+    probe = _rig(zmq_cleanup)
+    endpoints = probe.pub_endpoint, probe.rep_endpoint, probe.mark_endpoint
+    probe.close()
+    return endpoints
+
+
+class _Session:
+    """A real simulated `wlx run --link PUB,REP,MARK` on a thread, the `Server` beside
+    it, and what a test reads them through: the latest frame the console holds, the
+    card the session strobed onto (captured as `wlx run` builds it), and the record."""
+
+    def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, bounds=TWELVE_HOURS,
+                 session_id="2027-01-14_21", cleanup=None):
+        from wl_expcontroller import dio
+
+        _trial_budget(monkeypatch, CONTROL_TRIAL_BUDGET)
+        self.cards: list = []
+        cards = self.cards
+
+        class _KeptCard(dio.Simulated):
+            def __init__(self, *args, **kwargs) -> None:
+                super().__init__(*args, **kwargs)
+                cards.append(self)
+
+        monkeypatch.setattr(dio, "Simulated", _KeptCard)
+        self.pub, self.rep, self.mark = _three_endpoints(zmq_cleanup)
+        self.root = tmp_path
+        self.session_id = session_id
+        self.bounds = bounds
+        self.zmq_cleanup = zmq_cleanup
+        self.cleanup = cleanup
+        self.result: dict = {}
+        self.server = self.serve()
+        self.runner = threading.Thread(target=self._run, daemon=True)
+
+    def serve(self) -> Server:
+        server = Server(
+            sub=self.pub, req=self.rep, mark=self.mark, http=("127.0.0.1", 0), token=TOKEN
+        )
+        if self.cleanup is not None:
+            self.cleanup(server)
+        server.start()
+        return server
+
+    def _run(self) -> None:
+        self.result["exit_code"] = _main_uninterrupted(
+            [
+                "run", GOOD,
+                "--allocation", ALLOCATION,
+                "--bounds", str(self.bounds),
+                "--root", str(self.root),
+                "--session-id", self.session_id,
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", time.strftime("%H:%M"),
+                "--delivered-today", "0",
+                "--trials", "100000",
+                *_TASK_SETS,
+                "--link", f"{self.pub},{self.rep},{self.mark}",
+            ]
+        )
+
+    def __enter__(self) -> "_Session":
+        self.runner.start()
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        # Fix round 1, M6's rescue, as in the b1 end to end: a session still running
+        # when a test ends is stopped at its next boundary, not left to its budget.
+        if self.runner.is_alive():
+            try:
+                with self.zmq_cleanup(ZmqConsole(self.pub, self.rep)) as rescue:
+                    rescue.send(Stop(by="e2e-cleanup"))
+            except Exception:  # noqa: BLE001 -- best-effort cleanup
+                pass
+        self.runner.join(timeout=30)
+        self.server.close()
+
+    def post(self, body: dict):
+        return _post(self.server.address[1], body)
+
+    def frame(self, predicate, seconds: float = 20.0):
+        """The first frame this console holds for which `predicate` is true, within
+        `seconds`; fails the test otherwise -- and within `LAST_FRAME_S` once `wlx
+        run` has ended, since no frame comes after that: a session a mutant ended
+        early fails its test then, rather than after the full wait."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            latest = self.server.hub.snapshot(on_box=True, stale_after_s=30.0)[0]
+            if latest is not None and predicate(latest):
+                return latest
+            if not self.runner.is_alive():
+                deadline = min(deadline, time.monotonic() + LAST_FRAME_S)
+            time.sleep(0.01)
+        ended = "" if self.runner.is_alive() else "; wlx run had ended"
+        raise AssertionError(f"no frame within {seconds} s satisfied {predicate}{ended}")
+
+    def ended(self):
+        return self.frame(lambda f: f.stop_kind is not None)
+
+    def controls(self) -> list[dict]:
+        path = Path(self.root) / self.session_id / "expcontroller" / "controls.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()]
+
+    def finished(self) -> None:
+        self.runner.join(timeout=30)
+        assert not self.runner.is_alive(), "wlx run did not finish"
+        assert "exit_code" in self.result, "wlx run's thread raised before main() returned"
+
+
+def test_e2e_a_setting_is_staged_then_applied_at_the_next_trial(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        run.frame(lambda f: f.trial_index >= 1)
+        assert run.post({"kind": "set", "by": "jake", "name": "fix_hold", "value": 0.4})[0] == 200
+        staged = run.frame(lambda f: any(s.name == "fix_hold" for s in f.staged))
+        applied = run.frame(
+            lambda f: not f.staged
+            and any(p.name == "fix_hold" and p.value == 0.4 for p in f.params)
+        )
+        assert applied.trial_index > staged.trial_index - 1
+        assert any(
+            c.kind == "set" and c.by == "jake (box, unverified)" and c.said.startswith("fix_hold 0.30 → 0.40")
+            for c in applied.controls
+        )
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        run.ended()
+    run.finished()
+
+
+def test_e2e_a_malformed_setting_is_refused_on_the_feed_and_the_session_runs_on(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    """M8, end to end: a word sent for a numeric parameter is a categorical choice on
+    the wire, so it reaches the rig, where it once raised `TypeError` out of
+    `bounds._finite` and ended the session. Now it is a refusal with a sentence on the
+    feed, and trials go on."""
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        before = run.frame(lambda f: f.trial_index >= 1)
+        assert run.post({"kind": "set", "by": "jake", "name": "fix_hold", "value": "abc"})[0] == 200
+        refused = run.frame(lambda f: any(r.name == "fix_hold" for r in f.refusals))
+        (refusal,) = [r for r in refused.refusals if r.name == "fix_hold"]
+        assert refusal.by == "jake (box, unverified)"
+        assert "'fix_hold' takes a number (s)" in refusal.why
+        run.frame(lambda f: f.trial_index > refused.trial_index + 2)
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        assert run.ended().stop_kind == "operator"
+        assert before.stop_kind is None
+    run.finished()
+
+
+def test_e2e_pause_holds_the_trial_count_keeps_the_clock_and_resume_continues(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        run.frame(lambda f: f.trial_index >= 2)
+        assert run.post({"kind": "pause", "by": "jake"})[0] == 200
+        first = run.frame(lambda f: f.paused_at is not None)
+        later = run.frame(
+            lambda f: f.paused_at is not None
+            and f.out_of_cage_seconds >= first.out_of_cage_seconds + 1.0
+        )
+        assert later.trial_index == first.trial_index, "a trial ran while paused"
+        assert run.post({"kind": "resume", "by": "sam"})[0] == 200
+        run.frame(lambda f: f.paused_at is None and f.trial_index > first.trial_index)
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        run.ended()
+    run.finished()
+    codes = run.cards[0].codes
+    assert codes.count(PAUSE_CODE) == 1 and codes.count(RESUME_CODE) == 1
+    assert codes.index(RESUME_CODE) == codes.index(PAUSE_CODE) + 1
+    kinds = [row["kind"] for row in run.controls()]
+    assert kinds == ["pause", "resume", "stop"]
+
+
+def test_e2e_the_limit_ends_a_session_paused_in_front_of_it(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    """Spec §5.4 and human review item 1: pause, and the out-of-cage limit still
+    arrives and ends the session, mid-pause. A bounded config here sets the limit a
+    few seconds past the departure `wlx run` is given (the current minute)."""
+    now = time.localtime()
+    departure = time.mktime((*now[:5], 0, 0, 0, -1))
+    limit = time.time() - departure + 6.0
+    bounds = tmp_path / "short_bounds.py"
+    bounds.write_text(
+        "from wl_expcontroller.bounds import Bounds, Ceiling, Floor\n"
+        "BOUNDS = Bounds(subject='REFERENCE', ceilings={"
+        "'reward_correct': Ceiling(value=0.05, maximum=10.0, unit='mL'), "
+        f"'out_of_cage': Ceiling(value={limit!r}, maximum=43200.0, unit='s')}}, "
+        "minima={'daily_fluid': Floor(value=20.0, unit='mL')})\n",
+        encoding="utf-8",
+    )
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, bounds=bounds, cleanup=server_cleanup) as run:
+        run.frame(lambda f: f.trial_index >= 1)
+        assert run.post({"kind": "pause", "by": "jake"})[0] == 200
+        paused = run.frame(lambda f: f.paused_at is not None)
+        ended = run.ended()
+    run.finished()
+
+    assert ended.stop_kind == "limit"
+    assert ended.trial_index == paused.trial_index, "the limit ended it while paused"
+    assert ended.out_of_cage_seconds >= limit
+
+
+def test_e2e_a_mark_is_strobed_in_its_trial_and_recorded_with_three_instants_and_a_note(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    """Spec §5.4: a mark puts `OPERATOR_MARK` into the recorded event stream -- the
+    card `wlx run` strobed onto -- where its stamp says it arrived, and the record
+    holds its three instants, their gaps, and its note."""
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        run.frame(lambda f: f.trial_index >= 2)
+        pressed = time.time()
+        status, signal = run.post({"kind": "mark", "by": "jake", "pressed_at": pressed})
+        assert (status, signal["status"]) == (200, "signaled")
+        run.frame(lambda f: any(c.kind == "mark" for c in f.controls))
+        assert run.post({"kind": "note", "by": "jake", "mark": signal["mark"], "note": "sneeze"})[0] == 200
+        run.frame(lambda f: any(c.kind == "note" for c in f.controls))
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        run.ended()
+    run.finished()
+
+    stamp, note, stop = run.controls()
+    assert (stamp["kind"], stamp["mark"], stamp["number"]) == ("mark", signal["mark"], 1)
+    assert (stop["kind"], stop["by"]) == ("stop", "jake (box, unverified)")
+    codes = run.cards[0].codes
+    assert codes.count(MARK_CODE) == 1
+    starts = [i for i, code in enumerate(codes) if code == FIX_ON]
+    at = codes.index(MARK_CODE)
+    trial_start = starts[stamp["trial_index"]]
+    if stamp["frame"] is None:
+        assert at < trial_start, "stamped between trials, strobed before the trial"
+        assert stamp["trial_index"] == 0 or at > starts[stamp["trial_index"] - 1]
+    else:
+        trial_end = next(i for i in range(trial_start, len(codes)) if codes[i] in MARKERS)
+        assert trial_start < at < trial_end, "strobed inside the trial its stamp names"
+    assert note["note"] == "sneeze" and note["by"] == "jake (box, unverified)"
+    assert note["pressed_at"] == pressed
+    assert pressed <= note["received_at"] <= note["stamped_at"] + 60.0
+    assert note["received_after_pressed_s"] == pytest.approx(note["received_at"] - pressed)
+    assert note["stamped_after_received_s"] == pytest.approx(
+        note["stamped_at"] - note["received_at"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        ({"trials": 3}, "scheduled stop (after trial {target}) set by jake (box, unverified)"),
+        (None, "scheduled stop (after {target:g} mL this session) set by jake (box, unverified)"),
+        ({"at": "00:00"}, "scheduled stop (at 00:00{day}) set by jake (box, unverified)"),
+    ],
+    ids=["trials", "fluid", "clock"],
+)
+def test_e2e_each_kind_of_scheduled_stop_ends_the_session_with_its_reason(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup, body, reason
+):
+    """Spec §5.4. The clock kind's next occurrence is made a quarter second away
+    (`taskd._next_occurrence`, in this process, where `wlx run` runs): a real minute
+    is too long for the suite, and what that function computes is pinned on its own
+    in `tests/test_taskd.py`. Everything else is real -- the page's POST, `wlx
+    serve`'s command thread, the wire, and the session's anchored clock."""
+    from wl_expcontroller import taskd
+
+    monkeypatch.setattr(taskd, "_next_occurrence", lambda hhmm, wall: wall + 0.25)
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        running = run.frame(lambda f: f.trial_index >= 1)
+        if body is None:
+            # The fluid case schedules relative to the session's current total, as
+            # an operator would -- not a fixed mL figure baked into the
+            # parametrize table. `taskd.py` refuses an "after X mL" schedule the
+            # session has already reached (Task 7 fix round 1, kept as-is by the
+            # controller's ruling on this task): the reference task's default
+            # hazards reward almost every early trial, so a small fixed target is
+            # already behind by the time the command crosses HTTP, the `Outbox`
+            # queue and the ZMQ wire to reach `_schedule`. A margin of 1.0 mL above
+            # the frame just read is comfortably above the few trials a command
+            # takes to arrive once the session is running.
+            body = {"ml": running.fluid_session_ml + 1.0}
+        assert run.post({"kind": "schedule", "by": "jake", **body})[0] == 200
+        ended = run.ended()
+    run.finished()
+
+    # A schedule that fired is spent, so the frames may never have shown it held;
+    # the record has what it was.
+    schedule, fired = run.controls()
+    assert (schedule["kind"], fired["kind"]) == ("schedule", "scheduled_stop")
+    day = schedule["said"][len("at 00:00"):] if "at" in body else ""
+    if "trials" in body:
+        target = int(schedule["target"])
+    elif "ml" in body:
+        target = schedule["target"]
+    else:
+        target = None
+    assert ended.stop_kind == "operator"
+    assert ended.stopped_because == reason.format(target=target, day=day)
+    assert fired["by"] == "jake (box, unverified)"
+    assert ended.scheduled_stop is None
+    assert running.stop_kind is None
+    if "ml" in body:
+        assert ended.fluid_session_ml >= body["ml"] - taskd.FLUID_TOLERANCE_ML
+
+
+def test_e2e_cancel_removes_the_scheduled_stop(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        running = run.frame(lambda f: f.trial_index >= 1)
+        assert run.post({"kind": "schedule", "by": "jake", "trials": 30})[0] == 200
+        held = run.frame(lambda f: f.scheduled_stop is not None)
+        assert run.post({"kind": "cancel", "by": "sam"})[0] == 200
+        run.frame(lambda f: f.scheduled_stop is None and f.trial_index > held.trial_index)
+        past = run.frame(lambda f: f.trial_index > held.scheduled_stop.target + 5)
+        assert past.stop_kind is None, "a cancelled schedule still stopped the session"
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        run.ended()
+    run.finished()
+    assert running.scheduled_stop is None
+
+
+def test_e2e_a_write_from_elsewhere_is_refused_and_the_session_never_sees_it(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    """Spec §5.4: a write from a non-loopback peer, or to an unknown `Host`, is
+    refused -- and never reaches the rig: no control, no refusal, no strobe.
+
+    **Task 11's review.** The "not the box" request is posted with explicit `Host`
+    and `Origin` headers naming `localhost`, not `_post`'s default loopback IP
+    literal: `names_loopback` also calls `on_box` (serve.py), so with the default
+    `Host` the `Host` check would refuse the request on its own, whether or not
+    `may_write`'s own peer check (`on_box(self.client_address[0])`) were even there.
+    `names_loopback("localhost")` is `True` on the literal alone, short-circuiting
+    before it ever calls `on_box`, so only the peer check can produce the 403 this
+    test asserts -- the same shape as `test_a_write_from_a_peer_that_is_not_the_box_is_refused`.
+    """
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        run.frame(lambda f: f.trial_index >= 1)
+        port = run.server.address[1]
+        wrong_host = _post(port, {"kind": "pause", "by": "mallory"}, {"Host": "evil.example"})
+        with monkeypatch.context() as patch:
+            patch.setattr(serve, "on_box", lambda host: False)
+            not_the_box = _post(
+                port,
+                {"kind": "pause", "by": "mallory"},
+                {"Host": f"localhost:{port}", "Origin": f"http://localhost:{port}"},
+            )
+        after = run.frame(lambda f: f.trial_index >= 3)
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        run.ended()
+    run.finished()
+
+    assert wrong_host[0] == 421
+    assert not_the_box == (403, {"status": "refused", "said": CONTROLS_AT_THE_BOX})
+    assert after.paused_at is None and after.refusals == () and after.controls == ()
+    assert PAUSE_CODE not in run.cards[0].codes
+
+
+def test_e2e_with_taskd_gone_the_page_is_told_not_delivered(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        run.frame(lambda f: f.trial_index >= 1)
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        run.ended()
+        run.finished()
+        status, answer = run.post({"kind": "pause", "by": "jake"})
+        mark_status, mark = run.post({"kind": "mark", "by": "jake"})
+
+    assert status == 504
+    assert answer["said"] == f"not delivered: no rig is connected on {run.rep}"
+    assert mark_status == 504
+    assert mark["said"] == f"not delivered: no rig is listening for marks on {run.mark}"
+
+
+def test_e2e_wlx_serve_restarted_while_paused_shows_it_paused_and_can_resume(
+    tmp_path, monkeypatch, zmq_cleanup, server_cleanup
+):
+    """Review Focus 5: the pause is held by `taskd`, so a `wlx serve` restarted while
+    the session is paused picks it up paused -- its page offers *resume* -- and the
+    resume it sends continues the session."""
+    with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
+        run.frame(lambda f: f.trial_index >= 1)
+        assert run.post({"kind": "pause", "by": "jake"})[0] == 200
+        paused = run.frame(lambda f: f.paused_at is not None)
+        run.server.close()
+
+        run.server = run.serve()
+        again = run.frame(lambda f: f.paused_at is not None)
+        with _stream(run.server.address[1]) as response:
+            first = next(_events(response))
+        assert 'data-cmd="resume"' in first["frags"]["controls"]
+        assert 'data-state="paused"' in first["frags"]["state"]
+        assert again.trial_index == paused.trial_index
+        assert run.post({"kind": "resume", "by": "jake"})[0] == 200
+        run.frame(lambda f: f.paused_at is None and f.trial_index > paused.trial_index)
+        assert run.post({"kind": "stop", "by": "jake"})[0] == 200
+        run.ended()
+    run.finished()
