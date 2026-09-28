@@ -327,20 +327,26 @@ figure was one low. In order:
 
 ## What moved on 2026-09-28: the screen, the stereoscope, direct view, and b2a under way
 
-**Resume here (state at 2026-09-28 14:20 UTC, written ahead of a possible loss of connection):**
-- **b2a** (`p4d2b-b2a-controls`, worktree `.claude/worktrees/p4d2b-b2a`): Tasks 1–12 of 16 complete and
-  reviewed (pushed to origin at `73c4da3`). **Task 13, the manual reward, was mid-implementation**
-  with uncommitted edits in the worktree and a mutation sweep running. On resume: if a sweep's
-  `.mutate-in-progress.json` is left in the worktree, run `tools/mutate.py`'s restore first; read
-  the ledger's Task 13 lines and `task-13-report.md`; check `git status`; then either commit the
-  finished work or re-dispatch Task 13 with `task-13-rulings.md` (it carries two corrected
-  anchors, a double-click-reward guard, and four carried review items). Tasks 14–16 follow, then
-  the PI's four welfare items (Task 16 Step 6).
-- **Direct view part 1** (`direct-view-part1`, worktree `.claude/worktrees/direct-view-1`, pushed at
-  `6ba6908`): all 7 tasks and the final review's fix wave done and re-reviewed; 1191 passed; its
-  CI run `36427664739` was in its mutation job. On resume: read that run's log line by line, then
-  fast-forward `main` (non-welfare; the PI approved the plan) and delete the branch/worktree.
-  Part 2's plan inherits the final review's carries (ledger: "CARRY to direct view part 2").
+**Resume here (state at 2026-09-28 ~15:00 UTC):**
+- **Direct view part 1 is on `main`** (`370b561`; CI run `36427664739` green, read line by line: the
+  gate over `calibration`, `check`, `geometry`, `task` caught 87 of 87, all `N failed`). 1191 tests.
+  It adds each setup's field (`Geometry.direct`/`.stereoscope`, `geometry.Rig`, `tasks/rig.py`),
+  check 8 per setup, `Trial.view` and three load-time findings (`needs-stereoscope` — live at every
+  load today — `wrong-setup`, `unknown-view`), calibration per setup (two records dated
+  2026-09-28), and the reference tasks written for direct view at ±16°. **Direct view refuses to
+  run on the rig's own settings until the sensor housings are measured at build** (spec §9 item 1;
+  `tasks/rig.py`'s NOT YET MEASURED). **Part 2 is next after b2a merges** (`wlx run --view`, the
+  geometry into `taskd`'s and `wlx check`'s load-time checks, the session record, a telemetry
+  field). Its plan inherits the final review's carries, archived in the session scratchpad's
+  `direct-view-1/ledger-archive/progress.md` ("CARRY to direct view part 2"): `Stimulus(at=P(...))`
+  crashes check 8 (TypeError) and must be fixed before `taskd` gets a geometry; `Update(at/disparity)`
+  escapes check 8; choices-only position params read as 0; a missing geometry must fail loudly.
+- **b2a** (`p4d2b-b2a-controls`, worktree `.claude/worktrees/p4d2b-b2a`): Tasks 1–12 complete and
+  reviewed (origin at `73c4da3`). Task 13 (the manual reward) was cut off by a lost connection with
+  its edits uncommitted and intact; its implementer was resumed. Then Tasks 14–16 and the PI's four
+  welfare items. **At b2a's merge, rebase onto `main`**: a trial merge of `325fd2b` with direct view
+  part 1 was clean and green (1429 passed), but CHECKPOINT will conflict (b2a's Task 15 edits the
+  branch's older copy), so merge that file by hand.
 - Both ledgers (git-ignored) are `.superpowers/sdd/<plan>/progress.md` inside each worktree.
 
 b2a is being executed subagent-driven on `p4d2b-b2a-controls` (worktree
