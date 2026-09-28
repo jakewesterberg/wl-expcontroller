@@ -3204,6 +3204,66 @@ def test_the_limit_wins_when_it_and_a_schedule_fall_due_together(tmp_path, utc):
     assert session.scheduled_stop is not None, "the schedule was not spent: the limit alone decided this stop"
 
 
+def _stopped_by_the_operator(tmp_path):
+    link = Simulated()
+    link.queue(ScheduleStop(kind="trials", value=1000, by="jake"))
+    link.queue(Stop(by="sam"))
+    session = _session(_spec(tmp_path, trials=50), link=link)
+    session.run()
+    return session, link
+
+
+def _stopped_by_the_limit(tmp_path):
+    link = _Scripted(step=900.0)
+    link.queue(Pause(by="jake"))
+    # A "trials" target far past anything this session reaches: due only on
+    # `index`, never on the wall the paused wait moves, so it stays unspent when
+    # the limit ends the session -- the case this fix guards, not
+    # `test_the_limit_wins_when_it_and_a_schedule_fall_due_together`'s "both due at
+    # once", which asks a different question.
+    link.queue(ScheduleStop(kind="trials", value=1000, by="sam"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+    session.run()
+    return session, link
+
+
+def _stopped_by_completion(tmp_path):
+    link = Simulated()
+    link.queue(ScheduleStop(kind="trials", value=1000, by="jake"))
+    session = _session(_spec(tmp_path, trials=3), link=link)
+    session.run()
+    return session, link
+
+
+@pytest.mark.parametrize(
+    ("make", "stop_kind"),
+    [
+        (_stopped_by_the_operator, "operator"),
+        (_stopped_by_the_limit, "limit"),
+        (_stopped_by_completion, "completed"),
+    ],
+    ids=["stop button", "out-of-cage limit", "natural completion"],
+)
+def test_a_finished_session_publishes_no_scheduled_stop_to_cancel(tmp_path, make, stop_kind):
+    """Fix round 1 (review of Task 8, link.py:542-549): `_ends` clears
+    `Session.scheduled_stop` only on the one path where the schedule itself fires;
+    the stop button, the out-of-cage limit and natural completion all leave an
+    unspent schedule on the session -- Task 7's
+    `test_the_limit_wins_when_it_and_a_schedule_fall_due_together` depends on exactly
+    that for the limit path, so `Session.scheduled_stop` must stay set here too. But
+    a console must not be shown an ended session's schedule as one it could still
+    cancel: `Telemetry.of` now publishes `scheduled_stop=None` once
+    `session.stopped_because` is set, whatever ended it, while the session's own
+    field is left alone."""
+    session, link = make(tmp_path)
+
+    assert session.stopped_because
+    assert session.stop_kind == stop_kind
+    assert session.scheduled_stop is not None, "the session's own record must stay unspent"
+    assert link.published[-1].scheduled_stop is None, "the last frame must not offer to cancel it"
+
+
 # ---------------------------------------------------------------------------
 # P4d-2b b2a, Task 7 fix round 1: the fluid schedule's rounding, and one guard test
 # ---------------------------------------------------------------------------
