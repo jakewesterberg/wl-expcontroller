@@ -793,6 +793,9 @@ Command = SetParameter | Stop | Pause | Resume | Mark | ScheduleStop | CancelSch
 
 #: The kinds of scheduled stop, in the order a person is offered them.
 SCHEDULE_KINDS = ("clock", "trials", "fluid")
+#: The mark signal's size: one unsigned number, big-endian (spec §5.1: "a
+#: fixed-size sequence number").
+MARK_BYTES = 8
 #: The largest mark number: the signal is eight bytes, unsigned.
 MARK_LIMIT = 2**64 - 1
 #: The longest note a mark may carry. A bound on one packet's reach into the record
@@ -1080,6 +1083,19 @@ class Link(Protocol):
         """Every command that has arrived since the last call. Non-blocking, and each
         command is returned once."""
 
+    def mark_signal(self) -> int:
+        """The number of one mark signal waiting, or `0` when none is (P4d-2b spec
+        §5.1). **Called once per frame** by the trial loop, and at every trial
+        boundary: it never blocks, does bounded work, and on a live link allocates
+        nothing when no signal is waiting (`ZmqLink.mark_signal`). Each signal is
+        returned once."""
+
+    def idle(self, timeout: float) -> int:
+        """**While paused**: wait up to `timeout` seconds for a console to say
+        anything -- a mark signal or a command -- and return the mark's number if one
+        arrived, else `0`. A command is left for `drain`. The paused loop's one wait,
+        so a mark is stamped and a resume is read as soon as either arrives."""
+
 
 @dataclass(frozen=True, slots=True)
 class Absent:
@@ -1103,6 +1119,17 @@ class Absent:
     def drain(self) -> list[Command]:
         return []
 
+    def mark_signal(self) -> int:
+        return 0
+
+    def idle(self, timeout: float) -> int:
+        """Nothing can arrive, so the wait is the whole of it. A session with no
+        console is never paused -- nothing can send `Pause` -- so this is not
+        reached; it waits rather than returning at once so that, if it ever were,
+        a paused loop would not spin."""
+        time.sleep(timeout)
+        return 0
+
 
 @dataclass
 class Simulated:
@@ -1121,6 +1148,9 @@ class Simulated:
     #: directly, which is what makes it a field rather than a constant.
     refused: list = field(default_factory=list)
     refused_dropped: int = 0
+    #: Mark signals a test has sent, oldest first: `mark_signal` and `idle` hand
+    #: each over once (P4d-2b b2a).
+    marks: list = field(default_factory=list)
 
     def queue(self, command) -> None:
         self._queued.append(command)
@@ -1131,6 +1161,14 @@ class Simulated:
     def drain(self) -> list[Command]:
         taken, self._queued = self._queued, []
         return taken
+
+    def mark_signal(self) -> int:
+        return self.marks.pop(0) if self.marks else 0
+
+    def idle(self, timeout: float) -> int:
+        """Never waits: a simulated session's clocks are the test's, not this
+        host's. A test that scripts what arrives while paused overrides this."""
+        return self.mark_signal()
 
 
 class RemoteBindRefused(Exception):
@@ -1298,9 +1336,19 @@ class ZmqLink:
     """
 
     def __init__(
-        self, pub_endpoint: str, rep_endpoint: str, *, allow_remote: bool = False
+        self,
+        pub_endpoint: str,
+        rep_endpoint: str,
+        mark_endpoint: str | None = None,
+        *,
+        allow_remote: bool = False
     ):
-        """Bind both sockets. **Loopback unless `allow_remote` says otherwise.**
+        """Bind the sockets. **Loopback unless `allow_remote` says otherwise.**
+
+        **A third, the mark socket, when `mark_endpoint` is given** (P4d-2b b2a): a
+        PULL socket `mark_signal` checks once per frame, so an operator's mark is
+        stamped in the frame it reaches the rig rather than at the next trial
+        boundary (spec §5.0). Without it, this link has no marks, as in b1.
 
         S9a §7 states the assumption this link runs on, in as many words: `taskd`
         trusts the actor named in a command *"because they are the same machine and
@@ -1333,8 +1381,12 @@ class ZmqLink:
 
         if not allow_remote:
             # Before the context, so a refusal leaves nothing to clean up.
-            for role, endpoint in (("PUB", pub_endpoint), ("REP", rep_endpoint)):
-                if _binds_beyond_this_machine(endpoint):
+            for role, endpoint in (
+                ("PUB", pub_endpoint),
+                ("REP", rep_endpoint),
+                ("PULL (mark)", mark_endpoint),
+            ):
+                if endpoint is not None and _binds_beyond_this_machine(endpoint):
                     raise RemoteBindRefused(
                         f"refusing to bind the {role} endpoint on {endpoint!r}: it is "
                         f"reachable from other hosts, and a console link has no "
@@ -1383,6 +1435,17 @@ class ZmqLink:
             self._rep.setsockopt(zmq.LINGER, 0)
             self._rep.bind(rep_endpoint)
             self.rep_endpoint = self._rep.getsockopt_string(zmq.LAST_ENDPOINT)
+
+            #: The mark socket, or `None` for a link given no mark endpoint.
+            self._mark = None
+            #: What ZeroMQ bound it to, for `wlx serve`; `None` without one.
+            self.mark_endpoint: str | None = None
+            if mark_endpoint is not None:
+                self._mark = self._ctx.socket(zmq.PULL)
+                self._sockets.append(self._mark)
+                self._mark.setsockopt(zmq.LINGER, 0)
+                self._mark.bind(mark_endpoint)
+                self.mark_endpoint = self._mark.getsockopt_string(zmq.LAST_ENDPOINT)
         except BaseException:
             # `close()`, now, rather than when this half-built object is freed: it
             # closes whichever sockets got that far, and an interrupted release leaves
@@ -1406,6 +1469,23 @@ class ZmqLink:
         #: How many entries the trim in `drain()` has discarded. Published as part of
         #: `Telemetry.refusals_dropped` so a cap never reads as a quiet session.
         self.refused_dropped: int = 0
+
+        # **Plain `int`s, read once** (P4d-2b b2a), for `mark_signal`, which runs
+        # every frame: `zmq.EVENTS` and `zmq.POLLIN` are enum members, and `&`
+        # between an `int` and a `zmq.PollEvent` builds a new flag object through
+        # the enum machinery on every call (a scratchpad `tracemalloc` probe,
+        # 2026-09-27: 656 bytes left held over 100,000 checks in that form, none in
+        # this one). Not a measurement of this system's timing.
+        self._events = int(zmq.EVENTS)
+        self._pollin = int(zmq.POLLIN)
+        self._dontwait = int(zmq.DONTWAIT)
+        #: Where a mark signal is read into: allocated once, here, so reading one
+        #: allocates no bytes object (`Socket.recv_into`).
+        self._mark_buffer = bytearray(MARK_BYTES)
+        #: Signals `mark_signal` read and could not use -- the wrong size, or zero.
+        #: Counted in the frame, where nothing may grow a list, and refused once at
+        #: the next `drain()`.
+        self.mark_malformed: int = 0
 
     def publish(self, telemetry: Telemetry) -> None:
         """Offer telemetry to whoever is subscribed. **Never blocks** (S9a §9: "ZMQ
@@ -1472,6 +1552,19 @@ class ZmqLink:
         import zmq
 
         commands: list[Command] = []
+        if self.mark_malformed:
+            # P4d-2b b2a: what `mark_signal` counted in the frame, said here once.
+            self._refuse(
+                Refused(
+                    name="mark",
+                    by="<unknown>",
+                    why=(
+                        f"{self.mark_malformed} mark signal(s) were not eight bytes "
+                        f"naming a mark, and were ignored"
+                    ),
+                )
+            )
+            self.mark_malformed = 0
         while self._rep.poll(timeout=0, flags=zmq.POLLIN):
             raw = self._rep.recv()
             self._rep.send(b"received")
@@ -1480,17 +1573,74 @@ class ZmqLink:
             except CommandRefused as refused:
                 # M8: a command that decoded and is malformed, named by what it
                 # said of itself -- which setting, and who sent it.
-                self.refused.append(
-                    Refused(name=refused.name, by=refused.by, why=refused.why)
-                )
+                self._refuse(Refused(name=refused.name, by=refused.by, why=refused.why))
             except Exception as exc:  # noqa: BLE001 -- deliberately broad, see above
-                self.refused.append(
+                self._refuse(
                     Refused(name="<transport>", by="<unknown>", why=f"could not decode command: {exc}")
                 )
-                if len(self.refused) > REFUSAL_HISTORY:
-                    self.refused_dropped += len(self.refused) - REFUSAL_HISTORY
-                    del self.refused[:-REFUSAL_HISTORY]
         return commands
+
+    def _refuse(self, refused: Refused) -> None:
+        """One refusal onto `refused`, trimmed to `REFUSAL_HISTORY` -- see `drain`."""
+        self.refused.append(refused)
+        if len(self.refused) > REFUSAL_HISTORY:
+            self.refused_dropped += len(self.refused) - REFUSAL_HISTORY
+            del self.refused[:-REFUSAL_HISTORY]
+
+    def mark_signal(self) -> int:
+        """The number of one mark signal waiting, or `0` (the `Link` protocol).
+
+        **The per-frame check, and the only one** (P4d-2b spec §5.1): with nothing
+        waiting it is one `getsockopt(EVENTS)` -- a C call answering a small integer
+        -- and one `&`. `EVENTS` reads the socket's state without blocking;
+        `POLLIN` in it means a whole message is waiting. Only then is anything
+        received, and into `_mark_buffer`, which this link allocated once.
+
+        Source, read 2026-09-27, pyzmq 27.2.0 as installed in this repository's
+        venv: `zmq/sugar/socket.py:376` makes `getsockopt` `SocketBase.get`;
+        `zmq/backend/cython/_zmq.py:853` is `Socket.get`, which for an `int` option
+        calls `zmq_getsockopt` into a C `int` and returns it; `_zmq.py:1264` is
+        `Socket.recv_into`, "storing the data into a buffer rather than allocating
+        a new Frame", `.. versionadded:: 26.4`, returning "the size of the received
+        frame" even when that is larger than the buffer, which is how an oversize
+        signal is told from a mark. The console extra's floor is `pyzmq>=26.4` for
+        it (`pyproject.toml`).
+
+        **One signal per frame**: a second waiting is read on the next frame, and
+        its stamp names that frame. Bounded work, whatever arrives."""
+        mark = self._mark
+        if mark is None or not mark.getsockopt(self._events) & self._pollin:
+            return 0
+        return self._take_mark()
+
+    def _take_mark(self) -> int:
+        """Read one waiting signal into `_mark_buffer`: its number, or `0` -- counted
+        in `mark_malformed` -- when it is not eight bytes naming a mark. Called only
+        with a signal waiting, from a frame or from `idle`."""
+        size = self._mark.recv_into(self._mark_buffer, flags=self._dontwait)
+        if size != MARK_BYTES:
+            self.mark_malformed += 1
+            return 0
+        number = int.from_bytes(self._mark_buffer, "big")
+        if number == 0:
+            self.mark_malformed += 1
+        return number
+
+    def idle(self, timeout: float) -> int:
+        """Wait up to `timeout` seconds for a mark signal or a command, whichever
+        comes first (the `Link` protocol). A `zmq.Poller` over the REP socket and,
+        when there is one, the mark socket: built per call, which is allowed here --
+        this runs while paused, never inside a frame."""
+        import zmq
+
+        poller = zmq.Poller()
+        poller.register(self._rep, zmq.POLLIN)
+        if self._mark is not None:
+            poller.register(self._mark, zmq.POLLIN)
+        ready = dict(poller.poll(int(timeout * 1000)))
+        if self._mark is not None and ready.get(self._mark):
+            return self._take_mark()
+        return 0
 
     def close(self) -> None:
         """Release both sockets and this link's own `Context`, promptly.
@@ -1712,4 +1862,79 @@ class ZmqConsole:
 
     def __exit__(self, *exc_info: object) -> None:
         """See `ZmqLink.__exit__` -- same reasoning, same shape."""
+        self.close()
+
+
+class NotDelivered(Exception):
+    """A command or a mark signal that did not reach the rig (P4d-2b spec §5.3: the
+    page is told the truth about delivery). The message is a sentence a console
+    shows as it is."""
+
+
+#: How long a console's sender waits for its connection to the rig before it says a
+#: command or a mark was not delivered. ZeroMQ connects in the background, so a
+#: sender built a moment ago, or rebuilt after a timeout, may not be connected yet.
+#: Housekeeping, not a measurement of this system.
+CONNECT_TIMEOUT_S = 1.0
+
+
+class ZmqMarks:
+    """The console side of the mark signal (P4d-2b b2a): a PUSH socket connected to
+    the session's mark endpoint, which `wlx serve`'s mark thread owns.
+
+    **Ahead of every command** (spec §5.3): the signal goes on its own socket, so a
+    mark never waits behind a command whose acknowledgment has not come back.
+
+    **`IMMEDIATE`**, so a signal is queued only to a completed connection: with no
+    rig listening, `signal` says so instead of queuing a mark for a session that is
+    not there (checked in a scratchpad probe 2026-09-27, and pinned by
+    `test_a_mark_with_no_rig_to_reach_is_not_delivered_and_says_so`). A PUSH socket
+    has no reply, so *delivered* here means handed to a connected rig's socket, and
+    the stamp -- in the session record and on the feed -- is what says it landed.
+
+    Released the way `ZmqLink` and `ZmqConsole` are: `_release`, from `close()` or
+    from its finalizer, with its one socket in the list the finalizer holds.
+    """
+
+    def __init__(self, mark_endpoint: str, connect_timeout_s: float = CONNECT_TIMEOUT_S):
+        import zmq
+
+        self._ctx = zmq.Context()
+        self._sockets: list = []
+        self._finalizer = weakref.finalize(self, _release, self._ctx, self._sockets)
+        self._push = self._ctx.socket(zmq.PUSH)
+        self._sockets.append(self._push)
+        self._push.setsockopt(zmq.LINGER, 0)
+        self._push.setsockopt(zmq.IMMEDIATE, 1)
+        self._push.connect(mark_endpoint)
+        #: Where this sends, named in the sentence a failed signal raises.
+        self.endpoint = mark_endpoint
+        self._connect_ms = int(connect_timeout_s * 1000)
+
+    def signal(self, mark: int) -> None:
+        """Send `mark`, eight bytes big-endian. Raises `NotDelivered` when no rig is
+        connected within the connect timeout, and `ValueError` for a number that is
+        not a mark, before anything is sent."""
+        import zmq
+
+        if isinstance(mark, bool) or not isinstance(mark, int) or not 1 <= mark <= MARK_LIMIT:
+            raise ValueError(f"a mark number is 1 to {MARK_LIMIT}, and {mark!r} is not one")
+        if not self._push.poll(self._connect_ms, zmq.POLLOUT):
+            raise NotDelivered(f"no rig is listening for marks on {self.endpoint}")
+        try:
+            self._push.send(mark.to_bytes(MARK_BYTES, "big"), flags=zmq.DONTWAIT)
+        except zmq.Again as exc:
+            raise NotDelivered(
+                f"no rig is listening for marks on {self.endpoint}"
+            ) from exc
+
+    def close(self) -> None:
+        """See `ZmqLink.close` -- same reasoning, same shape."""
+        _release(self._ctx, self._sockets)
+        self._finalizer.detach()
+
+    def __enter__(self) -> "ZmqMarks":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
         self.close()
