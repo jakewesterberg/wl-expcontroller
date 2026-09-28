@@ -35,8 +35,10 @@ from wl_expcontroller.cli import (
 )
 from wl_expcontroller.link import (
     SCHEMA,
+    Control,
     ParamRow,
     Refused,
+    ScheduledStop,
     SetParameter,
     Staged,
     Stop,
@@ -2949,3 +2951,60 @@ def test_wlx_run_records_which_bounded_config_it_ran_under(tmp_path):
         (tmp_path / "2027-01-14_09" / "xcon" / "config.json").read_text()
     )
     assert config["versions"]["bounds"] == BOUNDS
+
+
+# ---------------------------------------------------------------------------
+# `render` and schema 8 (P4d-2b b2a): every new field has a line
+# ---------------------------------------------------------------------------
+
+
+def test_console_says_when_nothing_is_paused_scheduled_or_controlled():
+    rendered = render(_telemetry()).splitlines()
+
+    assert "  paused: no" in rendered
+    assert "  scheduled stop: none" in rendered
+    assert "  controls: none" in rendered
+
+
+def test_console_names_a_pause_by_its_clock_time():
+    at = 1_700_000_000.0
+    expected = time.strftime("%H:%M:%S", time.localtime(at))
+
+    assert f"  paused: since {expected}" in render(_telemetry(paused_at=at)).splitlines()
+
+
+@pytest.mark.parametrize("at", [float("nan"), float("inf")])
+def test_console_says_a_pause_instant_that_is_not_a_number_is_unknown(at):
+    assert "  paused: since an unknown time" in render(
+        _telemetry(paused_at=at)
+    ).splitlines()
+
+
+def test_console_names_the_scheduled_stop_and_who_set_it():
+    rendered = render(
+        _telemetry(
+            scheduled_stop=ScheduledStop("trials", 48.0, "jake (box, unverified)", "after trial 48")
+        )
+    ).splitlines()
+
+    assert "  scheduled stop: after trial 48, set by jake (box, unverified)" in rendered
+
+
+def test_console_lists_control_events_and_counts_what_fell_off_before_them():
+    rendered = render(
+        _telemetry(
+            controls=(
+                Control("mark", "", 1_700_000_001.0, "mark 1 stamped in trial 3, frame 10"),
+                Control("note", "jake", 1_700_000_002.0, 'mark 1: "bubble"'),
+            ),
+            controls_dropped=4,
+        )
+    ).splitlines()
+
+    dropped = rendered.index(
+        "  control: 4 earlier control event(s) NOT SHOWN -- only the most recent 2 are "
+        "kept (link.CONTROL_HISTORY)"
+    )
+    stamp = rendered.index("  control: mark: mark 1 stamped in trial 3, frame 10")
+    note = rendered.index('  control: note by jake: mark 1: "bubble"')
+    assert dropped < stamp < note

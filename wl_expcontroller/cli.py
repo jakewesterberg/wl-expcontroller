@@ -782,6 +782,12 @@ def render(frame: _link.Telemetry) -> str:
     reward was commanded, kept once the pump returned; the parameter rows; and the
     last outcomes. Each absence is a word --
     *PROVISIONAL*, *not given*, *none yet*, *unset*, *open* -- never a zero.
+
+    **Schema 8 adds the controls** (P4d-2b b2a): whether the session is paused and
+    since when, the scheduled stop and who set it -- in the rig's own words -- and
+    the recent control events, each with who sent it, below the staged rows. A capped
+    feed says so above its rows, as the refusal feed does. Absences are words again:
+    *no*, *none*.
     """
     lines = [
         f"session {frame.session_id}  subject {frame.subject}  "
@@ -814,6 +820,24 @@ def render(frame: _link.Telemetry) -> str:
     # space rather than the internal underscore -- this line is for a person, not
     # a match against the field's own wire spelling.
     lines.append(f"  phase: {frame.phase.replace('_', ' ')}")
+    # Schema 8 (P4d-2b b2a). The pause's instant as a clock time on this host, like
+    # the last reward's; one that is not a number is `unknown`, never a crash.
+    if frame.paused_at is None:
+        lines.append("  paused: no")
+    elif not math.isfinite(frame.paused_at):
+        lines.append("  paused: since an unknown time")
+    else:
+        lines.append(
+            f"  paused: since "
+            f"{time.strftime('%H:%M:%S', time.localtime(frame.paused_at))}"
+        )
+    # The rig's own words for it, never recomposed here from `kind` and `target`.
+    lines.append(
+        "  scheduled stop: none"
+        if frame.scheduled_stop is None
+        else f"  scheduled stop: {frame.scheduled_stop.said}, set by "
+        f"{frame.scheduled_stop.by}"
+    )
     if frame.stopped_because:
         lines.append(f"  STOPPED: {frame.stopped_because}")
     # Beside the stop reason and above everything else, because that is where a
@@ -933,6 +957,23 @@ def render(frame: _link.Telemetry) -> str:
             )
     else:
         lines.append("  staged: none")
+
+    # The changes feed's control events (schema 8), oldest first like the refusals
+    # below, the count of what fell off the cap before them for the same reason. A
+    # mark's stamp has no sender -- it arrives with the note -- and says so by
+    # naming none.
+    if frame.controls:
+        if frame.controls_dropped:
+            lines.append(
+                f"  control: {frame.controls_dropped} earlier control event(s) NOT "
+                f"SHOWN -- only the most recent {len(frame.controls)} are kept "
+                f"(link.CONTROL_HISTORY)"
+            )
+        for control in frame.controls:
+            who = f" by {control.by}" if control.by else ""
+            lines.append(f"  control: {control.kind}{who}: {control.said}")
+    else:
+        lines.append("  controls: none")
 
     if frame.refusals:
         # Before the rows, not after: a person reads down and would otherwise see
