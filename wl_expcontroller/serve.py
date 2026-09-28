@@ -1,6 +1,6 @@
-"""`wlx serve` -- the browser console's process (P4d-2b slice b1).
+"""`wlx serve` -- the browser console's process (P4d-2b slices b1 and b2a).
 
-Spec: `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md` §1-§4.
+Spec: `docs/superpowers/specs/2026-09-26-P4d2b-browser-console-design.md` §1-§5.
 
 **Its own process, beside `taskd` and never inside it** (S9a §7: the hot loop never
 serves a request). It holds one `link.ZmqConsole`, keeps the latest frame, and serves
@@ -15,22 +15,32 @@ already runs, so no new dependency:
   before any -- which the page's stale timer runs on (Ruling 12, 2026-09-27).
 - `GET /health` -- `health.py`'s body for wl-works, behind a bearer token.
 
-Everything else is 404 or 405, as JSON, never the stdlib's HTML page. **b1 has no
-`POST`**: nothing on the page writes; writes from the box are slice b2's.
+- `POST /commands` (P4d-2b b2a, spec §5.3) -- one JSON command from the box's own
+  page, accepted only under spec §2's four checks and validated before anything is
+  queued (`parse_command`); answered *sent*, *not delivered* or *busy*, the truth
+  about delivery.
 
-**Restarting it changes nothing in `taskd`** (spec §2): it only ever reads the PUB
-socket, and telemetry is lossy by design (S9a §9).
+Everything else is 404 or 405, as JSON, never the stdlib's HTML page. **Every request
+is answered only when its `Host` names this console** (spec §2, §5.3): loopback, the
+box's own names and addresses, and `--allow-host` names (`box_names`); anything else
+gets a JSON 421 and no page, which closes DNS rebinding on the LAN-open reads too.
 
-**Threads, and what each owns.** The telemetry thread (`Server._listen`) owns the
-`ZmqConsole` -- both of its sockets, created, read and closed there -- so each ZMQ
-socket has one owning thread. b1 sends no command, so the REQ socket is connected and
-never used; slice b2 moves it to a command thread of its own. Each browser's
-`/events` runs on the HTTP server's thread for that connection, reading its own
-bounded queue from the `Hub`.
+**Restarting it changes nothing in `taskd`** (spec §2): it reads the PUB socket, and
+what it sends is acknowledged or said not to be; a pause, a schedule and every
+setting are held by `taskd`, not here.
+
+**Threads, and what each owns** (spec §2: each ZMQ socket has one owning thread).
+The telemetry thread (`Server._listen`) owns a read-only `ZmqConsole`, its SUB
+socket. The command thread (an `Outbox`) owns a `ZmqCommands`, the REQ socket, and
+takes commands from a bounded queue. The mark thread (another `Outbox`) owns a
+`ZmqMarks`, the PUSH socket to the session's mark endpoint, so a mark's signal goes
+ahead of any command waiting on the rig's acknowledgment (spec §5.3). Each browser's
+`/events` and each `POST` runs on the HTTP server's thread for that connection.
 
 **No timing claim is made here.** `DEFAULT_STALE_AFTER_S` is a display choice (spec
-§3); `QUEUE_DEPTH`, `RATE_SAMPLE_S`, `KEEPALIVE_S`, `REQUEST_TIMEOUT_S` and
-`RETRY_MS` are housekeeping, not a measurement of this system.
+§3); `QUEUE_DEPTH`, `RATE_SAMPLE_S`, `KEEPALIVE_S`, `REQUEST_TIMEOUT_S`, `RETRY_MS`,
+`COMMAND_QUEUE_DEPTH`, `MARK_QUEUE_DEPTH` and the link's `REPLY_TIMEOUT_S` and
+`CONNECT_TIMEOUT_S` are housekeeping, not a measurement of this system.
 """
 
 from __future__ import annotations
@@ -41,11 +51,14 @@ import json
 import math
 import queue
 import secrets
+import socket
 import sys
 import threading
+import time
 import traceback
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -117,11 +130,15 @@ class Hub:
         *,
         endpoint: str,
         steady: Callable[[], float] = _welfare.steady_seconds,
+        marks: bool = False,
     ) -> None:
         #: The PUB endpoint the telemetry thread reads, handed to every `View` so a
         #: page with no frame names where it is listening (m4). No default: a hub
         #: that did not know it would have the page guess.
         self._endpoint = endpoint
+        #: Whether this console has the session's mark endpoint (P4d-2b b2a), for
+        #: every `View`: without it the page greys its mark control.
+        self._marks = marks
         self._steady = steady
         self._lock = threading.Lock()
         self._frame: _link.Telemetry | None = None
@@ -191,10 +208,12 @@ class Hub:
             return self._rate()
 
     def snapshot(
-        self, *, on_box: bool, stale_after_s: float
+        self, *, on_box: bool, stale_after_s: float, can_write: bool = False
     ) -> tuple[_link.Telemetry | None, _web.View]:
         """The latest frame and the `View` a render of it needs, read together. The
-        frame's age is on `steady` alone (ledger Ruling 1)."""
+        frame's age is on `steady` alone (ledger Ruling 1). `can_write` is the
+        handler's to say (P4d-2b b2a, `may_write`); a caller that does not say gets a
+        view that may not write."""
         now = self._steady()
         with self._lock:
             latest = self._frame
@@ -210,6 +229,8 @@ class Hub:
             lan_viewers=lan,
             rejected=rejected,
             endpoint=self._endpoint,
+            can_write=can_write,
+            can_mark=self._marks,
         )
 
     def subscribe(self, *, on_box: bool) -> queue.Queue:
@@ -276,8 +297,17 @@ REQUEST_TIMEOUT_S = 30.0
 #: Each bundled font by the exact path the page asks for it at (`web.FONTS`). A request
 #: is looked up here, never joined onto a directory, so there is no path to traverse.
 _FONTS = {f"/fonts/{font.file}": font for font in _web.FONTS}
-_ROUTES = frozenset({"/", "/events", "/health", *_FONTS})
+_ROUTES = frozenset({"/", "/events", "/health", "/commands", *_FONTS})
 _UNAUTHORIZED = {"error": "unauthorized"}
+#: What a request whose `Host` does not name this console is answered (P4d-2b spec
+#: §5.3): a JSON 421 and no page. It names no host, echoing nothing it was sent.
+_MISDIRECTED = {
+    "error": "misdirected request",
+    "said": (
+        "this console answers only to its own names: loopback, this box's host names "
+        "and addresses, and names given with --allow-host"
+    ),
+}
 #: Fixed bodies, keyed on the status alone and echoing nothing a caller sent
 #: (wl-preproc's `_SEND_ERROR_BODIES`).
 _ERRORS = {
@@ -302,6 +332,64 @@ def on_box(host: str) -> bool:
     return (mapped or address).is_loopback
 
 
+#: The names loopback goes by in a `Host` header (P4d-2b spec §2, §5.3).
+LOOPBACK_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def host_name(header: str | None) -> str | None:
+    """The name a `Host` header gives, lowercased and without its port, or `None`
+    when there is none or it does not parse: `127.0.0.1:8080` is `127.0.0.1`,
+    `[::1]:8080` is `::1`, `Box.local` is `box.local`. An unbracketed IPv6
+    address is not a `Host` (RFC 9110 §7.2 brackets it) and names nothing here."""
+    if not header or not header.isascii():
+        return None
+    value = header.strip().lower()
+    if value.startswith("["):
+        name, bracket, rest = value[1:].partition("]")
+        if not bracket or not name:
+            return None
+        if rest and not (rest.startswith(":") and rest[1:].isdecimal()):
+            return None
+        return name
+    name, colon, port = value.rpartition(":")
+    if not colon:
+        return value or None
+    if not port.isdecimal() or not name or ":" in name:
+        return None
+    return name
+
+
+def names_loopback(name: str | None) -> bool:
+    """Whether a `Host` name is this machine by loopback (spec §2's second check):
+    `localhost`, or an address in 127.0.0.0/8 or `::1`."""
+    if name is None:
+        return False
+    return name == "localhost" or on_box(name)
+
+
+def box_names(allowed: tuple[str, ...] = ()) -> frozenset[str]:
+    """Every name a request's `Host` may give for this console (P4d-2b spec §5.3):
+    loopback, this box's host name and fully qualified name, the addresses those
+    resolve to, and `allowed` -- `--allow-host`, for a name the box is reached by
+    that it does not know itself by. Lowercased.
+
+    Read once, when `wlx serve` starts. A lookup that fails adds nothing and is not
+    an error: loopback and `--allow-host` still work, and the refusal a LAN viewer
+    then gets names the flag that fixes it."""
+    names = set(LOOPBACK_NAMES)
+    for name in (socket.gethostname(), socket.getfqdn()):
+        if name:
+            names.add(name.lower())
+    for name in sorted(names - LOOPBACK_NAMES):
+        try:
+            found = socket.getaddrinfo(name, None)
+        except OSError:
+            continue
+        names.update(info[4][0].split("%", 1)[0].lower() for info in found)
+    names.update(name.strip().lower() for name in allowed if name.strip())
+    return frozenset(names)
+
+
 def event(payload: dict) -> bytes:
     """One server-sent event named `frame`. `json.dumps` escapes every newline and
     control character, so the payload is one `data:` line whatever telemetry held."""
@@ -320,12 +408,289 @@ def _csp(nonce: str) -> str:
     )
 
 
+# --- writes from the box (P4d-2b b2a, spec §5.3) ---------------------------------------
+
+#: The largest body `POST /commands` reads, in bytes. One command is a few hundred;
+#: a longer body is refused before it is read. Housekeeping, not a measurement.
+BODY_LIMIT = 4096
+#: The longest name a person may give at the box's prompt (spec §5.2).
+NAME_LIMIT = 64
+#: The largest mark number `wlx serve` hands a browser: 2**53 - 1, JavaScript's
+#: `Number.MAX_SAFE_INTEGER`, the largest whole number a browser's JSON carries
+#: exactly -- the page sends the number back with the note, and a number it had
+#: rounded would join nothing. Within the signal's eight bytes (`link.MARK_LIMIT`).
+MARK_ID_LIMIT = 2**53 - 1
+#: How many marks' instants `wlx serve` keeps for the notes that follow them. A mark
+#: whose note comes after 256 later marks, or after a restart, is recorded with its
+#: pressed and received instants unknown, never guessed.
+MARKS_REMEMBERED = 256
+#: How many commands may wait for the command thread, and marks for the mark thread,
+#: before `POST /commands` answers *busy* (spec §5.3). Housekeeping, not a
+#: measurement: a person's clicks, debounced, do not fill them; a flood does.
+COMMAND_QUEUE_DEPTH = 4
+MARK_QUEUE_DEPTH = 8
+#: How long an outbox thread waits for work before it looks again at whether to
+#: stop, so `Server.close` returns promptly. A responsiveness choice.
+OUTBOX_POLL_S = 0.25
+
+#: What the page is told when the rig has a command (spec §5.3): *sent* means `taskd`
+#: acknowledged receipt. Whether it was applied or refused is the feed's to show.
+SENT = (
+    "sent: the rig has it and acts on it at its next trial boundary; the changes feed "
+    "shows what it did"
+)
+#: What the page is told when the queue is full (spec §5.3).
+BUSY = (
+    503,
+    {
+        "status": "busy",
+        "said": (
+            "busy: wlx serve is still sending earlier commands, so this one was not "
+            "sent; try again"
+        ),
+    },
+)
+
+
+class BadCommand(ValueError):
+    """A `POST /commands` body that is not a command this console sends. The message
+    is the sentence the page shows; nothing was queued."""
+
+
+@dataclass(frozen=True, slots=True)
+class MarkSignal:
+    """M pressed at the box: send the mark's signal now, ahead of every command (spec
+    §5.3). `pressed_at` is the browser's clock, `None` if it did not say."""
+
+    by: str
+    pressed_at: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class MarkNote:
+    """The note typed after M -- empty after Esc -- for mark `mark`: sent to the rig as
+    a `link.Mark` command, with the instants `wlx serve` kept for that mark."""
+
+    mark: int
+    note: str
+    by: str
+
+
+#: The fields each kind of command takes besides `kind` and `by`. A schedule takes
+#: exactly one of `at`, `trials` or `ml`, checked in `parse_command`.
+_SHAPES = {
+    "set": frozenset({"name", "value"}),
+    "stop": frozenset(),
+    "pause": frozenset(),
+    "resume": frozenset(),
+    "cancel": frozenset(),
+    "schedule": frozenset({"at", "trials", "ml"}),
+    "mark": frozenset({"pressed_at"}),
+    "note": frozenset({"mark", "note"}),
+}
+_SCHEDULES = {"at": "clock", "trials": "trials", "ml": "fluid"}
+
+
+def _person(by: object) -> str:
+    """The actor a box command is recorded under: the name the page asked for, as
+    `NAME (box, unverified)` (spec §2, S9a §6: a forgeable name is worse than none,
+    because it is believed, so it says it is unverified)."""
+    if (
+        not isinstance(by, str)
+        or not by.strip()
+        or len(by.strip()) > NAME_LIMIT
+        or not by.strip().isprintable()
+    ):
+        raise BadCommand(
+            f"every command records who sent it (S9a §6): give a name of 1 to "
+            f"{NAME_LIMIT} printable characters"
+        )
+    return f"{by.strip()} (box, unverified)"
+
+
+def parse_command(data: object):
+    """One `POST /commands` body -- a JSON object with a `kind` and the person's
+    name, `by` -- as what `Server.dispatch` sends: a `link` command, a `MarkSignal`
+    or a `MarkNote`. **Validated before anything is queued** (spec §5.3), with the
+    wire's own rules where the wire has one (`link._setting` for a value, M8;
+    `link.check_schedule` for a schedule), so the page hears the sentence at once
+    and the rig never sees what it would refuse on type. Raises `BadCommand`.
+
+    A field a kind does not take is refused, not ignored: a page that sent one has a
+    bug a person should see."""
+    if not isinstance(data, dict):
+        raise BadCommand("a command is one JSON object")
+    kind = data.get("kind")
+    if kind not in _SHAPES:
+        raise BadCommand(f"{kind!r} is not a command this console sends")
+    by = _person(data.get("by"))
+    extra = set(data) - {"kind", "by"} - _SHAPES[kind]
+    if extra:
+        raise BadCommand(f"a {kind} command takes no {', '.join(sorted(extra))}")
+    if kind == "set":
+        name = data.get("name")
+        if not isinstance(name, str) or not name or len(name) > _link.TEXT_LIMIT:
+            raise BadCommand("a setting names its parameter")
+        try:
+            value = _link._setting(data.get("value"), name, by)
+        except _link.CommandRefused as refused:
+            raise BadCommand(refused.why) from refused
+        return _link.SetParameter(name=name, value=value, by=by)
+    if kind == "schedule":
+        given = [key for key in _SCHEDULES if key in data]
+        if len(given) != 1:
+            raise BadCommand("a scheduled stop takes exactly one of at, trials or ml")
+        stop, value = _SCHEDULES[given[0]], data[given[0]]
+        why = _link.check_schedule(stop, value)
+        if why is not None:
+            raise BadCommand(why)
+        return _link.ScheduleStop(kind=stop, value=value, by=by)
+    if kind == "mark":
+        pressed = data.get("pressed_at")
+        if pressed is not None and (
+            isinstance(pressed, bool)
+            or not isinstance(pressed, (int, float))
+            or not math.isfinite(pressed)
+        ):
+            raise BadCommand("a mark's pressed_at is the browser's clock, in seconds")
+        return MarkSignal(by=by, pressed_at=None if pressed is None else float(pressed))
+    if kind == "note":
+        number, note = data.get("mark"), data.get("note")
+        if (
+            isinstance(number, bool)
+            or not isinstance(number, int)
+            or not 1 <= number <= MARK_ID_LIMIT
+        ):
+            raise BadCommand("a note names the mark it is for")
+        if not isinstance(note, str) or len(note) > _link.NOTE_LIMIT:
+            raise BadCommand(f"a note is text of at most {_link.NOTE_LIMIT} characters")
+        return MarkNote(mark=number, note=note, by=by)
+    return {
+        "stop": _link.Stop,
+        "pause": _link.Pause,
+        "resume": _link.Resume,
+        "cancel": _link.CancelScheduledStop,
+    }[kind](by=by)
+
+
+def not_delivered(why: str) -> tuple[int, dict]:
+    """The answer for a command or a mark that did not reach the rig (spec §5.3)."""
+    said = why if why.startswith("not delivered") else f"not delivered: {why}"
+    return 504, {"status": "not_delivered", "said": said}
+
+
+@dataclass
+class _Job:
+    """One piece of work for an `Outbox`'s thread, and the answer it leaves."""
+
+    work: Callable[[object], tuple[int, dict]]
+    answer: tuple[int, dict] | None = None
+    done: threading.Event = field(default_factory=threading.Event)
+
+
+class Outbox:
+    """A bounded queue and the one thread that owns a sender (spec §2: each ZMQ socket
+    has one owning thread). `wlx serve` has two: the command thread, whose sender is a
+    `link.ZmqCommands`, and the mark thread, whose sender is a `link.ZmqMarks`.
+
+    **The sender is built on the thread**, by `build`, and closed there, so no other
+    thread ever touches its socket. `submit` puts one job on the queue -- or answers
+    *busy* at once when the queue is full (spec §5.3) -- and waits for its answer.
+    **Every job is answered**: by its work; by `not_delivered` when the work raised,
+    or the sender could not be built; or, when the thread stops, by *not delivered:
+    wlx serve is closing* -- so no HTTP handler waits forever. `stop` is the
+    `Server`'s own stop event, so whatever stops the server stops this thread.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        build: Callable[[], object],
+        depth: int,
+        stop: threading.Event,
+    ) -> None:
+        self._build = build
+        self._queue: queue.Queue = queue.Queue(maxsize=depth)
+        self._stop = stop
+        self.thread = threading.Thread(target=self._run, name=name, daemon=True)
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def submit(self, work: Callable[[object], tuple[int, dict]]) -> tuple[int, dict]:
+        if self._stop.is_set():
+            return not_delivered("wlx serve is closing")
+        job = _Job(work)
+        try:
+            self._queue.put_nowait(job)
+        except queue.Full:
+            return BUSY
+        while not job.done.wait(OUTBOX_POLL_S):
+            if not self.thread.is_alive():
+                # Queued after the thread answered its last job and left: nobody
+                # will answer this one, so it is answered here.
+                return not_delivered("wlx serve is closing")
+        return job.answer
+
+    def _run(self) -> None:
+        sender, broken = None, None
+        try:
+            sender = self._build()
+        except Exception as exc:  # noqa: BLE001 -- said to every job, never hidden
+            broken = _link._describe(exc)
+        try:
+            while not self._stop.is_set():
+                try:
+                    job = self._queue.get(timeout=OUTBOX_POLL_S)
+                except queue.Empty:
+                    continue
+                self._answer(job, sender, broken)
+        finally:
+            if sender is not None:
+                sender.close()
+            while True:
+                try:
+                    job = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                job.answer = not_delivered("wlx serve is closing")
+                job.done.set()
+
+    def _answer(self, job: _Job, sender: object, broken: str | None) -> None:
+        try:
+            job.answer = (
+                not_delivered(f"wlx serve could not reach the rig ({broken})")
+                if broken is not None
+                else job.work(sender)
+            )
+        except Exception as exc:  # noqa: BLE001 -- answered, never hidden
+            job.answer = not_delivered(_link._describe(exc))
+        finally:
+            job.done.set()
+
+
+def _delivered(command) -> Callable[[object], tuple[int, dict]]:
+    """The command thread's work for one command: deliver it and say so, or say why
+    not (spec §5.3)."""
+
+    def work(commands) -> tuple[int, dict]:
+        try:
+            commands.deliver(command)
+        except _link.NotDelivered as exc:
+            return not_delivered(str(exc))
+        return 200, {"status": "sent", "said": SENT}
+
+    return work
+
+
 def make_handler(
     hub: Hub,
     *,
     token: str,
     stale_after_s: float,
     keepalive_s: float = KEEPALIVE_S,
+    hosts: frozenset[str] = LOOPBACK_NAMES,
+    dispatch: Callable[[object], tuple[int, dict]] | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     """A handler class closing over `hub` and the token, built the way wl-preproc's
     `make_handler` is and for its reason: `BaseHTTPRequestHandler` handles the whole
@@ -334,6 +699,11 @@ def make_handler(
     Refuses an empty or non-ASCII token before building anything: `hmac.compare_digest`
     cannot compare a non-ASCII `str`, and a handler built from one would refuse every
     request, the correct one included (wl-preproc, review round 2's Minor 7).
+
+    **P4d-2b b2a.** `hosts` is every name a request's `Host` may give (`box_names`);
+    anything else is a JSON 421. `dispatch` sends a parsed command and says what
+    became of it (`Server.dispatch`); a handler given none answers every command
+    *not delivered*.
     """
     if not token or not token.isascii():
         raise ValueError(
@@ -347,6 +717,10 @@ def make_handler(
         _token = token
         _stale_after_s = stale_after_s
         _keepalive_s = keepalive_s
+        _hosts = hosts
+        # A function stored on a class becomes a method; `staticmethod` keeps it the
+        # plain callable it was given.
+        _dispatch = None if dispatch is None else staticmethod(dispatch)
         # No interpreter version in any `Server` header (wl-preproc's Important 5).
         server_version = ""
         sys_version = ""
@@ -393,6 +767,33 @@ def make_handler(
         def _send_json(self, status: int, payload: dict) -> None:
             self._write(status, json.dumps(payload).encode("utf-8"), "application/json")
 
+        def _host_ok(self) -> bool:
+            """Whether this request's `Host` names this console (spec §2, §5.3)."""
+            return host_name(self.headers.get("Host")) in self._hosts
+
+        def may_write(self) -> bool:
+            """Spec §2's first two checks -- a loopback peer, and a `Host` naming
+            loopback -- which are what a page's controls are greyed by. `POST
+            /commands` adds the other two, `Origin` and `Content-Type`."""
+            return on_box(self.client_address[0]) and names_loopback(
+                host_name(self.headers.get("Host"))
+            )
+
+        def _from_the_box(self) -> bool:
+            """All four of spec §2's checks on a write: a loopback peer; `Host` naming
+            loopback (against DNS rebinding); `Origin` being the page this console
+            serves on that host (against a cross-site post from another page open
+            in the box's browser); and `Content-Type: application/json`, which makes
+            a browser ask a preflight this server never approves."""
+            host = self.headers.get("Host") or ""
+            origin = self.headers.get("Origin") or ""
+            content = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+            return (
+                self.may_write()
+                and origin.lower() == f"http://{host}".lower()
+                and content.lower() == "application/json"
+            )
+
         def send_error(self, code, message=None, explain=None) -> None:
             """Every error the stdlib raises on its own, as JSON and never its HTML
             page (wl-preproc's `send_error`, read 2026-09-26). `message` and `explain`
@@ -407,12 +808,15 @@ def make_handler(
             self._send_json(code, _ERRORS.get(code, _FALLBACK))
 
         def _refuse_method(self) -> None:
+            if not self._host_ok():
+                self._send_json(421, _MISDIRECTED)
+                return
             code = 405 if self.path in _ROUTES else 404
             self._send_json(code, _ERRORS[code])
 
-        # Every verb a client commonly sends besides GET. b1 takes no POST at all:
-        # nothing on the page writes (spec §4.2).
-        do_POST = _refuse_method
+        # Every verb a client commonly sends besides GET and POST. An `OPTIONS`
+        # preflight is one of them: refused, so a cross-site page is never let to
+        # post JSON (spec §2's fourth check).
         do_PUT = _refuse_method
         do_DELETE = _refuse_method
         do_PATCH = _refuse_method
@@ -420,7 +824,54 @@ def make_handler(
         do_HEAD = _refuse_method
         do_TRACE = _refuse_method
 
+        def do_POST(self) -> None:
+            if not self._host_ok():
+                self._send_json(421, _MISDIRECTED)
+                return
+            if self.path != "/commands":
+                self._refuse_method()
+                return
+            self._command()
+
+        def _command(self) -> None:
+            """`POST /commands` (spec §5.3): one JSON command, from the box, checked
+            and validated before anything is queued, then sent and answered *sent*,
+            *not delivered* or *busy*."""
+            if not self._from_the_box():
+                self._send_json(
+                    403, {"status": "refused", "said": _web.CONTROLS_AT_THE_BOX}
+                )
+                return
+            length = self.headers.get("Content-Length") or ""
+            if not length.isascii() or not length.isdecimal():
+                self._send_json(
+                    400, {"status": "refused", "said": "a command needs a Content-Length"}
+                )
+                return
+            if int(length) > BODY_LIMIT:
+                self._send_json(
+                    413,
+                    {"status": "refused", "said": f"a command is at most {BODY_LIMIT} bytes"},
+                )
+                return
+            try:
+                data = json.loads(self.rfile.read(int(length)).decode("utf-8"))
+                request = parse_command(data)
+            except (UnicodeDecodeError, ValueError) as exc:
+                # `BadCommand` is a `ValueError`, and so is `json`'s own error.
+                said = str(exc) if isinstance(exc, BadCommand) else "a command is one JSON object"
+                self._send_json(400, {"status": "refused", "said": f"not sent: {said}"})
+                return
+            if self._dispatch is None:
+                code, answer = not_delivered("this console has no command path")
+            else:
+                code, answer = self._dispatch(request)
+            self._send_json(code, answer)
+
         def do_GET(self) -> None:
+            if not self._host_ok():
+                self._send_json(421, _MISDIRECTED)
+                return
             if self.path == "/":
                 self._page()
             elif self.path == "/events":
@@ -433,7 +884,9 @@ def make_handler(
             elif self.path in _FONTS:
                 self._font(_FONTS[self.path])
             else:
-                self._send_json(404, _ERRORS[404])
+                # 405 for a known path that takes another method -- `/commands`,
+                # since b2a -- and 404 for anything else.
+                self._refuse_method()
 
         def _font(self, font) -> None:
             """A bundled font (PI, 2026-09-26: "bundle the fonts"). Cached a day: the
@@ -443,15 +896,18 @@ def make_handler(
             )
 
         def _page(self) -> None:
+            can_write = self.may_write()
             latest, view = self._hub.snapshot(
                 on_box=on_box(self.client_address[0]),
                 stale_after_s=self._stale_after_s,
+                can_write=can_write,
             )
             nonce = secrets.token_urlsafe(16)
             body = _web.page(
                 _web.fragments(latest, view),
                 stale_after_s=self._stale_after_s,
                 nonce=nonce,
+                can_write=can_write,
             )
             self._write(
                 200,
@@ -494,6 +950,7 @@ def make_handler(
             `take` is only ever used as a wake-up and to notice `CLOSED` -- never as
             the frame that gets rendered (F2, below `_send_frame`)."""
             box = on_box(self.client_address[0])
+            can_write = self.may_write()
             subscriber = self._hub.subscribe(on_box=box)
             try:
                 self.send_response(200)
@@ -502,16 +959,16 @@ def make_handler(
                 self.end_headers()
                 self.wfile.write(f"retry: {RETRY_MS}\n\n".encode("ascii"))
                 sent: dict[str, str] = {}
-                self._send_frame(box, sent)
+                self._send_frame(box, can_write, sent)
                 while True:
                     try:
                         item = self._hub.take(subscriber, timeout=self._keepalive_s)
                     except queue.Empty:
-                        self._send_frame(box, sent)
+                        self._send_frame(box, can_write, sent)
                         continue
                     if item is CLOSED:
                         return
-                    self._send_frame(box, sent)
+                    self._send_frame(box, can_write, sent)
             except OSError:
                 # A broken pipe, a reset, or a write that timed out: the browser went
                 # away. There is nobody to tell; `finally` forgets it.
@@ -519,7 +976,7 @@ def make_handler(
             finally:
                 self._hub.unsubscribe(subscriber)
 
-        def _send_frame(self, box: bool, sent: dict) -> None:
+        def _send_frame(self, box: bool, can_write: bool, sent: dict) -> None:
             """One event: the fragments that differ from what this browser holds --
             all of them on connect -- whether more frames are due (`live`), which is
             when the page's stale timer runs, and `age`, the seconds this process
@@ -540,7 +997,7 @@ def make_handler(
             is sent, never a stale value carried in from `take`.
             """
             latest, view = self._hub.snapshot(
-                on_box=box, stale_after_s=self._stale_after_s
+                on_box=box, stale_after_s=self._stale_after_s, can_write=can_write
             )
             parts = _web.fragments(latest, view)
             changed = {key: html for key, html in parts.items() if sent.get(key) != html}
@@ -568,8 +1025,14 @@ class Server:
     """`wlx serve`'s whole process, as an object a test can start and stop.
 
     Binds the HTTP port on construction -- so `address` is known, and a port in use
-    is refused before anything else happens -- and starts two threads in `start`: the
-    telemetry thread (`_listen`) and the HTTP server's loop.
+    is refused before anything else happens -- and starts its threads in `start`: the
+    telemetry thread (`_listen`), the command thread and, given a mark endpoint, the
+    mark thread (each an `Outbox`, P4d-2b b2a), and the HTTP server's loop.
+
+    `mark` is the session's mark endpoint, `--link`'s third; `None` without one, and
+    then a mark is answered *not delivered* and the page greys its control.
+    `allow_hosts` is `--allow-host`. `reply_timeout_s` and `connect_timeout_s` are
+    the command sender's (`link.ZmqCommands`), passed so a test need not wait them.
     """
 
     def __init__(
@@ -582,12 +1045,40 @@ class Server:
         stale_after_s: float = DEFAULT_STALE_AFTER_S,
         keepalive_s: float = KEEPALIVE_S,
         receive_timeout_s: float = RECEIVE_TIMEOUT_S,
+        mark: str | None = None,
+        allow_hosts: tuple[str, ...] = (),
+        reply_timeout_s: float = _link.REPLY_TIMEOUT_S,
+        connect_timeout_s: float = _link.CONNECT_TIMEOUT_S,
     ) -> None:
-        self.hub = Hub(endpoint=sub)
+        self.hub = Hub(endpoint=sub, marks=mark is not None)
         self._sub = sub
         self._req = req
         self._receive_timeout_s = receive_timeout_s
         self._stop = threading.Event()
+        #: The command thread (spec §5.3): it alone owns the REQ socket.
+        self._commands = Outbox(
+            "wlx-serve-commands",
+            lambda: _link.ZmqCommands(req, reply_timeout_s, connect_timeout_s),
+            COMMAND_QUEUE_DEPTH,
+            self._stop,
+        )
+        #: The mark thread: it alone owns the PUSH socket to the mark endpoint, so a
+        #: mark's signal never waits behind a command (spec §5.3). `None` without a
+        #: mark endpoint.
+        self._marks = (
+            None
+            if mark is None
+            else Outbox(
+                "wlx-serve-marks",
+                lambda: _link.ZmqMarks(mark, connect_timeout_s),
+                MARK_QUEUE_DEPTH,
+                self._stop,
+            )
+        )
+        #: Each signalled mark's `(pressed_at, received_at)`, by number, for the note
+        #: that follows it; the newest `MARKS_REMEMBERED`. HTTP threads share it.
+        self._marked: OrderedDict = OrderedDict()
+        self._marked_lock = threading.Lock()
         #: Set by `_listen` when the telemetry thread cannot go on -- a transport
         #: failure, never a bad frame (fix round 1, I1). `_wait` blocks on this
         #: alongside the operator's Ctrl-C, and `run` reads `_fatal_reason` once it
@@ -607,6 +1098,8 @@ class Server:
                 token=token,
                 stale_after_s=stale_after_s,
                 keepalive_s=keepalive_s,
+                hosts=box_names(allow_hosts),
+                dispatch=self.dispatch,
             ),
         )
         self._web = threading.Thread(
@@ -627,7 +1120,63 @@ class Server:
     def start(self) -> None:
         self._started = True
         self._telemetry.start()
+        self._commands.start()
+        if self._marks is not None:
+            self._marks.start()
         self._web.start()
+
+    def dispatch(self, request) -> tuple[int, dict]:
+        """Send one parsed command (`parse_command`) and say what became of it.
+
+        A `MarkSignal` goes to the mark thread, ahead of every command; the rest go
+        to the command thread's queue, a `MarkNote` as the `link.Mark` it is, with
+        the instants this process kept for that mark."""
+        if isinstance(request, MarkSignal):
+            return self._signal(request)
+        if isinstance(request, MarkNote):
+            pressed_at, received_at = self._recall(request.mark)
+            request = _link.Mark(
+                mark=request.mark,
+                note=request.note,
+                by=request.by,
+                pressed_at=pressed_at,
+                received_at=received_at,
+            )
+        return self._commands.submit(_delivered(request))
+
+    def _signal(self, request: MarkSignal) -> tuple[int, dict]:
+        """A mark's signal (spec §5.1, §5.3): a fresh number, the instant this
+        process received it -- its own host clock, one of the record's three -- and
+        the signal sent on the mark thread. Answered *signaled* with the number the
+        page sends back with the note."""
+        if self._marks is None:
+            return not_delivered(_web.NO_MARK_ENDPOINT)
+        number = secrets.randbelow(MARK_ID_LIMIT) + 1
+        received_at = time.time()
+
+        def work(marks) -> tuple[int, dict]:
+            try:
+                marks.signal(number)
+            except _link.NotDelivered as exc:
+                return not_delivered(str(exc))
+            self._remember(number, request.pressed_at, received_at)
+            return 200, {
+                "status": "signaled",
+                "mark": number,
+                "said": "mark sent to the rig: type a note and press Enter, or Esc",
+            }
+
+        return self._marks.submit(work)
+
+    def _remember(self, number: int, pressed_at: float | None, received_at: float) -> None:
+        with self._marked_lock:
+            self._marked[number] = (pressed_at, received_at)
+            while len(self._marked) > MARKS_REMEMBERED:
+                self._marked.popitem(last=False)
+
+    def _recall(self, number: int) -> tuple[float | None, float | None]:
+        with self._marked_lock:
+            return self._marked.pop(number, (None, None))
 
     def _listen(self) -> None:
         """The telemetry thread: the one `ZmqConsole`, created, read and closed here,
@@ -655,8 +1204,10 @@ class Server:
         it does not spin.
         """
         try:
+            # Read-only (P4d-2b b2a): no REQ socket here. Commands are the command
+            # thread's, so each socket has one owning thread (spec §2).
             with _link.ZmqConsole(
-                self._sub, self._req, receive_timeout_s=self._receive_timeout_s
+                self._sub, None, receive_timeout_s=self._receive_timeout_s
             ) as console:
                 while not self._stop.is_set():
                     try:
@@ -719,6 +1270,11 @@ class Server:
             self._web.join(timeout=5)
         if telemetry_started:
             self._telemetry.join(timeout=5)
+        # The outboxes stop on `_stop` too, answering anything still queued, and
+        # close their sockets on their own threads (P4d-2b b2a).
+        for outbox in (self._commands, self._marks):
+            if outbox is not None and outbox.thread.ident is not None:
+                outbox.thread.join(timeout=5)
 
 
 def _git_checkout_containing(path: Path) -> Path | None:
@@ -790,9 +1346,10 @@ def read_token(path: Path) -> str:
     return token
 
 
-def parse_link(text: str) -> tuple[str, str]:
-    """`PUB,REP`, exactly as `wlx run --link` takes it. This process reads the first
-    and, in b1, never sends to the second.
+def parse_link(text: str) -> tuple[str, str, str | None]:
+    """`PUB,REP` or `PUB,REP,MARK`, exactly as `wlx run --link` takes it (P4d-2b b2a
+    added the third): telemetry is read from the first, commands are sent to the
+    second, and mark signals to the third, which is `None` when not given.
 
     **Fix round 1, I1(a).** This used to check only that each half contained
     `"://"` somewhere, which is what its docstring already claimed to do and did
@@ -816,14 +1373,15 @@ def parse_link(text: str) -> tuple[str, str]:
     check anywhere would be inventing support this parser cannot verify.
     """
     parts = [part.strip() for part in text.split(",")]
-    if len(parts) != 2 or not all(parts):
+    if len(parts) not in (2, 3) or not all(parts):
         raise SystemExit(
-            f"refused: --link expects PUB,REP -- exactly two comma-separated endpoints "
-            f"such as tcp://127.0.0.1:5571, as given to `wlx run --link` -- got {text!r}"
+            f"refused: --link expects PUB,REP or PUB,REP,MARK -- two or three "
+            f"comma-separated endpoints such as tcp://127.0.0.1:5571, as given to "
+            f"`wlx run --link` -- got {text!r}"
         )
     for endpoint in parts:
         _refuse_unless_tcp_endpoint(endpoint, text)
-    return parts[0], parts[1]
+    return parts[0], parts[1], parts[2] if len(parts) == 3 else None
 
 
 def _refuse_unless_tcp_endpoint(endpoint: str, whole: str) -> None:
@@ -921,7 +1479,7 @@ def run(args) -> int:
     process, and closing it commands nothing.
     """
     token = read_token(args.health_token_file)
-    sub, req = parse_link(args.link)
+    sub, req, mark = parse_link(args.link)
     host, port = parse_http(args.http)
     stale_after = (
         DEFAULT_STALE_AFTER_S if args.stale_after is None else args.stale_after
@@ -933,7 +1491,13 @@ def run(args) -> int:
         )
     try:
         server = Server(
-            sub=sub, req=req, http=(host, port), token=token, stale_after_s=stale_after
+            sub=sub,
+            req=req,
+            http=(host, port),
+            token=token,
+            stale_after_s=stale_after,
+            mark=mark,
+            allow_hosts=tuple(args.allow_host),
         )
     except OSError as exc:
         raise SystemExit(f"refused: cannot serve on {host}:{port}: {exc}") from exc
@@ -946,7 +1510,10 @@ def run(args) -> int:
         bound_host, bound_port = server.address
         print(
             f"wlx serve: the console is at http://{bound_host}:{bound_port}/, reading "
-            f"{sub}; GET /health needs the bearer token",
+            f"{sub}, sending commands to {req} and marks to "
+            f"{mark or 'nowhere (no MARK endpoint given)'}; controls work only from "
+            f"this box's own browser at http://127.0.0.1:{bound_port}/; GET /health "
+            f"needs the bearer token",
             flush=True,
         )
         _wait(server)

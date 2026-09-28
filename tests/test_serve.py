@@ -33,8 +33,40 @@ from _frames import ENDPOINT, frame
 from _zmq_release import _every_zmq_context_released  # noqa: F401
 from wl_expcontroller import serve
 from wl_expcontroller.cli import main
-from wl_expcontroller.link import SCHEMA, Stop, ZmqConsole, ZmqLink
-from wl_expcontroller.serve import CLOSED, QUEUE_DEPTH, Hub, Server, make_handler, on_box
+from wl_expcontroller.link import (
+    SCHEMA,
+    CancelScheduledStop,
+    Mark,
+    Pause,
+    Resume,
+    ScheduleStop,
+    SetParameter,
+    Stop,
+    ZmqConsole,
+    ZmqLink,
+)
+from wl_expcontroller.serve import (
+    BUSY,
+    CLOSED,
+    COMMAND_QUEUE_DEPTH,
+    LOOPBACK_NAMES,
+    MARK_ID_LIMIT,
+    MARKS_REMEMBERED,
+    QUEUE_DEPTH,
+    BadCommand,
+    Hub,
+    MarkNote,
+    MarkSignal,
+    Outbox,
+    Server,
+    box_names,
+    host_name,
+    make_handler,
+    names_loopback,
+    on_box,
+    parse_command,
+)
+from wl_expcontroller.web import CONTROLS_AT_THE_BOX, NO_MARK_ENDPOINT
 from wl_expcontroller.web import FONTS, FRAGMENT_IDS, font_bytes
 
 _REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
@@ -130,6 +162,12 @@ def _teardown_without_close(server: Server) -> None:
         server._web.join(timeout=5)
     if telemetry_started:
         server._telemetry.join(timeout=5)
+    # P4d-2b b2a: the command and mark threads stop on `_stop` as well; joined here so
+    # their sockets are closed on their own threads before `_every_zmq_context_released`
+    # destroys the contexts.
+    for outbox in (server._commands, server._marks):
+        if outbox is not None and outbox.thread.ident is not None:
+            outbox.thread.join(timeout=5)
 
 
 @pytest.fixture(autouse=True)
@@ -425,15 +463,32 @@ def test_a_host_clock_stepped_back_between_two_frames_leaves_the_reward_age_righ
 
 
 @contextmanager
-def _served(hub: Hub, *, keepalive_s: float = 15.0, stale_after_s: float = 30.0):
+def _served(
+    hub: Hub,
+    *,
+    keepalive_s: float = 15.0,
+    stale_after_s: float = 30.0,
+    hosts: frozenset = LOOPBACK_NAMES,
+    dispatch=None,
+):
     """The handler on a real loopback socket, with no ZMQ anywhere."""
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0),
         make_handler(
-            hub, token=TOKEN, stale_after_s=stale_after_s, keepalive_s=keepalive_s
+            hub,
+            token=TOKEN,
+            stale_after_s=stale_after_s,
+            keepalive_s=keepalive_s,
+            hosts=hosts,
+            dispatch=dispatch,
         ),
     )
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    # A short poll, so `shutdown()` returns in a twentieth of a second rather than
+    # the stdlib's default half: dozens of tests here each serve and shut down once,
+    # and the mutation sweep runs them once per function. Housekeeping.
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+    )
     thread.start()
     try:
         yield server.server_address[1]
@@ -613,14 +668,18 @@ def test_an_unknown_path_is_404_as_json():
             ), path
 
 
-def test_a_known_path_with_the_wrong_method_is_405_and_b1_takes_no_post():
+def test_a_known_path_with_the_wrong_method_is_405():
+    """`/commands` is a path since b2a and takes `POST` alone; every other path takes
+    no `POST` at all."""
     hub = _hub()
     with _served(hub) as port:
         assert _request(port, "POST", "/")[0] == 405
         assert _request(port, "POST", "/events")[0] == 405
         assert _request(port, "PUT", "/health")[0] == 405
         assert _request(port, "DELETE", "/")[0] == 405
-        assert _request(port, "POST", "/commands")[0] == 404
+        assert _request(port, "GET", "/commands")[0] == 405
+        assert _request(port, "OPTIONS", "/commands")[0] == 405
+        assert _request(port, "POST", "/nope")[0] == 404
 
 
 def test_a_method_the_stdlib_does_not_know_gets_json_not_its_html_page():
@@ -1096,7 +1155,9 @@ def test_a_non_ascii_authorization_header_gets_the_same_401():
     hub = _hub()
     with _served(hub) as port:
         answer = _raw(
-            port, b"GET /health HTTP/1.0\r\nAuthorization: Bearer t\xe9ken\r\n\r\n"
+            port,
+            b"GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\n"
+            b"Authorization: Bearer t\xe9ken\r\n\r\n",
         )
 
     assert answer.startswith(b"HTTP/1.0 401")
@@ -1949,10 +2010,14 @@ def test_wlx_serve_refuses_a_token_file_it_cannot_read(tmp_path):
 
 @pytest.mark.parametrize(
     "link",
-    ["tcp://127.0.0.1:5571", "a,b,c", ",tcp://127.0.0.1:5572"],
+    [
+        "tcp://127.0.0.1:5571",
+        "tcp://127.0.0.1:1,tcp://127.0.0.1:2,tcp://127.0.0.1:3,tcp://127.0.0.1:4",
+        ",tcp://127.0.0.1:5572",
+    ],
 )
-def test_wlx_serve_refuses_a_link_that_is_not_two_endpoints(tmp_path, link):
-    with pytest.raises(SystemExit, match="exactly two"):
+def test_wlx_serve_refuses_a_link_that_is_not_two_or_three_endpoints(tmp_path, link):
+    with pytest.raises(SystemExit, match="two or three"):
         main(_serve_args(tmp_path, link=link))
 
 
@@ -1961,10 +2026,17 @@ def test_parse_link_strips_whitespace_around_each_endpoint():
     with a space after the comma -- `"tcp://127.0.0.1:5571, tcp://127.0.0.1:5572"`
     -- which the old `parse_link` returned with the leading space still on the
     second endpoint, still `"://"`-shaped, so it passed straight through and only
-    ZeroMQ noticed, inside the telemetry thread, with no `try` around it (I1(b))."""
+    ZeroMQ noticed, inside the telemetry thread, with no `try` around it (I1(b)).
+    Two endpoints give no mark endpoint (P4d-2b b2a); a third is it."""
     assert serve.parse_link("tcp://127.0.0.1:5571, tcp://127.0.0.1:5572") == (
         "tcp://127.0.0.1:5571",
         "tcp://127.0.0.1:5572",
+        None,
+    )
+    assert serve.parse_link("tcp://127.0.0.1:1, tcp://127.0.0.1:2 ,tcp://127.0.0.1:3") == (
+        "tcp://127.0.0.1:1",
+        "tcp://127.0.0.1:2",
+        "tcp://127.0.0.1:3",
     )
 
 
@@ -1985,6 +2057,9 @@ def test_parse_link_strips_whitespace_around_each_endpoint():
         # since "5571,5572" really is two endpoints, just not `tcp://` ones, and
         # deserves its own sentence rather than borrowing "exactly two"'s.
         ("5571,5572", "tcp://HOST:PORT"),
+        # Three parts, which is a count `--link` takes since P4d-2b b2a, none of
+        # them an endpoint (this was "not two endpoints" in b1).
+        ("a,b,c", "tcp://HOST:PORT"),
     ],
 )
 def test_wlx_serve_refuses_a_link_endpoint_zmq_would_choke_on(tmp_path, link, why):
@@ -2016,3 +2091,696 @@ def test_wlx_serve_refuses_an_address_it_cannot_serve_on(tmp_path, http):
 def test_wlx_serve_refuses_a_stale_after_that_is_not_a_positive_time(tmp_path, stale):
     with pytest.raises(SystemExit, match="--stale-after"):
         main(_serve_args(tmp_path, extra=("--stale-after", stale)))
+
+
+# --- P4d-2b b2a: every request's Host (spec §2, §5.3) --------------------------------
+
+
+@pytest.mark.parametrize(
+    ("header", "name"),
+    [
+        ("127.0.0.1:8080", "127.0.0.1"),
+        ("LocalHost:8080", "localhost"),
+        ("localhost", "localhost"),
+        ("[::1]:8080", "::1"),
+        ("[::1]", "::1"),
+        ("Rig3.Lab.example:80", "rig3.lab.example"),
+        (None, None),
+        ("", None),
+        ("::1", None),
+        ("127.0.0.1:80x", None),
+        ("[::1:8080", None),
+        ("[]:80", None),
+        ("h\xe9te:80", None),
+    ],
+)
+def test_host_name_is_the_name_a_host_header_gives(header, name):
+    assert host_name(header) == name
+
+
+def test_names_loopback_is_localhost_and_the_loopback_addresses_alone():
+    assert all(names_loopback(n) for n in ("localhost", "127.0.0.1", "127.8.9.10", "::1"))
+    assert not any(names_loopback(n) for n in (None, "mac.lab", "192.168.1.92", "localhost.evil"))
+
+
+def test_box_names_are_loopback_this_boxs_own_names_and_addresses_and_the_allowed(
+    monkeypatch,
+):
+    """The defaults (spec §5.3): loopback and the box's own host names and addresses;
+    `--allow-host` adds names. Read from the host's resolver, which a test pins."""
+    monkeypatch.setattr(serve.socket, "gethostname", lambda: "Rig3")
+    monkeypatch.setattr(serve.socket, "getfqdn", lambda: "rig3.lab.example")
+    found = {
+        "rig3": [(2, 1, 6, "", ("192.168.1.92", 0))],
+        "rig3.lab.example": [(30, 1, 6, "", ("fe80::1%en0", 0, 0, 1))],
+    }
+
+    def getaddrinfo(name, port):
+        if name not in found:
+            raise OSError("no such name")
+        return found[name]
+
+    monkeypatch.setattr(serve.socket, "getaddrinfo", getaddrinfo)
+
+    assert box_names(("Other.Name ", "")) == frozenset(
+        {
+            "localhost", "127.0.0.1", "::1",
+            "rig3", "rig3.lab.example", "192.168.1.92", "fe80::1",
+            "other.name",
+        }
+    )
+
+
+def test_a_lookup_that_fails_leaves_loopback_and_the_allowed(monkeypatch):
+    monkeypatch.setattr(serve.socket, "gethostname", lambda: "")
+    monkeypatch.setattr(serve.socket, "getfqdn", lambda: "")
+
+    assert box_names(("rig3",)) == LOOPBACK_NAMES | {"rig3"}
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("GET", "/"), ("GET", "/events"), ("GET", "/health"), ("GET", "/nope"),
+     ("POST", "/commands"), ("PUT", "/")],
+)
+def test_a_request_whose_host_names_another_console_gets_a_json_421(method, path):
+    """Spec §2 and §5.3: every request is answered only when its `Host` names this
+    console. A DNS-rebinding page's request carries its own name, and gets a JSON
+    421 and no page -- not even the token check."""
+    hub = _hub()
+    with _served(hub) as port:
+        status, headers, body = _request(
+            port, method, path, {"Host": "evil.example", "Authorization": f"Bearer {TOKEN}"}
+        )
+
+    assert status == 421
+    assert headers["Content-Type"] == "application/json"
+    assert json.loads(body)["error"] == "misdirected request"
+    assert b"<" not in body and b"evil" not in body
+
+
+def test_a_request_with_no_host_at_all_is_misdirected():
+    hub = _hub()
+    with _served(hub) as port:
+        answer = _raw(port, b"GET / HTTP/1.0\r\n\r\n")
+
+    assert answer.startswith(b"HTTP/1.0 421")
+
+
+def test_a_name_given_with_allow_host_is_answered():
+    hub = _hub()
+    with _served(hub, hosts=LOOPBACK_NAMES | {"rig3.lab"}) as port:
+        status = _request(port, "GET", "/", {"Host": f"rig3.lab:{port}"})[0]
+
+    assert status == 200
+
+
+# --- P4d-2b b2a: POST /commands, from the box (spec §2, §5.3) --------------------------
+
+
+class _Dispatch:
+    """What `Server.dispatch` would be, recording each request it is handed."""
+
+    def __init__(self, answer=(200, {"status": "sent", "said": "sent: test"})):
+        self.seen: list = []
+        self.answer = answer
+
+    def __call__(self, request):
+        self.seen.append(request)
+        return self.answer
+
+
+def _post(port: int, body, headers: dict | None = None):
+    """`POST /commands` the way the box's own page sends it, unless `headers` says
+    otherwise: loopback `Host`, this page's `Origin`, and JSON."""
+    raw = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
+    sent = {
+        "Host": f"127.0.0.1:{port}",
+        "Origin": f"http://127.0.0.1:{port}",
+        "Content-Type": "application/json",
+    }
+    sent.update(headers or {})
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.putrequest("POST", "/commands", skip_host=True)
+        for name, value in sent.items():
+            if value is not None:
+                connection.putheader(name, value)
+        connection.putheader("Content-Length", str(len(raw)))
+        connection.endheaders(raw)
+        response = connection.getresponse()
+        return response.status, json.loads(response.read())
+    finally:
+        connection.close()
+
+
+def test_a_command_from_the_boxs_own_page_is_dispatched_as_the_person_named():
+    """Spec §2's four checks all hold, the body is a command, and it is dispatched
+    with the actor recorded as `NAME (box, unverified)` -- S9a §6: a forgeable name
+    says it is unverified. The dispatch's answer is the page's."""
+    dispatch = _Dispatch()
+    with _served(_hub(), dispatch=dispatch) as port:
+        status, answer = _post(port, {"kind": "pause", "by": " jake "})
+
+    assert (status, answer) == (200, {"status": "sent", "said": "sent: test"})
+    assert dispatch.seen == [Pause(by="jake (box, unverified)")]
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Origin": None},
+        {"Origin": "http://evil.example"},
+        {"Origin": "http://127.0.0.1:1"},
+        {"Content-Type": "text/plain"},
+        {"Content-Type": None},
+        {"Host": "rig3.lab"},
+    ],
+    ids=["no-origin", "cross-site", "other-port", "text-plain", "no-type", "lan-name"],
+)
+def test_a_write_that_fails_one_of_the_four_checks_is_refused_with_the_sentence(headers):
+    """Spec §2: a write from the box is accepted only when all four hold. A LAN name
+    in `Host` -- one this console answers reads on -- is still not loopback, so the
+    box's browser under that name cannot write. Each is refused with the §2
+    sentence, and nothing is dispatched."""
+    dispatch = _Dispatch()
+    with _served(_hub(), hosts=LOOPBACK_NAMES | {"rig3.lab"}, dispatch=dispatch) as port:
+        status, answer = _post(port, {"kind": "stop", "by": "jake"}, headers)
+
+    assert status == 403
+    assert answer == {"status": "refused", "said": CONTROLS_AT_THE_BOX}
+    assert dispatch.seen == []
+
+
+def test_a_write_from_a_peer_that_is_not_the_box_is_refused(monkeypatch):
+    """The first check: a loopback peer. Every test socket is loopback, so the peer
+    the handler reads is made a LAN one."""
+    monkeypatch.setattr(serve, "on_box", lambda host: False)
+    dispatch = _Dispatch()
+    with _served(_hub(), dispatch=dispatch) as port:
+        status, answer = _post(port, {"kind": "stop", "by": "jake"})
+
+    assert (status, answer["said"]) == (403, CONTROLS_AT_THE_BOX)
+    assert dispatch.seen == []
+
+
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        (b"not json", "a command is one JSON object"),
+        (b"[1]", "a command is one JSON object"),
+        (b"\xff", "a command is one JSON object"),
+        ({"kind": "reboot", "by": "jake"}, "'reboot' is not a command"),
+        ({"kind": "pause"}, "every command records who sent it"),
+        ({"kind": "pause", "by": "   "}, "every command records who sent it"),
+        ({"kind": "pause", "by": "j" * 65}, "every command records who sent it"),
+        ({"kind": "pause", "by": "ja\nke"}, "every command records who sent it"),
+        ({"kind": "pause", "by": "jake", "why": "x"}, "a pause command takes no why"),
+        ({"kind": "set", "by": "jake", "name": "fix_hold", "value": True}, "neither"),
+        ({"kind": "set", "by": "jake", "value": 0.4}, "names its parameter"),
+        ({"kind": "schedule", "by": "jake", "at": "25:00"}, "HH:MM"),
+        ({"kind": "schedule", "by": "jake", "at": "14:30", "trials": 3}, "exactly one"),
+        ({"kind": "schedule", "by": "jake"}, "exactly one"),
+        ({"kind": "mark", "by": "jake", "pressed_at": "now"}, "pressed_at"),
+        ({"kind": "note", "by": "jake", "mark": MARK_ID_LIMIT + 1, "note": ""}, "names the mark"),
+        ({"kind": "note", "by": "jake", "mark": 3, "note": "x" * 501}, "at most 500"),
+    ],
+)
+def test_a_body_that_is_not_a_command_is_refused_before_anything_is_queued(body, said):
+    """Spec §5.3: the body is validated before anything is queued, with a sentence
+    the page shows; a person with no name is told to give one (Review Focus 6)."""
+    dispatch = _Dispatch()
+    with _served(_hub(), dispatch=dispatch) as port:
+        status, answer = _post(port, body)
+
+    assert status == 400
+    assert answer["status"] == "refused"
+    assert answer["said"].startswith("not sent: ")
+    assert said in answer["said"]
+    assert dispatch.seen == []
+
+
+def test_a_body_longer_than_the_limit_or_without_a_length_is_refused_unread():
+    dispatch = _Dispatch()
+    with _served(_hub(), dispatch=dispatch) as port:
+        too_long = _post(port, {"kind": "pause", "by": "j" * 5000})
+        answer = _raw(
+            port,
+            (
+                f"POST /commands HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n"
+                f"Origin: http://127.0.0.1:{port}\r\n"
+                f"Content-Type: application/json\r\n\r\n"
+            ).encode("ascii"),
+        )
+
+    assert too_long == (413, {"status": "refused", "said": "a command is at most 4096 bytes"})
+    assert answer.startswith(b"HTTP/1.0 400")
+    assert b"Content-Length" in answer
+    assert dispatch.seen == []
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({"kind": "set", "by": "jake", "name": "fix_hold", "value": 1},
+         SetParameter(name="fix_hold", value=1.0, by="jake (box, unverified)")),
+        ({"kind": "set", "by": "jake", "name": "shape", "value": "penguin"},
+         SetParameter(name="shape", value="penguin", by="jake (box, unverified)")),
+        ({"kind": "stop", "by": "jake"}, Stop(by="jake (box, unverified)")),
+        ({"kind": "resume", "by": "jake"}, Resume(by="jake (box, unverified)")),
+        ({"kind": "cancel", "by": "jake"}, CancelScheduledStop(by="jake (box, unverified)")),
+        ({"kind": "schedule", "by": "jake", "at": "14:30"},
+         ScheduleStop(kind="clock", value="14:30", by="jake (box, unverified)")),
+        ({"kind": "schedule", "by": "jake", "trials": 12},
+         ScheduleStop(kind="trials", value=12, by="jake (box, unverified)")),
+        ({"kind": "schedule", "by": "jake", "ml": 5},
+         ScheduleStop(kind="fluid", value=5, by="jake (box, unverified)")),
+        ({"kind": "mark", "by": "jake", "pressed_at": 1_700_000_000},
+         MarkSignal(by="jake (box, unverified)", pressed_at=1_700_000_000.0)),
+        ({"kind": "mark", "by": "jake"}, MarkSignal(by="jake (box, unverified)", pressed_at=None)),
+        ({"kind": "note", "by": "jake", "mark": 7, "note": "bubble"},
+         MarkNote(mark=7, note="bubble", by="jake (box, unverified)")),
+    ],
+)
+def test_each_command_the_page_sends_parses_to_what_the_rig_is_sent(body, expected):
+    assert parse_command(body) == expected
+
+
+def test_a_parse_refusal_is_a_bad_command():
+    with pytest.raises(BadCommand):
+        parse_command({"kind": "pause", "by": ""})
+
+
+def test_the_boxs_page_may_write_and_the_same_box_under_a_lan_name_may_not():
+    """`View.can_write` is spec §2's first two checks, per request: the page greys
+    its controls where a write would be refused anyway."""
+    hub = _hub()
+    with _served(hub, hosts=LOOPBACK_NAMES | {"rig3.lab"}) as port:
+        box = _request(port, "GET", "/")[2].decode("utf-8")
+        lan = _request(port, "GET", "/", {"Host": f"rig3.lab:{port}"})[2].decode("utf-8")
+
+    assert 'data-can-write="1"' in box
+    assert 'data-can-write="0"' in lan
+
+
+def test_a_stream_on_the_boxs_page_renders_controls_that_work():
+    hub = Hub(steady=_Clock(0.0), endpoint=ENDPOINT, marks=True)
+    hub.offer(frame())
+    with _served(hub) as port, _stream(port) as response:
+        first = next(_events(response))
+
+    assert 'data-cmd="pause"' in first["frags"]["controls"]
+    assert "disabled" not in first["frags"]["controls"]
+
+
+# --- P4d-2b b2a: the outboxes, where each ZMQ socket has its one thread ---------------
+
+
+class _Sender:
+    """A sender that answers its work, and a way to hold it mid-work."""
+
+    def __init__(self) -> None:
+        self.thread = None
+        self.release = threading.Event()
+        self.release.set()
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _outbox(build, depth: int = 2) -> tuple[Outbox, threading.Event]:
+    stop = threading.Event()
+    outbox = Outbox("test-outbox", build, depth, stop)
+    outbox.start()
+    return outbox, stop
+
+
+def _submitted(outbox: Outbox, work, seconds: float = 10.0) -> tuple[int, dict]:
+    """`outbox.submit(work)` on a thread of its own, and its answer within `seconds`;
+    fails the test otherwise. `submit` waits for as long as the outbox's thread
+    lives, so a job that thread never answers -- the defect these tests exist to
+    catch -- would hang the test on its own thread rather than fail it: with
+    `Outbox._answer` neutered, the mutation harness ran out its 300 s and printed
+    `timed out`, which no test noticed (`docs/next-session.md`: the fix is a bound)."""
+    answers: list = []
+    thread = threading.Thread(
+        target=lambda: answers.append(outbox.submit(work)), daemon=True
+    )
+    thread.start()
+    thread.join(timeout=seconds)
+    assert answers, f"the outbox did not answer within {seconds} s"
+    return answers[0]
+
+
+def test_an_outbox_builds_its_sender_on_its_own_thread_and_answers_each_job():
+    sender = _Sender()
+
+    def build():
+        sender.thread = threading.current_thread().name
+        return sender
+
+    outbox, stop = _outbox(build)
+    try:
+        answer = _submitted(
+            outbox, lambda built: (200, {"status": "sent", "said": built.thread})
+        )
+    finally:
+        stop.set()
+        outbox.thread.join(timeout=5)
+
+    assert answer == (200, {"status": "sent", "said": "test-outbox"})
+    assert sender.closed, "the sender is closed on its thread when the outbox stops"
+
+
+def test_a_full_outbox_answers_busy_at_once_and_every_queued_job_is_answered():
+    """Review Focus 1: a flood -- a double click, a held key, a stuck page -- fills
+    the queue, and what does not fit is answered *busy* at once, never queued without
+    bound and never left hanging."""
+    sender = _Sender()
+    sender.release.clear()
+    outbox, stop = _outbox(lambda: sender, depth=2)
+    in_hand = threading.Event()
+
+    def held(built):
+        in_hand.set()
+        built.release.wait(10)
+        return 200, {"status": "sent", "said": "held"}
+
+    answers: list = []
+
+    def submit() -> None:
+        answers.append(outbox.submit(held))
+
+    threads = [threading.Thread(target=submit, daemon=True) for _ in range(3)]
+    try:
+        # One job in the thread's hands first, then two to fill the queue behind it.
+        # Started together, the third could find the queue full before the thread had
+        # taken the first, and be the one told *busy* (seen once, on a loaded machine).
+        threads[0].start()
+        assert in_hand.wait(5.0), "the outbox thread never took the first job"
+        threads[1].start()
+        threads[2].start()
+        assert _until(lambda: outbox._queue.full(), 5.0), "one in hand and two waiting"
+        started = time.monotonic()
+        busy = outbox.submit(held)
+        assert time.monotonic() - started < 1.0, "busy is said at once"
+        sender.release.set()
+        for thread in threads:
+            thread.join(timeout=10)
+    finally:
+        sender.release.set()
+        stop.set()
+        outbox.thread.join(timeout=5)
+
+    assert busy == BUSY
+    assert answers == [(200, {"status": "sent", "said": "held"})] * 3
+
+
+def test_an_outbox_whose_sender_cannot_be_built_says_so_to_every_job():
+    def build():
+        raise RuntimeError("no such endpoint")
+
+    outbox, stop = _outbox(build)
+    try:
+        answer = _submitted(outbox, lambda built: (200, {}))
+    finally:
+        stop.set()
+        outbox.thread.join(timeout=5)
+
+    assert answer == (
+        504,
+        {
+            "status": "not_delivered",
+            "said": "not delivered: wlx serve could not reach the rig (RuntimeError: no such endpoint)",
+        },
+    )
+
+
+def test_work_that_raises_is_answered_not_delivered():
+    outbox, stop = _outbox(_Sender)
+    try:
+
+        def raises(built):
+            raise ValueError("socket gone")
+
+        answer = _submitted(outbox, raises)
+    finally:
+        stop.set()
+        outbox.thread.join(timeout=5)
+
+    assert answer == (504, {"status": "not_delivered", "said": "not delivered: ValueError: socket gone"})
+
+
+def test_a_job_submitted_to_a_stopped_outbox_is_answered_not_delivered():
+    outbox, stop = _outbox(_Sender)
+    stop.set()
+    outbox.thread.join(timeout=5)
+
+    assert _submitted(outbox, lambda built: (200, {}))[1]["said"] == (
+        "not delivered: wlx serve is closing"
+    )
+
+
+def _until(predicate, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.005)
+    return False
+
+
+# --- P4d-2b b2a: the Server's command and mark threads, on real sockets ---------------
+
+
+def _rig(zmq_cleanup) -> ZmqLink:
+    return zmq_cleanup(
+        ZmqLink(
+            pub_endpoint="tcp://127.0.0.1:0",
+            rep_endpoint="tcp://127.0.0.1:0",
+            mark_endpoint="tcp://127.0.0.1:0",
+        )
+    )
+
+
+def _drained(link, until, seconds: float = 10.0) -> tuple[threading.Thread, list]:
+    got: list = []
+
+    def run() -> None:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and until not in got:
+            got.extend(link.drain())
+            time.sleep(0.005)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread, got
+
+
+def test_a_command_is_sent_when_the_rig_acknowledges_it(zmq_cleanup, server_cleanup):
+    rig = _rig(zmq_cleanup)
+    server = server_cleanup(
+        Server(sub=rig.pub_endpoint, req=rig.rep_endpoint, http=("127.0.0.1", 0), token=TOKEN)
+    )
+    server.start()
+    try:
+        thread, got = _drained(rig, Pause(by="jake (box, unverified)"))
+        status, answer = _post(server.address[1], {"kind": "pause", "by": "jake"})
+        thread.join(timeout=15)
+    finally:
+        server.close()
+
+    assert (status, answer["status"]) == (200, "sent")
+    assert got == [Pause(by="jake (box, unverified)")]
+
+
+def test_with_taskd_gone_the_page_is_told_not_delivered(zmq_cleanup, server_cleanup):
+    """Spec §5.4: with `taskd` gone, the page is told *not delivered* -- once the
+    connect timeout passes, since there is no rig to wait a reply from."""
+    probe = _rig(zmq_cleanup)
+    pub, rep = probe.pub_endpoint, probe.rep_endpoint
+    probe.close()
+    server = server_cleanup(
+        Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN, connect_timeout_s=0.2)
+    )
+    server.start()
+    try:
+        status, answer = _post(server.address[1], {"kind": "stop", "by": "jake"})
+    finally:
+        server.close()
+
+    assert status == 504
+    assert answer == {
+        "status": "not_delivered",
+        "said": f"not delivered: no rig is connected on {rep}",
+    }
+
+
+def _drained_any(link, kind, seconds: float = 10.0) -> tuple[threading.Thread, list]:
+    """Drain `link` on a thread until a command of type `kind` arrives."""
+    got: list = []
+
+    def run() -> None:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and not any(isinstance(c, kind) for c in got):
+            got.extend(link.drain())
+            time.sleep(0.005)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread, got
+
+
+def test_a_mark_goes_ahead_of_a_command_waiting_on_the_rig(zmq_cleanup, server_cleanup):
+    """Spec §5.3: the mark's signal goes on its own path, as soon as it arrives,
+    ahead of the queue -- here, ahead of a pause the rig has not acknowledged,
+    because nothing drains it -- and the note that follows it carries the instants
+    `wlx serve` kept for that mark: the browser's `pressed_at`, and when this process
+    received the signal, on its own clock."""
+    rig = _rig(zmq_cleanup)
+    server = server_cleanup(
+        Server(
+            sub=rig.pub_endpoint,
+            req=rig.rep_endpoint,
+            mark=rig.mark_endpoint,
+            http=("127.0.0.1", 0),
+            token=TOKEN,
+            reply_timeout_s=2.0,
+        )
+    )
+    server.start()
+    port = server.address[1]
+    waiting: list = []
+    pause = threading.Thread(
+        target=lambda: waiting.append(_post(port, {"kind": "pause", "by": "sam"})),
+        daemon=True,
+    )
+    try:
+        pause.start()
+        time.sleep(0.2)
+        before = time.time()
+        started = time.monotonic()
+        status, answer = _post(port, {"kind": "mark", "by": "jake", "pressed_at": 1_700_000_000.5})
+        took = time.monotonic() - started
+        after = time.time()
+        signalled = 0
+        for _ in range(400):
+            signalled = rig.mark_signal()
+            if signalled:
+                break
+            time.sleep(0.005)
+        pause.join(timeout=10)
+
+        thread, got = _drained_any(rig, Mark)
+        noted = _post(port, {"kind": "note", "by": "jake", "mark": answer["mark"], "note": "bubble"})
+        thread.join(timeout=15)
+    finally:
+        server.close()
+
+    assert (status, answer["status"]) == (200, "signaled")
+    assert took < 1.5, "the mark waited behind the pause"
+    assert 1 <= answer["mark"] <= MARK_ID_LIMIT
+    assert signalled == answer["mark"]
+    assert waiting and waiting[0][0] == 504, "the pause was never acknowledged"
+    assert noted[0] == 200
+    (note,) = [command for command in got if isinstance(command, Mark)]
+    assert (note.mark, note.note, note.by) == (answer["mark"], "bubble", "jake (box, unverified)")
+    assert note.pressed_at == 1_700_000_000.5
+    assert before <= note.received_at <= after
+
+
+def test_a_console_without_the_mark_endpoint_says_a_mark_is_not_delivered(
+    zmq_cleanup, server_cleanup
+):
+    rig = _rig(zmq_cleanup)
+    server = server_cleanup(
+        Server(sub=rig.pub_endpoint, req=rig.rep_endpoint, http=("127.0.0.1", 0), token=TOKEN)
+    )
+    server.start()
+    try:
+        status, answer = _post(server.address[1], {"kind": "mark", "by": "jake"})
+    finally:
+        server.close()
+
+    assert status == 504
+    assert answer["said"] == f"not delivered: {NO_MARK_ENDPOINT}"
+    assert server._marks is None
+
+
+def test_a_note_for_a_mark_this_console_does_not_know_carries_no_instants(
+    zmq_cleanup, server_cleanup
+):
+    """Review Focus 5's neighbor: a `wlx serve` restarted between a mark and its note
+    knows neither instant, and says so with `None` rather than inventing one."""
+    rig = _rig(zmq_cleanup)
+    server = server_cleanup(
+        Server(sub=rig.pub_endpoint, req=rig.rep_endpoint, http=("127.0.0.1", 0), token=TOKEN)
+    )
+    server.start()
+    try:
+        thread, got = _drained_any(rig, Mark)
+        status, _ = _post(server.address[1], {"kind": "note", "by": "jake", "mark": 42, "note": ""})
+        thread.join(timeout=15)
+    finally:
+        server.close()
+
+    assert status == 200
+    assert got == [Mark(mark=42, note="", by="jake (box, unverified)", pressed_at=None, received_at=None)]
+
+
+def test_the_marks_kept_for_their_notes_are_the_newest_and_each_is_given_once():
+    server = Server(sub=ENDPOINT, req="tcp://127.0.0.1:1", http=("127.0.0.1", 0), token=TOKEN)
+    try:
+        for number in range(1, MARKS_REMEMBERED + 2):
+            server._remember(number, None, float(number))
+
+        assert server._recall(1) == (None, None), "the oldest was let go"
+        assert server._recall(MARKS_REMEMBERED + 1) == (None, float(MARKS_REMEMBERED + 1))
+        assert server._recall(MARKS_REMEMBERED + 1) == (None, None), "given once"
+    finally:
+        server.close()
+
+
+def test_closing_the_server_stops_its_command_and_mark_threads(zmq_cleanup, server_cleanup):
+    rig = _rig(zmq_cleanup)
+    server = server_cleanup(
+        Server(
+            sub=rig.pub_endpoint,
+            req=rig.rep_endpoint,
+            mark=rig.mark_endpoint,
+            http=("127.0.0.1", 0),
+            token=TOKEN,
+        )
+    )
+    server.start()
+    assert server._commands.thread.is_alive() and server._marks.thread.is_alive()
+
+    started = time.monotonic()
+    server.close()
+
+    assert time.monotonic() - started < 2.0
+    assert not server._commands.thread.is_alive()
+    assert not server._marks.thread.is_alive()
+
+
+def test_wlx_serve_takes_the_mark_endpoint_and_the_allowed_hosts(tmp_path, monkeypatch):
+    seen: dict = {}
+
+    def stop_at_construction(self, **kwargs) -> None:
+        seen.update(kwargs)
+        raise OSError("stopped here by the test")
+
+    monkeypatch.setattr(Server, "__init__", stop_at_construction)
+
+    with pytest.raises(SystemExit, match="stopped here by the test"):
+        main(
+            _serve_args(
+                tmp_path,
+                link="tcp://127.0.0.1:5571,tcp://127.0.0.1:5572,tcp://127.0.0.1:5573",
+                extra=("--allow-host", "rig3.lab", "--allow-host", "rig3"),
+            )
+        )
+
+    assert seen["mark"] == "tcp://127.0.0.1:5573"
+    assert seen["allow_hosts"] == ("rig3.lab", "rig3")
