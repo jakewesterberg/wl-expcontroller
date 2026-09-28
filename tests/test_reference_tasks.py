@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from tasks.rig import RIG
+from wl_expcontroller.calibration import constellation
 from wl_expcontroller.check import check
-from wl_expcontroller.geometry import Geometry
+from wl_expcontroller.geometry import Housing
 from wl_expcontroller.photometry import Calibration, xyY
 from wl_expcontroller.run import Recorded
 from wl_expcontroller.simulate import Subject, simulate
@@ -27,9 +30,17 @@ from wl_expcontroller.task import (
 )
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks"
-GEOMETRY = Geometry.stereoscope(
-    panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
-)
+
+#: The rig in direct view (`tasks/rig.py`), where every reference task runs, with
+#: **stand-in housings**: the real ones are unmeasured (direct-view spec §9 item 1). One
+#: per bottom corner, 4 × 3 cm with a 0.5 cm margin.
+GEOMETRY = replace(
+    RIG,
+    housings=(
+        Housing(left_cm=0.0, right_cm=4.0, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
+        Housing(left_cm=54.997, right_cm=58.997, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
+    ),
+).direct()
 VALUES = {
     "fix_timeout": 4.0,
     "fix_hold": 0.3,
@@ -218,3 +229,60 @@ def test_simulation_reaches_every_outcome_the_search_task_declares(search):
 
     assert census.hangs == 0
     assert census.uncovered(search) == set()
+
+
+# --- In direct view (direct-view spec §8) -----------------------------------------
+
+REFERENCE = {
+    "fixation_detection": "detection",
+    "adaptive_detection": "adaptive_detection",
+    "visual_search": "search",
+    "calibration": "calibration",
+}
+
+
+def _range(trial: Trial, name: str) -> tuple[float, float]:
+    (param,) = [p for p in trial.params if p.name == name]
+    return (param.low, param.high)
+
+
+@pytest.mark.parametrize("name", sorted(REFERENCE))
+def test_every_reference_task_is_written_for_direct_view(name):
+    """The first animal task runs in direct view (PI, 2026-09-28), and these are the
+    tasks that stand for it."""
+    assert _load(name, REFERENCE[name]).view == "direct"
+
+
+def test_the_interim_narrowing_is_undone(detection, adaptive, search):
+    """The ranges the stereoscope's ±12° mask forced on 2026-09-28, back to what they
+    were, now that direct view's field is what they are checked against."""
+    assert _range(detection, "target_position") == (-16.0, 16.0)
+    assert _range(adaptive, "target_position") == (-16.0, 16.0)
+    assert _range(adaptive, "eccentricity") == (2.0, 16.0)
+    assert _range(search, "eccentricity") == (5.0, 14.0)
+
+
+def test_the_calibration_task_passes_every_load_time_check_in_direct_view():
+    allocation = _load("allocation", "ALLOCATION")
+
+    assert check(_load("calibration", "calibration"), allocation, geometry=GEOMETRY) == []
+
+
+def test_the_calibration_task_can_present_direct_views_whole_constellation():
+    """Its ranges are the ±15° region the constellation is placed over, so every
+    target the block schedules is one the task declares."""
+    task = _load("calibration", "calibration")
+    (x_low, x_high), (y_low, y_high) = _range(task, "target_x"), _range(task, "target_y")
+
+    assert (x_low, x_high, y_low, y_high) == (-15.0, 15.0, -15.0, 15.0)
+    for x, y in constellation(GEOMETRY):
+        assert x_low <= x <= x_high and y_low <= y <= y_high
+
+
+def test_a_direct_view_task_is_refused_in_the_stereoscope_naming_both(detection):
+    """What direct view part 2's session start will say if the operator picks the
+    stereoscope for this task: the mismatch, and the ±16° its mask cannot show."""
+    allocation = _load("allocation", "ALLOCATION")
+    codes = {f.code for f in check(detection, allocation, geometry=RIG.stereoscope(1.6))}
+
+    assert codes == {"wrong-setup", "stimulus-off-screen"}

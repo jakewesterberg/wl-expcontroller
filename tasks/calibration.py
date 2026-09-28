@@ -17,6 +17,11 @@ targets than were presented and reports what it could reach.
 the animal really held it, and reward that. Turning held fixations into a map is
 `calibration.Collector`'s, and it deliberately consumes only trials this task scored
 `CORRECT` -- a fixation the task would not pay for is not one to calibrate against.
+
+**Written for direct view** (`view="direct"`, direct-view spec §8), over its ±15° region.
+The stereoscope's constellation, over its ±12° mask, is `calibration.constellation`'s too, and
+the task that presents it does not exist yet: it waits for the first stereoscope session,
+which direct view part 2's `wlx run --view` is what makes possible.
 """
 
 from wl_expcontroller.task import (
@@ -44,6 +49,7 @@ TARGET = Stimulus(
 
 calibration = Trial(
     start="await_fix",
+    view="direct",
     windows=[
         Window(
             "cal",
@@ -53,14 +59,14 @@ calibration = Trial(
         )
     ],
     params=[
-        # Bounded to the field the stereoscope actually shows, not to the
-        # constellation of the day: check 8 inspects the parameter *space*, and a
-        # range wider than the panel is a task that can be scheduled off-screen.
-        # That field is ±13.15° × ±14.77° with the screen at 50 cm (S0 §5.2), stopped
-        # at the panel by the PI's ±12° mask (optics drawing §5), so ±12 both ways.
-        # It was ±14.5 × ±16.1, 0.85 of the 31.5-inch panel's field (2026-09-28).
-        Param("target_x", unit="deg", low=-12.0, high=12.0),
-        Param("target_y", unit="deg", low=-12.0, high=12.0),
+        # Bounded to direct view's calibration region, ±15° × ±15° (direct-view spec
+        # §6), not to the constellation of the day: check 8 inspects the parameter
+        # *space*, and a range wider than the field is a task that can be scheduled
+        # off-screen. Direct view shows ±30.5° × ±18.4°, so the region is the tighter
+        # bound. It was ±12 in the interim, at the stereoscope's mask (2026-09-28), and
+        # ±14.5 × ±16.1 before that, 0.85 of the 31.5-inch panel's field.
+        Param("target_x", unit="deg", low=-15.0, high=15.0),
+        Param("target_y", unit="deg", low=-15.0, high=15.0),
         # Wider than an ordinary fixation window. A calibration window has to admit
         # gaze that is *wrong by the amount calibration is about to correct*; sized
         # for a good map it would reject every fixation on the uncalibrated animal

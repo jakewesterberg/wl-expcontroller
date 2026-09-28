@@ -65,6 +65,8 @@ ARRAY = Stimulus(
 
 search = Trial(
     start="await_fix",
+    # Direct view, with the detection tasks: the lab's programme runs there.
+    view="direct",
     windows=[
         Window("fix", at=(0.0, 0.0), radius=P("fix_window"), on="fix"),
         # One declaration, `set_size` windows. The author cannot write them out,
@@ -84,11 +86,10 @@ search = Trial(
         # own width -- so a saccade to one distractor would have been scored against
         # another. It passed every check that existed at the time.
         Param("item_window", unit="deg", low=0.5, high=1.0),
-        # The high end is the same interim bound as the detection tasks': about 1°
-        # inside the stereoscope's ±13.15° (screen at 50 cm, S0 §5.2), at the PI's
-        # ±12° mask. It was 14 inside the 31.5-inch panel's ±17°. Direct view's
-        # `Geometry`, when it exists, is what widens it (2026-09-28).
-        Param("eccentricity", unit="deg", low=5.0, high=12.0),
+        # Back to 14, what it was before the interim bound of 12 at the stereoscope's
+        # mask (2026-09-28), and checked against direct view: the ring reaches ±14°
+        # vertically as well, inside direct view's ±18.4°.
+        Param("eccentricity", unit="deg", low=5.0, high=14.0),
         # The manipulation. A value, not a structure -- which is the entire point.
         Param("set_size", unit="items", low=2, high=12),
         # `high` is one below `set_size`'s *lowest* legal value, because the checker

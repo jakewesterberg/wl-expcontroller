@@ -34,6 +34,9 @@ TARGET = Stimulus("target", at=(P("target_position"), 0.0), looks=P("target_look
 
 detection = Trial(
     start="await_fix",
+    # The first animal task runs in direct view (PI, 2026-09-28), and its ±16° is wider
+    # than the stereoscope's mask.
+    view="direct",
     windows=[
         Window("fix", at=(0.0, 0.0), radius=P("fix_window"), on="fix"),
         Window(
@@ -50,12 +53,10 @@ detection = Trial(
         Param("target_hold", unit="s", low=0.05, high=1.0),
         Param("fix_window", unit="deg", low=0.5, high=5.0),
         Param("target_window", unit="deg", low=0.5, high=6.0),
-        # An interim bound, about 1° inside the stereoscope's ±13.15° (the PG27UCDM
-        # with the screen at 50 cm, S0 §5.2), and at the PI's ±12° mask: check 8
-        # refuses a range the rig cannot show. The PI says this task runs in direct
-        # view (2026-09-28), which is wider and has no `Geometry` yet; that `Geometry`
-        # is what puts ±16 back.
-        Param("target_position", unit="deg", low=-12.0, high=12.0),
+        # ±16° again (direct-view spec §8), checked against direct view's ±30.5° field.
+        # ±12 was the interim, at the stereoscope's mask, before direct view had a
+        # `Geometry` (2026-09-28).
+        Param("target_position", unit="deg", low=-16.0, high=16.0),
         # Appearance is a parameter, so switching circles among squares for
         # penguins among elephants is a value applied in an ITI -- not a new
         # task and not a new block.
