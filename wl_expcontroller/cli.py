@@ -1245,15 +1245,26 @@ def main(argv: list[str] | None = None) -> int:
 
     server_parser = sub.add_parser(
         "serve",
-        help="serve a running session's read-only browser console, and /health",
+        help="serve a running session's browser console, and /health",
     )
     server_parser.add_argument(
         "--link",
         required=True,
-        metavar="PUB,REP",
-        help="the session's two endpoints, exactly as given to `wlx run --link "
-        "PUB,REP`. Telemetry is read from the first; the second is connected and, in "
-        "this slice (P4d-2b b1), never sent to -- nothing on the page writes",
+        metavar="PUB,REP[,MARK]",
+        help="the session's endpoints, exactly as given to `wlx run --link`. "
+        "Telemetry is read from the first, commands are sent to the second, and an "
+        "operator's mark signal to the third; without the third the page's mark "
+        "control is greyed",
+    )
+    server_parser.add_argument(
+        "--allow-host",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="a name this box is reached by, to answer to (P4d-2b spec §5.3); may be "
+        "given more than once. Every request's Host must name this console -- "
+        "loopback, this box's own host names and addresses, or a name given here -- "
+        "or it is refused with a 421, against DNS rebinding",
     )
     server_parser.add_argument(
         "--http",
