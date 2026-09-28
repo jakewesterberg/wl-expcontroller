@@ -27,6 +27,7 @@ bench data. **No number printed here is a claim about our hardware.**
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -62,10 +63,21 @@ except ImportError as exc:  # pragma: no cover - operator-facing
 
 from wl_expcontroller.geometry import Geometry  # noqa: E402
 
-#: The rig S0 describes. Each eye sees half the panel's width and its full height,
-#: so the per-eye field is TALLER than it is wide -- a grid square in degrees is
-#: the wrong shape for it.
-GEOMETRY = Geometry(panel_diagonal_cm=80.01, viewing_distance_cm=57.0)
+#: The geometry the 2026-09-05 record was measured on: S0's 31.5-inch 16:9 panel (an
+#: 80.01 cm diagonal) at 57 cm, as S0 described the rig then. Each eye sees half the
+#: panel's width and its full height, so the per-eye field is TALLER than it is wide --
+#: a grid square in degrees is the wrong shape for it.
+#:
+#: **It is not the rig's panel any more.** The PI chose the 26.5-inch ASUS PG27UCDM on
+#: 2026-09-27 (S0 §5.1). This stays on the 31.5-inch panel so the script still
+#: regenerates the record it is the source of. A run for the PG27UCDM is a new record
+#: with its own date, not a regeneration of this one.
+_DIAGONAL_CM = 80.01
+GEOMETRY = Geometry(
+    panel_width_cm=_DIAGONAL_CM * 16 / math.hypot(16, 9),
+    panel_height_cm=_DIAGONAL_CM * 9 / math.hypot(16, 9),
+    viewing_distance_cm=57.0,
+)
 HALF_H = GEOMETRY.half_field_h_deg
 HALF_V = GEOMETRY.half_field_v_deg
 
@@ -73,9 +85,10 @@ HALF_V = GEOMETRY.half_field_v_deg
 #: saccades to and half-misses.
 MARGIN = 0.85
 
-#: The largest eccentricity the reference tasks declare -- `fixation_detection`'s
-#: `target_position` runs -16..16 deg. Accuracy is scored over this region because
-#: it is where windows can actually land, not over the whole panel.
+#: The largest eccentricity the reference tasks declared on 2026-09-05 --
+#: `fixation_detection`'s `target_position` ran -16..16 deg, inside the 31.5-inch
+#: panel's field. Accuracy is scored over this region because it is where windows can
+#: actually land, not over the whole panel.
 MAX_TESTED_DEG = 16.0
 
 #: Per-fixation scatter: where the animal's gaze actually sits relative to the

@@ -1,9 +1,15 @@
 """Display geometry for the split-screen stereoscope.
 
-One 16:9 panel split down the middle, each eye viewing its half through a
-two-mirror periscope. The mirrors translate rather than deviate, so the *optical
-path* is the physical eye-to-panel distance plus the lateral shift -- which is what
-lets a 57 cm viewing distance fit inside a chair-sized enclosure.
+One panel split down the middle, each eye viewing its half through a two-mirror
+periscope. The mirrors translate rather than deviate, so the *optical path* is the
+physical eye-to-panel distance plus the lateral shift -- which is what lets a 57 cm
+viewing distance fit inside a chair-sized enclosure.
+
+**The panel is given by its active area, not its diagonal.** S0 §5.2's diagonal form
+assumes an exact 16:9, and the rig's ASUS PG27UCDM is neither: ASUS publishes its
+active area as 589.97 × 332.93 mm (1.772:1) and its diagonal as a rounded "26.5-inch
+viewable". Feeding the rounded diagonal through the 16:9 fractions puts each edge
+0.6-0.9% short of the published area (S0 §5.2).
 
 Every number here is derived from `2026-08-31-stereoscope-optics-drawing.md` §3 and
 S0 §5.2, and the tests assert the agreement. **They are computed, not measured.**
@@ -16,27 +22,23 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-#: A 16:9 panel's width and height as fractions of its diagonal, and each eye's
-#: viewport half-extents as fractions of the same -- the viewport being half the
-#: panel's width and its full height.
-_ASPECT = math.hypot(16, 9)
-_HALF_WIDTH_FRACTION = (16 / _ASPECT) / 4
-_HALF_HEIGHT_FRACTION = (9 / _ASPECT) / 2
-
 
 @dataclass(frozen=True, slots=True)
 class Geometry:
-    panel_diagonal_cm: float
+    #: The panel's active area. Each eye's viewport is half its width and all of
+    #: its height.
+    panel_width_cm: float
+    panel_height_cm: float
     #: Along the **folded** optical path, not the physical distance to the panel.
     viewing_distance_cm: float
 
     @property
     def half_width_cm(self) -> float:
-        return _HALF_WIDTH_FRACTION * self.panel_diagonal_cm
+        return self.panel_width_cm / 4
 
     @property
     def half_height_cm(self) -> float:
-        return _HALF_HEIGHT_FRACTION * self.panel_diagonal_cm
+        return self.panel_height_cm / 2
 
     @property
     def half_field_h_deg(self) -> float:

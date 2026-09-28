@@ -54,7 +54,11 @@ adaptive_detection = Trial(
         Param("target_hold", unit="s", low=0.05, high=1.0),
         Param("fix_window", unit="deg", low=0.5, high=5.0),
         Param("target_window", unit="deg", low=0.5, high=6.0),
-        Param("target_position", unit="deg", low=-16.0, high=16.0),
+        # Inside the stereoscope's ±14.51° (PG27UCDM at 57 cm, S0 §5.2), with 1° to
+        # spare as ±16 had inside the 31.5-inch panel's ±17.0°: check 8 refuses a
+        # range the rig cannot show. Direct view is wider, and has no `Geometry` yet
+        # (2026-09-28); widen this when it does.
+        Param("target_position", unit="deg", low=-13.5, high=13.5),
         # Appearance is a parameter, so switching circles among squares for
         # penguins among elephants is a value applied in an ITI -- not a new
         # task and not a new block.
@@ -64,7 +68,8 @@ adaptive_detection = Trial(
             choices=(Disc(size=1.0), Square(size=1.0)),
         ),
         Param("contrast", unit="fraction", low=0.02, high=1.0),
-        Param("eccentricity", unit="deg", low=2.0, high=16.0),
+        # Held eccentricity is |target_position|, so the same bound.
+        Param("eccentricity", unit="deg", low=2.0, high=13.5),
     ],
     states=[
         State(

@@ -38,8 +38,21 @@ from wl_expcontroller.welfare import Deployment, Simulated as Pump
 from wl_expcontroller.task import Outcome, SaccadeOnset, SaccadeTo
 from tasks.calibration import calibration
 
-GEOMETRY = Geometry(panel_diagonal_cm=80.01, viewing_distance_cm=57.0)
-TARGETS = constellation(GEOMETRY)
+GEOMETRY = Geometry(
+    panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=57.0
+)
+
+
+def _targets() -> tuple[tuple[float, float], ...]:
+    """The calibration constellation, computed when a test asks rather than at import.
+
+    It was a module constant, `TARGETS = constellation(GEOMETRY)`. That ran at
+    collection, so a broken `geometry` property aborted the whole suite with a
+    collection error and no test ran -- and the mutation harness read that exit as a
+    catch (`docs/CHECKPOINT.md`, 2026-09-20 sweep). Called here, the same breakage fails
+    the tests that use it, and `tests/test_geometry.py` asserts each property itself.
+    """
+    return constellation(GEOMETRY)
 
 #: Their reader, or a refusal. **`importorskip` is wrong here**: a contract test that is
 #: allowed not to run is not a contract test, and the whole point of writing this file is
@@ -100,11 +113,11 @@ def _payload(x_deg: float, y_deg: float, frame: int = 1) -> str:
 def _fitted_mapping(version: int = 1) -> Mapping:
     """A map fit from the reference constellation, through the real fit."""
     fixations = tuple(
-        Fixation(raw=_raw_for(x, y), target=(x, y)) for x, y in TARGETS
+        Fixation(raw=_raw_for(x, y), target=(x, y)) for x, y in _targets()
     )
     eye_map, findings = fit_eye(fixations)
     assert eye_map is not None and not [f for f in findings if f.blocking]
-    return Mapping(version=version, targets=TARGETS, left=eye_map, right=eye_map)
+    return Mapping(version=version, targets=_targets(), left=eye_map, right=eye_map)
 
 
 def _tracker_at(x_deg: float, y_deg: float, at: float = 0.0) -> Tracker:
@@ -148,7 +161,7 @@ def test_a_window_is_missed_when_the_map_is_the_wrong_one():
               "fix_timeout": 3.0, "cal_hold": 0.2}
     wrong = Mapping(
         version=1,
-        targets=TARGETS,
+        targets=_targets(),
         left=EyeMap(Model.AFFINE, (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), 1.0, 0.0, 13),
         right=EyeMap(Model.AFFINE, (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), 1.0, 0.0, 13),
     )
@@ -181,7 +194,7 @@ def test_a_stale_sample_is_not_a_position():
 
 
 def test_an_eye_without_a_map_reports_no_gaze():
-    mapping = Mapping(version=1, targets=TARGETS, left=_fitted_mapping().left, right=None)
+    mapping = Mapping(version=1, targets=_targets(), left=_fitted_mapping().left, right=None)
     world = Tracked(_tracker_at(3.0, 3.0), mapping, calibration, 0.008)
     assert world.gaze("left", frame=0) is not None
     assert world.gaze("right", frame=0) is None
@@ -190,7 +203,7 @@ def test_an_eye_without_a_map_reports_no_gaze():
 def test_version_zero_maps_nothing():
     """A session before its calibration block. Asked for degrees it answers `None`,
     which is what stops an uncalibrated session silently scoring windows."""
-    log = MappingLog(TARGETS)
+    log = MappingLog(_targets())
     world = Tracked(_tracker_at(0.0, 0.0), log.current, calibration, 0.008,
                     {"target_x": 0.0, "target_y": 0.0, "cal_window": 3.0,
                      "fix_timeout": 3.0, "cal_hold": 0.2})
@@ -370,7 +383,7 @@ def test_a_tracker_that_stops_delivering_is_equipment_not_behaviour():
 
 def test_the_collector_fits_both_eyes_from_held_fixations():
     collector = Collector()
-    for x, y in TARGETS:
+    for x, y in _targets():
         assert collector.accept((x, y), [parse(_payload(x, y), at=0.0)])
 
     left, right, findings = collector.fit()
@@ -384,9 +397,9 @@ def test_a_target_worked_twice_still_counts_once():
     """`fit_eye` weights by target, so a target the scheduler happened to present
     twice would otherwise pull the fit toward wherever the animal was asked twice."""
     collector = Collector()
-    for x, y in TARGETS:
+    for x, y in _targets():
         collector.accept((x, y), [parse(_payload(x, y), at=0.0)])
-    collector.accept(TARGETS[0], [parse(_payload(*TARGETS[0]), at=0.0)])
+    collector.accept(_targets()[0], [parse(_payload(*_targets()[0]), at=0.0)])
 
     assert len(collector.fixations("left")) == 13
 
@@ -408,11 +421,11 @@ def test_the_collector_averages_the_samples_it_is_given():
 
 
 def test_the_map_is_versioned_and_every_change_is_logged():
-    log = MappingLog(TARGETS)
+    log = MappingLog(_targets())
     assert log.version == 0
 
     fitted = _fitted_mapping().left
-    log.install(at=100.0, targets=TARGETS, left=fitted, right=fitted, why="block 1")
+    log.install(at=100.0, targets=_targets(), left=fitted, right=fitted, why="block 1")
     assert log.version == 1
 
     log.recenter(at=250.0, left=(0.5, -0.25), right=(0.5, -0.25), why="chair shifted")
@@ -427,8 +440,8 @@ def test_the_map_is_versioned_and_every_change_is_logged():
 
 def test_recentering_shifts_gaze_without_refitting():
     fitted = _fitted_mapping().left
-    log = MappingLog(TARGETS)
-    log.install(at=0.0, targets=TARGETS, left=fitted, right=fitted)
+    log = MappingLog(_targets())
+    log.install(at=0.0, targets=_targets(), left=fitted, right=fitted)
     before = Tracked(_tracker_at(3.0, 3.0), log.current, calibration, 0.008)
     assert before.gaze("left", 0) == pytest.approx((3.0, 3.0), abs=1e-6)
 
@@ -444,8 +457,8 @@ def test_recentering_replaces_rather_than_accumulates():
     second was measured against gaze the first had already corrected, so adding
     them applies the first twice."""
     fitted = _fitted_mapping().left
-    log = MappingLog(TARGETS)
-    log.install(at=0.0, targets=TARGETS, left=fitted, right=fitted)
+    log = MappingLog(_targets())
+    log.install(at=0.0, targets=_targets(), left=fitted, right=fitted)
     log.recenter(at=1.0, left=(0.5, 0.0), right=(0.5, 0.0))
     log.recenter(at=2.0, left=(0.2, 0.0), right=(0.2, 0.0))
 
@@ -458,17 +471,17 @@ def test_a_refit_drops_the_offset():
     against. Carrying it across a refit applies a correction the new fit already
     contains."""
     fitted = _fitted_mapping().left
-    log = MappingLog(TARGETS)
-    log.install(at=0.0, targets=TARGETS, left=fitted, right=fitted)
+    log = MappingLog(_targets())
+    log.install(at=0.0, targets=_targets(), left=fitted, right=fitted)
     log.recenter(at=1.0, left=(3.0, 3.0), right=(3.0, 3.0))
-    log.install(at=2.0, targets=TARGETS, left=fitted, right=fitted, why="block 2")
+    log.install(at=2.0, targets=_targets(), left=fitted, right=fitted, why="block 2")
 
     assert log.current.offsets == ((0.0, 0.0), (0.0, 0.0))
 
 
 def test_recentering_without_a_map_is_refused():
     with pytest.raises(ValueError, match="no map to recenter"):
-        MappingLog(TARGETS).recenter(at=1.0, left=(1.0, 0.0))
+        MappingLog(_targets()).recenter(at=1.0, left=(1.0, 0.0))
 
 
 def test_the_offset_is_folded_into_the_file_because_their_schema_has_no_room():
@@ -477,8 +490,8 @@ def test_the_offset_is_folded_into_the_file_because_their_schema_has_no_room():
     additive offset; what is lost is that a recentering happened, and that survives
     in the change log."""
     fitted = _fitted_mapping().left
-    log = MappingLog(TARGETS)
-    log.install(at=0.0, targets=TARGETS, left=fitted, right=fitted)
+    log = MappingLog(_targets())
+    log.install(at=0.0, targets=_targets(), left=fitted, right=fitted)
     log.recenter(at=1.0, left=(0.5, -0.25), right=(0.0, 0.0))
 
     written = log.current.as_calibration()
@@ -513,7 +526,7 @@ def test_a_whole_calibration_block_produces_an_installed_map():
     )
     scheduler = Scheduler(blocks=[block], seed=11)
     collector = Collector()
-    log = MappingLog(TARGETS)
+    log = MappingLog(_targets())
 
     # Version 0 maps nothing, so the block cannot be scored through the map it is
     # about to produce. A calibration window is sized for that: wide enough to admit
@@ -551,7 +564,7 @@ def test_a_whole_calibration_block_produces_an_installed_map():
     assert left.model is Model.SECOND_ORDER
     assert left.n_points == 13, "a target worked twice contributes one pairing"
 
-    installed = log.install(at=42.0, targets=TARGETS, left=left, right=right,
+    installed = log.install(at=42.0, targets=_targets(), left=left, right=right,
                             why="calibration block")
     assert installed.version == 1
     assert log.changes[0].why == "calibration block"
@@ -620,7 +633,7 @@ def _calibration_session(tmp_path, repeats: int = 2):
     )
     driver = Calibrating(
         bootstrap=_fitted_mapping(),
-        log=MappingLog(TARGETS),
+        log=MappingLog(_targets()),
         frame_period=frame_period,
         replay=lambda target: [
             (0.0, _payload(*target, frame=n)) for n in range(400)
@@ -727,7 +740,7 @@ def test_the_fit_uses_the_hold_and_not_the_whole_trial(tmp_path):
 
     driver = Calibrating(
         bootstrap=_fitted_mapping(),
-        log=MappingLog(TARGETS),
+        log=MappingLog(_targets()),
         frame_period=frame_period,
         replay=replay,
     )

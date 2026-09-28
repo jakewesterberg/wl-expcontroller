@@ -260,7 +260,10 @@ def test_a_resolving_custom_component_is_accepted_but_flagged_for_review():
     assert findings[0].blocking is False
 
 
-GEOMETRY = Geometry(panel_diagonal_cm=80.01, viewing_distance_cm=57.0)
+#: The PG27UCDM stereoscope at 57 cm: a ±14.51° × ±16.28° field per eye.
+GEOMETRY = Geometry(
+    panel_width_cm=58.997, panel_height_cm=33.293, viewing_distance_cm=57.0
+)
 
 
 def test_a_stimulus_outside_the_field_is_refused():
@@ -296,13 +299,13 @@ def test_disparity_can_push_one_eye_off_screen_from_a_legal_cyclopean_position()
         states=[
             State(
                 "show",
-                enter=[Show(Stimulus("s", at=(16.5, 0.0), disparity=2.0))],
+                enter=[Show(Stimulus("s", at=(14.0, 0.0), disparity=2.0))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
     )
 
-    assert GEOMETRY.can_show(16.5, 0.0), "the cyclopean position is legal"
+    assert GEOMETRY.can_show(14.0, 0.0), "the cyclopean position is legal"
 
     findings = check(trial, geometry=GEOMETRY)
 
@@ -410,7 +413,7 @@ def test_a_position_parameter_whose_range_leaves_the_field_is_refused():
 def test_a_position_parameter_whose_range_stays_inside_the_field_is_accepted():
     trial = Trial(
         start="show",
-        params=[Param("ecc", unit="deg", low=-15.0, high=15.0)],
+        params=[Param("ecc", unit="deg", low=-12.5, high=12.5)],
         states=[
             State(
                 "show",
