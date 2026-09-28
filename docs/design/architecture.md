@@ -235,8 +235,9 @@ until then only the tests reach them.
 
 Through the stereoscope each eye views one half of the panel through redirection mirrors.
 Therefore one window, one flip, one refresh clock, no genlock — **two viewports on one
-framebuffer**, in cyclopean coordinates with disparity as a stimulus property. A monocular task
-is the zero-disparity case of the same path, and runs in either setup.
+framebuffer**, in cyclopean coordinates with disparity as a stimulus property. A task without
+disparity or per-eye content is the zero-disparity case of the same path, and runs in either
+setup.
 
 Per-eye viewport geometry (center, folded optical path length, deg/pixel) is measured, not
 derived. Mirror angles set vergence, so alignment is a calibrated parameter with a real

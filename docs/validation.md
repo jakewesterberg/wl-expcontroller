@@ -103,9 +103,11 @@ across identical models.
 4. Insert the stereoscope, and confirm that both lines are still clear and that the patches
    are dark to both eyes through the mask.
 
-V1 already runs in every mode the rig uses (S0 §5.3). In direct view it covers luminance
-uniformity and ABL across the whole panel, as a within-image nonlinearity rather than
-interocular coupling.
+V1 (display timing, above) already runs in every mode the rig uses (S0 §5.3); nothing about
+it changes in direct view. Luminance uniformity and ABL are the panel acceptance test (S0
+§5.4 criteria 2-3), folded into V9 above — in direct view they are characterised across the
+whole panel, as a within-image nonlinearity rather than interocular coupling (corrected
+2026-09-28; the finding wrongly attributed them to V1).
 
 ## V10 — Pump calibration (millilitres per second of open time)
 New (2026-09-06). **Nothing in this repository converts a reward volume into a solenoid

@@ -140,11 +140,12 @@ per-display-mode deg/pixel, and a versioned gaze mapping, so it satisfies the pr
 as well.
 
 One caveat worth carrying across, since it did not exist when that comment was written: our
-rigs use a **split-screen mirror stereoscope**, so a single screen carries two viewports with
-their own centres and their own folded path lengths, and the display runs in one of two modes
-with different deg/pixel. Degrees remain the right unit — more so, not less — but "the"
-pixels-per-degree of a rig is not a single number, which is an argument for never putting
-pixels on the wire.
+rig has two setups sharing one screen — direct view, where both eyes see the whole panel, and
+a removable **split-screen mirror stereoscope** in front of it (`2026-09-28-direct-view-design.md`).
+Through the stereoscope a single screen carries two viewports with their own centres and their
+own folded path lengths, and the display runs in one of two modes with different deg/pixel.
+Degrees remain the right unit — more so, not less — but "the" pixels-per-degree of a rig is not
+a single number, which is an argument for never putting pixels on the wire.
 
 ---
 

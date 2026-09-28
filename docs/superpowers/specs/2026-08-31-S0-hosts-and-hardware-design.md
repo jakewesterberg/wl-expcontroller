@@ -1405,5 +1405,5 @@ bot check was served. Each row carries its finding; this is the summary.
 | 2 | Whether `rig/intan` and `rig/sglx` are one machine | V8, and the task PC's network layout |
 | 3 | ~~Tandem panel model~~ **The ASUS PG27UCDM, a 26.5" tandem QD-OLED, was chosen** (PI, 2026-09-27, §5.1, replacing the PG32UCDM Gen 3 of 2026-09-26). Still open: **whether its automatic pixel cleaning and Neo Proximity Sensor can be fully turned off** (§5.4 test 1). Ask ASUS before buying | the panel purchase |
 | 4 | ~~Whether the chosen GPU + panel can avoid DSC~~ **Closed 2026-09-26: yes.** The RTX 5070 Ti and the PG27UCDM both list DisplayPort 2.1 UHBR20, and ASUS states 4K/240 "without compression" for the PG27UCDM (read 2026-09-27; §4, §5.1) | — |
-| 5 | Photodiode patch placement against the real optics | rig build, and `wl-sync` agreement |
-| 6 | Viewing distance against the real chair and head-post geometry | optics build |
+| 5 | Photodiode patch placement against the real optics. **Now direct-view spec §9 item 1** (the sensor housings' size, and whether both fit at one corner) -- the housings serve both setups, not the stereoscope alone | rig build, and `wl-sync` agreement |
+| 6 | Viewing distance against the real chair and head-post geometry. **Now direct-view spec §9 item 2** -- `Z` is one distance for both setups | optics build |

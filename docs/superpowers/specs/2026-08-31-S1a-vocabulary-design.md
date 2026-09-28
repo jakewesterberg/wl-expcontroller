@@ -104,6 +104,10 @@ something the other's does not.
 Disparity and `eye` are different mechanisms and both are needed. Disparity shifts one
 stimulus in both eyes; `eye` puts different content in each.
 
+Since the direct-view spec (`2026-09-28-direct-view-design.md` §3), a task that uses `eye`
+for anything but `"both"` needs to declare `view="stereoscope"`; the checker refuses it
+otherwise, the same way it refuses an undeclared disparity.
+
 ---
 
 ## 5. Motion
