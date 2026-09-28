@@ -146,3 +146,29 @@ stack is never added. If it does not, the fallback is a native path for *that pa
 not a second whole console — and the kiosk is unaffected regardless, because it has one
 screen and no mirrors, so the animal's display is the thing itself rather than a replica
 of it.
+
+## V12 — Console controls in the frame loop (P4d-2b b2a)
+New (2026-09-27). Slice b2a puts one call inside every frame: `link.ZmqLink.mark_signal`,
+the check for an operator's mark, handed to `run.run_trial` as its `each_frame` hook, so a
+mark is stamped and its `OPERATOR_MARK` code strobed in the frame it reaches the rig (P4d-2b
+spec §5.0: marks must be instant). `tools/measure_mark_check.py` measures what the check
+costs the CPU per frame on the machine it runs on, and its first result is committed under
+`docs/measurements/dev-machine/`. That is **not a frame-timing measurement**: those frames
+are not paced. The spec's rule stands: **if the check measurably disturbs frames, it goes
+back to the PI before b2a ships** — and only a rig can say whether it does.
+
+Procedure, on the rig, with V1's photodiode and NIDQ capture:
+
+1. **Frame timing with the check.** Run V1's flip sequence as a session three ways — no
+   mark endpoint (`wlx run --link PUB,REP`), the mark endpoint bound and idle
+   (`--link PUB,REP,MARK`, `wlx serve` attached), and marks arriving about once a second
+   from the console — for ≥ 10 minutes each. Report the frame-interval distribution and
+   the dropped frames of each, side by side.
+2. **The mark lands in its frame.** For each mark in (1), the `OPERATOR_MARK` edge on the
+   NIDQ lies inside the frame the session record's stamp names (`controls.jsonl`: its
+   `trial_index` and `frame`), against the photodiode's frame boundaries.
+3. **A pause shows the background.** Pause from the console mid-block: the photodiode
+   patch and the panel show the task's background with nothing drawn on it until the
+   resume, and the `PAUSE` and `RESUME` edges bracket that stretch on the NIDQ.
+
+Re-run after any change to the frame loop, the link, or the display stack (P4).
