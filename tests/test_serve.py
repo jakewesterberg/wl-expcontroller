@@ -2992,11 +2992,14 @@ class _Session:
     staged at one boundary and applied at the next -- can come and go between two
     looks. On CI's two-vCPU runners it did, with the simulated rig competing for the
     GIL (runs `36453778281` and `36435219146`). `recorder` connects before `wlx run`
-    binds, and libzmq queues what arrives on its own I/O thread, with no GIL, up to the
-    socket's high-water mark: 1,000 messages, pyzmq 27.2.0 and libzmq 4.3.5's default
-    as read in this venv on 2026-09-28. A session here publishes one frame per
-    boundary, ends at `CONTROL_TRIAL_BUDGET` trials at the latest, and is drained at
-    every wait."""
+    binds, **but a SUB receives only what is published after its subscription has
+    joined**, which happens some time after the bind, on libzmq's reconnect timer. So
+    a test reading `frames` first waits with `seen` for any frame, which proves the
+    subscription is live, before it sends anything. From then on libzmq queues what
+    arrives on its own I/O thread, with no GIL, up to the socket's high-water mark:
+    1,000 messages, pyzmq 27.2.0 and libzmq 4.3.5's default as read in this venv on
+    2026-09-28. A session here publishes one frame per boundary, ends at
+    `CONTROL_TRIAL_BUDGET` trials at the latest, and is drained at every wait."""
 
     def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, bounds=TWELVE_HOURS,
                  session_id="2027-01-14_21", cleanup=None):
@@ -3151,7 +3154,8 @@ def test_e2e_a_setting_is_staged_then_applied_at_the_next_trial(
     polling the console's latest frame missed it on CI's two-vCPU runners. That is
     also what lets this say *the next trial* rather than *some later frame*."""
     with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
-        run.frame(lambda f: f.trial_index >= 1)
+        # On the recorder, not the console: the POST must follow its subscription.
+        run.seen(lambda f: f.trial_index >= 1)
         assert run.post({"kind": "set", "by": "jake", "name": "fix_hold", "value": 0.4})[0] == 200
         staged = run.seen(lambda f: any(s.name == "fix_hold" for s in f.staged))
         applied = run.seen(
