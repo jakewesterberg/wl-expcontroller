@@ -370,6 +370,12 @@ class Trial:
     #: apart would mean every check that walks windows had to walk two lists.
     windows: "list[Window | ItemWindows]" = field(default_factory=list)
     tolerances: "Tolerances" = field(default_factory=lambda: Tolerances())
+    #: Which setup the task is written for: `"direct"`, `"stereoscope"` or `"either"`
+    #: (direct-view spec §3). **`"either"` is safe as the default** because the field
+    #: check runs against the setup the session chose, so an undeclared task in the
+    #: stereoscope is held to its mask. Disparity, a random-dot stereogram or a
+    #: stimulus shown to one eye needs `"stereoscope"`, and the checker says so.
+    view: str = "either"
 
 
 @dataclass(frozen=True, slots=True)

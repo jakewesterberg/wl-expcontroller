@@ -217,17 +217,32 @@ display layer that per-trial scenes do not reset.
 - **Hardware truth:** every trial event gets a strobed word into the recorders and a JSONL
   record carrying the word, frame index and monotonic time.
 
-## Stereo, as viewports
+## The display: direct view, and stereo as viewports
 
-Split-screen mirror stereoscope on **one panel**: each eye views one half through
-redirection mirrors. Therefore one window, one flip, one refresh clock, no genlock —
-**two viewports on one framebuffer**, in cyclopean coordinates with disparity as a
-stimulus property. The monocular v1 task is the zero-disparity case of the same path.
+**Two setups share one screen, fixed 50 cm from the eyes** (`2026-09-28-direct-view-design.md`).
+**Direct view** — both eyes see the whole panel — is where most experiments run, the first
+animal task included. The split-screen mirror stereoscope is a removable device in front of the
+same screen. The operator picks the setup at session start. Each setup has its own field in
+`geometry.py`, built from the rig's settings (`tasks/rig.py`): the whole panel less the light
+sensors' housings, or the stereoscope's viewport stopped by its mask.
+
+**A task says which setup it is written for**: `Trial.view`, `"direct"`, `"stereoscope"` or
+`"either"` (the default). Disparity, a random-dot stereogram or a stimulus shown to one eye needs
+`"stereoscope"`, a load-time finding at every load. Check 8 against the session's field, and the
+refusal of a task written for the other setup, need the session's geometry, which `taskd` and
+`wlx check` do not pass until direct view part 2 (`wlx run --view`, after P4d-2b b2a merges);
+until then only the tests reach them.
+
+Through the stereoscope each eye views one half of the panel through redirection mirrors.
+Therefore one window, one flip, one refresh clock, no genlock — **two viewports on one
+framebuffer**, in cyclopean coordinates with disparity as a stimulus property. A monocular task
+is the zero-disparity case of the same path, and runs in either setup.
 
 Per-eye viewport geometry (center, folded optical path length, deg/pixel) is measured, not
 derived. Mirror angles set vergence, so alignment is a calibrated parameter with a real
-alignment procedure. Photodiode patches sit outside both viewports. Panel left/right
-nonuniformity is by construction an interocular mismatch and is photometered in V1.
+alignment procedure. Photodiode patches sit outside both viewports, at a bottom corner, and
+under the sensors' housings in direct view. Panel left/right nonuniformity is by construction
+an interocular mismatch and is photometered in V1.
 
 ## Neural plane and stimulation
 

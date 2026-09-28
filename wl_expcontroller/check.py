@@ -8,7 +8,7 @@ import math
 from wl_expcontroller.codes import PROVISIONAL, Allocation
 from wl_expcontroller.components import Registry
 from wl_expcontroller.findings import Finding
-from wl_expcontroller.geometry import Geometry
+from wl_expcontroller.geometry import VIEWS, Geometry
 from wl_expcontroller.photometry import DKL, Calibration, Color, unrealizable, xyY
 from wl_expcontroller.task import (
     RDS,
@@ -28,6 +28,7 @@ from wl_expcontroller.task import (
     Show,
     Touched,
     Trial,
+    Unchanged,
     Update,
     Window,
     actions_of,
@@ -62,6 +63,7 @@ def check(
         + _overlapping_windows(trial)
         + _unreachable_timeouts(trial)
         + _crowded_arrays(trial)
+        + _view_faults(trial, geometry)
     )
 
 
@@ -997,3 +999,83 @@ def _crowded_arrays(trial: Trial) -> list[Finding]:
                 )
             )
     return findings
+
+
+# --- Which setup -------------------------------------------------------------
+
+#: What `Trial.view` may say (direct-view spec §3): one setup, or either.
+TRIAL_VIEWS = (*VIEWS, "either")
+
+
+def _view_faults(trial: Trial, geometry: Geometry | None) -> list[Finding]:
+    """A task says which setup it is written for, and is held to it (direct-view
+    spec §3).
+
+    **Stereo content needs the stereoscope, with or without a geometry**: it is a
+    property of the task, not of the session, so it is refused at every load. **Against
+    a geometry, a task written for the other setup is refused, naming both**, so a
+    caller that passes the session's geometry has nothing else to do. That caller is
+    direct view part 2: until then `taskd` and `wlx check` pass none, and only the
+    tests reach the mismatch. An unrecognized `view` is refused outright, as an
+    unrecognized eye is: it would be checked as neither.
+    """
+    if trial.view not in TRIAL_VIEWS:
+        return [
+            Finding(
+                "unknown-view",
+                f"the task's view is {trial.view!r}; it must be one of "
+                f"{', '.join(TRIAL_VIEWS)}. An unrecognized setup is not a "
+                f"declaration, and nothing could be checked against it",
+            )
+        ]
+    findings: list[Finding] = []
+    if trial.view != "stereoscope":
+        findings += [
+            Finding(
+                "needs-stereoscope",
+                f"{what}, and the task declares view={trial.view!r}; only the "
+                f"stereoscope shows each eye its own image, so declare "
+                f"view='stereoscope'. On an unmirrored screen both eyes see both "
+                f"images, which is not the stimulus the task describes",
+            )
+            for what in _stereo_content(trial)
+        ]
+    if geometry is not None and trial.view not in ("either", geometry.view):
+        findings.append(
+            Finding(
+                "wrong-setup",
+                f"the task is written for {trial.view!r} and is checked against "
+                f"{geometry.view!r}; a task written for one setup is refused in the "
+                f"other (direct-view spec §3)",
+            )
+        )
+    return findings
+
+
+def _stereo_content(trial: Trial) -> list[str]:
+    """Everything a task shows that only the stereoscope can: disparity, a
+    random-dot stereogram (direct-view spec §3), and a stimulus shown to one eye.
+
+    **Parameter choices count**, for `_appearances`' reason: an appearance only a
+    parameter selects is as real as one written into a `Show`.
+    """
+    ranges = _ranges(trial)
+    found = [
+        "it can show a random-dot stereogram"
+        for looks in _appearances(trial)
+        if isinstance(looks, RDS)
+    ]
+    for state, action in actions_of(trial):
+        if isinstance(action, Show):
+            name, carrier = action.stimulus.name, action.stimulus
+        elif isinstance(action, Update):
+            name, carrier = action.stimulus, action
+        else:
+            continue
+        if not isinstance(carrier.disparity, Unchanged) and any(
+            value != 0.0 for value in _widest(carrier.disparity, ranges)
+        ):
+            found.append(f"state {state!r} gives {name!r} disparity")
+        if not isinstance(carrier.eye, Unchanged) and carrier.eye != "both":
+            found.append(f"state {state!r} shows {name!r} to the {carrier.eye} eye only")
+    return found

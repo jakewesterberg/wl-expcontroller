@@ -7,6 +7,7 @@ generated task is caught before an animal sees it -- pitfalls P15.
 import pytest
 
 from wl_expcontroller.task import (
+    RDS,
     REMEMBERED,
     After,
     Entered,
@@ -23,6 +24,7 @@ from wl_expcontroller.task import (
     Show,
     State,
     Stimulus,
+    Update,
     Window,
     Trial,
 )
@@ -306,6 +308,7 @@ def test_disparity_can_push_one_eye_off_screen_from_a_legal_cyclopean_position()
     the animal fuses on one side and loses on the other."""
     trial = Trial(
         start="show",
+        view="stereoscope",
         states=[
             State(
                 "show",
@@ -498,3 +501,115 @@ def test_the_mask_refuses_what_the_bare_viewport_would_show():
     assert [f.code for f in check(_showing((12.5, 0.0)), geometry=GEOMETRY)] == [
         "stimulus-off-screen"
     ]
+
+
+# ---------------------------------------------------------------------------
+# Which setup a task is written for (direct-view spec §3)
+# ---------------------------------------------------------------------------
+
+
+def _task(*enter, view="either", params=()) -> Trial:
+    """One state that shows a plain disc, then does `enter`, then ends."""
+    return Trial(
+        start="show",
+        view=view,
+        params=list(params),
+        states=[
+            State(
+                "show",
+                enter=[Show(Stimulus("s", at=(0.0, 0.0))), *enter],
+                go=[On(After(1.0), Outcome.CORRECT)],
+            ),
+        ],
+    )
+
+
+def test_a_task_is_either_until_it_says_otherwise():
+    """The default is safe because check 8 runs against whichever setup the session
+    chose: an undeclared task in the stereoscope is held to the mask."""
+    assert _task().view == "either"
+    assert check(_task(), geometry=DIRECT) == []
+    assert check(_task(), geometry=GEOMETRY) == []
+
+
+def test_disparity_needs_a_task_that_declares_the_stereoscope():
+    """"Two side-by-side images on an unmirrored screen are not a stimulus." Refused
+    with or without a geometry: it is the task's content, not the session's."""
+    shifted = Update("s", disparity=0.4)
+
+    (finding,) = check(_task(shifted))
+    assert finding.code == "needs-stereoscope"
+    assert "gives 's' disparity" in finding.detail
+    assert "view='either'" in finding.detail
+    assert [f.code for f in check(_task(shifted, view="direct"))] == ["needs-stereoscope"]
+    assert check(_task(shifted, view="stereoscope")) == []
+
+
+def test_a_disparity_parameter_counts_when_its_range_can_leave_zero():
+    """Over the declared range, as every range check here: a disparity an
+    experimenter can dial in is disparity."""
+    ranged = [Param("d", unit="deg", low=-0.5, high=0.5)]
+    pinned = [Param("d", unit="deg", low=0.0, high=0.0)]
+
+    assert [f.code for f in check(_task(Update("s", disparity=P("d")), params=ranged))] == [
+        "needs-stereoscope"
+    ]
+    assert check(_task(Update("s", disparity=P("d")), params=pinned)) == []
+
+
+def test_a_shown_stereogram_or_one_a_parameter_can_choose_needs_the_stereoscope():
+    """A random-dot stereogram has no content but its disparity. One reachable only
+    through a parameter's choices is as real as one written into a `Show`."""
+    shown = _task(Show(Stimulus("rds", at=(0.0, 0.0), looks=RDS())))
+    chosen = _task(params=[Param("looks", unit="appearance", choices=(RDS(),))])
+    updated = _task(Update("s", looks=RDS()))
+
+    for trial in (shown, chosen, updated):
+        (finding,) = check(trial)
+        assert finding.code == "needs-stereoscope"
+        assert "random-dot stereogram" in finding.detail
+
+
+def test_a_stimulus_shown_to_one_eye_needs_the_stereoscope():
+    """Plan decision: an unmirrored screen shows both eyes one image, so a stimulus
+    for one eye is the same impossibility as disparity -- by `Show` or by `Update`."""
+    left = _task(Show(Stimulus("left", at=(2.0, 0.0), eye="left")))
+    right = _task(Update("s", eye="right"))
+
+    assert [f.detail.split(",")[0] for f in check(left)] == [
+        "state 'show' shows 'left' to the left eye only"
+    ]
+    assert [f.code for f in check(right)] == ["needs-stereoscope"]
+    assert check(_task(Update("s", eye="both"))) == []
+
+
+def test_a_task_written_for_one_setup_is_refused_in_the_other_naming_both():
+    """Spec §3: "a stereoscope task in direct view, or a direct task in the
+    stereoscope" -- the refusal part 2's session start will show, naming both
+    sides."""
+    (in_direct,) = check(_task(view="stereoscope"), geometry=DIRECT)
+    (in_stereoscope,) = check(_task(view="direct"), geometry=GEOMETRY)
+
+    assert in_direct.code == in_stereoscope.code == "wrong-setup"
+    assert "written for 'stereoscope'" in in_direct.detail
+    assert "checked against 'direct'" in in_direct.detail
+    assert "written for 'direct'" in in_stereoscope.detail
+    assert "checked against 'stereoscope'" in in_stereoscope.detail
+    assert check(_task(view="direct"), geometry=DIRECT) == []
+    assert check(_task(view="stereoscope"), geometry=GEOMETRY) == []
+
+
+def test_without_a_geometry_the_setup_is_unchecked():
+    """`geometry=None` still means unchecked (S1 §9 check 8): a task is not wrong for
+    being checked without a rig."""
+    assert check(_task(view="stereoscope")) == []
+    assert check(_task(view="direct")) == []
+
+
+def test_a_view_that_is_no_setup_is_refused():
+    """`view="stereo"` is not a declaration. Read as either setup it would be checked
+    against the wrong one; read as neither it would pass everything."""
+    (finding,) = check(_task(Update("s", disparity=0.4), view="stereo"), geometry=DIRECT)
+
+    assert finding.code == "unknown-view"
+    assert "'stereo'" in finding.detail

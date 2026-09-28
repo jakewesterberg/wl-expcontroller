@@ -35,9 +35,11 @@ from wl_expcontroller.task import (
 
 
 def a_task(looks, **stimulus_kwargs) -> Trial:
+    """A stereogram task, so it declares the stereoscope (direct-view spec §3)."""
     stimulus_kwargs.setdefault("at", (0.0, 0.0))
     return Trial(
         start="on",
+        view="stereoscope",
         windows=[Window("w", at=(0.0, 0.0), radius=2.0, on="s")],
         states=[
             State(
@@ -73,6 +75,7 @@ def test_correlation_is_a_parameter_so_the_control_is_a_value_not_a_task():
         states=trial.states,
         params=[param],
         windows=trial.windows,
+        view=trial.view,
     )
     assert codes(trial) == set()
 
