@@ -105,7 +105,8 @@ the out-of-cage limit still ends the session; (2) a scheduled stop, "after X mL"
 can end a session; (3) reward size can be changed from the console page, still capped by
 its approved ceiling; (4) the M8 fix — a malformed setting is refused and never ends the
 session. The code each rests on is on `docs/design/architecture.md`'s welfare-critical
-list: (1) `taskd.Session._hold`, `_manual_reward` and `_ends`; (2) `_ends` and
+list: (1) `taskd.Session._hold`, `_manual_reward` and `_ends`, and `Session._command`'s
+`held` pass-through, which only `_hold` sets; (2) `_ends` and
 `_schedule`; (3) `Session.set`, which sends a ceiling's name to `bounds.validate`; (4)
 `link._setting`, `Session.set`'s type guards and the `except (Exceeded, TypeError)` line
 in `Session._command`. He is also asked about the per-frame mark check's measured cost (the spec's rule:
