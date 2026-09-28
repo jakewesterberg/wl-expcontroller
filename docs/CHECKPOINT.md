@@ -361,6 +361,15 @@ ledger keeps the running offset.
   file (`334f6db`).
 - **Still to read:** the first sharded nightly (not yet started by GitHub at 08:33 UTC; its schedule has run hours late before); a
   watcher saves its logs to the session scratchpad.
+- **Queued for a brainstorm with the PI (his request, 2026-09-28): which eye(s) task control
+  listens to.** Today an `eye="both"` window averages the two eyes (`gaze.in_window`), the saccade
+  detector averages the usable ones, and `eye.parse` drops the **whole** sample when either eye's
+  record is incomplete — so one lost eye reads as tracker loss, and a noisy-but-present eye
+  pollutes the mean unseen (no per-eye quality exists yet). Options to put to him: a per-session
+  choice after calibration; a per-sample per-eye quality flag with hysteresis and recorded
+  switches (the eyes' maps disagree slightly, so a switch jumps); never substituting eyes in
+  dichoptic tasks. The quality signal most naturally comes from P10's tracker, so hold it before
+  P10's design. Raw data from both eyes is always recorded; this is online control only.
 - **Carried:** re-run `tools/calibration_design.py` per setup (the spec's §6) — the geometry
   rework found 85% reach winning under two of four assumptions on the new panel; the ridge
   softens the ±12° mask's nasal edge for pupils over about 2.9 mm, which the per-animal carriage
