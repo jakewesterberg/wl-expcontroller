@@ -430,7 +430,9 @@ def test_parameters_show_value_range_ceiling_and_what_is_staged():
     assert '<div class="param staged">' in params
     assert "staged → 0.40 by jake" in params
     assert '<span class="ceil">ceiling</span>' in params
-    assert "welfare ceiling 0.40 mL" in params
+    # Review fix round 1: the ceiling keeps its own decimals (`_significant`), unlike
+    # `_num`'s two-decimal `staged →` figure just above -- 0.4, not 0.40.
+    assert "welfare ceiling 0.4 mL" in params
     assert "0.10 to 1.00 s" in params
     assert "open to 5.00 deg" in params
     assert "no declared range" in params
@@ -825,7 +827,12 @@ def test_with_nothing_scheduled_the_strip_keeps_its_four_cells():
     assert strip.count('<div class="row">') == 4
 
 
-def test_a_session_that_ended_another_way_shows_no_schedule_to_cancel():
+def test_the_strip_guards_against_an_ended_frame_still_carrying_a_schedule():
+    """Review fix round 1: since Task 8's fix, `Telemetry.of` sends
+    `scheduled_stop=None` once `stopped_because` is set, so a frame like this should
+    never arrive on the wire. This pins the guard's defensive behavior anyway -- a
+    frame that combined an ended `stop_kind` with a `scheduled_stop` would still show
+    no schedule and no cancel button for it."""
     strip = fragments(
         frame(
             **STATES["returned"],
@@ -929,3 +936,70 @@ def test_the_script_holds_a_parameter_card_it_is_being_typed_into():
     while an arrow's debounce is pending, would replace the input under them; the
     script holds the newest cards and swaps them in once the person is done."""
     assert 'if (id === "params" && busy()) { heldParams = html; return; }' in _SCRIPT
+
+
+# --- Task 10 review, fix round 1 ----------------------------------------------------
+
+
+def test_a_double_click_or_one_within_the_hold_cannot_toggle_pause_or_resume():
+    """The review: pause/resume is sent by the button on screen at each click, and a
+    fresh `controls` fragment can put a different button under a fast second click
+    (spec §5.2: "never a toggle"). The click handler now ignores a pause/resume click
+    that is a double click (`e.detail > 1`) or lands within `TOGGLE_HOLD_MS` of the
+    last one this page sent, before `command` is ever called."""
+    assert "var TOGGLE_HOLD_MS = 1000;" in _SCRIPT
+    handler = re.search(
+        r'document\.addEventListener\("click", function \(e\) \{(.*?)\n  \}\);',
+        _SCRIPT,
+        re.S,
+    ).group(1)
+    assert 'cmd === "pause" || cmd === "resume"' in handler
+    assert "e.detail > 1" in handler
+    assert "now - lastToggleAt < TOGGLE_HOLD_MS" in handler
+    assert "lastToggleAt = now;" in handler
+    # Only pause/resume are guarded -- mark, stop and cancel are unaffected.
+    assert handler.index('if (cmd === "pause"') > handler.index("var cmd =")
+    assert handler.index("command(cmd);") > handler.index("lastToggleAt = now;")
+
+
+def test_the_arrows_round_before_clamping_and_write_the_edge_exactly():
+    """The review: the old order clamped to `[lo, hi]` first and let `toFixed` round
+    the display afterwards, so a clamped value could be rounded back out past its own
+    ceiling (0.125 mL clamped, then `toFixed(2)` sent "0.13"). Rounding to the step
+    now comes first; the clamp that follows writes the edge's own `data-min`/
+    `data-max` attribute string exactly, never re-rounding it. Verified against the
+    review's own examples in Node (pasted into the fix report): 0.125, 0.337 and 5.25
+    ceilings all now stay at their own figure instead of overshooting to "0.13",
+    "0.34" and "5.3"."""
+    body = re.search(
+        r"function stepInput\(input, dir\) \{(.*?)\n  \}", _SCRIPT, re.S
+    ).group(1)
+
+    assert body.index("Math.round(") < body.index("if (v <= lo)")
+    assert 'input.value = input.getAttribute("data-min");' in body
+    assert 'input.value = input.getAttribute("data-max");' in body
+    assert body.index("if (v <= lo)") < body.index("else if (v >= hi)")
+
+
+def test_a_welfare_ceiling_displays_its_own_decimals_not_rounded_to_two():
+    """The review: `_num`'s two-decimal display rounded a 0.125 mL ceiling to "0.12"
+    -- short of "0.13", which the unfixed arrows could still send. The ceiling now
+    keeps its own figure."""
+    params = fragments(
+        frame(params=(ParamRow("reward_correct", "mL", 0.0, 0.125, 0.1, True),)),
+        view(),
+    )["params"]
+
+    assert "welfare ceiling 0.125 mL" in params
+    assert "welfare ceiling 0.12 mL" not in params
+
+
+def test_the_script_pins_the_box_only_write_guard():
+    """The review found neither half of this pinned: the script reads `can-write`
+    from `<body>`, and `post` -- the one function every command goes through --
+    refuses to send anything when it says this page may not write."""
+    assert 'var canWrite = body.getAttribute("data-can-write") === "1";' in _SCRIPT
+    post_body = re.search(
+        r"function post\(command, then\) \{(.*?)\n  \}", _SCRIPT, re.S
+    ).group(1)
+    assert post_body.strip().startswith("if (!canWrite) { return; }")

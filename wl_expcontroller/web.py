@@ -344,8 +344,10 @@ def _strip(frame: Telemetry | None, view: View) -> str:
         + _out_of_cage(frame)
         + _correct(frame, view)
         + _last_reward(frame, view)
-        # Only while the session runs: one that ended another way keeps its
-        # schedule on the frame, and a cancel button for it would offer nothing.
+        # Only while the session runs: since Task 8's fix, `Telemetry.of` sends
+        # `scheduled_stop=None` once `stopped_because` is set, so an ended session's
+        # frame should never carry one. This guard defends against a frame the rig
+        # no longer sends, not a schedule it still carries.
         + (
             _scheduled(frame, view)
             if frame.scheduled_stop is not None and frame.stop_kind is None
@@ -575,9 +577,22 @@ def _changes(frame: Telemetry | None) -> str:
 # --- task parameters, setup, end of session ----------------------------------------
 
 
+def _significant(value: float) -> str:
+    """A number's own significant decimals, never rounded away.
+
+    `_num`'s two-decimal display would round a welfare ceiling's own figure short of
+    what the arrows can still reach: a review of Task 10 (fix round 1) found a 0.125
+    mL ceiling showed "0.12" while the arrows -- clamping to `[lo, hi]` before
+    `toFixed` rounded the display -- could still send "0.13", over it. `f"{value:g}"`
+    keeps every digit the value carries, trailing zeros stripped, for the magnitudes
+    a bound uses here. Only the ceiling's own display changes; `_num` is unchanged
+    everywhere else."""
+    return f"{value:g}"
+
+
 def _range(row) -> str:
     if row.bounded:
-        return f"welfare ceiling {_e(_num(row.high))} {_e(row.unit)}"
+        return f"welfare ceiling {_e(_significant(row.high))} {_e(row.unit)}"
     if row.low is None and row.high is None:
         return "no declared range"
     return f"{_e(_edge(row.low))} to {_e(_edge(row.high))} {_e(row.unit)}"
@@ -1061,6 +1076,12 @@ _SCRIPT = """
   var canWrite = body.getAttribute("data-can-write") === "1";
   var debounceMs = Number(body.getAttribute("data-debounce-ms"));
   var NAME_KEY = "wlx-console-name";
+  // Housekeeping -- a double click's span with margin -- not a measurement: keeps a
+  // double click, or a re-render's fresh button under the second click of one, from
+  // toggling a pause or resume the first click already sent (spec §5.2: "never a
+  // toggle").
+  var TOGGLE_HOLD_MS = 1000;
+  var lastToggleAt = -Infinity;
   var source = null;
   var baseline = null;
   var live = false;
@@ -1203,8 +1224,14 @@ _SCRIPT = """
     var hi = input.hasAttribute("data-max") ? Number(input.getAttribute("data-max")) : Infinity;
     var v = Number(input.value);
     if (input.value.trim() === "" || !isFinite(v)) { v = isFinite(lo) ? lo : 0; }
-    v = Math.min(hi, Math.max(lo, Math.round((v + dir * step) / step) * step));
-    input.value = v.toFixed(decimals(step));
+    // Round to the step first, then clamp -- and on a clamp, write the edge's own
+    // attribute string exactly, never `toFixed` it again: `toFixed` rounding a
+    // clamped value at the step's decimals could still overshoot a ceiling with
+    // more of its own (0.125 mL rounded to "0.13" at a 0.01 step).
+    v = Math.round((v + dir * step) / step) * step;
+    if (v <= lo) { input.value = input.getAttribute("data-min"); }
+    else if (v >= hi) { input.value = input.getAttribute("data-max"); }
+    else { input.value = v.toFixed(decimals(step)); }
     schedule(input);
   }
   function closeNote(note) {
@@ -1238,7 +1265,16 @@ _SCRIPT = """
   document.addEventListener("click", function (e) {
     if (!e.target.closest) { return; }
     var button = e.target.closest("[data-cmd]");
-    if (button && !button.disabled) { command(button.getAttribute("data-cmd")); return; }
+    if (button && !button.disabled) {
+      var cmd = button.getAttribute("data-cmd");
+      if (cmd === "pause" || cmd === "resume") {
+        var now = performance.now();
+        if (e.detail > 1 || now - lastToggleAt < TOGGLE_HOLD_MS) { return; }
+        lastToggleAt = now;
+      }
+      command(cmd);
+      return;
+    }
     var arrow = e.target.closest("[data-dir]");
     if (arrow && !arrow.disabled) {
       var input = arrow.closest(".spin").querySelector("input[data-param]");
