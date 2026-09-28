@@ -33,9 +33,11 @@ from wl_expcontroller.link import (
     CONTROL_HISTORY,
     RECENT_OUTCOMES,
     REFUSAL_HISTORY,
+    CancelScheduledStop,
     Mark,
     Pause,
     Resume,
+    ScheduleStop,
     SetParameter,
     Simulated,
     Stop,
@@ -2965,3 +2967,204 @@ def test_a_mark_in_a_trial_that_faults_is_still_recorded(tmp_path, monkeypatch):
 
     (stamp,) = _controls_rows(session)
     assert (stamp["mark"], stamp["trial_index"], stamp["frame"]) == (8, 0, 1)
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a: the scheduled stop (spec §5.1), held by `taskd`
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def utc(monkeypatch):
+    """The host's zone as UTC, so a clock time names one instant whatever zone the
+    suite runs in. `WALL_NOW` is 2023-11-14 22:13:20 UTC."""
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+def _scheduled_at_trial(link, session, after: int, *commands) -> None:
+    """Queue `commands` once `after` trials have run, through `observe`."""
+    ran = [0]
+
+    def queue(condition, values, result) -> None:
+        ran[0] += 1
+        if ran[0] == after:
+            for command in commands:
+                link.queue(command)
+
+    session.observe = queue
+
+
+def _trials_run(session: Session) -> int:
+    return len((session.directory / "trials.jsonl").read_text().splitlines())
+
+
+def test_a_stop_after_n_trials_ends_the_session_there_with_its_reason(tmp_path):
+    """Spec §5.1: after N more trials, counted from when the schedule is accepted,
+    shown as the target trial number. It stops the session like the stop button --
+    `stop_kind` `operator` -- with the reason *scheduled stop (...) set by NAME*."""
+    link = Simulated()
+    link.queue(ScheduleStop(kind="trials", value=3, by="jake"))
+    session = _session(_spec(tmp_path, trials=50), link=link)
+
+    session.run()
+
+    assert _trials_run(session) == 3
+    assert session.stop_kind == "operator"
+    assert session.stopped_because == "scheduled stop (after trial 3) set by jake"
+    assert session.scheduled_stop is None, "a stop that has happened is spent"
+    rows = _controls_rows(session)
+    assert [row["kind"] for row in rows] == ["schedule", "scheduled_stop"]
+    assert (rows[0]["stop"], rows[0]["target"], rows[0]["said"]) == ("trials", 3.0, "after trial 3")
+    assert rows[1]["by"] == "jake"
+
+
+def test_after_n_trials_counts_from_when_the_schedule_is_accepted(tmp_path):
+    link = Simulated()
+    session = _session(_spec(tmp_path, trials=50), link=link)
+    _scheduled_at_trial(link, session, 2, ScheduleStop(kind="trials", value=3, by="jake"))
+
+    session.run()
+
+    assert _trials_run(session) == 5
+    assert session.stopped_because == "scheduled stop (after trial 5) set by jake"
+
+
+def test_a_stop_at_a_clock_time_is_read_on_the_sessions_clock(tmp_path, utc):
+    """At a clock time on the rig's session clock (spec §5.1): the next occurrence of
+    that time, on the session's anchored clock -- `wall_now`, which here follows the
+    frames from `WALL_NOW` (22:13:20) -- so 22:14 is forty seconds in."""
+    link = Simulated()
+    link.queue(ScheduleStop(kind="clock", value="22:14", by="jake"))
+    session = _session(_spec(tmp_path, trials=500), link=link)
+
+    session.run()
+
+    assert session.stopped_because == "scheduled stop (at 22:14) set by jake"
+    (schedule, fired) = _controls_rows(session)
+    assert schedule["target"] == WALL_NOW + 40.0
+    assert fired["at"] >= WALL_NOW + 40.0
+    frames = [frame.wall_at for frame in link.published]
+    assert frames[-3] < WALL_NOW + 40.0 <= frames[-1], "it stopped at the first boundary past 22:14"
+
+
+def test_a_clock_time_already_past_or_exactly_now_is_tomorrows(tmp_path, utc):
+    """Review Focus 4: a scheduled time that is past, or exactly now, is the next
+    occurrence of it -- tomorrow's -- as the spec rules, and the feed and the strip
+    say which day, so a slip of the hour is read rather than waited for."""
+    from wl_expcontroller.taskd import _next_occurrence
+
+    assert _next_occurrence("22:14", WALL_NOW) == WALL_NOW + 40.0
+    assert _next_occurrence("22:13", WALL_NOW) == WALL_NOW - 20.0 + 86_400.0
+    assert _next_occurrence("22:13", WALL_NOW - 20.0) == WALL_NOW - 20.0 + 86_400.0
+    assert _next_occurrence("00:00", WALL_NOW) == WALL_NOW + 6_400.0
+
+    link = Simulated()
+    link.queue(ScheduleStop(kind="clock", value="22:13", by="jake"))
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    assert session.scheduled_stop[3] == "at 22:13 on 2023-11-15"
+    assert session.controls[0][3] == "scheduled stop at 22:13 on 2023-11-15"
+
+
+def test_a_stop_after_fluid_reads_welfares_session_fluid(tmp_path):
+    """After X mL this session, read from `welfare`'s session fluid (spec §5.1) --
+    `session_total()`, the figure the console shows -- and nothing else."""
+    link = Simulated()
+    link.queue(ScheduleStop(kind="fluid", value=0.3, by="jake"))
+    session = _session(_spec(tmp_path, trials=200), link=link)
+
+    session.run()
+
+    assert session.stopped_because == "scheduled stop (after 0.3 mL this session) set by jake"
+    assert session.welfare.session_total() >= 0.3
+    before_last = [frame.fluid_session_ml for frame in link.published][-3]
+    assert before_last < 0.3, "it stopped at the first boundary at or past 0.3 mL"
+
+
+def test_a_new_schedule_replaces_the_old_and_says_so(tmp_path):
+    link = Simulated()
+    link.queue(ScheduleStop(kind="trials", value=2, by="jake"))
+    link.queue(ScheduleStop(kind="trials", value=4, by="sam"))
+    session = _session(_spec(tmp_path, trials=50), link=link)
+
+    session.run()
+
+    assert _trials_run(session) == 4
+    assert session.stopped_because == "scheduled stop (after trial 4) set by sam"
+    assert session.controls[1][3] == "scheduled stop after trial 4, replacing after trial 2"
+
+
+def test_cancel_removes_the_scheduled_stop(tmp_path):
+    link = Simulated()
+    link.queue(ScheduleStop(kind="trials", value=2, by="jake"))
+    link.queue(CancelScheduledStop(by="sam"))
+    session = _session(_spec(tmp_path, trials=5), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    assert session.scheduled_stop is None
+    cancel = _controls_rows(session)[1]
+    assert (cancel["kind"], cancel["by"], cancel["cancelled"]) == ("cancel", "sam", "after trial 2")
+
+
+def test_cancel_with_nothing_scheduled_is_refused(tmp_path):
+    link = Simulated()
+    link.queue(CancelScheduledStop(by="sam"))
+    session = _session(_spec(tmp_path, trials=2), link=link)
+
+    session.run()
+
+    assert session.refusals == [
+        ("cancel", "sam", "there is no scheduled stop to cancel; nothing changed")
+    ]
+
+
+def test_a_malformed_schedule_that_never_crossed_the_wire_is_refused(tmp_path):
+    """`link.check_schedule` is asked again of a schedule that reached the session
+    without the wire, so one rule holds on both paths."""
+    link = Simulated()
+    link.queue(ScheduleStop(kind="clock", value="25:00", by="jake"))
+    session = _session(_spec(tmp_path, trials=2), link=link)
+
+    session.run()
+
+    ((name, by, why),) = session.refusals
+    assert (name, by) == ("schedule", "jake")
+    assert "HH:MM" in why and why.endswith("so it is refused")
+    assert session.scheduled_stop is None
+
+
+def test_a_scheduled_stop_ends_a_paused_session(tmp_path, utc):
+    """Checked at each trial boundary *and while paused* (spec §5.1)."""
+    link = _Scripted(step=30.0)
+    link.queue(Pause(by="jake"))
+    link.queue(ScheduleStop(kind="clock", value="22:14", by="sam"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stopped_because == "scheduled stop (at 22:14) set by sam"
+    assert len(link.waits) == 2, "22:14 passed on the second thirty-second wait"
+
+
+def test_the_limit_wins_when_it_and_a_schedule_fall_due_together(tmp_path, utc):
+    """Both at one check: the out-of-cage limit is asked first, and a session that
+    reached it ends as `limit`, never as an operator's stop."""
+    link = _Scripted(step=900.0)
+    link.queue(Pause(by="jake"))
+    link.queue(ScheduleStop(kind="clock", value="22:14", by="sam"))
+    session, wall = _walled(tmp_path, link)
+    link.wall = wall
+
+    session.run()
+
+    assert session.stop_kind == "limit"
