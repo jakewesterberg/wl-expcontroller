@@ -1,5 +1,5 @@
-"""Every `ZmqLink` and `ZmqConsole` a test builds is held until its teardown, and its
-`Context` is destroyed there directly. That includes the ones built where the test has
+"""Every `ZmqLink`, `ZmqConsole` and `ZmqMarks` a test builds is held until its
+teardown, and its `Context` is destroyed there directly. That includes the ones built where the test has
 no handle: inside `main()` for `wlx run --link` and `wlx console`, and on `wlx serve`'s
 telemetry thread. The teardown never goes through `close()` or `__exit__`, and it never
 leaves a context for the cyclic garbage collector.
@@ -59,7 +59,7 @@ import threading
 
 import pytest
 
-from wl_expcontroller.link import ZmqConsole, ZmqLink
+from wl_expcontroller.link import ZmqConsole, ZmqLink, ZmqMarks
 
 #: Objects whose building thread was still running at teardown. That happens only once
 #: a test has already failed, for example when a `wlx run` thread outlives its join.
@@ -83,11 +83,12 @@ _STILL_IN_USE: list = []
 
 @pytest.fixture(autouse=True)
 def _every_zmq_context_released(monkeypatch):
-    """Wrap `ZmqLink.__init__` and `ZmqConsole.__init__` to record each object and the
-    thread that built it. At teardown, destroy each context directly with `linger=0`."""
+    """Wrap `ZmqLink.__init__`, `ZmqConsole.__init__` and `ZmqMarks.__init__` (P4d-2b
+    b2a: `wlx serve`'s mark thread builds one) to record each object and the thread
+    that built it. At teardown, destroy each context directly with `linger=0`."""
     built: list[tuple[object, threading.Thread]] = []
 
-    for cls in (ZmqLink, ZmqConsole):
+    for cls in (ZmqLink, ZmqConsole, ZmqMarks):
 
         def _record_init(self, *args, _real_init=cls.__init__, **kwargs) -> None:
             try:

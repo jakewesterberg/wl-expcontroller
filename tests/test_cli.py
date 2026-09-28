@@ -329,10 +329,11 @@ def test_wlx_run_without_link_still_runs(tmp_path):
 def test_wlx_run_refuses_a_malformed_link_value(tmp_path):
     """Fix round 1, minor: `--link`'s parsing used to be `.partition(",")`, which
     on a value with a second comma (`"a,b,c"`) silently took `"b,c"` -- the whole
-    remainder -- as the REP endpoint rather than refusing it. Exactly two
-    comma-separated endpoints or refusal; nothing in between. Raised before any
-    socket is touched, so this needs no real endpoint and no cleanup."""
-    with pytest.raises(SystemExit, match="PUB,REP"):
+    remainder -- as the REP endpoint rather than refusing it. Two or three
+    comma-separated endpoints (P4d-2b b2a added the third, the mark endpoint) or
+    refusal; nothing in between. Raised before any socket is touched, so this needs
+    no real endpoint and no cleanup."""
+    with pytest.raises(SystemExit, match="PUB,REP or PUB,REP,MARK"):
         main(
             [
                 "run", GOOD,
@@ -345,9 +346,49 @@ def test_wlx_run_refuses_a_malformed_link_value(tmp_path):
                 "--delivered-today", "0",
                 "--trials", "5",
                 *_TASK_SETS,
-                "--link", "tcp://127.0.0.1:1,tcp://127.0.0.1:2,tcp://127.0.0.1:3",
+                "--link",
+                "tcp://127.0.0.1:1,tcp://127.0.0.1:2,tcp://127.0.0.1:3,tcp://127.0.0.1:4",
             ]
         )
+
+
+def test_wlx_run_binds_the_mark_endpoint_when_link_names_three(tmp_path, monkeypatch):
+    """P4d-2b b2a: `--link PUB,REP,MARK` gives the session its mark socket, on the
+    third endpoint; two endpoints still give it none, as in b1."""
+    built = []
+
+    class _SpyLink(ZmqLink):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            built.append(self)
+
+    monkeypatch.setattr("wl_expcontroller.link.ZmqLink", _SpyLink)
+
+    for session_id, link in (
+        ("2027-01-14_31", "tcp://127.0.0.1:0,tcp://127.0.0.1:0,tcp://127.0.0.1:0"),
+        ("2027-01-14_32", "tcp://127.0.0.1:0,tcp://127.0.0.1:0"),
+    ):
+        exit_code = main(
+            [
+                "run", GOOD,
+                "--allocation", ALLOCATION,
+                "--bounds", BOUNDS,
+                "--root", str(tmp_path),
+                "--session-id", session_id,
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", _hhmm(),
+                "--delivered-today", "0",
+                "--trials", "3",
+                *_TASK_SETS,
+                "--link", link,
+            ]
+        )
+        assert exit_code == 0
+
+    with_mark, without = built
+    assert with_mark.mark_endpoint is not None
+    assert with_mark.mark_endpoint.startswith("tcp://127.0.0.1:")
+    assert without.mark_endpoint is None
 
 
 def test_wlx_run_refuses_a_link_bound_where_the_lab_network_can_reach_it(tmp_path):

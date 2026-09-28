@@ -21,19 +21,21 @@ import pytest
 
 from wl_expcontroller.bounds import Bounds, Ceiling, Floor
 from wl_expcontroller.link import (
+    MARK_BYTES,
     REFUSAL_HISTORY,
     Absent,
     CancelScheduledStop,
     CommandRefused,
-    Mark,
-    Pause,
-    Resume,
-    ScheduleStop,
     FrameError,
+    Mark,
+    NotDelivered,
     ParamRow,
+    Pause,
     Refused,
     RemoteBindRefused,
+    Resume,
     SCHEMA,
+    ScheduleStop,
     Simulated,
     SetParameter,
     Staged,
@@ -42,6 +44,7 @@ from wl_expcontroller.link import (
     Telemetry,
     ZmqConsole,
     ZmqLink,
+    ZmqMarks,
     _decode_command,
     _encode_command,
     decode,
@@ -1483,3 +1486,246 @@ def test_check_schedule_is_the_one_rule_for_what_a_schedule_may_be():
     assert "whole number" in check_schedule("trials", 1.0)
     assert "mL" in check_schedule("fluid", -2.0)
     assert "clock, trials or fluid" in check_schedule("never", 1)
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b2a: the mark signal (spec §5.1) -- a third loopback socket, checked once
+# per frame, and read into a buffer the link already holds
+# ---------------------------------------------------------------------------
+
+
+def _marked_link(zmq_cleanup) -> ZmqLink:
+    return zmq_cleanup(
+        ZmqLink(
+            pub_endpoint="tcp://127.0.0.1:0",
+            rep_endpoint="tcp://127.0.0.1:0",
+            mark_endpoint="tcp://127.0.0.1:0",
+        )
+    )
+
+
+def _signalled(link, *, tries=200, pause=0.005) -> int:
+    """`link.mark_signal()` until it answers a number, bounded as `_drain_until` is and
+    for its reason: a signal just sent is not visible to the very next statement."""
+    for _ in range(tries):
+        mark = link.mark_signal()
+        if mark:
+            return mark
+        time.sleep(pause)
+    return 0
+
+
+def test_a_mark_signal_reaches_the_rig_as_its_number(zmq_cleanup):
+    """Spec §5.1: the signal is a fixed-size sequence number. `wlx serve` sends it the
+    moment M is pressed, and `taskd` reads it in the frame it arrives."""
+    link = _marked_link(zmq_cleanup)
+    marks = zmq_cleanup(ZmqMarks(link.mark_endpoint))
+
+    marks.signal(7)
+    marks.signal(2**64 - 1)
+
+    assert _signalled(link) == 7
+    assert _signalled(link) == 2**64 - 1
+    assert link.mark_signal() == 0, "each signal is read once"
+
+
+def test_with_nothing_waiting_the_check_answers_zero_every_time(zmq_cleanup):
+    link = _marked_link(zmq_cleanup)
+
+    assert [link.mark_signal() for _ in range(1000)] == [0] * 1000
+
+
+def test_the_per_frame_check_keeps_nothing_it_allocates(zmq_cleanup):
+    """Hot-path discipline (CLAUDE.md): the check runs every frame, so it must not
+    leave memory behind. Measured with `tracemalloc` over ten thousand checks with
+    nothing waiting: what is allocated and still held afterwards is nothing. What it
+    costs per frame in time is `tools/measure_mark_check.py`'s to say, not this
+    test's."""
+    import tracemalloc
+
+    link = _marked_link(zmq_cleanup)
+    check = link.mark_signal
+    for _ in range(100):
+        check()
+    tracemalloc.start()
+    try:
+        before = tracemalloc.take_snapshot()
+        for _ in range(10_000):
+            check()
+        after = tracemalloc.take_snapshot()
+    finally:
+        tracemalloc.stop()
+
+    import wl_expcontroller.link as link_module
+
+    held = [
+        stat
+        for stat in after.compare_to(before, "filename")
+        if stat.size_diff > 0 and stat.traceback[0].filename == link_module.__file__
+    ]
+    assert held == []
+
+
+def test_a_link_given_no_mark_endpoint_has_no_mark_socket_and_answers_zero(zmq_cleanup):
+    """`wlx run --link PUB,REP` still works as it did (P4d-2b b1): no third socket,
+    and a check that answers zero and never blocks."""
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+
+    assert link.mark_endpoint is None
+    assert link.mark_signal() == 0
+
+
+def test_a_signal_that_is_not_eight_bytes_naming_a_mark_is_refused_at_the_next_drain(
+    zmq_cleanup,
+):
+    """A malformed signal is not a mark, and it is not dropped silently either: the
+    frame only counts it (one integer, no list to grow mid-trial) and `drain`, at the
+    boundary, turns the count into one refusal a console shows."""
+    link = _marked_link(zmq_cleanup)
+    raw = zmq_cleanup(ZmqMarks(link.mark_endpoint))
+    raw._push.send(b"abc")
+    raw._push.send(bytes(MARK_BYTES))  # eight bytes, but zero is never a mark
+    raw._push.send(b"x" * 20)
+    raw.signal(9)
+
+    assert _signalled(link) == 9
+    assert link.mark_signal() == 0
+    assert link.drain() == []
+    (refusal,) = link.refused
+    assert refusal.name == "mark"
+    assert refusal.why.startswith("3 mark signal(s) were not eight bytes naming a mark")
+    assert link.mark_malformed == 0, "the count is spent once it is refused"
+
+
+def test_idle_hands_back_a_mark_as_soon_as_it_arrives(zmq_cleanup):
+    """While paused, the loop waits in `idle`, and a mark is stamped the moment it
+    arrives rather than at the end of the wait. Bounded by the wait itself."""
+    link = _marked_link(zmq_cleanup)
+    marks = zmq_cleanup(ZmqMarks(link.mark_endpoint))
+
+    marks.signal(11)
+    started = time.monotonic()
+    mark = link.idle(5.0)
+
+    assert mark == 11
+    assert time.monotonic() - started < 4.0, "idle waited out its timeout with a mark waiting"
+
+
+def test_idle_wakes_for_a_command_and_leaves_it_for_drain(zmq_cleanup):
+    link = _marked_link(zmq_cleanup)
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint, settle_s=0))
+
+    console.send(Resume(by="jake"))
+    started = time.monotonic()
+    mark = link.idle(5.0)
+
+    assert mark == 0
+    assert time.monotonic() - started < 4.0, "idle waited out its timeout with a command waiting"
+    assert _drain_until(link) == [Resume(by="jake")]
+
+
+def test_idle_with_nothing_arriving_waits_its_timeout_and_answers_zero(zmq_cleanup):
+    link = _marked_link(zmq_cleanup)
+
+    started = time.monotonic()
+    assert link.idle(0.05) == 0
+    assert time.monotonic() - started >= 0.04
+
+
+def test_the_mark_endpoint_is_refused_where_other_hosts_can_reach_it():
+    """The mark socket is a third door into the session, and gets the first two's
+    rule: loopback unless `allow_remote` says otherwise."""
+    with pytest.raises(RemoteBindRefused, match="PULL"):
+        ZmqLink(
+            pub_endpoint="tcp://127.0.0.1:0",
+            rep_endpoint="tcp://127.0.0.1:0",
+            mark_endpoint="tcp://0.0.0.0:0",
+        )
+
+
+def test_close_releases_the_mark_socket_too(zmq_cleanup):
+    link = _marked_link(zmq_cleanup)
+    marks = zmq_cleanup(ZmqMarks(link.mark_endpoint))
+
+    link.close()
+    marks.close()
+
+    assert link._mark.closed and link._ctx.closed
+    assert marks._push.closed and marks._ctx.closed
+
+
+def test_an_unclosed_link_with_a_mark_socket_is_released_by_the_collector():
+    """Ruling 18, for the third socket: it is appended to the list the finalizer
+    holds the moment it exists, or collecting an unclosed link hangs on it."""
+    with _collector_paused():
+        link = ZmqLink(
+            pub_endpoint="tcp://127.0.0.1:0",
+            rep_endpoint="tcp://127.0.0.1:0",
+            mark_endpoint="tcp://127.0.0.1:0",
+        )
+        link._cycle = link
+        ctx = link._ctx
+        sockets = [weakref.ref(link._pub), weakref.ref(link._rep), weakref.ref(link._mark)]
+        del link
+
+        returned = _collected_within(10.0)
+
+    assert returned, "collecting an unclosed ZmqLink with a mark socket hung for 10 s"
+    assert ctx.closed
+    assert all(ref() is None for ref in sockets)
+
+
+def test_an_unclosed_mark_sender_is_released_by_the_collector(zmq_cleanup):
+    link = _marked_link(zmq_cleanup)
+    with _collector_paused():
+        marks = ZmqMarks(link.mark_endpoint)
+        marks._cycle = marks
+        ctx = marks._ctx
+        push = weakref.ref(marks._push)
+        del marks
+
+        returned = _collected_within(10.0)
+
+    assert returned, "collecting an unclosed ZmqMarks in a reference cycle hung for 10 s"
+    assert ctx.closed
+    assert push() is None
+
+
+def test_a_mark_with_no_rig_to_reach_is_not_delivered_and_says_so(zmq_cleanup):
+    """`wlx serve` tells the page the truth (spec §5.3): with no rig on the mark
+    endpoint the signal is refused at once, not queued for a session that is gone.
+    `IMMEDIATE` makes the socket queue only to a completed connection."""
+    probe = _marked_link(zmq_cleanup)
+    endpoint = probe.mark_endpoint
+    probe.close()
+    marks = zmq_cleanup(ZmqMarks(endpoint, connect_timeout_s=0.1))
+
+    with pytest.raises(NotDelivered, match="no rig is listening"):
+        marks.signal(3)
+
+
+@pytest.mark.parametrize("mark", [0, -1, 2**64, True])
+def test_a_mark_number_that_is_not_one_is_refused_before_it_is_sent(zmq_cleanup, mark):
+    link = _marked_link(zmq_cleanup)
+    marks = zmq_cleanup(ZmqMarks(link.mark_endpoint))
+
+    with pytest.raises(ValueError, match="mark number"):
+        marks.signal(mark)
+
+
+def test_absent_has_no_marks_and_idle_waits_it_out():
+    link = Absent()
+
+    assert link.mark_signal() == 0
+    started = time.monotonic()
+    assert link.idle(0.02) == 0
+    assert time.monotonic() - started >= 0.015
+
+
+def test_simulated_hands_over_each_queued_mark_once():
+    link = Simulated()
+    link.marks.extend([4, 5])
+
+    assert link.mark_signal() == 4
+    assert link.idle(10.0) == 5, "a simulated idle never waits"
+    assert link.mark_signal() == 0

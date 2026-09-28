@@ -1076,16 +1076,18 @@ def main(argv: list[str] | None = None) -> int:
     runner.add_argument(
         "--link",
         default=None,
-        metavar="PUB,REP",
-        help="open a console link on two endpoints THIS SESSION binds: first the "
+        metavar="PUB,REP[,MARK]",
+        help="open a console link on endpoints THIS SESSION binds: first the "
         "PUB endpoint it publishes telemetry on, then the REP endpoint it "
-        "receives commands on, e.g. "
-        "tcp://127.0.0.1:5571,tcp://127.0.0.1:5572. A console attaches to the "
-        "same pair from the other side, passing the first to `wlx console "
-        "--sub` and the second to `--req`. Loopback only unless "
-        "--link-allow-remote is also given. Omitted, the session runs with no "
-        "console attached -- exactly as it did before this option existed, and "
-        "with no transport dependency acquired",
+        "receives commands on, and optionally a third, the MARK endpoint an "
+        "operator's mark signal arrives on, e.g. "
+        "tcp://127.0.0.1:5571,tcp://127.0.0.1:5572,tcp://127.0.0.1:5573. A "
+        "console attaches from the other side: `wlx console --sub` takes the "
+        "first and `--req` the second, and `wlx serve --link` takes the same "
+        "value as given here. Without MARK the session takes no marks. Loopback "
+        "only unless --link-allow-remote is also given. Omitted, the session runs "
+        "with no console attached -- exactly as it did before this option "
+        "existed, and with no transport dependency acquired",
     )
     runner.add_argument(
         "--link-allow-remote",
@@ -1237,13 +1239,16 @@ def main(argv: list[str] | None = None) -> int:
             # -- `"b,c"` -- as one endpoint, rather than refusing it. `.split`
             # plus an exact length check refuses anything that is not exactly
             # two comma-separated parts.
+            #
+            # P4d-2b b2a: a third endpoint, the mark socket, is optional, so a
+            # `--link PUB,REP` written for b1 runs as it did.
             link_parts = args.link.split(",")
-            if len(link_parts) != 2:
+            if len(link_parts) not in (2, 3):
                 raise SystemExit(
-                    f"--link expects PUB,REP (exactly two comma-separated "
-                    f"endpoints), got {args.link!r}"
+                    f"--link expects PUB,REP or PUB,REP,MARK (two or three "
+                    f"comma-separated endpoints), got {args.link!r}"
                 )
-            pub_endpoint, rep_endpoint = link_parts
+            pub_endpoint, rep_endpoint, *mark = link_parts
             # Refused rather than bound when an endpoint is reachable from another
             # host, unless --link-allow-remote says otherwise -- see
             # `ZmqLink.__init__`. Converted to `SystemExit` here so an operator gets
@@ -1251,7 +1256,10 @@ def main(argv: list[str] | None = None) -> int:
             # wrote, which names what to pass instead.
             try:
                 link_cm = _link.ZmqLink(
-                    pub_endpoint, rep_endpoint, allow_remote=args.link_allow_remote
+                    pub_endpoint,
+                    rep_endpoint,
+                    mark[0] if mark else None,
+                    allow_remote=args.link_allow_remote,
                 )
             except _link.RemoteBindRefused as refused:
                 raise SystemExit(str(refused)) from refused

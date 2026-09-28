@@ -41,7 +41,12 @@ contract = ["pyyaml>=6"]
 # run the console-link tests at all (`.github/workflows/ci.yml`, 2026-09-19). The
 # no-leak property did not change; only the thing that proves it did, and it is the
 # stronger of the two.
-console = ["pyzmq>=26", "msgpack>=1"]
+#
+# `pyzmq>=26.4`, not 26 (P4d-2b b2a): `link.ZmqLink.mark_signal` reads a mark into a
+# buffer it already holds with `Socket.recv_into`, which pyzmq added in 26.4
+# (`zmq/backend/cython/_zmq.py`'s `recv_into`, `.. versionadded:: 26.4`, read in
+# pyzmq 27.2.0 on 2026-09-27).
+console = ["pyzmq>=26.4", "msgpack>=1"]
 
 [tool.setuptools.packages.find]
 include = ["wl_expcontroller*"]
