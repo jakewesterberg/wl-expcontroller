@@ -1182,10 +1182,15 @@ class Session:
         **Only while held** (`held`: drained by `_hold`). Refused, with a sentence and
         nothing given, when the session is stopping -- a `Stop` ahead of it in the
         drain -- or not paused -- trials running, or a `Resume` ahead of it -- or
-        paused in this same drain and not yet held; when the bounded config has no
-        `MANUAL_REWARD_ENTRY`, which **no other entry replaces**; and when the
-        allocation has no `MANUAL_REWARD` code, since the recording could not show it.
-        A session that has ended refuses it in `_command`, as every command.
+        paused in this same drain and not yet held; when a fluid scheduled stop is
+        already due -- welfare review round 1, 2026-09-28: two presses drained in the
+        same pass, the first reaching it, must not both be given, since there is
+        nothing here to stop a loopback peer other than the page from sending two --
+        checked the same way `_ends` checks it, and nothing strobed or delivered on
+        this refusal either; when the bounded config has no `MANUAL_REWARD_ENTRY`,
+        which **no other entry replaces**; and when the allocation has no
+        `MANUAL_REWARD` code, since the recording could not show it. A session that
+        has ended refuses it in `_command`, as every command.
 
         **A pump fault is not caught**, as `welfare.Rig` catches none for a task's
         reward: the session ends on it as a fault, with the reward charged.
@@ -1213,6 +1218,18 @@ class Session:
                 "the session's pause has not begun holding yet, and a manual reward is "
                 "given only while it is; no reward was given -- press again once the "
                 "page shows the session paused",
+            )
+            return
+        if (
+            self.scheduled_stop is not None
+            and self.scheduled_stop[0] == "fluid"
+            and self.welfare.session_total() >= self.scheduled_stop[1] - FLUID_TOLERANCE_ML
+        ):
+            self._refuse(
+                "reward",
+                by,
+                f"the session has reached its scheduled stop {self.scheduled_stop[3]}, "
+                f"so no reward is given; it ends at this pass",
             )
             return
         if MANUAL_REWARD_ENTRY not in self.spec.bounds.ceilings:
