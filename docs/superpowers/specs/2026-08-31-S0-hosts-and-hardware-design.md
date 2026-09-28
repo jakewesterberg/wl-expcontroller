@@ -270,7 +270,8 @@ the formula's alone. The 31.5" panel this section described until 2026-09-28 gav
 
 **The stereoscope needs ±10°** (PI, 2026-09-27: "for the stereoscope setup +/- 10 deg is enough,
 most of the experiments will not be in the stereoscope"). The field above is the most the panel
-gives; where it is stopped is set out, not chosen, in the optics drawing's §5.
+gives; it is stopped by a removable mask at the panel, starting at ±12° (PI, 2026-09-28; the
+optics drawing's §5).
 
 **Build for 57 cm** (ruled 2026-08-31; **reaffirmed by the PI 2026-09-28 after comparing 50
 cm**). His reasons: ±10° is enough, so 50 cm's wider field buys nothing; 57 cm is sharper, with

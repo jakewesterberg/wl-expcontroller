@@ -182,7 +182,7 @@ or the flip patch — alternating every refresh — is a flickering distractor i
 Naively impossible, since two viewports tile the panel exactly. The answer is a **bottom strip
 the full panel width**, created by stopping the field vertically — vertical field is the
 surplus dimension, so it costs nothing that matters. Its height depends on the stop, which is
-not yet chosen: 1.90 cm with the vertical field stopped to the horizontal's ±14.51°, 6.60 cm at
+**set by a removable mask at the panel, starting at ±12°** (PI, 2026-09-28; optics drawing §5), making it 4.53 cm; the range is 1.90 cm with the vertical field stopped to the horizontal's ±14.51°, 6.60 cm at
 the ±10° the stereoscope needs (PI, 2026-09-27). See `2026-08-31-stereoscope-optics-drawing.md`
 §5, which also gives where the stop can sit and the trade against nasal field. Confirmed with
 `wl-sync` before mirrors are mounted, and verified dark to each eye at bring-up rather than

@@ -20,8 +20,10 @@
 > 4. **§3's mirror plane, 7.0 cm from the eyes and 34.17 cm from the screen,** predated the
 >    symmetric rule; the plane is at `a` (§3).
 >
-> It also records the ±10° field requirement (PI, 2026-09-27) and the stops it allows, without
-> choosing one (§5), and shows that the ridge is not a stop (§4.2).
+> It also records the ±10° field requirement (PI, 2026-09-27), shows that the ridge is not a
+> stop (§4.2), and records the PI's two answers of 2026-09-28: **a midline divider** blocks the
+> path past the ridge (§4.2), and **the field is set by a removable mask at the panel, starting
+> at ±12°**, with the mirrors cut for the full viewport (§5).
 
 Every number below is computed from the inputs in §1 and recomputes if any of them move.
 Nothing here is measured — **it is a drawing to build to and then verify against** (protocol V9).
@@ -228,11 +230,10 @@ lands `HW − 2E + D · p` from the midline on the far half, so at the full view
 looking more than 14.51° nasally, sees the right viewport's outer 2E = 3.2 cm — inside the
 right eye's field. At ±10° it lands from 21.6 cm out, 3.2 cm inside the right eye's ±10° field.
 
-Something must block it. The options, not chosen here (§8):
-
-- a septum on the midline, from the ridge back toward the face;
-- the animal's own nose, if it reaches far enough forward: **UNVERIFIED**, since the muzzle
-  clearance is found at build (§8 item 4).
+**A midline divider blocks it** (PI, 2026-09-28): a thin matte-black plate on the midline, from
+the ridge back toward the face, stopping short of the nose, its face end trimmed to the animal
+at fitting. The animal's own nose was the alternative; whether it reaches far enough forward is
+**UNVERIFIED** (the muzzle clearance is found at build, §8 item 4), so it is not relied on.
 
 **The clip is also soft.** A pupil of diameter `d` sees the ridge from a spread of positions, so
 the nasal edge fades over `d / (a − E)` radians: 0.93° per mm of pupil at `E` = 1.6 cm and the
@@ -271,8 +272,12 @@ re-setting `a` and the M1 slides, which invalidates the previous geometry. There
 ## 5. The field stop and the photodiode strip
 
 **The requirement is ±10°** (PI, 2026-09-27). The panel at 57 cm gives ±14.51° × ±16.28°, so
-the field can be stopped anywhere from the viewport's own edge down to ±10°. **This drawing does
-not choose the stop** (§8). A smaller field frees room: the mirrors shrink and M1 moves away
+the field can be stopped anywhere from the viewport's own edge down to ±10°. **The PI chose an
+adjustable stop** (2026-09-28): the mirrors and the ridge are built for **option A**, the full
+viewport (its "to cut" sizes and its `a`), and the field is set by **a removable matte-black mask
+at the panel, starting at option B's ±12°**. A mask's edge is sharp where a mirror's is soft
+(below), and moving it toward ±10° or out to the full viewport needs no new mirrors. Because
+the mirrors stay at option A, the room around the eye is option A's: the mask frees none of it. A smaller field frees room: the mirrors shrink and M1 moves away
 from the face, and a larger part of the panel goes dark to both eyes.
 
 S3 §8 requires both photodiode patches outside **both** viewports, or the flip patch
@@ -366,7 +371,10 @@ metal, and it makes the two optical paths unequal — which S0's V9 already forb
    light reaches an eye.
 6. Mirrors at least the §3.1 "to cut" sizes: rectangles as tall as the trapezoid's temporal
    end, not its middle.
-7. Block the path past the ridge (§4.2).
+7. A matte-black midline divider from the ridge toward the face, stopping short of the nose,
+   trimmed to the animal at fitting (§4.2).
+8. A removable matte-black mask at the panel, cut for ±12° to start (§5); the mirrors are cut
+   for the full viewport, so a different mask changes the field without new mirrors.
 
 **Verify before an animal (V9)**
 1. **Measure each eye's optical path independently.** They are equal only if the mirrors are;
@@ -390,5 +398,5 @@ metal, and it makes the two optical paths unequal — which S0's V9 already forb
 | 3 | Patch location — **the bottom strip**, whose height depends on the stop (§5) — confirm with `wl-sync` | PI + `wl-sync` |
 | 4 | ~~Chair and head-post clearance~~ **Build to it and find out** (PI, 2026-08-31). If the muzzle fouls the carriage, symmetric field is unreachable and §4's table is re-derived from the achievable clearance instead of from IPD — moving the near mirrors out trades nasal field for a central strip, which is then where the photodiode patches go instead of the bottom strip. The corrected rule already puts M1, and the ridge, exactly `E` further from the face than the old one did: 7.78 cm against 6.18 cm at `E` = 1.6 cm | commissioning |
 | 5 | Enclosure and baffling against ambient light | build |
-| 6 | **The field stop**: how far inside the panel's ±14.51° × ±16.28° toward the ±10° requirement, and whether at the mirrors or a mask at the panel (§5) | PI |
-| 7 | **What blocks the path past the ridge** (§4.2): a septum, or the nose if it reaches | PI + build |
+| 6 | ~~The field stop~~ **Answered (PI, 2026-09-28): adjustable.** Mirrors and ridge built for the full viewport (option A); a removable mask at the panel sets the field, starting at ±12° (option B), which gives 4.53 cm strips top and bottom (§5) | — |
+| 7 | ~~What blocks the path past the ridge~~ **Answered (PI, 2026-09-28): a midline divider**, trimmed to the animal at fitting (§4.2) | build |

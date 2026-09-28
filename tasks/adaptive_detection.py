@@ -57,7 +57,8 @@ adaptive_detection = Trial(
         # Inside the stereoscope's ±14.51° (PG27UCDM at 57 cm, S0 §5.2), with 1° to
         # spare as ±16 had inside the 31.5-inch panel's ±17.0°: check 8 refuses a
         # range the rig cannot show. Direct view is wider, and has no `Geometry` yet
-        # (2026-09-28); widen this when it does.
+        # (2026-09-28); widen this when it does -- the PI says this task runs in
+        # direct view (2026-09-28), so that `Geometry` is what puts ±16 back.
         Param("target_position", unit="deg", low=-13.5, high=13.5),
         # Appearance is a parameter, so switching circles among squares for
         # penguins among elephants is a value applied in an ITI -- not a new
