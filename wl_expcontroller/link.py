@@ -751,6 +751,15 @@ class CommandRefused(ValueError):
 TEXT_LIMIT = 200
 
 
+def _quoted(value: object) -> str:
+    """`repr(value)`, cut to `TEXT_LIMIT` characters plus `"…"` when longer -- keeps
+    a refusal sentence inside `TEXT_LIMIT`'s promise."""
+    text = repr(value)
+    if len(text) > TEXT_LIMIT:
+        return text[:TEXT_LIMIT] + "…"
+    return text
+
+
 def _actor(by: object, name: str) -> str:
     """`by`, when it is a name: a non-empty string no longer than `TEXT_LIMIT`.
 
@@ -792,7 +801,7 @@ def _setting(value: object, name: str, by: str) -> float | str:
         raise CommandRefused(
             name,
             by,
-            f"{name!r} was sent {value!r}: a setting is a finite number, or a word "
+            f"{name!r} was sent {_quoted(value)}: a setting is a finite number, or a word "
             f"for a categorical parameter, and this is neither, so it is refused and "
             f"the session runs on",
         )
@@ -800,7 +809,7 @@ def _setting(value: object, name: str, by: str) -> float | str:
         raise CommandRefused(
             name,
             by,
-            f"{name!r} was sent {value!r}, which is not a real number: it would "
+            f"{name!r} was sent {_quoted(value)}, which is not a real number: it would "
             f"defeat every range check, so it is refused and the session runs on",
         )
     return float(value)
@@ -827,11 +836,14 @@ def _decode_command(payload: bytes) -> Command:
     if kind == "set":
         name = data.get("name")
         if not isinstance(name, str) or not name or len(name) > TEXT_LIMIT:
+            sender = data.get("by")
             raise CommandRefused(
                 "<transport>",
-                data["by"] if isinstance(data.get("by"), str) else "<unknown>",
+                sender
+                if isinstance(sender, str) and sender.strip() and len(sender) <= TEXT_LIMIT
+                else "<unknown>",
                 f"a setting arrived with no parameter name it could be for "
-                f"({name!r}), so it is refused",
+                f"({_quoted(name)}), so it is refused",
             )
         by = _actor(data.get("by"), name)
         return SetParameter(name=name, value=_setting(data.get("value"), name, by), by=by)

@@ -33,6 +33,7 @@ from wl_expcontroller.link import (
     SetParameter,
     Staged,
     Stop,
+    TEXT_LIMIT,
     Telemetry,
     ZmqConsole,
     ZmqLink,
@@ -1321,3 +1322,60 @@ def test_a_malformed_setting_over_the_wire_is_a_refusal_naming_it_and_the_link_g
 
     console.send(SetParameter(name="fix_hold", value=0.4, by="jake"))
     assert _drain_until(link) == [SetParameter(name="fix_hold", value=0.4, by="jake")]
+
+
+# ---------------------------------------------------------------------------
+# M8 fix round 1: TEXT_LIMIT's stated bound is kept for what a refusal sentence
+# quotes, not just for a name or a word
+# ---------------------------------------------------------------------------
+
+
+def test_a_refusal_sentence_quotes_at_most_text_limit_characters_of_a_huge_value():
+    """The check the reviewer ran: one packet with a 100,000-float list produced a
+    refusal `why` of 500,152 characters before this fix. `_quoted` keeps the
+    sentence inside `TEXT_LIMIT`'s promise -- a fixed ceiling on the fixed words
+    around the quoted value, not on the value itself."""
+    huge = [0.4] * 100_000
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(kind="set", name="fix_hold", value=huge, by="jake"))
+
+    why = refused.value.why
+    assert len(why) < 2 * TEXT_LIMIT + 200
+    assert "…" in why
+
+
+def test_a_setting_with_an_over_long_name_is_refused_without_quoting_all_of_it():
+    """The no-name refusal used to embed `{name!r}` unbounded -- the very case
+    `TEXT_LIMIT` exists for. `_quoted` truncates it too."""
+    long_name = "x" * (TEXT_LIMIT + 1)
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(kind="set", name=long_name, value=0.4, by="jake"))
+
+    assert long_name not in refused.value.why
+
+
+@pytest.mark.parametrize(
+    ("by", "expected"),
+    [
+        ("jake", "jake"),
+        ("", "<unknown>"),
+        ("   ", "<unknown>"),
+        (7, "<unknown>"),
+        ("x" * (TEXT_LIMIT + 1), "<unknown>"),
+    ],
+)
+def test_the_no_name_refusal_records_by_under_the_same_rule_as_actor(by, expected):
+    """The no-name refusal used to take `data["by"]` unbounded and unchecked for
+    blank, unlike `_actor`. It now records the sender only when it is a name
+    `_actor` would also accept, and `"<unknown>"` otherwise."""
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(kind="set", name="", value=0.4, by=by))
+
+    assert refused.value.by == expected
+
+
+def test_the_no_name_refusal_records_unknown_when_by_is_missing_entirely():
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(kind="set", name="", value=0.4))
+
+    assert refused.value.by == "<unknown>"
