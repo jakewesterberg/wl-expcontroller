@@ -73,9 +73,14 @@ WELFARE_NOTES = "welfare_notes.jsonl"
 #: carries a `sequence` for joining to a `PARAM_CHANGED` code, and these join to their
 #: own codes (`PAUSE`, `RESUME`, `OPERATOR_MARK`, `MANUAL_REWARD`) by order and
 #: instant, or to nothing.
-#: **Uncapped**, unlike `refusals.jsonl`: each row is something that happened, and
-#: the party making them is the box's own console, one person at a keyboard, with
-#: marks bounded besides at one per frame (`link.ZmqLink.mark_signal`).
+#: **Uncapped**, unlike `refusals.jsonl`: each row is something that happened, made
+#: by whoever can reach the session's link -- this machine alone, since `ZmqLink`
+#: binds loopback only by default: the box's own page through `wlx serve`, or `wlx
+#: console`. Marks are bounded besides at one per frame (`link.ZmqLink.mark_signal`).
+#: **`wlx run --link-allow-remote` removes that premise**: any host that can reach
+#: the REP port can then pause and resume the session, give manual rewards while it
+#: is paused, schedule, cancel and stop, each a row here, as fast as it can send them,
+#: and nothing caps this file against it.
 CONTROLS = "controls.jsonl"
 
 

@@ -1549,11 +1549,14 @@ class ZmqLink:
                         f"refusing to bind the {role} endpoint on {endpoint!r}: it is "
                         f"reachable from other hosts, and a console link has no "
                         f"authentication yet -- `by` is whatever the sender typed, so "
-                        f"any host that can reach this port can move a reward volume "
-                        f"or stop the session under an invented name (S9a §6 designs "
-                        f"the real thing; it is P4d-3's). Bind on loopback "
-                        f"(tcp://127.0.0.1:PORT), or pass --link-allow-remote / "
-                        f"allow_remote=True to say you meant it."
+                        f"any host that can reach the REP port can, under an invented "
+                        f"name, change a setting (a reward volume among them), pause "
+                        f"and resume the session, give manual rewards while it is "
+                        f"paused, schedule or cancel a stop, or stop it, and any host "
+                        f"that can reach the mark port can put marks on the record "
+                        f"(S9a §6 designs the real thing; it is "
+                        f"P4d-3's). Bind on loopback (tcp://127.0.0.1:PORT), or pass "
+                        f"--link-allow-remote / allow_remote=True to say you meant it."
                     )
 
         self._ctx = zmq.Context()

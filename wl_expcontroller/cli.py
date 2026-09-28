@@ -1203,9 +1203,12 @@ def main(argv: list[str] | None = None) -> int:
         help="permit --link to bind an endpoint other hosts can reach (0.0.0.0, a "
         "LAN address, a wildcard). Refused by default: the console link has no "
         "authentication yet, so `--as WHO` is whatever the sender typed, and any "
-        "host that can reach the REP port can move a reward volume or stop the "
-        "session under an invented name. S9a §6 designs the real thing and it is "
-        "P4d-3's; this flag does not make a remote bind safe, only deliberate",
+        "host that can reach the REP port can, under an invented name, change a "
+        "setting (a reward volume among them), pause and resume the session, give "
+        "manual rewards while it is paused, schedule or cancel a stop, or stop it; "
+        "any host that can reach the MARK port can put marks on the record. S9a §6 "
+        "designs the real thing and it is P4d-3's; this flag does not make a remote "
+        "bind safe, only deliberate",
     )
 
     console_parser = sub.add_parser(
