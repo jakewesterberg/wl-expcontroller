@@ -402,7 +402,10 @@ Commands are still read by `taskd` only at a trial boundary (`taskd.py`, the loo
   600 ms after the last click (a debounce, housekeeping and not a measurement). The card
   shows *staged* until the next trial, then the new value. A refusal shows on the card and
   in the feed, with its sentence.
-- **Stop:** a button with a confirm step (*stop at the next trial boundary?*).
+- **Stop:** a button with a confirm step (*stop at a trial boundary, after any commands
+  already sent?*). It read *stop at the next trial boundary?* until the b2a final fix
+  wave, 2026-09-28. That was exact only with nothing queued, because `wlx serve` delivers
+  queued commands one trial boundary apart (S9a). Letting a stop go ahead of them is b2b's.
 - **Pause / resume:** one button, and the **P** key.
 - **Mark:** the **M** key, or a button, sends the signal at once. A note box then opens:
   Enter attaches the note to that mark and Esc leaves it bare.

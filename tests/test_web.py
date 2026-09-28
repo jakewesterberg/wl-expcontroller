@@ -936,7 +936,7 @@ def test_the_page_holds_the_stop_confirm_and_the_mark_note_hidden():
     document = page(fragments(frame(), view()), stale_after_s=30.0, nonce="n0nce", can_write=True)
 
     assert re.search(r'<div class="inline crit" id="stop-confirm"[^>]*hidden>', document)
-    assert "stop at the next trial boundary?" in document
+    assert "stop at a trial boundary, after any commands already sent?" in document
     assert re.search(r'<div class="inline info" id="mark-form"[^>]*hidden>', document)
     assert 'id="mark-note" maxlength="500"' in document
 

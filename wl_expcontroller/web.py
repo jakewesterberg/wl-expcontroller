@@ -1466,7 +1466,7 @@ def page(
     <span class="who">name <b id="who">not given yet</b> <button class="btn small" id="rename" type="button"{off}>change</button></span>
     <span class="sent" id="sent" role="status"></span>
   </section>
-  <div class="inline crit" id="stop-confirm" role="alertdialog" aria-label="confirm stop" hidden><span>stop at the next trial boundary?</span><button class="btn danger" id="stop-yes" type="button">stop</button><button class="btn" id="stop-no" type="button">cancel</button></div>
+  <div class="inline crit" id="stop-confirm" role="alertdialog" aria-label="confirm stop" hidden><span>stop at a trial boundary, after any commands already sent?</span><button class="btn danger" id="stop-yes" type="button">stop</button><button class="btn" id="stop-no" type="button">cancel</button></div>
   <div class="inline info" id="mark-form" role="dialog" aria-label="mark note" hidden><span>mark sent · note</span><input id="mark-note" maxlength="500" autocomplete="off" placeholder="Enter attaches it · Esc leaves the mark bare" aria-label="mark note"></div>
   <div class="inline" id="sched-form"><span>scheduled stop</span><select id="sched-kind" aria-label="stop when"{off}><option value="clock">at HH:MM</option><option value="trials">after N more trials</option><option value="fluid">after mL this session</option></select><input id="sched-value" autocomplete="off" aria-label="stop at"{off}><button class="btn small" id="sched-set" type="button"{off}>set</button></div>
   <div class="shell">
