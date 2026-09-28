@@ -45,7 +45,7 @@ from pathlib import Path
 from wl_expcontroller import link as _link
 from wl_expcontroller.bounds import Bounds, Exceeded, _finite
 from wl_expcontroller.check import check
-from wl_expcontroller.cli import _clock, _load_allocation, _load_trial
+from wl_expcontroller.cli import _clock, _load_allocation, _load_trial, _shown
 from wl_expcontroller.codes import Allocation
 from wl_expcontroller.dio import Absent as NoCard
 from wl_expcontroller.record import XCON_DIRNAME, SessionRecord, welfare_note
@@ -828,12 +828,18 @@ class Session:
         about to run; `detail` is the record row's own fields."""
         if at is None:
             at = self.wall_now()
-        if len(self._controls) == self._controls.maxlen:
-            self.controls_dropped += 1
-        self._controls.append((kind, by, at, feed))
+        self._feed(kind, by, at, feed)
         if self._record is not None:
             self._record.control(kind, by, at, index, **detail)
         return at
+
+    def _feed(self, kind: str, by: str, at: float, said: str) -> None:
+        """One row onto the changes feed, counting what the cap pushes off -- see
+        `controls_dropped`. `_control` adds the record row; an applied setting,
+        which `parameter_changes.jsonl` already records, comes here alone."""
+        if len(self._controls) == self._controls.maxlen:
+            self.controls_dropped += 1
+        self._controls.append((kind, by, at, said))
 
     def _code(self, name: str) -> int | None:
         """The code this session's allocation gives a framework event, or `None` when
@@ -1263,7 +1269,7 @@ class Session:
         trial = self._trial if self._trial is not None else self._load()
         return {p.name: p for p in trial.params}
 
-    def _apply_staged(self) -> None:
+    def _apply_staged(self, index: int) -> None:
         """Applied atomically in the inter-trial interval, and all of them at once.
 
         Atomic because a task whose two parameters must agree -- an eccentricity and
@@ -1292,6 +1298,11 @@ class Session:
         leave the earlier rows applied and `_staged` uncleared, and the validation
         would have to move to a pass of its own above the assignments before that
         change ships. Named so the next reader can grep it rather than believe it.
+
+        **Each applied row goes onto the changes feed** (P4d-2b spec §5.2: the feed
+        lists every setting change, with who made it), as `set`, naming `index`,
+        the first trial it applies to: its staged row leaves `Telemetry.staged`
+        here, and the feed is where a console still sees it.
         """
         if not self._staged:
             return
@@ -1304,6 +1315,12 @@ class Session:
             if self._record is not None:
                 self._record.parameter_change(self._sequence, name, was, now, by)
             self.card.emit(self.allocation.code_for("PARAM_CHANGED"))
+            self._feed(
+                "set",
+                by,
+                self.wall_now(),
+                f"{name} {_shown(was)} → {_shown(now)}, from trial {index}",
+            )
         self._staged.clear()
 
     # --- running ----------------------------------------------------------
@@ -1447,7 +1464,7 @@ class Session:
                 self._publish()
 
             while True:
-                self._apply_staged()
+                self._apply_staged(index)
                 # Between trials the frame's mark check runs once here, before the
                 # drain, so a mark's stamp is written ahead of a note that arrived
                 # with it (P4d-2b spec §5.1).

@@ -3044,6 +3044,7 @@ def test_a_stop_after_n_trials_ends_the_session_there_with_its_reason(tmp_path):
     assert session.stop_kind == "operator"
     assert session.stopped_because == "scheduled stop (after trial 3) set by jake"
     assert session.scheduled_stop is None, "a stop that has happened is spent"
+    assert link.published[-1].scheduled_stop is None
     rows = _controls_rows(session)
     assert [row["kind"] for row in rows] == ["schedule", "scheduled_stop"]
     assert (rows[0]["stop"], rows[0]["target"], rows[0]["said"]) == ("trials", 3.0, "after trial 3")
@@ -3277,3 +3278,21 @@ def test_a_schedule_queued_behind_a_stop_in_the_same_drain_is_refused(tmp_path):
     assert session.scheduled_stop is None
     assert session.stopped_because == "stopped by jake"
     assert session.stop_kind == "operator"
+
+
+def test_an_applied_setting_is_on_the_changes_feed_with_who_and_when(tmp_path):
+    """Spec §5.2: the changes feed lists every setting change with who made it. A
+    staged row leaves `Telemetry.staged` when it is applied; the feed keeps it, as
+    `set`, with the trial it applies from. The record already has it, in
+    `parameter_changes.jsonl`, so no control row repeats it there."""
+    link = Simulated()
+    link.queue(SetParameter(name="fix_hold", value=0.4, by="jake (box, unverified)"))
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    session.run()
+
+    ((kind, by, at, said),) = session.controls
+    assert (kind, by) == ("set", "jake (box, unverified)")
+    assert said == "fix_hold 0.30 → 0.40, from trial 1"
+    assert at >= WALL_NOW
+    assert _controls_rows(session) == []

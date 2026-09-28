@@ -94,7 +94,14 @@ from wl_expcontroller.welfare import DAILY_FLUID, OUT_OF_CAGE
 #: schema-7 frame and ignores the additions; a schema-7 reader cannot decode a
 #: schema-6 frame, which lacks them, and `wlx serve` says so on its page rather than
 #: showing a guess (`serve.Server._listen`).
-SCHEMA = 7
+#:
+#: 8 (2026-09-27, P4d-2b b2a): the controls from the box -- `paused_at` (whether the
+#: session is paused, and since when), `scheduled_stop` (kind, target, who, and its
+#: words), and `controls` with `controls_dropped` (the recent control events a
+#: changes feed lists). Nothing changed meaning. A schema-7 reader refuses a schema-8
+#: frame, and a schema-8 reader a schema-7 one, by name (`SchemaMismatch`), as §3's
+#: schema rule says.
+SCHEMA = 8
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -208,6 +215,39 @@ class ParamRow:
     high: float | None
     value: float | str | None
     bounded: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledStop:
+    """The scheduled stop a session holds (P4d-2b spec §5.1), as a console shows it:
+    from `taskd.Session.scheduled_stop`.
+
+    `kind` is `clock`, `trials` or `fluid`. `target` is when it falls due: an instant
+    on the session's anchored clock, the trial count it stops at, or mL this session.
+    `said` is its words -- *at 14:30*, *after trial 48*, *after 5 mL this session*
+    -- the same the feed and the stop reason use, so a console shows the rig's
+    sentence rather than composing its own."""
+
+    kind: str
+    target: float
+    by: str
+    said: str
+
+
+@dataclass(frozen=True, slots=True)
+class Control:
+    """One recent control event for a console's changes feed (P4d-2b spec §5.1):
+    from `taskd.Session.controls`. `kind` is `stop`, `pause`, `resume`, `mark`,
+    `note`, `schedule`, `cancel`, `scheduled_stop` or `set` (a staged setting applied);
+    `by` is who sent it, empty for a mark's stamp, whose sender arrives with its note;
+    `at` is on the session's anchored clock; `said` is the sentence after the kind.
+    The session record keeps every one (`record.CONTROLS`); this feed keeps the last
+    `CONTROL_HISTORY`."""
+
+    kind: str
+    by: str
+    at: float
+    said: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,6 +399,19 @@ class Telemetry:
     #: `session.recent_outcomes`: the last `RECENT_OUTCOMES` outcome strings, oldest
     #: first, exactly as `trials.jsonl` records them, `hang` included.
     recent_outcomes: tuple
+    #: `session.paused_at`: when a console paused the session, on the session's
+    #: anchored clock, or `None` while trials run (P4d-2b spec §5.1). A session that
+    #: ended while paused keeps it; `stop_kind` says it ended.
+    paused_at: float | None
+    #: `session.scheduled_stop` as a `ScheduledStop`, or `None` when nothing is
+    #: scheduled.
+    scheduled_stop: ScheduledStop | None
+    #: `session.controls` as `Control` rows, oldest first: the last
+    #: `CONTROL_HISTORY` control events, for the changes feed.
+    controls: tuple
+    #: How many control events are **not** in `controls`, having fallen off the far
+    #: end -- zero for a session nobody controlled much, and never a quiet cap.
+    controls_dropped: int
 
     @classmethod
     def of(cls, session, tally, scheduler, index: int) -> "Telemetry":
@@ -485,6 +538,15 @@ class Telemetry:
             wall_at=wall_now,
             last_reward_at=session.welfare.last_delivery_wall_at,
             recent_outcomes=session.recent_outcomes,
+            # P4d-2b b2a (spec §5.1): the session's own, through its public surface.
+            paused_at=session.paused_at,
+            scheduled_stop=(
+                None
+                if session.scheduled_stop is None
+                else ScheduledStop(*session.scheduled_stop)
+            ),
+            controls=tuple(Control(*row) for row in session.controls),
+            controls_dropped=session.controls_dropped,
         )
 
 
@@ -552,6 +614,22 @@ def encode(telemetry: Telemetry) -> bytes:
         "wall_at": telemetry.wall_at,
         "last_reward_at": telemetry.last_reward_at,
         "recent_outcomes": list(telemetry.recent_outcomes),
+        "paused_at": telemetry.paused_at,
+        "scheduled_stop": (
+            None
+            if telemetry.scheduled_stop is None
+            else {
+                "kind": telemetry.scheduled_stop.kind,
+                "target": telemetry.scheduled_stop.target,
+                "by": telemetry.scheduled_stop.by,
+                "said": telemetry.scheduled_stop.said,
+            }
+        ),
+        "controls": [
+            {"kind": c.kind, "by": c.by, "at": c.at, "said": c.said}
+            for c in telemetry.controls
+        ],
+        "controls_dropped": telemetry.controls_dropped,
     }
     return msgpack.packb(payload, use_bin_type=True)
 
@@ -681,6 +759,14 @@ def _telemetry_from(data: dict) -> Telemetry:
         wall_at=data["wall_at"],
         last_reward_at=data["last_reward_at"],
         recent_outcomes=tuple(data["recent_outcomes"]),
+        paused_at=data["paused_at"],
+        scheduled_stop=(
+            None
+            if data["scheduled_stop"] is None
+            else ScheduledStop(**data["scheduled_stop"])
+        ),
+        controls=tuple(Control(**c) for c in data["controls"]),
+        controls_dropped=data["controls_dropped"],
     )
 
 

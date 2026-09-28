@@ -1,10 +1,13 @@
-"""A complete schema-7 `Telemetry` frame for the browser console's tests (P4d-2b b1).
+"""A complete `Telemetry` frame, at this build's `SCHEMA`, for the browser console's
+tests (P4d-2b b1; schema 8's fields since b2a).
 
 Imported by `test_health.py`, `test_web.py` and `test_serve.py` as
 `from _frames import frame`; never collected, because its name does not start with
 `test_`. Every field holds a value a test can find in rendered output, and every
 field that may be `None` holds a number here, so a test that wants an absence asks
-for it by name.
+for it by name -- **except schema 8's `paused_at` and `scheduled_stop`**, whose
+`None` is the ordinary running session (not paused, nothing scheduled), and whose
+number would make every frame here a paused one.
 """
 
 from __future__ import annotations
@@ -60,6 +63,10 @@ def frame(**overrides) -> Telemetry:
         wall_at=1_700_000_041.5,
         last_reward_at=1_700_000_000.0,
         recent_outcomes=("correct", "no_fixation", "correct"),
+        paused_at=None,
+        scheduled_stop=None,
+        controls=(),
+        controls_dropped=0,
     )
     return replace(base, **overrides) if overrides else base
 
