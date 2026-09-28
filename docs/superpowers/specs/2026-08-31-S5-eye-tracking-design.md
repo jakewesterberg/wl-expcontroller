@@ -271,7 +271,8 @@ compute or consume.
 **Drafted as an amendment** at `docs/pending-wl-preproc-amendments.md`.
 
 **Accepted and built, verified 2026-09-05 against `wl-preproc` at `c3f6c5e`.** This is no
-longer a proposal: `wl_preproc/eye/expcontroller.py::read_expcontroller_map` exists, and
+longer a proposal: `wl_preproc/eye/expcontroller.py::read_expcontroller_map` exists (renamed
+`eye/xcon.py::read_xcon_map` on 2026-09-28, with the session folder, `xcon/`), and
 reading it settles the format rather than leaving it to us. **The ask is closed and the
 schema is theirs**, which means the fields below are a contract and not a suggestion —
 their models forbid unrecognised keys at both levels, so a field we invent is a declined
