@@ -327,7 +327,23 @@ figure was one low. In order:
 
 ## What moved on 2026-09-28: the screen, the stereoscope, direct view, and b2a under way
 
-**Resume here** for b2a: it is being executed subagent-driven on `p4d2b-b2a-controls` (worktree
+**Resume here (state at 2026-09-28 ~17:00 UTC, written ahead of a possible loss of connection):**
+- **b2a** (`p4d2b-b2a-controls`, worktree `.claude/worktrees/p4d2b-b2a`): Tasks 1–12 of 16 complete and
+  reviewed (pushed to origin at `73c4da3`). **Task 13, the manual reward, was mid-implementation**
+  with uncommitted edits in the worktree and a mutation sweep running. On resume: if a sweep's
+  `.mutate-in-progress.json` is left in the worktree, run `tools/mutate.py`'s restore first; read
+  the ledger's Task 13 lines and `task-13-report.md`; check `git status`; then either commit the
+  finished work or re-dispatch Task 13 with `task-13-rulings.md` (it carries two corrected
+  anchors, a double-click-reward guard, and four carried review items). Tasks 14–16 follow, then
+  the PI's four welfare items (Task 16 Step 6).
+- **Direct view part 1** (`direct-view-part1`, worktree `.claude/worktrees/direct-view-1`, pushed at
+  `6ba6908`): all 7 tasks and the final review's fix wave done and re-reviewed; 1191 passed; its
+  CI run `36427664739` was in its mutation job. On resume: read that run's log line by line, then
+  fast-forward `main` (non-welfare; the PI approved the plan) and delete the branch/worktree.
+  Part 2's plan inherits the final review's carries (ledger: "CARRY to direct view part 2").
+- Both ledgers (git-ignored) are `.superpowers/sdd/<plan>/progress.md` inside each worktree.
+
+b2a is being executed subagent-driven on `p4d2b-b2a-controls` (worktree
 `.claude/worktrees/p4d2b-b2a`). Its SDD ledger (`.superpowers/sdd/2026-09-27-p4d2b-b2a-controls/
 progress.md` in that worktree, git-ignored) says which task is next and every ruling made; trust
 it and `git log` over memory. Tests added by review fixes shift the plan's stated counts; the
