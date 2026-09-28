@@ -39,8 +39,9 @@ ahead of any command waiting on the rig's acknowledgment (spec §5.3). Each brow
 
 **No timing claim is made here.** `DEFAULT_STALE_AFTER_S` is a display choice (spec
 §3); `QUEUE_DEPTH`, `RATE_SAMPLE_S`, `KEEPALIVE_S`, `REQUEST_TIMEOUT_S`, `RETRY_MS`,
-`COMMAND_QUEUE_DEPTH`, `MARK_QUEUE_DEPTH` and the link's `REPLY_TIMEOUT_S` and
-`CONNECT_TIMEOUT_S` are housekeeping, not a measurement of this system.
+`COMMAND_QUEUE_DEPTH`, `MARK_QUEUE_DEPTH`, `BODY_LIMIT`, `MARKS_REMEMBERED`,
+`OUTBOX_POLL_S` and the link's `REPLY_TIMEOUT_S` and `CONNECT_TIMEOUT_S` are
+housekeeping, not a measurement of this system.
 """
 
 from __future__ import annotations
@@ -422,7 +423,8 @@ NAME_LIMIT = 64
 MARK_ID_LIMIT = 2**53 - 1
 #: How many marks' instants `wlx serve` keeps for the notes that follow them. A mark
 #: whose note comes after 256 later marks, or after a restart, is recorded with its
-#: pressed and received instants unknown, never guessed.
+#: pressed and received instants unknown, never guessed. Housekeeping, not a
+#: measurement of this system.
 MARKS_REMEMBERED = 256
 #: How many commands may wait for the command thread, and marks for the mark thread,
 #: before `POST /commands` answers *busy* (spec §5.3). Housekeeping, not a
@@ -430,7 +432,8 @@ MARKS_REMEMBERED = 256
 COMMAND_QUEUE_DEPTH = 4
 MARK_QUEUE_DEPTH = 8
 #: How long an outbox thread waits for work before it looks again at whether to
-#: stop, so `Server.close` returns promptly. A responsiveness choice.
+#: stop, so `Server.close` returns promptly. A responsiveness choice, not a
+#: measurement of this system.
 OUTBOX_POLL_S = 0.25
 
 #: What the page is told when the rig has a command (spec §5.3): *sent* means `taskd`
@@ -1103,7 +1106,9 @@ class Server:
     ) -> None:
         self.hub = Hub(endpoint=sub, marks=mark is not None)
         self._sub = sub
-        self._req = req
+        # `req` is not kept on `self`: nothing reads it after this constructor --
+        # the command thread's `Outbox` closes over it directly (fix round 1,
+        # housekeeping) -- and `_listen` connects no REQ socket of its own (b2a).
         self._receive_timeout_s = receive_timeout_s
         self._stop = threading.Event()
         #: The command thread (spec §5.3): it alone owns the REQ socket.
