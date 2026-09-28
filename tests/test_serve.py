@@ -2274,11 +2274,24 @@ def test_a_write_that_fails_one_of_the_four_checks_is_refused_with_the_sentence(
 
 def test_a_write_from_a_peer_that_is_not_the_box_is_refused(monkeypatch):
     """The first check: a loopback peer. Every test socket is loopback, so the peer
-    the handler reads is made a LAN one."""
+    the handler reads is made a LAN one.
+
+    **Fix round 1, Important 1.** `_post`'s default `Host: 127.0.0.1:{port}` made
+    this test unable to fail: `names_loopback` also calls `on_box` (serve.py:367),
+    so with the monkeypatch in place the `Host` check refused the request on its
+    own, whether or not `may_write`'s own peer check (`on_box(self.client_
+    address[0])`) was even there. `Host: localhost` and a matching `Origin` avoid
+    that: `names_loopback("localhost")` is `True` on the literal alone, short-
+    circuiting before it ever calls `on_box`, so only the peer check can produce
+    the 403 this test asserts."""
     monkeypatch.setattr(serve, "on_box", lambda host: False)
     dispatch = _Dispatch()
     with _served(_hub(), dispatch=dispatch) as port:
-        status, answer = _post(port, {"kind": "stop", "by": "jake"})
+        status, answer = _post(
+            port,
+            {"kind": "stop", "by": "jake"},
+            {"Host": f"localhost:{port}", "Origin": f"http://localhost:{port}"},
+        )
 
     assert (status, answer["said"]) == (403, CONTROLS_AT_THE_BOX)
     assert dispatch.seen == []
@@ -2371,16 +2384,36 @@ def test_a_parse_refusal_is_a_bad_command():
         parse_command({"kind": "pause", "by": ""})
 
 
-def test_the_boxs_page_may_write_and_the_same_box_under_a_lan_name_may_not():
+def test_the_boxs_page_may_write_and_the_same_box_under_a_lan_name_may_not(monkeypatch):
     """`View.can_write` is spec §2's first two checks, per request: the page greys
-    its controls where a write would be refused anyway."""
+    its controls where a write would be refused anyway.
+
+    **Fix round 1, Important 5.** Pinned on the rendered controls themselves, not
+    only `data-can-write`: a grayed control carries `disabled` right beside its
+    `data-cmd`, a live one does not -- `data-can-write` alone never proved the
+    *controls* actually reflect it. **Important 1's own case, restated on the page
+    render**: a peer that is not the box, under a `Host` (`localhost`) that would
+    otherwise pass -- it short-circuits `names_loopback` before `on_box` is ever
+    called -- still may not write."""
     hub = _hub()
+    hub.offer(frame())
     with _served(hub, hosts=LOOPBACK_NAMES | {"rig3.lab"}) as port:
         box = _request(port, "GET", "/")[2].decode("utf-8")
         lan = _request(port, "GET", "/", {"Host": f"rig3.lab:{port}"})[2].decode("utf-8")
 
     assert 'data-can-write="1"' in box
     assert 'data-can-write="0"' in lan
+    assert 'data-cmd="pause">' in box, "the box's own page has a live control"
+    assert 'data-cmd="pause" disabled' in lan, "a LAN viewer's controls are grayed"
+
+    monkeypatch.setattr(serve, "on_box", lambda host: False)
+    other = _hub()
+    other.offer(frame())
+    with _served(other) as port:
+        peer = _request(port, "GET", "/", {"Host": f"localhost:{port}"})[2].decode("utf-8")
+
+    assert 'data-can-write="0"' in peer
+    assert 'data-cmd="pause" disabled' in peer
 
 
 def test_a_stream_on_the_boxs_page_renders_controls_that_work():
