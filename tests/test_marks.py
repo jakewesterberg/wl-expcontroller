@@ -107,6 +107,10 @@ def test_an_amendment_is_its_own_confirmation_and_marks_the_corrected_time(tmp_p
     marks.record_departure(made, decision)
 
     assert decision.confirmed and made.welfare.left_cage_wall_at == corrected
+    departed = _rows(made)[0]
+    assert (departed["kind"], departed["by"], departed["how"]) == (
+        "departure", "sam", "amended on the page"
+    )
     note = _rows(made)[1]
     assert (note["kind"], note["was"], note["now"]) == ("departure amended", typed_at, corrected)
     assert (note["reason"], note["by"]) == ("typed 08:45 for 18:45", "sam")
@@ -220,17 +224,108 @@ def test_the_pages_answers_are_the_terminals(tmp_path):
     )
 
     assert (confirmed.confirmed, confirmed.how) == (True, "confirmed on the page")
-    assert amended.how == "amended on the page"
+    assert (amended.how, amended.by, amended.confirmed) == ("amended on the page", "jake", True)
     assert amended.at == pytest.approx(WALL - 600, abs=1.0)
 
 
-@pytest.mark.parametrize("text", ["half past nine", "25:00", ""])
+#: Dates `datetime` parses and this host's calendar cannot place: the parser's
+#: `astimezone()` raises `ValueError` for them, which is not an `ArgumentTypeError`.
+UNPLACEABLE = ["0001-01-01T00:00", "9999-12-31T23:59"]
+
+
+@pytest.mark.parametrize("text", ["half past nine", "25:00", "", *UNPLACEABLE])
 def test_a_page_time_that_is_not_one_is_refused_in_the_terminals_words(tmp_path, text):
+    made = session(tmp_path)
+
+    with pytest.raises(argparse.ArgumentTypeError, match="is not a clock time") as refused:
+        marks.page_departure(
+            made, departure=text, answer=None, amend_to=None, amend_reason="", by="jake",
+        )
+
+    assert repr(text) in str(refused.value) and marks.TIME_FORMATS in str(refused.value)
+    assert made.welfare.left_cage_wall_at is None
+
+
+@pytest.mark.parametrize("text", UNPLACEABLE)
+def test_an_amended_time_the_host_cannot_place_is_refused_in_the_terminals_words(
+    tmp_path, text
+):
+    made = session(tmp_path)
+
     with pytest.raises(argparse.ArgumentTypeError, match="is not a clock time"):
         marks.page_departure(
-            session(tmp_path), departure=text, answer=None, amend_to=None,
-            amend_reason="", by="jake",
+            made, departure=typed(9 * 3600), answer="amend", amend_to=text,
+            amend_reason="typo", by="jake",
         )
+
+    assert made.welfare.left_cage_wall_at is None
+
+
+@pytest.mark.parametrize("text", UNPLACEABLE)
+def test_a_return_time_the_host_cannot_place_is_refused_in_the_terminals_words(
+    tmp_path, text
+):
+    made = _departed(tmp_path)
+
+    with pytest.raises(argparse.ArgumentTypeError, match="is not a clock time"):
+        marks.page_return(made, returned=text, confirm=True, by="jake")
+
+    assert made.welfare.returned_wall_at is None
+
+
+@pytest.mark.parametrize("answer", ["Amend", "amended", "CONFIRM", "yes", ""])
+def test_an_answer_the_page_does_not_know_is_refused_not_read_as_none(tmp_path, answer):
+    """The terminal's rule: anything that is not a known answer stops. Read as no
+    answer, an in-band departure would be marked at the typed time and the person's
+    amendment dropped without a word."""
+    made = session(tmp_path)
+
+    with pytest.raises(argparse.ArgumentTypeError, match="is none of them") as refused:
+        marks.page_departure(
+            made, departure=typed(60), answer=answer, amend_to=typed(600),
+            amend_reason="typo", by="jake",
+        )
+
+    assert repr(answer) in str(refused.value)
+    assert made.welfare.left_cage_wall_at is None
+    assert not made.directory.exists()
+
+
+@pytest.mark.parametrize("answer", [None, "confirm"])
+@pytest.mark.parametrize(
+    ("amend_to", "amend_reason", "named"),
+    [("in", "", "corrected departure time"), (None, "typo", "reason")],
+)
+def test_an_amendment_sent_without_amend_is_refused_not_dropped(
+    tmp_path, answer, amend_to, amend_reason, named
+):
+    """In the band, `None` or `confirm` marks the typed time; a corrected time or a
+    reason sent beside it is an amendment the person meant, and dropping it would
+    mark the time they were correcting."""
+    made = session(tmp_path)
+    corrected = typed(600) if amend_to == "in" else None
+
+    with pytest.raises(argparse.ArgumentTypeError, match="without the answer amend") as refused:
+        marks.page_departure(
+            made, departure=typed(60), answer=answer, amend_to=corrected,
+            amend_reason=amend_reason, by="jake",
+        )
+
+    assert named in str(refused.value)
+    assert made.welfare.left_cage_wall_at is None
+    assert not made.directory.exists()
+
+
+@pytest.mark.parametrize("confirm", ["false", "", 1, 0, None])
+def test_the_pages_return_confirmation_is_strictly_a_bool(tmp_path, confirm):
+    """`take_return` and `welfare` read `confirmed` for its truth, so a `"false"` would
+    confirm a far return nobody confirmed."""
+    made = _departed(tmp_path)
+
+    with pytest.raises(argparse.ArgumentTypeError, match="true or false"):
+        marks.page_return(made, returned=typed(2 * 3600), confirm=confirm, by="jake")
+
+    assert made.welfare.returned_wall_at is None
 
 
 def test_an_amendment_from_the_page_needs_its_corrected_time(tmp_path):

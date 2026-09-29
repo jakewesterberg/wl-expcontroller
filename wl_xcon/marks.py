@@ -40,6 +40,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from wl_xcon.bounds import Exceeded
 from wl_xcon.record import welfare_note
 
 
@@ -305,6 +306,34 @@ def take_return(target, at: float, *, confirmed: bool, by: str, how: str) -> Non
     target.returned_to_cage(at, confirmed=confirmed, by=by, how=how)
 
 
+def _page_time(text: str, now: Callable[[], float] | None = None) -> float:
+    """What a console typed, read by the terminal's parser -- `clock_time`, or
+    `clock_or_now` given the session's `now` -- and refused in the terminal's words
+    when it is not a time this host can place.
+
+    **The parser is not changed for this, and must not be**: it is the terminal's,
+    moved here unchanged. A date `datetime` parses and this host's calendar cannot
+    place -- `0001-01-01T00:00`, `9999-12-31T23:59` -- makes its `astimezone()` raise
+    `ValueError`, which is not an `argparse.ArgumentTypeError`. `argparse` turns that
+    into a usage error for `--out-of-cage-at`; from a console it would have reached
+    the page as a traceback rather than a refusal (fix round 1 of the b3a-1 Task 1
+    review). `OverflowError` and `OSError` for the same instant on other platforms,
+    as `cli._time_of_day` catches them.
+
+    **`Exceeded` passes through untouched**: it is a `ValueError`, and a welfare
+    refusal must never be relabeled as a typo.
+    """
+    try:
+        return clock_time(text) if now is None else clock_or_now(text, now)
+    except Exceeded:
+        raise
+    except (ValueError, OverflowError, OSError) as outside:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not a clock time this host can place ({outside}); give "
+            f"{TIME_FORMATS}"
+        ) from outside
+
+
 def page_departure(
     session,
     *,
@@ -319,8 +348,33 @@ def page_departure(
     `"amend"` with the corrected time and a reason -- given as the terminal's
     `Confirm`/`Amend`, named for the person who sent it. Raises
     `argparse.ArgumentTypeError` for text that is not a time, `Owed` and `Exceeded` as
-    `decide_departure` does."""
-    at = clock_time(departure)
+    `decide_departure` does.
+
+    **Anything else a console sends is refused, never read as no answer** -- the
+    terminal's rule, where anything that is not a confirmation stops (fix round 1 of
+    the b3a-1 Task 1 review). An answer it does not know (`"Amend"`, `"amended"`), or
+    a corrected time or a reason sent without `amend`, would otherwise leave an
+    in-band departure marked at the very time the person was correcting, with their
+    amendment dropped without a word. A reason that is only blank space is no reason,
+    as `welfare.amend_mark` counts one. Checked before anything is parsed or marked.
+    """
+    if answer not in (None, "confirm", "amend"):
+        raise argparse.ArgumentTypeError(
+            f"a departure is answered confirm, amend or not at all, and {answer!r} is "
+            f"none of them, so it is refused rather than read as no answer"
+        )
+    if answer != "amend":
+        sent = [
+            f"a corrected departure time {amend_to!r}" if amend_to is not None else "",
+            f"a reason {amend_reason!r}" if amend_reason.strip() else "",
+        ]
+        if any(sent):
+            raise argparse.ArgumentTypeError(
+                f"{' and '.join(part for part in sent if part)} came without the answer "
+                f"amend, so it is refused rather than dropped; send it with amend, or "
+                f"leave it out"
+            )
+    at = _page_time(departure)
     choice: Confirm | Amend | None = None
     if answer == "amend":
         if amend_to is None:
@@ -328,7 +382,7 @@ def page_departure(
                 "an amendment gives the corrected departure time, and none was given"
             )
         choice = Amend(
-            at=clock_time(amend_to), reason=amend_reason, by=by, how="amended on the page"
+            at=_page_time(amend_to), reason=amend_reason, by=by, how="amended on the page"
         )
     elif answer == "confirm":
         choice = Confirm(by=by, how="confirmed on the page")
@@ -339,7 +393,19 @@ def page_return(
     target, *, returned: str, confirm: bool, by: str, how: str = "the page"
 ) -> None:
     """A return as a console sent it: the text as typed, or `now` on the session's own
-    clock, read by the terminal's parser, then `take_return`."""
+    clock, read by the terminal's parser, then `take_return`.
+
+    **`confirm` is refused unless it is `True` or `False`** (fix round 1 of the b3a-1
+    Task 1 review): `take_return` and `welfare._refuse_unconfirmed` read it for its
+    truth, so a `"false"` sent as text would confirm a far return nobody confirmed. It
+    is the return's only answer: there is no amendment, so a corrected time is simply
+    sent again.
+    """
+    if not isinstance(confirm, bool):
+        raise argparse.ArgumentTypeError(
+            f"a return is confirmed true or false, and {confirm!r} is neither, so it is "
+            f"refused rather than read as one"
+        )
     take_return(
-        target, clock_or_now(returned, target.wall_now), confirmed=confirm, by=by, how=how
+        target, _page_time(returned, target.wall_now), confirmed=confirm, by=by, how=how
     )
