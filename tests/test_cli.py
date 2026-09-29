@@ -3435,6 +3435,21 @@ def test_the_terminal_console_says_no_session_is_open_and_what_is_stranded():
     assert "refused: open by jake: no session opens while <b>" in shown
 
 
+@pytest.mark.parametrize("unshowable", [1e20, float("nan")])
+def test_a_stranded_animals_departure_is_shown_as_this_hosts_time_or_said_unknown(unshowable):
+    """The departure a person reads to find the stranded animal's return is the recorded
+    instant, as this host's local date, minute and zone (`cli._local`); an instant this
+    host cannot show is said to be unknown, and the screen goes on (Task 10's sweep:
+    `_moment` survived, since the test above reads only up to "left its cage at")."""
+    left_at = 1_700_000_000.0
+    shown = render(
+        idle(stranded=(Stranded("2027-01-13_01", "B", left_at), Stranded("2027-01-13_02", "C", unshowable)))
+    ).splitlines()
+
+    assert f"left its cage at {cli._local(left_at)}, this host's local time" in shown[1]
+    assert "C, session 2027-01-13_02, left its cage at an unknown time, this host's" in shown[2]
+
+
 def test_the_terminal_console_strips_control_characters_from_an_idle_frames_text():
     shown = render(
         idle(
