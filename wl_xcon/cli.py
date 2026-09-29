@@ -15,13 +15,14 @@ import sys
 import threading
 import time
 import unicodedata
-from collections.abc import Callable
 from contextlib import nullcontext
-from datetime import datetime
 from pathlib import Path
 
 from wl_xcon import link as _link
-from wl_xcon import record as _record
+from wl_xcon import marks as _marks
+from wl_xcon.marks import TIME_FORMATS as _TIME_FORMATS
+from wl_xcon.marks import clock_or_now as _clock_or_now
+from wl_xcon.marks import clock_time as _wall_clock_time
 from wl_xcon.bounds import Bounds, Exceeded
 from wl_xcon.check import check
 from wl_xcon.review import render as render_review
@@ -254,129 +255,6 @@ def _time_of_day(at: float) -> str | None:
         return None
 
 
-#: What `--out-of-cage-at` accepts, named once so the flag's help, its refusal and
-#: this module's tests all quote the same list.
-_TIME_FORMATS = "HH:MM, HH:MM:SS, or an ISO 8601 date-time such as 2027-01-13T22:40"
-
-
-def _wall_clock_time(text: str) -> float:
-    """An operator's clock time to POSIX seconds. `argparse`'s `type=` for the mark.
-
-    **Welfare-critical, outside the two welfare modules** (P4d-2a final review I5,
-    `docs/design/architecture.md`): it turns what an operator types into the instants
-    that bound the out-of-cage interval -- the departure, and a return typed as a
-    clock time -- so a mistake here moves the one limit a session has, and a change
-    here wants the same human review as `welfare.py`.
-
-    **Two resolutions are stated here rather than left implicit**, because the PI
-    asked for both to be decided (2026-09-20):
-
-    - **Timezone: this host's local zone.** A value with no offset is read in the
-      zone the lab machine is configured for, which is the clock on the wall the
-      operator is reading. A value that carries its own offset is honoured as given.
-    - **Date: today, on this host, and never rolled back.** A bare `HH:MM` later than
-      now is refused as being in the future rather than quietly becoming a departure
-      twenty-three hours ago. An overnight departure is typed with its date.
-    - **The two daylight-saving hours, both resolved and neither silent.** Measured
-      on a CET/CEST host, 2026-09-20: an **ambiguous** local time -- the repeated
-      hour when clocks go back -- takes the *first* occurrence, which `astimezone()`
-      gives by leaving `fold` at 0 (`2026-10-25T02:30` resolves to `+02:00`). A
-      **nonexistent** one -- the skipped hour when clocks go forward -- is moved
-      *forward*: `2026-03-29T02:30` resolves to `03:30+02:00`. The directions differ
-      and so does what they cost. The ambiguous case takes the earlier instant, so
-      the interval comes out up to an hour **longer** than meant, which is the safe
-      direction for a ceiling. **The nonexistent case is the unsafe one**: the
-      departure is read up to an hour later than meant, so the animal is reported as
-      having been out up to an hour *less* than it has. Once a year, on one hour, in
-      one direction -- and the interval printed at session start is what surfaces it,
-      since an operator who typed a real time then reads a figure an hour short of
-      the wall clock.
-
-      **Closed by the PI on 2026-09-20 -- closed, not fixed.** *"the dst switches
-      happen in the night, when no experiments occur."* So the skipped hour cannot be
-      typed as a departure, and the arithmetic above is left exactly as it is rather
-      than special-cased for a value nothing can produce.
-
-      **The description above stays because the dismissal is conditional on that
-      fact and not on the arithmetic.** If night sessions ever start -- an overnight
-      protocol, a cage-side kiosk running unattended (S13) -- the hour comes back
-      with them, and whoever reads this then needs to find what would happen rather
-      than a note saying it was considered and closed. `2026-03-29T02:30` still
-      resolves to `03:30+02:00`, and that still reports an animal as out up to an
-      hour less than it has been.
-
-    Rolling back would have been the convenient choice and is the wrong one: it turns
-    `23:59` mistyped in the morning into an animal recorded as out for most of a day,
-    which is precisely the plausible-typo class this flag's refusals exist for.
-
-    Returning a POSIX float, not a `datetime`: `welfare` compares it with other wall
-    instants and does nothing else with it, and handing it a rich object would put
-    calendar arithmetic inside a welfare-critical file.
-
-    **The departure is read here, by argparse, before the session exists** -- it has
-    no `now` spelling -- and `welfare.left_cage` compares it with
-    `Session.wall_now()`, which is anchored to the host clock when the session is
-    created a moment later (`welfare.SessionClock`, Ruling 8). So the host calendar this
-    resolves against and the session's wall are one base at the departure; they
-    could part only by an adjustment of the host clock between parsing the command
-    line and creating the session. The return's `now` is the session's reading, for
-    the reason `_clock_or_now` gives.
-    """
-    raw = text.strip()
-    for fmt in ("%H:%M", "%H:%M:%S"):
-        try:
-            clock = datetime.strptime(raw, fmt)
-        except ValueError:
-            continue
-        today = datetime.now()
-        parsed = today.replace(
-            hour=clock.hour, minute=clock.minute, second=clock.second, microsecond=0
-        )
-        break
-    else:
-        try:
-            parsed = datetime.fromisoformat(raw)
-        except ValueError:
-            raise argparse.ArgumentTypeError(
-                f"{text!r} is not a clock time; give {_TIME_FORMATS}. A bare time is "
-                f"today's date in this host's local timezone"
-            ) from None
-    if parsed.tzinfo is None:
-        # Attaches this host's local offset for the instant in question, which is
-        # what makes "local" a resolution rather than an assumption.
-        parsed = parsed.astimezone()
-    return parsed.timestamp()
-
-
-def _clock_or_now(text: str, now: Callable[[], float]) -> float:
-    """`now`, or a clock time as `_wall_clock_time` reads one. For the return, which
-    is usually marked at the moment it happens (P4d-2a).
-
-    **Welfare-critical, outside the two welfare modules** (P4d-2a final review I5,
-    `docs/design/architecture.md`): the instant it returns closes the out-of-cage
-    interval.
-
-    **`now` is read from `now()` -- the session's clock, `Session.wall_now` -- never
-    from `time.time()`** (Task 7 fix round 1). The return is compared with marks taken
-    on that clock: the loop-end head release, and the wall `returned_to_cage` reads.
-    Since Ruling 8 it is the host clock as it read when the session was created,
-    carried forward on a steady clock that counts the time the host is asleep
-    (`welfare.SessionClock`), so a `time.time()` read here would sit on the wrong side
-    of those marks by however far the host clock has been adjusted since, and be
-    refused as in the future or as before the release.
-
-    **A typed clock time is read on the host calendar** (`_wall_clock_time`: today's
-    date, this host's zone), which is `time.time()`'s base. The two bases agree when
-    the session is created and part only by an adjustment of the host clock since.
-    A time typed to the minute names a moment an operator read off a clock, and is
-    not sensitive to that the way "this instant" is; one typed to the current second
-    could be, and `now` is the spelling for this instant.
-    """
-    if text.strip().lower() == "now":
-        return now()
-    return _wall_clock_time(text)
-
-
 def _hours_minutes(seconds: float) -> str:
     """`seconds` as `N hours M minutes` -- the phrasing the PI asked for.
 
@@ -425,102 +303,59 @@ def _ask(prompt: str) -> str:
         return ""
 
 
-def _settle_departure(session, args) -> tuple:
+def _settle_departure(session, args) -> _marks.Departure:
     """Get a person's act on a far-off departure time, before it is marked.
 
-    **Welfare-critical, outside the two welfare modules** (P4d-2a residual fix,
-    `docs/design/architecture.md`): it decides `confirmed=` for the departure and
-    supplies the amended instant that opens the interval, and
-    `welfare._refuse_unconfirmed` trusts its caller.
+    **Welfare-critical, outside the welfare modules** (`docs/design/architecture.md`):
+    the terminal's route into `marks.decide_departure`, which decides -- the same
+    function `wlx taskd`'s page goes through (P4d-2b spec §6.2). What stays here is the
+    terminal's part: which answer the person gave, and the name and reason an
+    amendment carries.
 
-    **PI, 2026-09-20:** *"if a number is input that is more than 30 min from the
-    current time, a warning should appear that the experimenter must click through to
-    confirm. There should also be an option to update the time if necessary, but a
-    reason should be given and the experimenter name logged."*
+    **PI, 2026-09-20:** *"if a number is input that is more than 30 min from the current
+    time, a warning should appear that the experimenter must click through to confirm.
+    There should also be an option to update the time if necessary, but a reason should
+    be given and the experimenter name logged."*
 
-    Returns `(departure, note)` -- the instant to mark with, and the row to write
-    once the mark is accepted, or `None` when nothing was asked. **The row is the
-    caller's to write and only after `left_cage` has taken the value**, so an
-    amendment refused by the ceiling or for being in the future leaves no record of a
-    change that did not happen.
+    - *Amended*: `--amend-out-of-cage-to TIME` with `--amend-reason` and `--as`, asked
+      of `marks` before anything else, as it always was.
+    - *Inside the band*: `marks` asks nothing; the ordinary session.
+    - *Far*: `--confirm-out-of-cage` confirms it, saying whether a terminal was there;
+      with no terminal and no flag **it refuses** -- a confirmation nobody made is
+      worse than none; at a terminal it asks, and **anything that is not a
+      confirmation stops the session**, end-of-input included.
 
-    **What each case does, and the non-interactive one is the decision.**
-
-    - *Inside the band* (`welfare.departure_needs_confirmation` answers `None`): the
-      ordinary session, which asks nothing and writes nothing. A prompt on every
-      session is a prompt clicked past on every session.
-    - *Amended*: `--amend-out-of-cage-to TIME` with `--amend-reason` and `--as`, or
-      the same three typed at the prompt. **An amendment is its own confirmation** --
-      a named person giving a reason has done strictly more than click through -- but
-      it is not an override: the amended value goes to `left_cage` and meets every
-      refusal the original would have.
-    - *Interactive*: `stdin` is a terminal, so it asks, and **anything that is not a
-      confirmation stops the session**, end-of-input included. A prompt whose default
-      is "proceed" is the silent path wearing a question mark.
-    - *Non-interactive*: **it refuses.** `wlx run` may have no terminal behind it -- a
-      wrapper, a scheduler, or `console`'s `labhost` surface that wl-works polls (not
-      a process of its own -- `docs/design/architecture.md`'s `labhost` row; P4d-2b)
-      -- and proceeding there would write a confirmation nobody made, which is worse
-      than no confirmation at all. `--confirm-out-of-cage` is the honest way to say
-      it out loud, and the row records that it came from a flag rather than from a
-      person, because a wrapper with it baked in is how this ruling would otherwise
-      be defeated in silence.
-
-    **A confirmation's `by` is `--as` if it was given and empty otherwise, and that is
-    not an oversight.** The PI asked for a name on the *amendment*, where
-    `welfare.amend_mark` requires one; a confirmation is a person clicking through,
-    and an interactive `c` has no name to record honestly. `how` is what carries the
-    information a reader actually needs — whether a person or a flag answered.
+    **A confirmation's `by` is `--as` if it was given and empty otherwise**: the PI asked
+    for a name on the amendment, and an interactive `c` has none to record honestly.
     """
     at = args.out_of_cage_at
-    warning = session.departure_needs_confirmation(at)
-
-    def note(kind: str, now: float, reason: str, by: str, how: str) -> dict:
-        return {
-            "kind": kind,
-            "subject": args.subject,
-            "was": at,
-            "now": now,
-            "reason": reason,
-            "by": by,
-            "how": how,
-            # The session's clock, as `Session._note` stamps every other row, so
-            # one file's `recorded_at` column has one base (Ruling 8).
-            "recorded_at": session.wall_now(),
-        }
-
+    given = {"by": args.actor, "how": "--out-of-cage-at"}
     if args.amend_out_of_cage_to is not None:
-        amended = args.amend_out_of_cage_to
-        # Refuses a blank reason or a blank actor, in `welfare`, so no other
-        # caller of `Session.amend_mark` can reach the record around this rule.
-        session.amend_mark(
-            "departure",
-            original=at,
-            amended=amended,
-            reason=args.amend_reason,
-            by=args.actor,
+        return _marks.decide_departure(
+            session,
+            at,
+            _marks.Amend(
+                at=args.amend_out_of_cage_to,
+                reason=args.amend_reason,
+                by=args.actor,
+                how="--amend-out-of-cage-to",
+            ),
+            **given,
         )
-        return amended, note(
-            "departure amended",
-            amended,
-            args.amend_reason,
-            args.actor,
-            "--amend-out-of-cage-to",
-        )
-
-    if warning is None:
-        return at, None
+    try:
+        return _marks.decide_departure(session, at, None, **given)
+    except _marks.Owed as owed:
+        warning = owed.warning
 
     if args.confirm_out_of_cage:
         print(f"  WARNING: {warning}", file=sys.stderr)
-        return at, note(
-            "departure confirmed",
-            at,
-            "",
-            args.actor,
+        how = (
             "--confirm-out-of-cage"
             if _at_a_terminal()
-            else "--confirm-out-of-cage, with no terminal attached",
+            else "--confirm-out-of-cage, with no terminal attached"
+        )
+        return _marks.decide_departure(
+            session, at, _marks.Confirm(by=args.actor, how=how), **given
         )
 
     if not _at_a_terminal():
@@ -533,10 +368,9 @@ def _settle_departure(session, args) -> tuple:
         )
 
     print(f"  WARNING: {warning}", file=sys.stderr)
-    # **Exact words, not a prefix.** This matched `a`-anything as *amend*, so
-    # `abort` typed at a prompt that ends "anything else to stop" walked into the
-    # amendment flow and was then parsed as a clock time. It still refused, but a
-    # prompt that lies about what a word does is learned once and remembered wrong.
+    # **Exact words, not a prefix.** This matched `a`-anything as *amend*, so `abort`
+    # typed at a prompt that ends "anything else to stop" walked into the amendment
+    # flow and was then parsed as a clock time.
     answer = _ask(
         "  type `confirm` to accept this departure time, `amend` to correct it, "
         "or anything else to stop: "
@@ -550,16 +384,19 @@ def _settle_departure(session, args) -> tuple:
             raise SystemExit(f"refused: {bad}") from bad
         reason = _ask("  why is it being changed? ")
         by = _ask("  your name, for the record: ")
-        session.amend_mark(
-            "departure", original=at, amended=amended_at, reason=reason, by=by
-        )
-        return amended_at, note(
-            "departure amended", amended_at, reason, by, "amended at the terminal"
+        return _marks.decide_departure(
+            session,
+            at,
+            _marks.Amend(at=amended_at, reason=reason, by=by, how="amended at the terminal"),
+            **given,
         )
 
     if answer in ("c", "confirm"):
-        return at, note(
-            "departure confirmed", at, "", args.actor, "confirmed at the terminal"
+        return _marks.decide_departure(
+            session,
+            at,
+            _marks.Confirm(by=args.actor, how="confirmed at the terminal"),
+            **given,
         )
 
     raise SystemExit(
@@ -592,13 +429,10 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
     interval and whether a far one was confirmed by a person.
 
     **P4d-2a spec §5, amended by §10.** `None` once the return is recorded here,
-    and otherwise the reason it was not, for the row. **The terminal is the only
-    caller of `Session.returned_to_cage` left** (Task 8): a console could once win
-    this race from another thread, and this function read `welfare.returned_wall_at`
-    at three points to notice -- before the prompt, after it, and after a refused
-    mark. The PI ruled the wl-works ELN owns the return, not a console, so `link.py`
-    carries no such command any more and nothing else can land here while this
-    function runs; those three checks are gone with it.
+    and otherwise the reason it was not, for the row. **The rules are
+    `marks.take_return`'s**, which `wlx taskd`'s page goes through too (P4d-2b spec
+    §6.2): this function holds only the prompting -- the clock above each attempt, the
+    time typed, and a person's `confirm` on a far one.
 
     **The prompt ends, in one of two ways, and the reason names which.**
     End-of-input -- a closed stdin -- ends it at once, since nothing further can
@@ -649,19 +483,24 @@ def _settle_return(session, actor: str, attempts: int = 3) -> str | None:
         except argparse.ArgumentTypeError as bad:
             print(f"  {bad}", file=sys.stderr)
             continue
-        warning = session.return_needs_confirmation(at)
-        confirmed = False
-        if warning is not None:
-            print(f"  WARNING: {warning}", file=sys.stderr)
+        # The decision is `marks.take_return`'s, the page's too (P4d-2b spec §6.2);
+        # this prompt is the terminal's one part of it: showing a far return and
+        # taking a person's `confirm`.
+        try:
+            _marks.take_return(session, at, confirmed=False, by=actor, how="terminal")
+        except _marks.Owed as owed:
+            print(f"  WARNING: {owed.warning}", file=sys.stderr)
             answer = _ask(
                 "  type `confirm` to accept this return time, or anything else to "
                 "give it again: "
             ).strip().lower()
             if answer not in ("c", "confirm"):
                 continue
-            confirmed = True
-        try:
-            session.returned_to_cage(at, confirmed=confirmed, by=actor, how="terminal")
+            try:
+                _marks.take_return(session, at, confirmed=True, by=actor, how="terminal")
+            except Exceeded as refused:
+                print(f"  refused: {refused}", file=sys.stderr)
+                continue
         except Exceeded as refused:
             print(f"  refused: {refused}", file=sys.stderr)
             continue
@@ -1718,32 +1557,13 @@ def main(argv: list[str] | None = None) -> int:
                 # did not happen.
                 marked_then_interrupted = False
                 try:
-                    departure, note = _settle_departure(session, args)
-                    # `confirmed` is true exactly when a person acted -- an
-                    # amendment is its own confirmation, since a named person giving
-                    # a reason has done strictly more than click through.
-                    # `welfare.left_cage` refuses a far mark without it, so no
-                    # caller can reach around this prompt.
-                    #
-                    # **The row says who gave the time and how** (final review M5):
-                    # what `_settle_departure` settled it with when it asked or was
-                    # told -- the amendment's person, or the confirmation's flag or
-                    # terminal -- and otherwise `--out-of-cage-at` and `--as`, since
-                    # nothing was asked of a terminal. It read `by=""` and
-                    # `how="terminal"` whatever happened.
-                    by, how = (
-                        (note["by"], note["how"])
-                        if note is not None
-                        else (args.actor, "--out-of-cage-at")
-                    )
-                    # **`confirmed=note is not None` is welfare-critical** (P4d-2a
-                    # residual fix, `docs/design/architecture.md`): it is what
-                    # `welfare._refuse_unconfirmed` trusts when it decides whether a
-                    # far departure was actually confirmed by a person, and it is set
-                    # here from `_settle_departure`'s own decision, never re-derived.
-                    session.left_cage(
-                        at=departure, confirmed=note is not None, by=by, how=how
-                    )
+                    departure = _settle_departure(session, args)
+                    # **Welfare-critical, this one line** (`docs/design/architecture.md`):
+                    # the departure marked as `marks` decided it, `confirmed=` included,
+                    # which `welfare._refuse_unconfirmed` trusts. It was
+                    # `session.left_cage(at=departure, confirmed=note is not None, ...)`
+                    # until b3a, and the decision it carried is `marks`' now.
+                    _marks.depart(session, departure)
                 except Exceeded as refused:
                     raise SystemExit(f"refused: {refused}") from refused
                 except KeyboardInterrupt:
@@ -1780,8 +1600,7 @@ def main(argv: list[str] | None = None) -> int:
                             # The row is written after the mark is accepted, so a
                             # "correction" the ceiling refuses leaves no record of a
                             # change that did not happen.
-                            if note is not None:
-                                _record.welfare_note(session.directory, **note)
+                            _marks.record_departure(session, departure)
                             # Head-fixation is marked at the wall instant it is taken,
                             # and only for the kind that has it, since
                             # `welfare.head_fixed` refuses the other.
@@ -1808,13 +1627,13 @@ def main(argv: list[str] | None = None) -> int:
                         print(
                             f"  out of cage: the animal has been out "
                             f"{_hours_minutes(so_far)}, having left its cage at "
-                            f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(departure))}"
+                            f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(departure.at))}"
                             # The zone **at the departure**, not at now. A session
                             # started just after a daylight-saving change would
                             # otherwise label a departure made before it with the
                             # zone that is current now -- and that is precisely the
                             # one hour a year when the label carries information.
-                            f" ({time.strftime('%Z', time.localtime(departure))}"
+                            f" ({time.strftime('%Z', time.localtime(departure.at))}"
                             f", this host's local time)"
                         )
                         census = session.run()

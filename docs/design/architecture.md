@@ -77,30 +77,27 @@ Welfare-critical modules requiring human review: reward scheduling and per-deliv
 fluid and session-duration accounting (a fluid **floor**, an out-of-cage **ceiling**),
 token-to-fluid conversion, stimulation bounds and gating, and the bounded-config loader.
 
-**In code, that is `wl_xcon/bounds.py` and `wl_xcon/welfare.py`, and
-four functions in `wl_xcon/cli.py`, plus one line inside a fifth — and, since
-P4d-2b b2a, five functions in `wl_xcon/taskd.py` plus two parts of a sixth
-(`Session._command`'s `held` pass-through and one `except` line), and one function in
-`wl_xcon/link.py`.** Both modules
-are kept small deliberately: everything in them can hurt an animal if it is wrong, and a
-small file is one a person can actually read before signing it off. **The four functions
-are `cli._wall_clock_time`, `cli._clock_or_now`, `cli._settle_return` and
-`cli._settle_departure`** (P4d-2a final review I5, 2026-09-26, joined by
-`_settle_departure` in the residual fix round that followed). They turn what an operator
-types at `wlx run` into the instants that bound the out-of-cage interval: the departure's
-clock time or amendment, whether it or a far return was confirmed by a person, and the
-return's clock time or `now`. `welfare` refuses what is impossible, but a wrong instant
-that is merely plausible passes every refusal, so the parsing is part of the limit.
-**`_settle_departure` also supplies the amended instant that opens the interval, and
-decides `confirmed=` for the departure that `welfare._refuse_unconfirmed` trusts its
-caller on** -- which is why `main`'s `session.left_cage(at=departure,
-confirmed=note is not None, ...)` line is on this list too, one line inside a function
-that is otherwise ordinary. They stay in `cli.py`, which is where the terminal is, until
-the wl-works ELN records both ends of the interval (P4d-2a spec §10) and the return
-prompt goes. A change to either module, to those four functions, to that one line, or to
-the `taskd` and `link` functions and the two parts of `Session._command` below, is a
-change requiring review;
-a change elsewhere is not.
+**In code, that is `wl_xcon/bounds.py`, `wl_xcon/welfare.py` and `wl_xcon/marks.py`, two
+functions in `wl_xcon/cli.py` plus one line inside a third — and, since P4d-2b b2a, five
+functions in `wl_xcon/taskd.py` plus two parts of a sixth (`Session._command`'s `held`
+pass-through and one `except` line), and one function in `wl_xcon/link.py`.** The
+modules are kept small deliberately: everything in them can hurt an animal if it is
+wrong, and a small file is one a person can actually read before signing it off.
+**`marks.py` is the out-of-cage interval's two marks, decided once for the terminal and
+the page** (P4d-2b b3a, 2026-09-29; the PI: "The page takes both times", under the
+terminal's exact rules through one shared piece of code): the parser that turns a typed
+clock time into an instant (`clock_time`, `clock_or_now`, which were
+`cli._wall_clock_time` and `cli._clock_or_now` and moved unchanged), whether a far mark
+was confirmed or amended, by whom and how, and the row that says so. `welfare` refuses
+what is impossible, but a wrong instant that is merely plausible passes every refusal,
+so the parsing and the confirmation are part of the limit. **The two `cli` functions are
+`_settle_departure` and `_settle_return`**, the terminal's prompting around `marks` —
+which answer a person gave, and the name and reason an amendment carries — and **the
+line is `main`'s `_marks.depart(session, departure)`**, which marks the departure as
+`marks` decided it, `confirmed=` included, which `welfare._refuse_unconfirmed` trusts
+its caller on. A change to any of these, or to the `taskd` and `link` functions and the
+two parts of `Session._command` below, is a change requiring review; a change elsewhere
+is not.
 
 **The three `taskd` functions are `Session._ends`, `Session._hold` and
 `Session._manual_reward`** (P4d-2b b2a, 2026-09-28; the third since the PI's 2026-09-28

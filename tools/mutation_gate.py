@@ -58,6 +58,7 @@ RETURNS: dict[str, str] = {
     "codes": "None",
     "components": "None",
     "cli": "None",
+    "marks": "None",
     "taskd": "None",
     "photometry": "None",
     "eye": "None",
