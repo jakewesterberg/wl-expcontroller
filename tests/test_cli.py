@@ -841,6 +841,8 @@ def _telemetry(**overrides) -> Telemetry:
         scheduled_stop=None,
         controls=(),
         controls_dropped=0,
+        view="direct",
+        half_ipd_cm=None,  # direct view's, like `paused_at`'s `None`
     )
     return replace(base, **overrides) if overrides else base
 
@@ -3202,6 +3204,22 @@ def test_wlx_run_records_which_bounded_config_it_ran_under(tmp_path):
 # ---------------------------------------------------------------------------
 # `render` and schema 8 (P4d-2b b2a): every new field has a line
 # ---------------------------------------------------------------------------
+
+
+def test_the_terminal_console_shows_the_setup_all_session():
+    assert "setup: direct view" in render(_telemetry(view="direct", half_ipd_cm=None))
+    assert "setup: the stereoscope, half-IPD 1.60 cm" in render(
+        _telemetry(view="stereoscope", half_ipd_cm=1.6)
+    )
+
+
+def test_a_setup_that_is_not_a_number_on_the_wire_is_said_not_shown():
+    """Review Focus 4: a half-IPD a peer sent as a string, NaN, infinity or a boolean
+    (an `int` subclass, so `true` would otherwise read as 1.00 cm) is said to be
+    unreadable, and the frame still renders."""
+    for bad in ("1.6", float("nan"), float("inf"), True):
+        shown = render(_telemetry(view="stereoscope", half_ipd_cm=bad))
+        assert "half-IPD unreadable" in shown
 
 
 def test_console_says_when_nothing_is_paused_scheduled_or_controlled():

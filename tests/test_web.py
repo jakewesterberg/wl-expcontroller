@@ -460,13 +460,20 @@ def test_parameters_show_value_range_ceiling_and_what_is_staged():
     assert "penguin" in params
 
 
+def test_the_page_shows_the_stereoscopes_half_ipd():
+    setup = fragments(frame(view="stereoscope", half_ipd_cm=1.6), view())["setup"]
+
+    assert "the stereoscope, half-IPD 1.60 cm" in setup
+
+
 def test_setup_names_the_configuration_and_what_has_no_source():
     setup = fragments(frame(allocation="", bounds_config=""), view())["setup"]
 
     assert "tasks/fixation_detection.py" in setup
     assert "provisional: none given" in setup
     assert '<dt>bounds config</dt><dd><span class="nm">not given</span></dd>' in setup
-    assert setup.count("no source yet") == 2
+    assert setup.count("no source yet") == 1
+    assert "<dt>display mode</dt><dd>direct view</dd>" in setup
     assert "250.00 mL" in setup and "12:00:00" in setup
 
 

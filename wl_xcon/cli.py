@@ -140,7 +140,12 @@ def _setup_words(view: object, half_ipd_cm: object) -> str:
         return f"an unknown setup ({_printable(str(view))})"
     if half_ipd_cm is None:
         return "the stereoscope, half-IPD not given"
-    if not isinstance(half_ipd_cm, (int, float)) or not math.isfinite(half_ipd_cm):
+    # `bool` is an `int`, so a wire `true` would otherwise print as "1.00 cm".
+    if (
+        isinstance(half_ipd_cm, bool)
+        or not isinstance(half_ipd_cm, (int, float))
+        or not math.isfinite(half_ipd_cm)
+    ):
         return "the stereoscope, half-IPD unreadable"
     return f"the stereoscope, half-IPD {half_ipd_cm:.2f} cm"
 
@@ -966,6 +971,9 @@ def render(frame: _link.Telemetry) -> str:
     # for different reasons, and a console that worked out which from the pattern of
     # `None`s would be computing -- see this function's second paragraph.
     lines.append(f"  deployment: {_printable(frame.deployment)}")
+    # Direct-view spec §3: the setup, shown for the whole session. Words from the
+    # frame's own fields, never inferred.
+    lines.append(f"  setup: {_setup_words(frame.view, frame.half_ipd_cm)}")
     # P4d-2b spec §3: S9a §3's configuration information. Named, never guessed: an
     # empty allocation is the provisional one (`_load_allocation`), and an empty
     # bounds path means the caller built `Bounds` in code.

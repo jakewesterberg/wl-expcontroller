@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from importlib import resources
 
 from wl_xcon import health as _health
-from wl_xcon.cli import _clock
+from wl_xcon.cli import _clock, _setup_words
 from wl_xcon.link import RECENT_OUTCOMES, Telemetry
 from wl_xcon.task import Family, Outcome
 
@@ -720,8 +720,8 @@ def _params(frame: Telemetry | None, view: View) -> str:
 
 
 def _setup(frame: Telemetry | None) -> str:
-    """S9a §3's configuration information. Display mode and stimulus calibration have
-    no source yet and say so (spec §3)."""
+    """S9a §3's configuration information. Display mode is the setup the session runs
+    in (direct-view spec §3); stimulus calibration has no source yet and says so."""
     if frame is None:
         return _NONE
     limit = (
@@ -748,7 +748,7 @@ def _setup(frame: Telemetry | None) -> str:
         ),
         ("daily fluid floor", f"{frame.floor_ml:.2f} mL"),
         ("out-of-cage limit", limit),
-        ("display mode", '<span class="nm">no source yet</span>'),
+        ("display mode", _e(_setup_words(frame.view, frame.half_ipd_cm))),
         ("stimulus calibration", '<span class="nm">no source yet</span>'),
     )
     return (

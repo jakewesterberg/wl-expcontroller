@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from _rig import DIRECT
 from wl_xcon.bounds import Bounds, Ceiling, Floor
 from wl_xcon.link import (
     MARK_BYTES,
@@ -129,6 +130,8 @@ def _session_with(
             task="tasks/fixation_detection.py",
             allocation="tasks/allocation.py",
             bounds_config="subjects/A/bounds.py",
+            # Read by `Telemetry.of` since schema 9: the setup the session runs in.
+            geometry=DIRECT,
         ),
         welfare=welfare,
         stopped_because="",
@@ -1936,7 +1939,7 @@ def test_schema_8_reads_the_pause_the_schedule_and_the_feed_from_the_session():
 
     telemetry = Telemetry.of(session, Tally(), _scheduler(), index=40)
 
-    assert telemetry.schema == SCHEMA == 8
+    assert telemetry.schema == SCHEMA == 9
     assert telemetry.paused_at == 1_700_000_100.0
     assert telemetry.scheduled_stop == ScheduledStop(
         kind="trials", target=48.0, by="jake (box, unverified)", said="after trial 48"
@@ -1946,6 +1949,7 @@ def test_schema_8_reads_the_pause_the_schedule_and_the_feed_from_the_session():
         Control("mark", "", 1_700_000_101.5, "mark 1 stamped while paused, before trial 40"),
     )
     assert telemetry.controls_dropped == 3
+    assert telemetry.view == "direct" and telemetry.half_ipd_cm is None
 
 
 def test_a_running_session_with_nothing_scheduled_says_so_with_none():
@@ -1979,12 +1983,22 @@ def test_schema_8_survives_the_wire_with_its_absences_intact():
     assert decode(encode(bare)).paused_at is None
 
 
-def test_a_schema_7_frame_is_refused_by_a_schema_8_reader():
-    """§3's schema rule: a reader built for 8 refuses 7 by name, before touching a
+def test_a_frame_carries_the_setup_the_session_runs_in():
+    """Direct-view spec §3: the choice is published for the whole session (schema 9)."""
+    stereo = replace(_telemetry(), view="stereoscope", half_ipd_cm=1.6)
+
+    assert decode(encode(stereo)).view == "stereoscope"
+    assert decode(encode(stereo)).half_ipd_cm == 1.6
+    assert decode(encode(_telemetry())).half_ipd_cm is None
+    assert SCHEMA == 9
+
+
+def test_a_schema_7_frame_is_refused_by_a_schema_9_reader():
+    """§3's schema rule: a reader built for 9 refuses 7 by name, before touching a
     field (`SchemaMismatch`), and says which it reads."""
     old = encode(replace(_telemetry(), schema=7))
 
-    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 8"):
+    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 9"):
         decode(old)
 
 

@@ -101,7 +101,12 @@ from wl_xcon.welfare import DAILY_FLUID, OUT_OF_CAGE
 #: changes feed lists). Nothing changed meaning. A schema-7 reader refuses a schema-8
 #: frame, and a schema-8 reader a schema-7 one, by name (`SchemaMismatch`), as §3's
 #: schema rule says.
-SCHEMA = 8
+#:
+#: 9 (2026-09-29, direct view part 2): `view`, the setup the session runs in, and
+#: `half_ipd_cm`, the animal's half-IPD its stereoscope field was built for (`None` in
+#: direct view). Nothing changed meaning. A schema-8 reader refuses a schema-9 frame,
+#: and a schema-9 reader a schema-8 one, by name (`SchemaMismatch`).
+SCHEMA = 9
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -413,6 +418,14 @@ class Telemetry:
     #: How many control events are **not** in `controls`, having fallen off the far
     #: end -- zero for a session nobody controlled much, and never a quiet cap.
     controls_dropped: int
+    #: `session.spec.geometry.view`: "direct" or "stereoscope" (direct-view spec §3).
+    #: Shown all session, because nothing senses which is in place and the operator's
+    #: pick is the residual risk.
+    view: str
+    #: `session.spec.geometry.half_ipd_cm`: the animal's half-IPD, in cm, that the
+    #: stereoscope's field was built for, from its settings file (PI, 2026-09-29).
+    #: `None` in direct view, which has none.
+    half_ipd_cm: float | None
 
     @classmethod
     def of(cls, session, tally, scheduler, index: int) -> "Telemetry":
@@ -557,6 +570,8 @@ class Telemetry:
             ),
             controls=tuple(Control(*row) for row in session.controls),
             controls_dropped=session.controls_dropped,
+            view=session.spec.geometry.view,
+            half_ipd_cm=session.spec.geometry.half_ipd_cm,
         )
 
 
@@ -640,6 +655,8 @@ def encode(telemetry: Telemetry) -> bytes:
             for c in telemetry.controls
         ],
         "controls_dropped": telemetry.controls_dropped,
+        "view": telemetry.view,
+        "half_ipd_cm": telemetry.half_ipd_cm,
     }
     return msgpack.packb(payload, use_bin_type=True)
 
@@ -777,6 +794,8 @@ def _telemetry_from(data: dict) -> Telemetry:
         ),
         controls=tuple(Control(**c) for c in data["controls"]),
         controls_dropped=data["controls_dropped"],
+        view=data["view"],
+        half_ipd_cm=data["half_ipd_cm"],
     )
 
 
