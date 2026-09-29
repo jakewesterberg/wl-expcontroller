@@ -28,6 +28,7 @@ from types import SimpleNamespace
 import pytest
 
 from _frames import ENDPOINT, frame
+from _rig import DIRECT, PATH as RIG_FILE
 # Autouse: every `ZmqLink`/`ZmqConsole` built here, `wlx serve`'s telemetry thread's and
 # `wlx run --link`'s included, has its context destroyed at teardown without `close()`.
 from _zmq_release import _every_zmq_context_released  # noqa: F401
@@ -427,6 +428,7 @@ def test_a_host_clock_stepped_back_between_two_frames_leaves_the_reward_age_righ
             bounds=_load_bounds(Path("tasks/twelve_hour_bounds.py")),
             already_delivered_today=0.0,
             deployment=Deployment.RIG_CHAIRED,
+            geometry=DIRECT,
         ),
         card=Card(),
         pump=Pump(),
@@ -1188,6 +1190,9 @@ def test_a_non_ascii_authorization_header_gets_the_same_401():
 
 GOOD = "tasks/fixation_detection.py"
 ALLOCATION = "tasks/allocation.py"
+#: What every `wlx run` here runs in: the stand-in rig's direct view, which the
+#: reference tasks are written for.
+_SETUP = ("--rig", RIG_FILE, "--view", "direct")
 #: The twelve-hour reference config: a session under it runs until it is stopped.
 TWELVE_HOURS = "tasks/twelve_hour_bounds.py"
 #: What the fixation task needs set to run headless (as in `test_cli.py`).
@@ -1329,6 +1334,7 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
         result["exit_code"] = main(
             [
                 "run", GOOD,
+                *_SETUP,
                 "--allocation", ALLOCATION,
                 "--bounds", TWELVE_HOURS,
                 "--root", str(tmp_path),
@@ -3076,6 +3082,7 @@ class _Session:
         self.result["exit_code"] = _main_uninterrupted(
             [
                 "run", GOOD,
+                *_SETUP,
                 "--allocation", ALLOCATION,
                 "--bounds", str(self.bounds),
                 "--root", str(self.root),

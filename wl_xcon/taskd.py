@@ -36,6 +36,7 @@ which absence it is looking at. `welfare.Deployment` has the table.
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 import time
 from collections import deque
@@ -48,6 +49,7 @@ from wl_xcon.check import check
 from wl_xcon.cli import _clock, _load_allocation, _load_trial, _shown
 from wl_xcon.codes import Allocation
 from wl_xcon.dio import Absent as NoCard
+from wl_xcon.geometry import Geometry
 from wl_xcon.record import XCON_DIRNAME, SessionRecord, welfare_note
 from wl_xcon.scheduler import Block, Condition, Scheduler
 from wl_xcon.simulate import Census, Subject, Tally, prepare
@@ -156,6 +158,11 @@ class SessionSpec:
     #: the session may carry (`welfare.Deployment`), and a default would be a limit
     #: acquired -- or lost -- by omission.
     deployment: Deployment
+    #: The field this session's stimuli are held to: the setup the operator chose at
+    #: session start, built from the rig's settings (direct-view spec §3). **Required,
+    #: with no default**, as `bounds` is: a session with no field is one whose check 8
+    #: never ran, which is how every session ran until direct view part 2.
+    geometry: Geometry
     #: The session's plan. `None` means one block of `trials` trials, which is the
     #: same code path with one block in it.
     blocks: list[Block] | None = None
@@ -170,6 +177,12 @@ class SessionSpec:
     #: `Bounds` in code, as the tests do; a console then says *not given* rather than
     #: inventing a name.
     bounds_config: str = ""
+    #: Where the rig's settings and the animal's were loaded from, as the operator
+    #: named them (`--rig`, `--subject-settings`): recorded in the config snapshot beside
+    #: the bounded config's. Empty when a caller built the field in code, as the tests do,
+    #: and for `subject_settings` in direct view, which reads none.
+    rig_config: str = ""
+    subject_settings: str = ""
     #: Rates per second, not per frame (S9/simulate). Roughly: acquires fixation
     #: within a few hundred ms, saccades to a target at a plausible latency, and
     #: breaks fixation about once every twenty seconds of holding.
@@ -1531,7 +1544,7 @@ class Session:
         if self.opened_wall_at is None:
             self.open()
         trial = self._load()
-        findings = check(trial, self.allocation)
+        findings = check(trial, self.allocation, geometry=self.spec.geometry)
         blocking = [f for f in findings if f.blocking]
         if blocking:
             raise SystemExit(
@@ -1549,6 +1562,7 @@ class Session:
             self.spec.root, self.spec.session_id, self.spec.subject
         )
         self._record = record
+        geometry = self.spec.geometry
         record.snapshot(
             layers={"session": dict(self.spec.values)},
             resolved=dict(self.spec.values),
@@ -1556,6 +1570,18 @@ class Session:
                 "task": self.spec.task,
                 "allocation": self.spec.allocation,
                 "bounds": self.spec.bounds_config,
+                "rig": self.spec.rig_config,
+                "subject_settings": self.spec.subject_settings,
+            },
+            # Direct-view spec §3: the setup, and the field it gave, as numbers -- the
+            # distance degrees were computed on is what a question months later needs.
+            setup={
+                "view": geometry.view,
+                "half_ipd_cm": geometry.half_ipd_cm,
+                "viewing_distance_cm": geometry.viewing_distance_cm,
+                "half_field_deg": [geometry.half_field_h_deg, geometry.half_field_v_deg],
+                "mask_deg": geometry.mask_deg,
+                "housings": [dataclasses.asdict(h) for h in geometry.housings],
             },
         )
         self._tally = tally

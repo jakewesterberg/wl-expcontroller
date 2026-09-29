@@ -15,6 +15,7 @@ import random
 
 import pytest
 
+from _rig import DIRECT
 from wl_xcon.calibration import (
     Collector,
     conditions,
@@ -652,6 +653,7 @@ def _calibration_session(tmp_path, repeats: int = 2):
         bounds=_calibration_bounds(),
         already_delivered_today=0.0,
         deployment=Deployment.RIG_FIXED,
+        geometry=DIRECT,
         blocks=[block],
     )
     session = Session(
@@ -757,6 +759,7 @@ def test_the_fit_uses_the_hold_and_not_the_whole_trial(tmp_path):
         bounds=_calibration_bounds(),
         already_delivered_today=0.0,
         deployment=Deployment.RIG_FIXED,
+        geometry=DIRECT,
         blocks=[
             Block(
                 name="calibration",

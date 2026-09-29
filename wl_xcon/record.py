@@ -211,7 +211,7 @@ class SessionRecord:
         self._trials.flush()
 
     def snapshot(
-        self, layers: dict[str, dict], resolved: dict, versions: dict
+        self, layers: dict[str, dict], resolved: dict, versions: dict, setup: dict
     ) -> None:
         """The config a session ran under, layers and all.
 
@@ -219,10 +219,13 @@ class SessionRecord:
         what a parameter *was* loses where it came from, and "why was `fix_hold` 0.3
         that day" is asked months later, when the layers are the only thing that
         answers it.
+
+        **And the setup it ran in** (direct-view spec §3): required, so a snapshot
+        cannot be written without it.
         """
         (self.directory / "config.json").write_text(
             json.dumps(
-                {"layers": layers, "resolved": resolved, "versions": versions},
+                {"layers": layers, "resolved": resolved, "versions": versions, "setup": setup},
                 indent=2,
                 sort_keys=True,
             ),

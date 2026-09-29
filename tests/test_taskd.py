@@ -18,6 +18,7 @@ there is no trial cap at all.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import sys
 import threading
@@ -50,6 +51,7 @@ from wl_xcon.simulate import Tally
 from wl_xcon.task import Outcome
 from wl_xcon.taskd import PAUSE_HOUSEKEEPING_S, Session, SessionSpec
 from wl_xcon.welfare import Deployment, Simulated as Pump
+from _rig import DIRECT, STEREOSCOPE
 
 VALUES = {
     "fix_timeout": 4.0,
@@ -106,6 +108,7 @@ def _spec(tmp_path, seed: int = 1, trials: int = 50, **kwargs) -> SessionSpec:
         bounds=_bounds(),
         already_delivered_today=0.0,
         deployment=Deployment.RIG_FIXED,
+        geometry=DIRECT,
     )
     for name, value in kwargs.items():
         setattr(spec, name, value)
@@ -2216,6 +2219,54 @@ def test_a_parameter_nobody_set_is_unset_not_zero(tmp_path):
     values = {row[0]: row[4] for row in session.parameters}
 
     assert values["fix_hold"] is None
+
+
+def test_a_session_holds_its_task_to_the_setup_it_runs_in(tmp_path):
+    """Check 8 and the setup check ran only in the tests until direct view part 2:
+    `run()` called `check()` without a geometry. `fixation_detection` is written for
+    direct view, so in the stereoscope it is refused, naming both."""
+    session = _session(_spec(tmp_path, geometry=STEREOSCOPE))
+
+    with pytest.raises(SystemExit) as refused:
+        session.run()
+
+    assert "wrong-setup" in str(refused.value)
+    assert "'direct'" in str(refused.value) and "'stereoscope'" in str(refused.value)
+
+
+def test_the_config_snapshot_records_the_setup_it_ran_in(tmp_path):
+    """Direct-view spec §3: the choice is "written into the session snapshot and the
+    session record" -- the field, and which files it was built from."""
+    session = _session(
+        _spec(
+            tmp_path,
+            trials=1,
+            geometry=DIRECT,
+            rig_config="tests/_rig.py",
+            subject_settings="",
+        )
+    )
+    session.run()
+
+    config = json.loads((session.directory / "config.json").read_text())
+    assert config["setup"]["view"] == "direct"
+    assert config["setup"]["half_ipd_cm"] is None
+    assert config["setup"]["viewing_distance_cm"] == DIRECT.viewing_distance_cm
+    assert len(config["setup"]["housings"]) == 2
+    assert config["versions"]["rig"] == "tests/_rig.py"
+    assert config["versions"]["subject_settings"] == ""
+
+
+def test_a_session_cannot_be_specified_without_a_field():
+    """The carry from direct view part 1: a missing geometry fails loudly. Required,
+    as `bounds` is, so it fails before a session exists."""
+    fields = {f.name for f in dataclasses.fields(SessionSpec)}
+    required = {
+        f.name
+        for f in dataclasses.fields(SessionSpec)
+        if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING
+    }
+    assert "geometry" in fields and "geometry" in required
 
 
 def test_the_config_snapshot_names_the_bounded_config_it_ran_under(tmp_path):

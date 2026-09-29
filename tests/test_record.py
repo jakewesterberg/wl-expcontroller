@@ -138,6 +138,7 @@ def test_the_config_snapshot_records_the_whole_precedence_chain(tmp_path):
         },
         resolved={"fix_hold": 0.3},
         versions={"task": "detection@3", "code": "abc1234"},
+        setup={"view": "direct"},
     )
 
     written = json.loads(
@@ -147,6 +148,7 @@ def test_the_config_snapshot_records_the_whole_precedence_chain(tmp_path):
     assert written["resolved"]["fix_hold"] == 0.3
     assert written["layers"]["rig"]["fix_hold"] == 0.2
     assert written["versions"]["code"] == "abc1234"
+    assert written["setup"] == {"view": "direct"}
 
 
 def test_a_parameter_change_is_recorded_against_the_sequence_number_it_strobed(tmp_path):

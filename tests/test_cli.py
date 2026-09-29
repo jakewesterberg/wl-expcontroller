@@ -27,6 +27,7 @@ import pytest
 # context destroyed at teardown without `close()` (`tests/_zmq_release.py`).
 from _rig import PATH as RIG_FILE
 from _zmq_release import _every_zmq_context_released  # noqa: F401
+from wl_xcon import cli
 from wl_xcon.bounds import Exceeded
 from wl_xcon.cli import (
     _RETURN_PROMPT,
@@ -273,6 +274,7 @@ def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
         [
             "run",
             "tasks/fixation_detection.py",
+            *_SETUP,
             "--allocation", "tasks/allocation.py",
             "--bounds", "tasks/reference_bounds.py",
             "--root", str(tmp_path),
@@ -319,6 +321,7 @@ def test_wlx_run_refuses_a_session_that_does_not_say_how_long_the_animal_was_out
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--bounds", "tasks/reference_bounds.py",
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
@@ -345,6 +348,7 @@ def test_wlx_run_refuses_a_days_prior_total_that_is_not_a_number(tmp_path):
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--allocation", "tasks/allocation.py",
                 "--bounds", "tasks/reference_bounds.py",
                 "--root", str(tmp_path),
@@ -364,6 +368,7 @@ def test_wlx_run_refuses_a_negative_days_prior_total(tmp_path):
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--allocation", "tasks/allocation.py",
                 "--bounds", "tasks/reference_bounds.py",
                 "--root", str(tmp_path),
@@ -384,6 +389,7 @@ def test_wlx_run_without_a_bounded_config_refuses(tmp_path, capsys):
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
                 "--subject", "REFERENCE",
@@ -405,6 +411,7 @@ def test_wlx_run_without_link_still_runs(tmp_path):
     exit_code = main(
         [
             "run", GOOD,
+            *_SETUP,
             "--allocation", ALLOCATION,
             "--bounds", BOUNDS,
             "--root", str(tmp_path),
@@ -431,6 +438,7 @@ def test_wlx_run_refuses_a_malformed_link_value(tmp_path):
         main(
             [
                 "run", GOOD,
+                *_SETUP,
                 "--allocation", ALLOCATION,
                 "--bounds", BOUNDS,
                 "--root", str(tmp_path),
@@ -465,6 +473,7 @@ def test_wlx_run_binds_the_mark_endpoint_when_link_names_three(tmp_path, monkeyp
         exit_code = main(
             [
                 "run", GOOD,
+                *_SETUP,
                 "--allocation", ALLOCATION,
                 "--bounds", BOUNDS,
                 "--root", str(tmp_path),
@@ -497,6 +506,7 @@ def test_wlx_run_refuses_a_link_bound_where_the_lab_network_can_reach_it(tmp_pat
     firewall. Raised before any socket is bound, so this needs no cleanup."""
     argv = [
         "run", GOOD,
+        *_SETUP,
         "--allocation", ALLOCATION,
         "--bounds", BOUNDS,
         "--root", str(tmp_path),
@@ -606,6 +616,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
         result["exit_code"] = main(
             [
                 "run", GOOD,
+                *_SETUP,
                 "--allocation", ALLOCATION,
                 "--bounds", far_bounds,
                 "--root", str(tmp_path),
@@ -698,6 +709,7 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
     exit_code = main(
         [
             "run", GOOD,
+            *_SETUP,
             "--allocation", ALLOCATION,
             "--bounds", BOUNDS,
             "--root", str(tmp_path),
@@ -1362,6 +1374,7 @@ def test_wlx_run_refuses_a_set_with_no_parameter_name(tmp_path):
         main(
             [
                 "run", GOOD,
+                *_SETUP,
                 "--allocation", ALLOCATION,
                 "--bounds", BOUNDS,
                 "--root", str(tmp_path),
@@ -1460,6 +1473,7 @@ def test_wlx_run_takes_the_departure_as_a_clock_time(tmp_path, capsys):
         [
             "run",
             "tasks/fixation_detection.py",
+            *_SETUP,
             "--allocation", "tasks/allocation.py",
             "--bounds", "tasks/reference_bounds.py",
             "--root", str(tmp_path),
@@ -1494,6 +1508,7 @@ def test_wlx_run_prints_how_long_the_animal_has_been_out(tmp_path, capsys):
         [
             "run",
             "tasks/fixation_detection.py",
+            *_SETUP,
             "--allocation", "tasks/allocation.py",
             "--bounds", "tasks/reference_bounds.py",
             "--root", str(tmp_path),
@@ -1555,6 +1570,7 @@ def test_wlx_run_refuses_a_departure_in_the_future(tmp_path):
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--allocation", "tasks/allocation.py",
                 "--bounds", "tasks/reference_bounds.py",
                 "--root", str(tmp_path),
@@ -1578,6 +1594,7 @@ def test_wlx_run_refuses_a_departure_longer_ago_than_the_ceiling(tmp_path):
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--allocation", "tasks/allocation.py",
                 "--bounds", "tasks/reference_bounds.py",
                 "--root", str(tmp_path),
@@ -1616,6 +1633,7 @@ def test_wlx_run_refuses_a_departure_that_is_not_a_time(tmp_path, capsys):
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--bounds", "tasks/reference_bounds.py",
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
@@ -1636,6 +1654,7 @@ def test_wlx_run_can_run_a_chaired_session_with_no_head_fixation(tmp_path, capsy
         [
             "run",
             "tasks/fixation_detection.py",
+            *_SETUP,
             "--allocation", "tasks/allocation.py",
             "--bounds", "tasks/reference_bounds.py",
             "--root", str(tmp_path),
@@ -1862,10 +1881,16 @@ def _hours_ago(hours: float) -> str:
     return when.isoformat(timespec="minutes")
 
 
+#: What every `wlx run` here runs in: the stand-in rig's direct view, which the
+#: reference tasks are written for.
+_SETUP = ("--rig", RIG_FILE, "--view", "direct")
+
+
 def _run_args(tmp_path, *extra: str) -> list:
     return [
         "run",
         "tasks/fixation_detection.py",
+        *_SETUP,
         "--allocation", "tasks/allocation.py",
         "--bounds", _far_bounds(tmp_path),
         "--root", str(tmp_path),
@@ -1876,6 +1901,90 @@ def _run_args(tmp_path, *extra: str) -> list:
         *_TASK_SETS,
         *extra,
     ]
+
+
+def test_wlx_run_requires_the_setup(tmp_path, capsys):
+    """Direct-view spec §3: the operator chooses at session start, and there is no
+    default."""
+    argv = [a for a in _run_args(tmp_path, "--out-of-cage-at", _hhmm()) if a not in ("--view", "direct")]
+    with pytest.raises(SystemExit) as exited:
+        main(argv)
+    assert exited.value.code == 2
+    assert "--view" in capsys.readouterr().err
+
+
+def test_wlx_run_refuses_a_task_written_for_the_other_setup_before_anything_is_recorded(tmp_path):
+    """Review Focus 1. A wrong pick is refused naming both setups, before the session
+    opens -- so no departure is marked for a session that cannot run, and no session
+    directory exists."""
+    argv = _run_args(tmp_path, "--out-of-cage-at", _hhmm())
+    argv[argv.index("direct")] = "stereoscope"
+    argv += ["--subject-settings", "tasks/reference_subject.py"]
+
+    with pytest.raises(SystemExit) as refused:
+        main(argv)
+
+    assert "wrong-setup" in str(refused.value)
+    assert "'direct'" in str(refused.value) and "'stereoscope'" in str(refused.value)
+    assert not (tmp_path / "2027-01-14_01").exists()
+
+
+def test_wlx_run_in_the_stereoscope_needs_the_animals_settings(tmp_path):
+    argv = _run_args(tmp_path, "--out-of-cage-at", _hhmm())
+    argv[argv.index("direct")] = "stereoscope"
+
+    with pytest.raises(SystemExit, match="needs --subject-settings"):
+        main(argv)
+
+
+def test_wlx_run_refuses_subject_settings_in_direct_view(tmp_path):
+    """Direct view reads nothing from them, and accepting them would say it did."""
+    argv = _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--subject-settings", "tasks/reference_subject.py")
+
+    with pytest.raises(SystemExit, match="direct view reads nothing from it"):
+        main(argv)
+
+
+def test_wlx_run_refuses_another_animals_settings(tmp_path):
+    """Review Focus 3, through `wlx run`."""
+    other = tmp_path / "b.py"
+    other.write_text(
+        "from wl_xcon.geometry import SubjectSettings\n"
+        "SETTINGS = SubjectSettings(subject='B', half_ipd_cm=1.6)\n",
+        encoding="utf-8",
+    )
+    argv = _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--subject-settings", str(other))
+    argv[argv.index("direct")] = "stereoscope"
+
+    with pytest.raises(SystemExit, match="holds 'B'"):
+        main(argv)
+
+
+def test_wlx_run_refuses_direct_view_on_a_rig_whose_housings_are_unmeasured(tmp_path):
+    """Review Focus 2, through `wlx run`."""
+    argv = _run_args(tmp_path, "--out-of-cage-at", _hhmm())
+    argv[argv.index(RIG_FILE)] = "tasks/rig.py"
+
+    with pytest.raises(SystemExit) as refused:
+        main(argv)
+    assert str(refused.value).startswith("refused: direct view's field excludes")
+    assert not (tmp_path / "2027-01-14_01").exists()
+
+
+def test_wlx_run_runs_an_either_task_in_the_stereoscope_and_records_it(tmp_path):
+    """The whole path in the other setup: an either-task that fits the mask, the
+    reference animal's half-IPD, and the record saying so."""
+    argv = _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--subject-settings", "tasks/reference_subject.py")
+    argv[argv.index("tasks/fixation_detection.py")] = _either_task(tmp_path, 10.0)
+    argv[argv.index("direct")] = "stereoscope"
+
+    assert _main_uninterrupted(argv) == 0
+
+    config = json.loads((tmp_path / "2027-01-14_01" / "xcon" / "config.json").read_text())
+    assert config["setup"]["view"] == "stereoscope"
+    assert config["setup"]["half_ipd_cm"] == 1.6
+    assert config["versions"]["rig"] == RIG_FILE
+    assert config["versions"]["subject_settings"] == "tasks/reference_subject.py"
 
 
 def _notes(tmp_path) -> list:
@@ -2269,6 +2378,7 @@ def test_the_shipped_reference_config_cannot_reach_the_confirmation_band(tmp_pat
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--allocation", "tasks/allocation.py",
                 "--bounds", "tasks/reference_bounds.py",
                 "--root", str(tmp_path),
@@ -2292,6 +2402,7 @@ def test_the_twelve_hour_reference_config_can(tmp_path):
             [
                 "run",
                 "tasks/fixation_detection.py",
+                *_SETUP,
                 "--allocation", "tasks/allocation.py",
                 "--bounds", "tasks/twelve_hour_bounds.py",
                 "--root", str(tmp_path),
@@ -2316,6 +2427,7 @@ def test_the_twelve_hour_reference_config_runs_a_session_when_confirmed(
         [
             "run",
             "tasks/fixation_detection.py",
+            *_SETUP,
             "--allocation", "tasks/allocation.py",
             "--bounds", "tasks/twelve_hour_bounds.py",
             "--root", str(tmp_path),
@@ -2378,6 +2490,7 @@ def test_a_linked_headless_run_never_calls_await_return(tmp_path, monkeypatch):
     exit_code = main(
         [
             "run", GOOD,
+            *_SETUP,
             "--allocation", ALLOCATION,
             "--bounds", BOUNDS,
             "--root", str(tmp_path),
@@ -2793,11 +2906,17 @@ def test_ctrl_c_after_the_departure_mark_does_not_say_it_was_not_recorded(
 
 
 def test_a_task_refused_by_its_checks_records_that_the_session_did_not_start(
-    tmp_path,
+    tmp_path, monkeypatch
 ):
     """**Final review M2**: `_close_interval`'s not-started branch had no test. A task
     with a blocking finding is refused by `run()` before its first trial, after the
-    departure is marked, and the return row says why the interval stays open."""
+    departure is marked, and the return row says why the interval stays open.
+
+    Since direct view part 2 `wlx run` refuses such a task earlier still, before
+    anything is recorded (`test_wlx_run_refuses_a_task_written_for_the_other_setup_
+    before_anything_is_recorded`). `run()`'s own check is the backstop for a caller
+    that is not this command, and this reaches it by silencing the command's."""
+    monkeypatch.setattr(cli, "check", lambda *args, **kwargs: [])
     bad = tmp_path / "bad_task.py"
     bad.write_text(
         "from wl_xcon.task import After, On, Outcome, State, Trial\n"
@@ -3026,6 +3145,7 @@ def test_wlx_run_records_which_bounded_config_it_ran_under(tmp_path):
     exit_code = main(
         [
             "run", GOOD,
+            *_SETUP,
             "--allocation", ALLOCATION,
             "--bounds", BOUNDS,
             "--root", str(tmp_path),

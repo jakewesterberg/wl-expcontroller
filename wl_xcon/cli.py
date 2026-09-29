@@ -171,6 +171,37 @@ def _setups(
         raise SystemExit(f"refused: {refused}") from refused
 
 
+def _session_geometry(args) -> Geometry:
+    """The field a `wlx run` session is held to, from `--rig`, `--view` and
+    `--subject-settings` (direct-view spec §3; PI, 2026-09-29). Every refusal is a
+    sentence: an unmeasured rig, an animal the stereoscope is not built for, another
+    animal's file, or a file where none belongs."""
+    rig = _load_rig(args.rig)
+    if args.view == "direct":
+        if args.subject_settings is not None:
+            raise SystemExit(
+                "refused: --subject-settings holds the stereoscope's half-IPD, and "
+                "direct view reads nothing from it; leave it off, or pass --view "
+                "stereoscope"
+            )
+        build = rig.direct
+    else:
+        if args.subject_settings is None:
+            raise SystemExit(
+                "refused: --view stereoscope needs --subject-settings, the file "
+                "holding this animal's half-IPD (PI, 2026-09-29)"
+            )
+        half = _load_subject_settings(args.subject_settings, args.subject).half_ipd_cm
+
+        def build() -> Geometry:
+            return rig.stereoscope(half)
+
+    try:
+        return build()
+    except ValueError as refused:
+        raise SystemExit(f"refused: {refused}") from refused
+
+
 def _clock(seconds: float) -> str:
     """`seconds` as `H:MM:SS` (or `M:SS` under an hour) -- S9a §4's own chair-time
     example (`1:47 / 4:00`). Formatting, not derivation: every digit comes from
@@ -1196,6 +1227,32 @@ def main(argv: list[str] | None = None) -> int:
         help="the subject's bounded config: a Python file defining BOUNDS",
     )
     runner.add_argument(
+        "--rig",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help="the rig's display settings: a Python file defining RIG, as tasks/rig.py "
+        "does. Required, as --bounds is: the session's field is built from it",
+    )
+    runner.add_argument(
+        "--view",
+        choices=VIEWS,
+        required=True,
+        help="which setup this session runs in. **Required, with no default** "
+        "(direct-view spec §3): nothing senses which is in place, so the operator "
+        "says, the choice is shown all session, and a task written for the other "
+        "setup is refused before anything is recorded",
+    )
+    runner.add_argument(
+        "--subject-settings",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="this animal's settings: a Python file defining SETTINGS, for --subject "
+        "(PI, 2026-09-29). Required with --view stereoscope, for the animal's "
+        "half-IPD; refused with --view direct, which reads nothing from it",
+    )
+    runner.add_argument(
         "--out-of-cage-at",
         type=_wall_clock_time,
         required=True,
@@ -1438,6 +1495,27 @@ def main(argv: list[str] | None = None) -> int:
         # reads; the enum's own value is the underscored one that goes on the wire.
         deployment = Deployment(args.deployment.replace("-", "_"))
 
+        geometry = _session_geometry(args)
+        # **Refused before anything is recorded** (direct-view spec §3, plan decision
+        # 7): a task written for the other setup, or one the chosen field cannot show,
+        # stops here -- before the session opens and before the departure is asked
+        # about. `Session.run()` checks again, as the backstop for a caller that is
+        # not this command.
+        refusals = [
+            finding
+            for finding in check(
+                _load_trial(args.task),
+                _load_allocation(args.allocation),
+                geometry=geometry,
+            )
+            if finding.blocking
+        ]
+        if refusals:
+            raise SystemExit(
+                "task refused, session not started, nothing recorded:\n"
+                + "\n".join(f"  {f.code}: {f.detail}" for f in refusals)
+            )
+
         values: dict[str, object] = {}
         for assignment in args.set:
             name, sep, raw = assignment.partition("=")
@@ -1537,6 +1615,11 @@ def main(argv: list[str] | None = None) -> int:
                         # a proposed spec, and `wl-touchtrain` owns the hardware
                         # (S13 §6 item 2).
                         deployment=deployment,
+                        geometry=geometry,
+                        rig_config=str(args.rig),
+                        subject_settings=(
+                            "" if args.subject_settings is None else str(args.subject_settings)
+                        ),
                         warn_within=(
                             WARN_WITHIN_DEFAULT
                             if args.warn_within is None
