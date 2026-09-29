@@ -35,6 +35,9 @@ from wl_xcon.link import (
     Stop,
     Stranded,
     Telemetry,
+    ZmqCommands,
+    ZmqConsole,
+    ZmqLink,
 )
 from wl_xcon.record import welfare_note
 from wl_xcon.service import Service, _fresh_seed
@@ -1413,3 +1416,262 @@ def test_wlx_taskd_stopped_by_a_fault_records_why_the_return_was_not_and_raises_
     assert [row["kind"] for row in rows][-2:] == ["return not recorded", "session ended"]
     assert "RuntimeError: the card stopped answering" in rows[-2]["reason"]
     assert "the return to the cage was not recorded" in capsys.readouterr().err
+
+
+# --- end to end: a real `wlx taskd` service over ZeroMQ (spec §6.5) ---------------------
+
+#: Ruling 10, as `tests/test_serve.py`'s `CONTROL_TRIAL_BUDGET` sizes it for a session
+#: with a mark socket, and each trial paced as it is there (read its comment for why).
+E2E_TRIAL_BUDGET = 400
+E2E_PACE_S = 0.005
+#: How long a wait still looks once the service's thread has gone.
+LAST_FRAME_S = 2.0
+
+
+def _trial_budget(monkeypatch) -> None:
+    """`taskd.run_trial` raises past the budget, so a session a mutant left running
+    faults and ends; each trial sleeps `E2E_PACE_S` first. `tests/test_serve.py`'s,
+    copied for the reason it copies `test_cli.py`'s."""
+    from wl_xcon import taskd
+
+    real, left = taskd.run_trial, [E2E_TRIAL_BUDGET]
+
+    def run_trial(*args, **kwargs):
+        left[0] -= 1
+        if left[0] < 0:
+            raise RuntimeError("this session has run more trials than its budget")
+        time.sleep(E2E_PACE_S)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+
+
+def _now(seconds_ago: float = 0.0) -> str:
+    """A departure or a return typed as a clock time, from this host's clock now."""
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - seconds_ago))
+
+
+class _Rig:
+    """A real `wlx taskd` service on a thread, its `ZmqLink` built there; a command sender
+    that waits for each acknowledgment, as `wlx serve`'s command thread does; and a
+    recorder of every frame, as `tests/test_serve.py`'s `_Session.seen` reads one."""
+
+    def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, folders=None,
+                 bounds=TWELVE_HOURS, wall=None):
+        from wl_xcon import dio
+
+        _trial_budget(monkeypatch)
+        self.cards: list = []
+        cards = self.cards
+
+        class _KeptCard(dio.Simulated):
+            def __init__(self, *args, **kwargs) -> None:
+                super().__init__(*args, **kwargs)
+                cards.append(self)
+
+        self._card = _KeptCard
+        probe = zmq_cleanup(
+            ZmqLink("tcp://127.0.0.1:0", "tcp://127.0.0.1:0", "tcp://127.0.0.1:0")
+        )
+        self.pub, self.rep, self.mark = probe.pub_endpoint, probe.rep_endpoint, probe.mark_endpoint
+        probe.close()
+        self.folders = folders or _folders(tmp_path, bounds)
+        self.wall = wall
+        self.stop = threading.Event()
+        #: Set by a test to leave without `shutdown`, as a crash would.
+        self.crash = False
+        self.recorder = zmq_cleanup(ZmqConsole(self.pub, None, settle_s=0.0, receive_timeout_s=0.0))
+        self.commands = zmq_cleanup(ZmqCommands(self.rep))
+        self.frames: list = []
+        self._looked = 0
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+
+    def _serve(self) -> None:
+        subjects, tasks, root = self.folders
+        with ZmqLink(self.pub, self.rep, self.mark) as link:
+            service = Service(
+                rig=RIG, rig_path=RIG_FILE, subjects=subjects, tasks=tasks,
+                allocation=_load_allocation(Path(ALLOCATION)), allocation_path=ALLOCATION,
+                root=root, link=link, card=self._card, wall_clock=self.wall,
+            )
+            try:
+                service.serve(self.stop)
+            finally:
+                if not self.crash:
+                    service.shutdown()
+
+    def send(self, command) -> None:
+        self.commands.deliver(command)
+
+    def seen(self, predicate, seconds: float = 10.0):
+        """The first frame published, from the last one this returned on, for which
+        `predicate` is true -- each read as it arrives. Fails within `seconds`, or within
+        `LAST_FRAME_S` once the service's thread has gone. **Ten seconds, not b2a's
+        twenty**: a frame is due every `HOUSEKEEPING_S` and these runs are a few trials,
+        and a mutant that stops the service answering must fail all five tests inside
+        the harness's 300 s with the rest of the suite (Step 3)."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            while self._looked < len(self.frames):
+                frame = self.frames[self._looked]
+                self._looked += 1
+                if predicate(frame):
+                    return frame
+            try:
+                self.frames.append(self.recorder.receive())
+                continue
+            except TimeoutError:
+                pass
+            if not self.thread.is_alive():
+                deadline = min(deadline, time.monotonic() + LAST_FRAME_S)
+            time.sleep(0.005)
+        ended = "" if self.thread.is_alive() else "; the service had ended"
+        raise AssertionError(f"no frame within {seconds} s satisfied {predicate}{ended}")
+
+    def __enter__(self) -> "_Rig":
+        self.thread.start()
+        self.seen(lambda frame: True)  # the subscription is live
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        if self.thread.is_alive():
+            try:
+                self.send(Stop(by="e2e-cleanup"))
+            except Exception:  # noqa: BLE001 -- best-effort: a run left going is stopped
+                pass
+        self.stop.set()
+        self.thread.join(timeout=30)
+        assert not self.thread.is_alive(), "the service did not stop"
+
+
+def _between(frame) -> bool:
+    return isinstance(frame, Telemetry) and frame.phase == "between_runs"
+
+
+def test_e2e_open_a_session_run_it_twice_and_end_it(tmp_path, monkeypatch, zmq_cleanup):
+    """Spec §6.5: open a session, two runs, end it -- over the real link, with the
+    simulated animal, card and pump."""
+    with _Rig(tmp_path, monkeypatch, zmq_cleanup) as rig:
+        rig.send(_open(departure=_now()))
+        rig.seen(_between)
+        for run in (0, 1):
+            rig.send(_start(trials=3))
+            rig.seen(lambda f, run=run: _between(f) and f.run_index == run and f.stop_kind == "completed")
+        rig.send(_end())
+        rig.seen(lambda f: isinstance(f, Telemetry) and f.phase == "closed")
+        rig.seen(lambda f: isinstance(f, Idle))
+
+    root = rig.folders[2]
+    assert [(r["event"], r["run"]) for r in _runs(root)] == [
+        ("start", 0), ("end", 0), ("start", 1), ("end", 1),
+    ]
+    trials = [
+        json.loads(line)["run"]
+        for line in (root / "2027-01-14_01" / "xcon" / "trials.jsonl").read_text().splitlines()
+    ]
+    assert trials == [0, 0, 0, 1, 1, 1]
+    codes = rig.cards[0].codes
+    assert codes[0] == 4128 and codes[-1] == 4129
+    assert codes.count(4135) == codes.count(4136) == 2
+    assert _kinds(root) == ["departure", "session opened", "returned", "session ended"]
+
+
+def test_e2e_the_limit_reached_between_runs_refuses_a_new_run_and_asks_for_the_return(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5. The service's wall is this host's, moved forward by the test once the
+    first run has ended, so the ten-minute placeholder limit passes between runs."""
+    offset = [0.0]
+    with _Rig(tmp_path, monkeypatch, zmq_cleanup, bounds=TEN_MINUTES,
+              wall=lambda: time.time() + offset[0]) as rig:
+        rig.send(_open(departure=_now(120)))
+        rig.seen(_between)
+        rig.send(_start(trials=2))
+        rig.seen(lambda f: _between(f) and f.run_index == 0 and f.stop_kind == "completed")
+        offset[0] = 600.0
+
+        warned = rig.seen(lambda f: _between(f) and f.duration_warning and "ceiling" in f.duration_warning)
+        rig.send(_start(trials=2))
+        refused = rig.seen(lambda f: _between(f) and any("out of cage" in r.why for r in f.refusals))
+        rig.send(_end())
+        rig.seen(lambda f: isinstance(f, Idle))
+
+    assert warned.run_index == 0 and refused.run_index == 0, "no second run"
+    assert len(_runs(rig.folders[2])) == 2
+
+
+def test_e2e_a_crash_leaves_the_animal_stranded_and_the_restarted_service_waits_for_its_return(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5: a crash and restart refuses a new session until the stranded animal's
+    return is recorded."""
+    folders = _folders(tmp_path, TWELVE_HOURS, ("B", "REFERENCE"))
+    with _Rig(tmp_path, monkeypatch, zmq_cleanup, folders=folders) as first:
+        first.send(_open(departure=_now()))
+        first.seen(_between)
+        first.crash = True
+
+    with _Rig(tmp_path, monkeypatch, zmq_cleanup, folders=folders) as second:
+        idle = second.seen(lambda f: isinstance(f, Idle))
+        assert [s.session_id for s in idle.stranded] == ["2027-01-14_01"]
+        second.send(_open(session_id="2027-01-14_02", animal="B", departure=_now()))
+        second.seen(lambda f: isinstance(f, Idle) and any("return is not recorded" in r.why for r in f.refusals))
+        second.send(_end(session_id="2027-01-14_01"))
+        second.seen(lambda f: isinstance(f, Idle) and f.stranded == ())
+        second.send(_open(session_id="2027-01-14_02", animal="B", departure=_now()))
+        second.seen(lambda f: isinstance(f, Telemetry) and f.subject == "B")
+
+    assert _kinds(folders[2], "2027-01-14_01") == ["departure", "session opened", "returned"]
+
+
+def test_e2e_an_unknown_preflight_item_is_acknowledged_by_name_and_found_in_runs_jsonl(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5."""
+    with _Rig(tmp_path, monkeypatch, zmq_cleanup) as rig:
+        rig.send(_open(departure=_now()))
+        rig.seen(_between)
+        rig.send(_start(acknowledged=()))
+        shown = rig.seen(lambda f: _between(f) and f.preflight is not None)
+        rig.send(_start(acknowledged=UNKNOWN))
+        rig.seen(lambda f: _between(f) and f.run_index == 0 and f.stop_kind == "completed")
+
+    assert [i.result for i in shown.preflight.items if i.name in UNKNOWN] == ["unknown", "unknown"]
+    start = _runs(rig.folders[2])[0]
+    assert {r["name"]: r["acknowledged_by"] for r in start["preflight"] if r["result"] == "unknown"} == {
+        "pump calibration": BY, "eye tracker": BY,
+    }
+
+
+def test_e2e_the_departure_and_the_return_meet_the_terminals_rules_over_the_wire(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5: every refusal of the departure and the return, through the service as
+    through the terminal -- here, one of each over the real link; `test_marks.py` and the
+    unit tests above hold every one."""
+    with _Rig(tmp_path, monkeypatch, zmq_cleanup) as rig:
+        rig.send(_open(departure=_now(-3600)))
+        rig.seen(lambda f: isinstance(f, Idle) and any("in the future" in r.why for r in f.refusals))
+        far_departure = _now(2 * 3600)
+        rig.send(_open(deployment="rig_chaired", departure=far_departure))
+        asked = rig.seen(lambda f: isinstance(f, Idle) and f.question is not None)
+        rig.send(_open(deployment="rig_chaired", departure=far_departure, answer="confirm"))
+        rig.seen(_between)
+        # A return before the departure: the far question is asked first (as
+        # `marks.take_return` asks it), and once it is confirmed `welfare`'s own refusal speaks.
+        before = _now(3 * 3600)
+        rig.send(_end(returned=before))
+        rig.seen(lambda f: isinstance(f, Telemetry) and f.question is not None)
+        rig.send(_end(returned=before, confirm=True))
+        rig.seen(lambda f: isinstance(f, Telemetry) and any("having left it at" in r.why for r in f.refusals))
+        far_return = _now(3600)
+        rig.send(_end(returned=far_return))
+        far = rig.seen(lambda f: isinstance(f, Telemetry) and f.question is not None and f.question.answers == ("confirm", "re-type"))
+        rig.send(_end(returned=far_return, confirm=True))
+        rig.seen(lambda f: isinstance(f, Idle))
+
+    assert asked.question.answers == ("confirm", "amend")
+    assert far.question.answers == ("confirm", "re-type")
+    kinds = _kinds(rig.folders[2])
+    assert kinds == ["departure", "departure confirmed", "session opened", "returned",
+                     "return confirmed", "session ended"]
