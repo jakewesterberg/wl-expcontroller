@@ -28,6 +28,7 @@ from wl_xcon.link import (
     Idle,
     OpenSession,
     Pause,
+    Refused,
     SetParameter,
     Simulated,
     StartRun,
@@ -1044,6 +1045,52 @@ def test_during_a_run_an_end_that_would_be_refused_is_refused_and_stops_nothing(
     assert "answers the warning" in _refused(frame)[1]
     assert _kinds(service.root) == ["departure", "session opened"]
     assert isinstance(_step(service, _end()), Idle), "an End it would take is still taken"
+
+
+def test_a_second_end_during_a_run_is_refused_and_the_first_is_the_one_taken(tmp_path):
+    """A double click on End session during a run: the first stops the run and is
+    finished once it returns; the second is refused, never taken in the first's place."""
+    link = _Script({3: [_end(returned=None), _end()]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+
+    frame = _step(service, _start(trials=1000))
+
+    assert frame.phase == "awaiting_return", "the first End's: no return time given"
+    assert [r.name for r in frame.refusals if "a run is in progress" in r.why] == ["end"]
+
+
+def test_an_end_finished_after_a_run_ends_that_session_and_never_a_later_one(tmp_path):
+    """The End a run was stopped for is spent once it is finished: the next animal's
+    session runs its runs and waits between them, rather than being ended by it."""
+    link = _Script({3: [_end()]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+    _step(service, _start(trials=1000))
+    _step(service, _open(session_id="2027-01-14_02"))
+
+    frame = _step(service, _start(trials=1))
+
+    assert (frame.phase, frame.session_id, frame.stop_kind) == (
+        "between_runs", "2027-01-14_02", "completed",
+    )
+    assert _kinds(service.root, "2027-01-14_02") == ["departure", "session opened"]
+
+
+def test_a_service_sessions_frames_carry_the_links_own_refusals(tmp_path):
+    """`Link.refused` is part of the protocol so that a packet the link could not decode
+    is a refusal on every frame (`Telemetry.of`). A service session reads its link
+    through `_Routed`, which hands over the real link's, and its count of those dropped."""
+    link = Simulated()
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+    link.refused.append(Refused(name="set", by="<unknown>", why="not a command"))
+    link.refused_dropped = 2
+
+    frame = _step(service)
+
+    assert [r.why for r in frame.refusals] == ["not a command"]
+    assert frame.refusals_dropped == 2
 
 
 def test_a_stop_during_a_run_is_the_runs_and_ends_only_the_run(tmp_path):
