@@ -1,5 +1,10 @@
 # P10 DPI spike: scripts
 
+> **Naming note (2026-09-29):** this document predates the rename and keeps the names it was
+> written with. The repository `wl-expcontroller` is `wl-xcon` since 2026-09-28, and the Python
+> package `wl_expcontroller` is `wl_xcon` since 2026-09-29 (XC-053), so a path such as
+> `wl_expcontroller/taskd.py` is now `wl_xcon/taskd.py`.
+
 Research artifacts behind `../2026-09-27-p10-dpi-spike.md`. **Not package code and not
 tests:** nothing here is imported by `wl_expcontroller/` or collected by pytest
 (`testpaths = ["tests"]`). Every number in the report comes from one of these scripts;

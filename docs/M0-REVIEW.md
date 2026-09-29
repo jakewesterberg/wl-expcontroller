@@ -19,7 +19,7 @@ that does not exist yet (§6), and **15 need you** (§3) — **ten answered 2026
 
 Recorded in ADR-0005, ADR-0006, ADR-0007 and the architecture spec §2. In one line each:
 
-wl-expcontroller is the day-one stack · v1 is the training ladder plus a first 2D monocular
+wl-xcon is the day-one stack · v1 is the training ladder plus a first 2D monocular
 recording task · MonkeyLogic interchangeability at the rig-contract layer only · tasks are
 model-authored, so within-trial logic is declarative data · split-screen stereoscope means stereo
 is two viewports on one framebuffer · both SpikeGLX and Intan record, either can gate, Intan

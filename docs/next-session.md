@@ -1,5 +1,10 @@
 # Next session — wl-expcontroller
 
+> **Naming note (2026-09-29):** this document predates the rename and keeps the names it was
+> written with. The repository `wl-expcontroller` is `wl-xcon` since 2026-09-28, and the Python
+> package `wl_expcontroller` is `wl_xcon` since 2026-09-29 (XC-053), so a path such as
+> `wl_expcontroller/taskd.py` is now `wl_xcon/taskd.py`.
+
 **State at handoff (2026-09-26):** **682 tests passing** (with `.[dev,contract,console]` installed —
 nine of them need the transport, and until 2026-09-19 CI did not install it), working
 tree clean, and **the work is on `main`.** `p4d1-console-link` was approved by the PI on

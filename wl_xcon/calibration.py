@@ -41,11 +41,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wl_expcontroller.findings import Finding
-from wl_expcontroller.geometry import Geometry
+from wl_xcon.findings import Finding
+from wl_xcon.geometry import Geometry
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoided at runtime
-    from wl_expcontroller.scheduler import Condition as SchedulerCondition
+    from wl_xcon.scheduler import Condition as SchedulerCondition
 
 #: What `raw_definition` must say in the file. Their reader refuses any other value
 #: rather than silently misapplying coefficients fit against a different feature --
@@ -716,7 +716,7 @@ def conditions(
     **`Collector` averages repeats of a target into one pairing**, because `fit_eye`
     weights by target and a target worked twice would otherwise pull the fit.
     """
-    from wl_expcontroller.scheduler import Condition as SchedulerCondition
+    from wl_xcon.scheduler import Condition as SchedulerCondition
 
     chosen = constellation(geometry) if targets is None else targets
     return [

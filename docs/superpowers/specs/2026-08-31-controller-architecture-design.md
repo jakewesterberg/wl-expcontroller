@@ -1,4 +1,4 @@
-# wl-expcontroller — controller architecture design
+# wl-xcon — controller architecture design
 
 - **Status:** proposed, for PI review. Supersedes the topology and sequencing in
   `docs/design/architecture.md` and the bridge strategy in ADR-0001.
@@ -53,7 +53,7 @@ the rest of this document works out their consequences.
 
 | # | Decision | Displaces |
 |---|---|---|
-| D1 | **wl-expcontroller is the day-one stack.** MonkeyLogic is never deployed as the working controller. | ADR-0001's bridge strategy; pitfalls P12's mitigation |
+| D1 | **wl-xcon is the day-one stack.** MonkeyLogic is never deployed as the working controller. | ADR-0001's bridge strategy; pitfalls P12's mitigation |
 | D2 | **v1 = the training ladder plus a first recording task**, 2D and monocular. Stereo and the neural closed loop follow, and must not be architecturally precluded. | roadmap M1–M6 sequencing |
 | D3 | **Interchangeability with MonkeyLogic is at the rig-contract and data layer only** — controller-agnostic event lines, reward path, analog inputs, photodiode patches and event vocabulary, owned by `wl-sync` and `wl-exptasks`. No shared task language. A dual-boot task PC buys the swap. | ADR-0001 |
 | D4 | **Tasks are primarily model-authored** under experimenter direction, so the task API optimizes for verifiability, simulatability and review-by-diagram rather than for authoring ergonomics. | — |

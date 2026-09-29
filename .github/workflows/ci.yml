@@ -98,7 +98,7 @@ jobs:
     # the GLOBAL change instead -- so this job's log does not read like a full check
     # that happened to select nothing.
     #
-    # It still refuses to run at all if a module in `wl_expcontroller/` appears in
+    # It still refuses to run at all if a module in `wl_xcon/` appears in
     # neither `RETURNS` nor `EXEMPT` (`tools/mutation_gate.py`'s `undeclared()`) --
     # that guard runs before `--changed-only` or `--shard` are even looked at, so no
     # mode can skip it. It is the real fix from 2026-09-05, since the hand-maintained

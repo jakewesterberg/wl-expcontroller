@@ -42,18 +42,18 @@ from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wl_expcontroller import link as _link
-from wl_expcontroller.bounds import Bounds, Exceeded, _finite
-from wl_expcontroller.check import check
-from wl_expcontroller.cli import _clock, _load_allocation, _load_trial, _shown
-from wl_expcontroller.codes import Allocation
-from wl_expcontroller.dio import Absent as NoCard
-from wl_expcontroller.record import XCON_DIRNAME, SessionRecord, welfare_note
-from wl_expcontroller.scheduler import Block, Condition, Scheduler
-from wl_expcontroller.simulate import Census, Subject, Tally, prepare
-from wl_expcontroller.run import run_trial
-from wl_expcontroller.task import Entered, Exited, Outcome, Param, SaccadeTo, Trial
-from wl_expcontroller.welfare import (
+from wl_xcon import link as _link
+from wl_xcon.bounds import Bounds, Exceeded, _finite
+from wl_xcon.check import check
+from wl_xcon.cli import _clock, _load_allocation, _load_trial, _shown
+from wl_xcon.codes import Allocation
+from wl_xcon.dio import Absent as NoCard
+from wl_xcon.record import XCON_DIRNAME, SessionRecord, welfare_note
+from wl_xcon.scheduler import Block, Condition, Scheduler
+from wl_xcon.simulate import Census, Subject, Tally, prepare
+from wl_xcon.run import run_trial
+from wl_xcon.task import Entered, Exited, Outcome, Param, SaccadeTo, Trial
+from wl_xcon.welfare import (
     OUT_OF_CAGE,
     WARN_WITHIN_DEFAULT,
     Absent as NoPump,

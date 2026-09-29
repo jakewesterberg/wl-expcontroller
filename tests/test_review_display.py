@@ -1,7 +1,7 @@
 """The artifact must show the display, because the display is what goes wrong."""
 
-from wl_expcontroller.review import render
-from wl_expcontroller.task import (
+from wl_xcon.review import render
+from wl_xcon.task import (
     After, Disc, Entered, Hide, Hold, Mark, On, Outcome, REMEMBERED, Show, State,
     Stimulus, Trial, Update, Window,
 )
@@ -81,7 +81,7 @@ def test_an_array_task_renders():
     `AttributeError` on every search task. No test caught it because no test
     rendered a task with an array.
     """
-    from wl_expcontroller.task import Array, ItemWindows, P, Param, SaccadeTo
+    from wl_xcon.task import Array, ItemWindows, P, Param, SaccadeTo
 
     trial = Trial(
         start="search",

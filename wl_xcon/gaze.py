@@ -34,10 +34,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping as MappingType
 
-from wl_expcontroller.calibration import Collector, Mapping, MappingLog
-from wl_expcontroller.eye import Replay, Tracker
-from wl_expcontroller.saccade import Detector, Saccade
-from wl_expcontroller.task import (
+from wl_xcon.calibration import Collector, Mapping, MappingLog
+from wl_xcon.eye import Replay, Tracker
+from wl_xcon.saccade import Detector, Saccade
+from wl_xcon.task import (
     Guard,
     Outcome,
     P,

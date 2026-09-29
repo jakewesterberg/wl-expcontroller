@@ -6,7 +6,7 @@ generated task is caught before an animal sees it -- pitfalls P15.
 
 import pytest
 
-from wl_expcontroller.task import (
+from wl_xcon.task import (
     RDS,
     REMEMBERED,
     After,
@@ -29,13 +29,13 @@ from wl_expcontroller.task import (
     Window,
     Trial,
 )
-from wl_expcontroller.check import check
+from wl_xcon.check import check
 from dataclasses import replace
 
 from tasks.rig import RIG
-from wl_expcontroller.codes import PROVISIONAL, Allocation
-from wl_expcontroller.components import Registry
-from wl_expcontroller.geometry import Geometry, Housing
+from wl_xcon.codes import PROVISIONAL, Allocation
+from wl_xcon.components import Registry
+from wl_xcon.geometry import Geometry, Housing
 
 
 def test_a_state_no_transition_can_reach_is_reported():

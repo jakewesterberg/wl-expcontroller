@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from wl_expcontroller.bounds import (
+from wl_xcon.bounds import (
     Bounds,
     Ceiling,
     Exceeded,

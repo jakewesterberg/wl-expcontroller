@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Callable, Mapping, NamedTuple, Protocol
 
-from wl_expcontroller.task import (
+from wl_xcon.task import (
     Action,
     After,
     Entered,

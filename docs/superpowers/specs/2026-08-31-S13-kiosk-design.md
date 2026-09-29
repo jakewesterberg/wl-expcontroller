@@ -4,7 +4,7 @@
 - **Date:** 2026-08-31
 - **New scope**, PI-requested 2026-08-31. Not v1.
 
-A single-screen touchscreen deployment of wl-expcontroller running cage-side as a kiosk.
+A single-screen touchscreen deployment of wl-xcon running cage-side as a kiosk.
 
 ---
 

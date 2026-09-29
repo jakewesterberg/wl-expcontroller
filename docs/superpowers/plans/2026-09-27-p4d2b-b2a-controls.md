@@ -1,5 +1,10 @@
 # P4d-2b slice b2a — Controls From the Box: Implementation Plan
 
+> **Naming note (2026-09-29):** this document predates the rename and keeps the names it was
+> written with. The repository `wl-expcontroller` is `wl-xcon` since 2026-09-28, and the Python
+> package `wl_expcontroller` is `wl_xcon` since 2026-09-29 (XC-053), so a path such as
+> `wl_expcontroller/taskd.py` is now `wl_xcon/taskd.py`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **Built on b1** (`p4d2b-b1-read-only-console`, approved by the PI on 2026-09-27 to fast-forward onto `main` once its gate and CI are clean) **plus the spec commit** (`e426de2`, "Design slice b2: controls from the box (b2a), and remote sign-in's decisions (b2b)"). b1 landed on `main` the same day, and branch `p4d2b-b2a-controls` was rebased onto `main` at `a7493e4` (the CI split, the `test_cli.py` minute-boundary fix, and the P9/P10 docs); the plan was then re-applied there (below).

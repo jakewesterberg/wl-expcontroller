@@ -11,7 +11,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from wl_expcontroller.run import Quiet, run_trial
+from wl_xcon.run import Quiet, run_trial
 
 _SPEC = importlib.util.spec_from_file_location(
     "wlx_measure_mark_check",

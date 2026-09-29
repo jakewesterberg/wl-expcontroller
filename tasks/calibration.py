@@ -24,7 +24,7 @@ the task that presents it does not exist yet: it waits for the first stereoscope
 which direct view part 2's `wlx run --view` is what makes possible.
 """
 
-from wl_expcontroller.task import (
+from wl_xcon.task import (
     After,
     Disc,
     Entered,

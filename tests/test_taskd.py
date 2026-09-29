@@ -26,10 +26,10 @@ from pathlib import Path
 
 import pytest
 
-from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
-from wl_expcontroller.cli import _load_trial
-from wl_expcontroller.dio import Simulated as Card
-from wl_expcontroller.link import (
+from wl_xcon.bounds import Bounds, Ceiling, Exceeded, Floor
+from wl_xcon.cli import _load_trial
+from wl_xcon.dio import Simulated as Card
+from wl_xcon.link import (
     CONTROL_HISTORY,
     RECENT_OUTCOMES,
     REFUSAL_HISTORY,
@@ -44,12 +44,12 @@ from wl_expcontroller.link import (
     Stop,
     Telemetry,
 )
-from wl_expcontroller.record import REFUSAL_LOG_LIMIT
-from wl_expcontroller.scheduler import Block, Condition, Counting, Scheduler
-from wl_expcontroller.simulate import Tally
-from wl_expcontroller.task import Outcome
-from wl_expcontroller.taskd import PAUSE_HOUSEKEEPING_S, Session, SessionSpec
-from wl_expcontroller.welfare import Deployment, Simulated as Pump
+from wl_xcon.record import REFUSAL_LOG_LIMIT
+from wl_xcon.scheduler import Block, Condition, Counting, Scheduler
+from wl_xcon.simulate import Tally
+from wl_xcon.task import Outcome
+from wl_xcon.taskd import PAUSE_HOUSEKEEPING_S, Session, SessionSpec
+from wl_xcon.welfare import Deployment, Simulated as Pump
 
 VALUES = {
     "fix_timeout": 4.0,
@@ -176,7 +176,7 @@ def test_a_session_refuses_to_start_if_the_task_fails_its_checks(tmp_path):
     discovers the task is malformed has already put an animal in a chair."""
     bad = tmp_path / "bad.py"
     bad.write_text(
-        "from wl_expcontroller.task import After, On, Outcome, State, Trial\n"
+        "from wl_xcon.task import After, On, Outcome, State, Trial\n"
         "t = Trial(start='a', states=[State('a', go=[On(After(1.0), Outcome.CORRECT)]),"
         " State('orphan', go=[On(After(1.0), Outcome.CORRECT)])])\n"
     )
@@ -1323,7 +1323,7 @@ def test_a_session_ended_by_a_fault_says_fault(tmp_path):
 def _interrupted_on(monkeypatch, call: int) -> None:
     """Make the `call`-th trial of a session raise `KeyboardInterrupt`, as Ctrl-C at
     the terminal does to whatever the main thread is running."""
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     real, calls = taskd.run_trial, [0]
 
@@ -1533,7 +1533,7 @@ def test_a_failed_row_write_is_never_swallowed(tmp_path, monkeypatch):
     def _disk_full(*args, **kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr("wl_expcontroller.taskd.welfare_note", _disk_full)
+    monkeypatch.setattr("wl_xcon.taskd.welfare_note", _disk_full)
 
     with pytest.raises(OSError, match="disk full"):
         session.returned_to_cage(at=WALL_NOW)
@@ -2981,7 +2981,7 @@ def test_a_mark_in_a_trial_that_faults_is_still_recorded(tmp_path, monkeypatch):
     """The strobe is on the recording the instant it happens; the record row is
     written at the boundary after, and a trial that faults has no boundary after, so
     the stamps it holds are written as the session closes."""
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     def faults(trial, world, frame_period, values=None, effects=None, each_frame=None):
         each_frame(1)
@@ -3006,7 +3006,7 @@ def test_a_stamp_that_cannot_be_written_as_the_session_closes_still_closes_the_r
     in `run()`'s `finally`, so a write that raised -- a full disk, say -- skipped the
     close, leaving the trial file open and a truncated refusal log without its
     notice row. The write's error still propagates; the record is closed first."""
-    from wl_expcontroller import record, taskd
+    from wl_xcon import record, taskd
 
     def faults(trial, world, frame_period, values=None, effects=None, each_frame=None):
         each_frame(1)
@@ -3122,7 +3122,7 @@ def test_a_clock_time_already_past_or_exactly_now_is_tomorrows(tmp_path, utc):
     """Review Focus 4: a scheduled time that is past, or exactly now, is the next
     occurrence of it -- tomorrow's -- as the spec rules, and the feed and the strip
     say which day, so a slip of the hour is read rather than waited for."""
-    from wl_expcontroller.taskd import _next_occurrence
+    from wl_xcon.taskd import _next_occurrence
 
     assert _next_occurrence("22:14", WALL_NOW) == WALL_NOW + 40.0
     assert _next_occurrence("22:13", WALL_NOW) == WALL_NOW - 20.0 + 86_400.0

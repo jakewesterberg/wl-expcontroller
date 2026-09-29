@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from wl_expcontroller.calibration import DIRECT_REGION_DEG, REACH
+from wl_xcon.calibration import DIRECT_REGION_DEG, REACH
 
 ROOT = Path(__file__).resolve().parents[1]
 RECORDS = ROOT / "docs" / "measurements" / "dev-machine"

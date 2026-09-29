@@ -1,4 +1,6 @@
-# wl-expcontroller
+# wl-xcon
+
+*Named `wl-expcontroller` until 2026-09-28, and its Python package `wl_expcontroller` until 2026-09-29.*
 
 Research and design repository for a lab-built experiment controller for closed-loop
 nonhuman primate neurophysiology: a Python, Linux-first replacement for NIMH MonkeyLogic
@@ -59,7 +61,7 @@ that earns the hardware interfaces their generality.
    display, ZMQ for messaging). `wl-sync` already owns session identity, the barcode codec,
    the log format and event routing; we consume them rather than reinvent them. Generality is
    added only when a second concrete use exists.
-5. **Staged exposure, not a fallback.** wl-expcontroller is the day-one stack (ADR-0005) — the
+5. **Staged exposure, not a fallback.** wl-xcon is the day-one stack (ADR-0005) — the
    MonkeyLogic bridge was retired because the task library it assumed does not exist. The rig
    contract stays controller-agnostic and the task PC dual-boots, so the swap remains possible;
    what protects the science is measurement gates and the training ladder, not a second system.
@@ -75,14 +77,14 @@ docs/roadmap.md          milestones with measurable acceptance gates
 docs/validation.md       measurement protocols
 docs/measurements/       per-rig measured results (committed artifacts)
 docs/CHECKPOINT.md       where the build actually is -- read this first
-wl_expcontroller/        the package
+wl_xcon/                 the package
 tasks/                   reference tasks, the event allocation, a reference bounded config
 tools/                   the mutation harness and the gate that selects for it
 CLAUDE.md                working conventions for AI-assisted development
 ```
 
 Two files are **welfare-critical and require human review before merge**:
-`wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py`. They are kept small so
+`wl_xcon/bounds.py` and `wl_xcon/welfare.py`. They are kept small so
 that a person can actually read them before signing one off.
 
 Start with `docs/superpowers/specs/2026-08-31-controller-architecture-design.md` for the

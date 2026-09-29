@@ -15,7 +15,7 @@ import random
 
 import pytest
 
-from wl_expcontroller.calibration import (
+from wl_xcon.calibration import (
     Collector,
     conditions,
     EyeMap,
@@ -26,16 +26,16 @@ from wl_expcontroller.calibration import (
     constellation,
     fit_eye,
 )
-from wl_expcontroller.bounds import Bounds, Ceiling, Floor
-from wl_expcontroller.dio import Simulated as Card
-from wl_expcontroller.eye import Replay, Tracker, parse
-from wl_expcontroller.gaze import Calibrating, Tracked
-from wl_expcontroller.geometry import Geometry
-from wl_expcontroller.run import Recorded, run_trial
-from wl_expcontroller.scheduler import Block, Scheduler
-from wl_expcontroller.taskd import Session, SessionSpec
-from wl_expcontroller.welfare import Deployment, Simulated as Pump
-from wl_expcontroller.task import Outcome, SaccadeOnset, SaccadeTo
+from wl_xcon.bounds import Bounds, Ceiling, Floor
+from wl_xcon.dio import Simulated as Card
+from wl_xcon.eye import Replay, Tracker, parse
+from wl_xcon.gaze import Calibrating, Tracked
+from wl_xcon.geometry import Geometry
+from wl_xcon.run import Recorded, run_trial
+from wl_xcon.scheduler import Block, Scheduler
+from wl_xcon.taskd import Session, SessionSpec
+from wl_xcon.welfare import Deployment, Simulated as Pump
+from wl_xcon.task import Outcome, SaccadeOnset, SaccadeTo
 from tasks.calibration import calibration
 
 GEOMETRY = Geometry.stereoscope(

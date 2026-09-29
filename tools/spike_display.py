@@ -95,7 +95,7 @@ def main() -> int:
     monitor = glfw.get_primary_monitor() if args.fullscreen else None
     mode = glfw.get_video_mode(glfw.get_primary_monitor())
     width, height = (mode.size.width, mode.size.height) if args.fullscreen else (960, 600)
-    window = glfw.create_window(width, height, "wl-expcontroller display spike", monitor, None)
+    window = glfw.create_window(width, height, "wl-xcon display spike", monitor, None)
     if not window:
         glfw.terminate()
         print("could not create a window", file=sys.stderr)

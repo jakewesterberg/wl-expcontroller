@@ -6,8 +6,8 @@ happens not to be broken right now; a check against declared ranges proves an
 experimenter cannot break it from the console.
 """
 
-from wl_expcontroller.check import check
-from wl_expcontroller.task import (
+from wl_xcon.check import check
+from wl_xcon.task import (
     After,
     Disc,
     Hold,
@@ -137,7 +137,7 @@ def test_array_items_that_can_crowd_into_each_other_are_refused():
     to one distractor is scored against another -- or against the target. The
     windows are generated, so no author ever looks at them.
     """
-    from wl_expcontroller.task import Array, ItemWindows, SaccadeTo
+    from wl_xcon.task import Array, ItemWindows, SaccadeTo
 
     trial = Trial(
         start="search",
@@ -174,7 +174,7 @@ def test_array_items_that_can_crowd_into_each_other_are_refused():
 
 
 def test_an_array_that_cannot_crowd_is_accepted():
-    from wl_expcontroller.task import Array, ItemWindows, SaccadeTo
+    from wl_xcon.task import Array, ItemWindows, SaccadeTo
 
     trial = Trial(
         start="search",

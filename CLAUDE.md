@@ -1,4 +1,4 @@
-# Working conventions — wl-expcontroller
+# Working conventions — wl-xcon
 
 These conventions bind every session (human- or AI-driven) working in this repo.
 

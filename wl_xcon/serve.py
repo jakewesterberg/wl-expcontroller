@@ -63,10 +63,10 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from wl_expcontroller import health as _health
-from wl_expcontroller import link as _link
-from wl_expcontroller import web as _web
-from wl_expcontroller import welfare as _welfare
+from wl_xcon import health as _health
+from wl_xcon import link as _link
+from wl_xcon import web as _web
+from wl_xcon import welfare as _welfare
 
 #: Seconds without a frame, while more are due, before the page greys and `/health`
 #: says `degraded`. A display choice (spec §3), not a measurement.
@@ -1386,7 +1386,7 @@ def _git_checkout_containing(path: Path) -> Path | None:
     file or directory -- or `None` if none of them has one.
 
     **Fix round 1, M1.** `_REPO_ROOT`, computed from `Path(__file__)`, is somewhere
-    under `site-packages` for a non-editable install of `wl_expcontroller` -- and
+    under `site-packages` for a non-editable install of `wl_xcon` -- and
     `read_token`'s "inside this repository" refusal, checked with
     `resolved.is_relative_to(_REPO_ROOT)`, then guards nothing there: no token file
     written into a real git checkout is ever *inside* a `site-packages` directory. Its

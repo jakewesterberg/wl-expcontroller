@@ -33,7 +33,7 @@ number that joins to a record in the session directory carrying what actually ch
 
 ## Why it has to be in the stream at all
 
-wl-expcontroller supports live parameter editing between trials — changing, for example, a
+wl-xcon supports live parameter editing between trials — changing, for example, a
 search array's eccentricity from 0 to 10 degrees while the animal is working. That is a
 stated must-have, and it is also the most likely way this controller quietly damages a
 dataset: a change made at trial 300 is invisible at analysis time unless it was recorded.
@@ -128,14 +128,14 @@ pixels:
 > `ScreenInfo.PixelsPerDegree`."
 
 **The conclusion is right and nothing needs to change on the wire.** But under our ADR-0005,
-MonkeyLogic will not be deployed as the working controller — wl-expcontroller is the day-one
+MonkeyLogic will not be deployed as the working controller — wl-xcon is the day-one
 stack, and the MonkeyLogic swap is maintained only at the rig-contract layer.
 
 ## The ask
 
 Restate the second clause. The argument survives intact without it, because it never depended
 on MonkeyLogic specifically: **whatever renders the stimulus knows the geometry, and the
-pipeline deliberately holds none.** wl-expcontroller holds per-eye viewport geometry,
+pipeline deliberately holds none.** wl-xcon holds per-eye viewport geometry,
 per-display-mode deg/pixel, and a versioned gaze mapping, so it satisfies the premise at least
 as well.
 
@@ -157,7 +157,7 @@ a single number, which is an argument for never putting pixels on the wire.
 `CalibrationSource.ONLINE`'s own docstring already anticipates this: *"The behavioural control
 system will change, and whatever replaces MonkeyLogic will also save a calibration."*
 
-Under wl-expcontroller ADR-0005, MonkeyLogic is not deployed, so **there will be no `.bhv2` to
+Under wl-xcon ADR-0005, MonkeyLogic is not deployed, so **there will be no `.bhv2` to
 read** and `ONLINE` — the source you rank above carry-forward, because it is the map the animal
 was actually held to — would be unavailable for every session.
 

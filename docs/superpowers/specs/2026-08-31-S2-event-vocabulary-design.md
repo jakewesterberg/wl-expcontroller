@@ -120,7 +120,7 @@ not.
 
 ---
 
-## 5. What wl-expcontroller needs
+## 5. What wl-xcon needs
 
 ### 5.1 In wl-exptasks' ranges (ours to allocate, no amendment required)
 
@@ -158,7 +158,7 @@ Drafted at `docs/pending-wl-preproc-amendments.md`.
 
 ---
 
-## 6. Conformance requirements on wl-expcontroller
+## 6. Conformance requirements on wl-xcon
 
 1. **Codes are allocated, never invented.** A task naming a code absent from the `wl-exptasks`
    allocation is **refused at load time**, not at run time. This is the cheapest guardrail in

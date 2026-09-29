@@ -15,7 +15,7 @@ import math
 
 import pytest
 
-from wl_expcontroller.eye import Replay, Sample, Tracker, parse
+from wl_xcon.eye import Replay, Sample, Tracker, parse
 
 PAYLOAD = json.dumps(
     {
@@ -167,7 +167,7 @@ def test_the_client_speaks_the_protocol_over_a_real_socket():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        from wl_expcontroller.eye import REQUEST, UdpSource
+        from wl_xcon.eye import REQUEST, UdpSource
 
         source = UdpSource(host="127.0.0.1", port=server.server_address[1], timeout=1.0)
         source.open()
@@ -192,7 +192,7 @@ def test_a_tracker_that_does_not_answer_is_a_dropped_frame_not_a_hang():
     failure than a stale gaze sample: one loses a trial, the other loses the session
     and looks like a crashed rig.
     """
-    from wl_expcontroller.eye import UdpSource
+    from wl_xcon.eye import UdpSource
 
     # Nothing is listening on this port.
     source = UdpSource(host="127.0.0.1", port=9, timeout=0.01)
@@ -210,7 +210,7 @@ def test_closing_releases_the_socket_and_polling_again_is_refused():
     and polling a closed source must fail loudly rather than silently returning no
     gaze -- which reads as an animal not looking.
     """
-    from wl_expcontroller.eye import UdpSource
+    from wl_xcon.eye import UdpSource
 
     source = UdpSource(host="127.0.0.1", port=9, timeout=0.01)
     source.open()

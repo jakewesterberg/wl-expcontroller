@@ -1,5 +1,10 @@
 # Direct View, Part 1 — Each Setup's Field, `Trial.view`, and Calibration per Setup: Implementation Plan
 
+> **Naming note (2026-09-29):** this document predates the rename and keeps the names it was
+> written with. The repository `wl-expcontroller` is `wl-xcon` since 2026-09-28, and the Python
+> package `wl_expcontroller` is `wl_xcon` since 2026-09-29 (XC-053), so a path such as
+> `wl_expcontroller/taskd.py` is now `wl_xcon/taskd.py`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **Execution: subagent-driven.** That method is already chosen for this project, as it was for b1 and b2a: a fresh implementer per task and a fresh reviewer before the next one starts.

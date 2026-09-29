@@ -14,7 +14,7 @@ system cannot distinguish from a hand-written one.
 
 from __future__ import annotations
 
-from wl_expcontroller.task import Disc, Family, FixPoint, Outcome, P, Stimulus
+from wl_xcon.task import Disc, Family, FixPoint, Outcome, P, Stimulus
 
 
 def test_a_fix_point_is_an_ordinary_stimulus():

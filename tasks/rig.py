@@ -20,7 +20,7 @@ such.
 it in direct view part 2, after P4d-2b slice b2a merges (both change session start).
 """
 
-from wl_expcontroller.geometry import Rig
+from wl_xcon.geometry import Rig
 
 RIG = Rig(
     # The ASUS PG27UCDM's published active area, 589.97 × 332.93 mm (spec page, read

@@ -18,7 +18,7 @@ from dataclasses import replace
 import pytest
 
 from tasks.rig import RIG
-from wl_expcontroller.geometry import Geometry, Housing
+from wl_xcon.geometry import Geometry, Housing
 
 #: The PG27UCDM through the stereoscope, the screen at 50 cm, `E` = 1.6 cm
 #: (S0 §5.1, §5.2; PI 2026-09-27, 2026-09-28).

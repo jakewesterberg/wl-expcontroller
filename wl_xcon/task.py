@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import math
 from enum import Enum
 
-from wl_expcontroller.photometry import Color
+from wl_xcon.photometry import Color
 
 
 class Family(Enum):

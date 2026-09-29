@@ -9,7 +9,7 @@ run those commands in this process. Pytest never collects this file, because its
 does not start with `test_`.
 
 **Why it exists (P4d-2b b1's mutation gate, 2026-09-27).** `tools/mutate.py --returns
-None wl_expcontroller/link.py close`, and the same for `__exit__`, reported `timed out
+None wl_xcon/link.py close`, and the same for `__exit__`, reported `timed out
 after 300s`. P4d-2a's gate read both as real failures. Faulthandler put the hang in a
 test's own `gc.collect()`, in `weakref.py` -> `Context.destroy` -> `Context.term`. It
 first showed in `test_serve.py`'s end-to-end test. With `test_serve.py` left out of
@@ -59,7 +59,7 @@ import threading
 
 import pytest
 
-from wl_expcontroller.link import ZmqCommands, ZmqConsole, ZmqLink, ZmqMarks
+from wl_xcon.link import ZmqCommands, ZmqConsole, ZmqLink, ZmqMarks
 
 #: Objects whose building thread was still running at teardown. That happens only once
 #: a test has already failed, for example when a `wlx run` thread outlives its join.

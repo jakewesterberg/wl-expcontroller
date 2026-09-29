@@ -32,7 +32,7 @@ diffable, and reviewable in an ordinary editor. A welfare-critical config is one
 human has to read before signing it off, and a diff is how they see what changed.
 """
 
-from wl_expcontroller.bounds import Bounds, Ceiling, Floor
+from wl_xcon.bounds import Bounds, Ceiling, Floor
 
 BOUNDS = Bounds(
     subject="REFERENCE",

@@ -20,14 +20,14 @@ from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 
-from wl_expcontroller import link as _link
-from wl_expcontroller import record as _record
-from wl_expcontroller.bounds import Bounds, Exceeded
-from wl_expcontroller.check import check
-from wl_expcontroller.review import render as render_review
-from wl_expcontroller.codes import PROVISIONAL, Allocation
-from wl_expcontroller.task import Trial
-from wl_expcontroller.welfare import Deployment
+from wl_xcon import link as _link
+from wl_xcon import record as _record
+from wl_xcon.bounds import Bounds, Exceeded
+from wl_xcon.check import check
+from wl_xcon.review import render as render_review
+from wl_xcon.codes import PROVISIONAL, Allocation
+from wl_xcon.task import Trial
+from wl_xcon.welfare import Deployment
 
 
 def _load_trial(path: Path) -> Trial:
@@ -1314,14 +1314,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         # Imported here, the way `--link` builds its `ZmqLink` inside `run`: no other
         # subcommand loads a web server.
-        from wl_expcontroller import serve as _serve
+        from wl_xcon import serve as _serve
 
         return _serve.run(args)
 
     if args.command == "run":
-        from wl_expcontroller.dio import Simulated as SimulatedCard
-        from wl_expcontroller.taskd import Session, SessionSpec
-        from wl_expcontroller.welfare import (
+        from wl_xcon.dio import Simulated as SimulatedCard
+        from wl_xcon.taskd import Session, SessionSpec
+        from wl_xcon.welfare import (
             WARN_WITHIN_DEFAULT,
             Simulated as SimulatedPump,
         )

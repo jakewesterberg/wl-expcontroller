@@ -37,7 +37,7 @@ cyclopean (x°, y°, disparity°)
 stereoscope's: two per-eye viewports at the folded path `D`, stopped by the mask. **In direct
 view there is one viewport, the whole panel, at the screen's own distance `Z`**, and both eyes
 see it. Either way a position maps by `D · tan` per axis, so each field is a rectangle in degrees.
-This module does not exist yet; `wl_expcontroller/geometry.py` fixes the mapping it must
+This module does not exist yet; `wl_xcon/geometry.py` fixes the mapping it must
 implement, and the field check 8 uses is the one it will draw into.
 
 The mapping inputs are per-rig and per-animal, and all of them are **measured, not derived**:

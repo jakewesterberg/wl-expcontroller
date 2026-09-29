@@ -23,7 +23,7 @@ contradiction was found by reading both repositories, which is the discipline `w
 conventions already require and which this project came close to skipping — S2 was scoped as
 designing an allocation that already existed.
 
-wl-expcontroller must emit this protocol, and needs codes that neither repository has
+wl-xcon must emit this protocol, and needs codes that neither repository has
 allocated. It cannot proceed while ownership is ambiguous.
 
 ## Decision
@@ -44,7 +44,7 @@ Consequences of the rule, adopted with it:
 
 1. **No value is ever renumbered.** `TaskEvent`'s existing 256–259 transfer as
    already-allocated. Ownership moving is not permission to renumber.
-2. **wl-expcontroller allocates nothing itself.** Codes come from `wl-exptasks`; a task naming
+2. **wl-xcon allocates nothing itself.** Codes come from `wl-exptasks`; a task naming
    an unregistered code is refused at load time.
 3. **New escapes are amendments**, because they live in the frozen layer. New task events
    are not. This is why the allocation rule in S2 §4 — codes carry identity and timing, the
@@ -64,7 +64,7 @@ Consequences of the rule, adopted with it:
 - **Leave ownership ambiguous and conform to whatever exists.** Rejected: the ambiguity is
   what produced two contradictory manifests, and a third consumer would inherit it. It also
   leaves nobody able to answer where a new code goes.
-- **wl-expcontroller allocates its own codes.** Rejected outright: it makes a third
+- **wl-xcon allocates its own codes.** Rejected outright: it makes a third
   definition and forfeits the load-time refusal that is this design's cheapest guardrail
   against model-authored task files (pitfalls P15).
 
@@ -92,5 +92,5 @@ being amendments while new task events are not, and no second decoder.
 **One clause is not ours to accept alone.** Moving `TaskEvent` 256–4095 to `wl-exptasks`
 needs `wl-preproc`'s agreement, since they allocated 256–259 into it. Until they
 answer, this project allocates in **4096–32767**, whose ownership is undisputed, so a
-decline costs no rework. The code already does this: `wl_expcontroller/codes.py`
+decline costs no rework. The code already does this: `wl_xcon/codes.py`
 confines itself to that range and says why.

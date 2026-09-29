@@ -3,7 +3,7 @@
 Milestones gate on measured artifacts, not on code existing. Thresholds marked
 (proposed) are finalized when their protocol first runs (`docs/validation.md`).
 
-**Governing constraint:** the lab opens **January 2027** and wl-expcontroller is the
+**Governing constraint:** the lab opens **January 2027** and wl-xcon is the
 day-one stack (D1). v1 is the training ladder plus a first recording task, 2D and
 monocular (D2). Anything not on that path is deferred by default.
 

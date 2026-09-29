@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from wl_expcontroller.link import SCHEMA, ParamRow, Telemetry
-from wl_expcontroller.web import View
+from wl_xcon.link import SCHEMA, ParamRow, Telemetry
+from wl_xcon.web import View
 
 
 #: The PUB endpoint `view()` says this console reads, and the one `test_serve.py`'s hubs

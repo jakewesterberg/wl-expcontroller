@@ -115,8 +115,8 @@ def test_unparseable_source_is_not_inert():
 def test_the_real_no_op_displays_are_inert_and_the_real_one_is_not():
     """Against the shipped source rather than a fixture, so this fails if `run.py`'s
     worlds grow a body -- at which point the exemption must stop applying to them."""
-    run_py = (Path(__file__).resolve().parents[1] / "wl_expcontroller" / "run.py").read_text()
-    gaze_py = (Path(__file__).resolve().parents[1] / "wl_expcontroller" / "gaze.py").read_text()
+    run_py = (Path(__file__).resolve().parents[1] / "wl_xcon" / "run.py").read_text()
+    gaze_py = (Path(__file__).resolve().parents[1] / "wl_xcon" / "gaze.py").read_text()
 
     assert _already_inert(run_py, "display", "None"), "Quiet/Scripted display are no-ops"
     assert not _already_inert(gaze_py, "display", "None"), "Tracked.display polls gaze"
@@ -182,7 +182,7 @@ def test_a_trailing_comment_still_does_not_defeat_the_match():
 def test_the_shipped_one_line_stubs_are_the_ones_this_protects():
     """Against the real source, so this fails the day another one appears somewhere
     the exemption has not been thought about."""
-    root = Path(__file__).resolve().parents[1] / "wl_expcontroller"
+    root = Path(__file__).resolve().parents[1] / "wl_xcon"
     for module, name in (("run.py", "happened"), ("welfare.py", "deliver")):
         source = (root / module).read_text()
         assert f"-> None: ...\n" in source or "-> bool: ...\n" in source
@@ -266,7 +266,7 @@ def test_the_shipped_signatures_the_gate_could_not_reach():
     """Against the real modules and with the gate's own `--returns` values, so this
     fails the day either signature moves back out of reach. These two are the whole
     of `MUTATION GATE FAILED: calibration, saccade` (run 34769913502)."""
-    root = Path(__file__).resolve().parents[1] / "wl_expcontroller"
+    root = Path(__file__).resolve().parents[1] / "wl_xcon"
     for module, name, returns in (
         ("calibration.py", "recenter", "[]"),
         ("saccade.py", "detect", "None"),
@@ -366,7 +366,7 @@ def test_a_red_baseline_names_what_failed(monkeypatch):
             ["FAILED tests/test_x.py::test_flaky - AssertionError: never drained"],
         ),
     )
-    monkeypatch.setattr("sys.argv", ["mutate.py", "wl_expcontroller/check.py", "check"])
+    monkeypatch.setattr("sys.argv", ["mutate.py", "wl_xcon/check.py", "check"])
 
     with pytest.raises(SystemExit) as raised:
         mutate_tool.main()
@@ -393,7 +393,7 @@ def test_a_red_restore_names_what_failed(monkeypatch, capsys):
     monkeypatch.setattr(
         mutate_tool, "mutate", lambda path, name, returns: (True, "3 failed, 671 passed")
     )
-    monkeypatch.setattr("sys.argv", ["mutate.py", "wl_expcontroller/check.py", "check"])
+    monkeypatch.setattr("sys.argv", ["mutate.py", "wl_xcon/check.py", "check"])
 
     assert mutate_tool.main() == 1
 

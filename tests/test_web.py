@@ -20,8 +20,8 @@ from pathlib import Path
 import pytest
 
 from _frames import frame, view
-from wl_expcontroller.link import Control, ParamRow, Refused, ScheduledStop, Staged
-from wl_expcontroller.web import (
+from wl_xcon.link import Control, ParamRow, Refused, ScheduledStop, Staged
+from wl_xcon.web import (
     _SCRIPT,
     CONTROLS_AT_THE_BOX,
     DEBOUNCE_MS,
@@ -580,7 +580,7 @@ def test_the_page_declares_each_bundled_font_and_no_other():
 def test_every_font_the_page_uses_is_bundled_with_its_license():
     """OFL-1.1 condition 2: each copy carries the copyright notice and the license --
     here, beside the files, as `OFL.txt`. And each file is the woff2 it claims to be."""
-    fonts = resources.files("wl_expcontroller").joinpath("fonts")
+    fonts = resources.files("wl_xcon").joinpath("fonts")
 
     for font in FONTS:
         assert font_bytes(font)[:4] == b"wOF2", font.file
@@ -594,7 +594,7 @@ def test_the_fonts_ship_with_the_package():
     installed `wlx serve` serves what a checkout does."""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     table = tomllib.loads(pyproject.read_text(encoding="utf-8"))["tool"]["setuptools"]
-    globs = table["package-data"]["wl_expcontroller"]
+    globs = table["package-data"]["wl_xcon"]
 
     for font in FONTS:
         for rel in (f"fonts/{font.directory}/{font.file}", f"fonts/{font.directory}/OFL.txt"):

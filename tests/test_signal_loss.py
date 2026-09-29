@@ -14,8 +14,8 @@ tracker's own behaviour rather than the animal's.
 
 import pytest
 
-from wl_expcontroller.run import run_trial
-from wl_expcontroller.task import (
+from wl_xcon.run import run_trial
+from wl_xcon.task import (
     After,
     Disc,
     Hold,
@@ -187,8 +187,8 @@ def test_a_simulated_session_can_reach_the_signal_outcomes():
     the task's handling of it unreachable, and the report says clean. A subject that
     never blinks would have made `BLINK_BREAK` and `TRACKER_LOST` exactly that.
     """
-    from wl_expcontroller.simulate import Subject, simulate
-    from wl_expcontroller.task import Entered
+    from wl_xcon.simulate import Subject, simulate
+    from wl_xcon.task import Entered
 
     trial = holding(Tolerances(blink=0.05, tracker_lost=0.05))
 

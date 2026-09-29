@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wl-expcontroller"
+name = "wl-xcon"
 version = "0.0.1"
 description = "Behavioural task controller for closed-loop NHP neurophysiology"
 readme = "README.md"
@@ -16,7 +16,7 @@ requires-python = ">=3.11"
 dependencies = ["pydantic>=2", "numpy>=1.24"]
 
 [project.scripts]
-wlx = "wl_expcontroller.cli:main"
+wlx = "wl_xcon.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -49,18 +49,18 @@ contract = ["pyyaml>=6"]
 console = ["pyzmq>=26.4", "msgpack>=1"]
 
 [tool.setuptools.packages.find]
-include = ["wl_expcontroller*"]
+include = ["wl_xcon*"]
 
 [tool.setuptools.package-data]
 # The console page's fonts (P4d-2b b1), served by `wlx serve` so the page never reaches
 # the internet. Each family's license ships beside its files as OFL.txt, which OFL-1.1's
 # condition 2 requires (ADR-0004's inventory).
-wl_expcontroller = ["fonts/*/*.woff2", "fonts/*/OFL.txt"]
+wl_xcon = ["fonts/*/*.woff2", "fonts/*/OFL.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # `tasks/` is reference material, not part of the installed package
-# (`packages.find` includes only `wl_expcontroller*`), and `tests/test_gaze.py`
+# (`packages.find` includes only `wl_xcon*`), and `tests/test_gaze.py`
 # imports a task from it. Without this, `python -m pytest` passes -- it puts the
 # working directory on `sys.path` -- and bare `pytest` fails, which is how a green
 # local run and a red CI run came from identical code.

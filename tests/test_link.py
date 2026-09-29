@@ -19,8 +19,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from wl_expcontroller.bounds import Bounds, Ceiling, Floor
-from wl_expcontroller.link import (
+from wl_xcon.bounds import Bounds, Ceiling, Floor
+from wl_xcon.link import (
     MARK_BYTES,
     REFUSAL_HISTORY,
     Absent,
@@ -56,9 +56,9 @@ from wl_expcontroller.link import (
     decode,
     encode,
 )
-from wl_expcontroller.scheduler import Block, Condition, Scheduler
-from wl_expcontroller.simulate import Tally
-from wl_expcontroller.welfare import Deployment, Simulated as Pump, Welfare
+from wl_xcon.scheduler import Block, Condition, Scheduler
+from wl_xcon.simulate import Tally
+from wl_xcon.welfare import Deployment, Simulated as Pump, Welfare
 
 
 def _bounds(daily_fluid: float = 250.0) -> Bounds:
@@ -558,7 +558,7 @@ def test_which_endpoints_count_as_leaving_this_machine():
     Checking the predicate keeps the case on every host. What a bind that fails
     partway through `ZmqLink.__init__` owes is
     `test_a_link_that_cannot_bind_does_not_abandon_its_context`'s subject."""
-    from wl_expcontroller.link import _binds_beyond_this_machine as beyond
+    from wl_xcon.link import _binds_beyond_this_machine as beyond
 
     for local in (
         "tcp://127.0.0.1:5571",
@@ -813,7 +813,7 @@ def test_the_system_still_works_with_no_settle_delay(zmq_cleanup):
 
 
 def test_close_releases_both_sockets(zmq_cleanup):
-    """Found by the mutation harness (`tools/mutate.py --all wl_expcontroller/link.py`
+    """Found by the mutation harness (`tools/mutate.py --all wl_xcon/link.py`
     reported `close` surviving), the same way `test_record.py` found `close`
     surviving there. The real-socket test above calls `close()` in a `finally`
     purely for hygiene -- so a full suite run does not accumulate open sockets and
@@ -1501,7 +1501,7 @@ def test_a_malformed_control_is_refused_by_name_where_it_is_decoded(fields, name
 def test_check_schedule_is_the_one_rule_for_what_a_schedule_may_be():
     """`taskd` asks the same question of a schedule that reached it without the
     wire (`link.Simulated`), so there is one rule for it."""
-    from wl_expcontroller.link import check_schedule
+    from wl_xcon.link import check_schedule
 
     assert check_schedule("clock", "00:00") is None
     assert check_schedule("clock", "23:59") is None
@@ -1581,7 +1581,7 @@ def test_the_per_frame_check_keeps_nothing_it_allocates(zmq_cleanup):
     finally:
         tracemalloc.stop()
 
-    import wl_expcontroller.link as link_module
+    import wl_xcon.link as link_module
 
     held = [
         stat

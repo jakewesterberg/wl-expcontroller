@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from wl_expcontroller.run import Quiet, Recorded, Scripted, run_trial
-from wl_expcontroller.task import (
+from wl_xcon.run import Quiet, Recorded, Scripted, run_trial
+from wl_xcon.task import (
     After,
     Entered,
     Mark,

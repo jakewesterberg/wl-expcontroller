@@ -13,9 +13,9 @@ cue-target SOA. `Onscreen` -- the photodiode saying the stimulus reached the dis
 
 import pytest
 
-from wl_expcontroller.check import check
-from wl_expcontroller.run import Scripted, run_trial
-from wl_expcontroller.task import (
+from wl_xcon.check import check
+from wl_xcon.run import Scripted, run_trial
+from wl_xcon.task import (
     After,
     Disc,
     On,

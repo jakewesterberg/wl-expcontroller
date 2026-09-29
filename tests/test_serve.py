@@ -31,9 +31,9 @@ from _frames import ENDPOINT, frame
 # Autouse: every `ZmqLink`/`ZmqConsole` built here, `wlx serve`'s telemetry thread's and
 # `wlx run --link`'s included, has its context destroyed at teardown without `close()`.
 from _zmq_release import _every_zmq_context_released  # noqa: F401
-from wl_expcontroller import serve
-from wl_expcontroller.cli import main
-from wl_expcontroller.link import (
+from wl_xcon import serve
+from wl_xcon.cli import main
+from wl_xcon.link import (
     SCHEMA,
     CancelScheduledStop,
     ManualReward,
@@ -48,7 +48,7 @@ from wl_expcontroller.link import (
     ZmqConsole,
     ZmqLink,
 )
-from wl_expcontroller.serve import (
+from wl_xcon.serve import (
     BUSY,
     CLOSED,
     COMMAND_QUEUE_DEPTH,
@@ -71,8 +71,8 @@ from wl_expcontroller.serve import (
     on_box,
     parse_command,
 )
-from wl_expcontroller.web import CONTROLS_AT_THE_BOX, NO_MARK_ENDPOINT
-from wl_expcontroller.web import FONTS, FRAGMENT_IDS, font_bytes
+from wl_xcon.web import CONTROLS_AT_THE_BOX, NO_MARK_ENDPOINT
+from wl_xcon.web import FONTS, FRAGMENT_IDS, font_bytes
 
 _REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
 try:
@@ -397,14 +397,14 @@ def test_a_host_clock_stepped_back_between_two_frames_leaves_the_reward_age_righ
     import time
     from pathlib import Path
 
-    from wl_expcontroller.cli import _load_bounds
-    from wl_expcontroller.dio import Simulated as Card
-    from wl_expcontroller.link import Telemetry
-    from wl_expcontroller.scheduler import Block, Condition, Scheduler
-    from wl_expcontroller.simulate import Tally
-    from wl_expcontroller.taskd import Session, SessionSpec
-    from wl_expcontroller.web import fragments
-    from wl_expcontroller.welfare import Deployment, Simulated as Pump
+    from wl_xcon.cli import _load_bounds
+    from wl_xcon.dio import Simulated as Card
+    from wl_xcon.link import Telemetry
+    from wl_xcon.scheduler import Block, Condition, Scheduler
+    from wl_xcon.simulate import Tally
+    from wl_xcon.taskd import Session, SessionSpec
+    from wl_xcon.web import fragments
+    from wl_xcon.welfare import Deployment, Simulated as Pump
 
     wall = 1_700_000_000.0
     # Every steady clock `welfare.steady_seconds` could read, stubbed to one value, as
@@ -1219,7 +1219,7 @@ def _trial_budget(monkeypatch, allowed: int, pace_s: float = 0.0) -> None:
     `wlx run` ends -- `tests/test_cli.py`'s budget, for the tests here that run a
     session. The session's own clocks stay under test. `pace_s` sleeps before each
     trial (`CONTROL_TRIAL_PACE_S` says why)."""
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     real, left = taskd.run_trial, [allowed]
 
@@ -1901,7 +1901,7 @@ def test_wlx_serve_exits_130_on_a_real_sigint(tmp_path):
     command = [
         sys.executable,
         "-c",
-        "import sys; from wl_expcontroller.cli import main; sys.exit(main(sys.argv[1:]))",
+        "import sys; from wl_xcon.cli import main; sys.exit(main(sys.argv[1:]))",
         *_serve_args(tmp_path),
     ]
     process = subprocess.Popen(
@@ -1997,7 +1997,7 @@ def test_read_token_refuses_a_file_inside_any_git_checkout_not_just_this_one(
     tmp_path,
 ):
     """Fix round 1, M1: `_REPO_ROOT` was `Path(__file__).resolve().parents[1]` --
-    somewhere in `site-packages` for a non-editable install of `wl_expcontroller`,
+    somewhere in `site-packages` for a non-editable install of `wl_xcon`,
     guarding nothing there -- and the test above computed the very same expression
     to check against, so it agreed with the refusal regardless of whether that path
     was a real git checkout. Walking up from the token file itself, looking for a
@@ -3027,7 +3027,7 @@ class _Session:
 
     def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, bounds=TWELVE_HOURS,
                  session_id="2027-01-14_21", cleanup=None):
-        from wl_expcontroller import dio
+        from wl_xcon import dio
 
         _trial_budget(monkeypatch, CONTROL_TRIAL_BUDGET, pace_s=CONTROL_TRIAL_PACE_S)
         self.cards: list = []
@@ -3275,7 +3275,7 @@ def test_e2e_the_limit_ends_a_session_paused_in_front_of_it(
     that adds the offset this test sets, and it sets one only after the pause holds.
     The paused session then finds the limit where it would an hour on: `_hold` asks
     `_ends`, which asks `welfare.must_stop` on the session's own wall."""
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     ahead = [0.0]
 
@@ -3287,7 +3287,7 @@ def test_e2e_the_limit_ends_a_session_paused_in_front_of_it(
     limit = 3600.0
     bounds = tmp_path / "short_bounds.py"
     bounds.write_text(
-        "from wl_expcontroller.bounds import Bounds, Ceiling, Floor\n"
+        "from wl_xcon.bounds import Bounds, Ceiling, Floor\n"
         "BOUNDS = Bounds(subject='REFERENCE', ceilings={"
         "'reward_correct': Ceiling(value=0.05, maximum=10.0, unit='mL'), "
         f"'out_of_cage': Ceiling(value={limit!r}, maximum=43200.0, unit='s')}}, "
@@ -3376,7 +3376,7 @@ def test_e2e_each_kind_of_scheduled_stop_ends_the_session_with_its_reason(
     is too long for the suite, and what that function computes is pinned on its own
     in `tests/test_taskd.py`. Everything else is real -- the page's POST, `wlx
     serve`'s command thread, the wire, and the session's anchored clock."""
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     monkeypatch.setattr(taskd, "_next_occurrence", lambda hhmm, wall: wall + 0.25)
     with _Session(tmp_path, monkeypatch, zmq_cleanup, cleanup=server_cleanup) as run:
@@ -3612,7 +3612,7 @@ def test_a_reward_the_rig_takes_and_never_acknowledges_is_unknown_and_sent_once(
     retry is ever added to the command path, this is where it doubles a reward."""
     import zmq
 
-    from wl_expcontroller.link import _decode_command
+    from wl_xcon.link import _decode_command
 
     telemetry = _rig(zmq_cleanup)
     ctx = zmq.Context()

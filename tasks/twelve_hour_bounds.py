@@ -31,7 +31,7 @@ implausible values as next door. This is not a protocol, and no approved protoco
 for reward volume or daily fluid exists in this repository.
 """
 
-from wl_expcontroller.bounds import Bounds, Ceiling, Floor
+from wl_xcon.bounds import Bounds, Ceiling, Floor
 
 BOUNDS = Bounds(
     subject="REFERENCE",

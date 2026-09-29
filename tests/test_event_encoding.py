@@ -32,7 +32,7 @@ except ImportError as exc:  # pragma: no cover - exercised by the CI job
         allow_module_level=True,
     )
 
-from wl_expcontroller.encode import words_for, words_for_code  # noqa: E402
+from wl_xcon.encode import words_for, words_for_code  # noqa: E402
 
 
 def test_a_trial_number_round_trips_through_wl_preprocs_decoder():

@@ -11,8 +11,8 @@ import math
 
 import pytest
 
-from wl_expcontroller.check import check
-from wl_expcontroller.task import (
+from wl_xcon.check import check
+from wl_xcon.task import (
     Array,
     Disc,
     ItemWindows,
@@ -115,7 +115,7 @@ def test_a_saccade_to_a_distractor_is_distinguishable_from_one_to_the_target():
     a separate transition per item -- which is n transitions, so it is the same
     structure-versus-value problem one level down.
     """
-    from wl_expcontroller.run import Scripted, run_trial
+    from wl_xcon.run import Scripted, run_trial
 
     trial = Trial(
         start="search",
@@ -150,7 +150,7 @@ def test_a_saccade_to_a_distractor_is_distinguishable_from_one_to_the_target():
 
 def test_an_array_that_would_not_fit_on_the_display_is_refused():
     """Check 8, over an array's items rather than one stimulus."""
-    from wl_expcontroller.geometry import Geometry
+    from wl_xcon.geometry import Geometry
 
     trial = Trial(
         start="on",
@@ -187,8 +187,8 @@ def test_a_hold_on_an_alias_resolves_to_the_item_it_names():
     concrete windows, and an unresolved alias would simply never be satisfied: the
     animal fixates the target and the task waits forever.
     """
-    from wl_expcontroller.run import run_trial
-    from wl_expcontroller.task import Hold
+    from wl_xcon.run import run_trial
+    from wl_xcon.task import Hold
 
     trial = Trial(
         start="search",
@@ -238,7 +238,7 @@ def test_a_hold_on_an_alias_resolves_to_the_item_it_names():
 
 def test_a_search_task_simulates():
     """The simulator must cope with windows it did not get from `trial.windows`."""
-    from wl_expcontroller.simulate import Subject, simulate
+    from wl_xcon.simulate import Subject, simulate
 
     trial = Trial(
         start="search",

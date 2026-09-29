@@ -11,7 +11,7 @@ January adds is a card, not an integration.
 
 import pytest
 
-from wl_expcontroller.dio import EVENT_BITS, FIRST_EVENT_LINE, Absent, Simulated
+from wl_xcon.dio import EVENT_BITS, FIRST_EVENT_LINE, Absent, Simulated
 
 
 def test_an_event_code_lands_on_the_lines_the_breakout_wired():

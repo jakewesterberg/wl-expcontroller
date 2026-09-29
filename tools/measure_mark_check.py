@@ -50,9 +50,9 @@ if str(ROOT) not in sys.path:
 
 import zmq  # noqa: E402 -- after the path, so the checkout's package is the one measured
 
-from wl_expcontroller import link as _link  # noqa: E402
-from wl_expcontroller.run import Quiet, run_trial  # noqa: E402
-from wl_expcontroller.task import After, On, Outcome, State, Trial  # noqa: E402
+from wl_xcon import link as _link  # noqa: E402
+from wl_xcon.run import Quiet, run_trial  # noqa: E402
+from wl_xcon.task import After, On, Outcome, State, Trial  # noqa: E402
 
 #: The trial loop's frame period here: a number `After` compares against, nothing
 #: more, since frames are not paced.
@@ -218,7 +218,7 @@ twenty batches.
 Over {found['calls']} calls with nothing waiting (`tracemalloc`): net
 {found['alloc_net_bytes']} bytes, peak {found['alloc_peak_bytes']} bytes above the
 starting point, and {found['alloc_held_by_link_bytes']} bytes still held that were
-allocated in `wl_expcontroller/link.py`. The peak includes `tracemalloc`'s own
+allocated in `wl_xcon/link.py`. The peak includes `tracemalloc`'s own
 bookkeeping between readings; the held figure is the one about the check.
 
 ## What it decides, and what it does not

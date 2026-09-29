@@ -1,5 +1,10 @@
 # The per-frame mark check -- its cost in the trial loop, on a development machine
 
+> **Naming note (2026-09-29):** this document predates the rename and keeps the names it was
+> written with. The repository `wl-expcontroller` is `wl-xcon` since 2026-09-28, and the Python
+> package `wl_expcontroller` is `wl_xcon` since 2026-09-29 (XC-053), so a path such as
+> `wl_expcontroller/taskd.py` is now `wl_xcon/taskd.py`.
+
 > **This is not V1, and not a frame-timing measurement.** Frames here are not paced; the
 > loop runs as fast as the CPU lets it. It measures what the check costs the CPU per
 > frame, which is the only way it could disturb a paced frame. The effect on real frame

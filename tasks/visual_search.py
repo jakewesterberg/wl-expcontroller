@@ -17,8 +17,8 @@ which is a claim about photometry, so this task **will not load without a measur
 display calibration**. That is deliberate. No calibration for our panels exists yet.
 """
 
-from wl_expcontroller.photometry import DKL
-from wl_expcontroller.task import (
+from wl_xcon.photometry import DKL
+from wl_xcon.task import (
     After,
     Array,
     Bounded,

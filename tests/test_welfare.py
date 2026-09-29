@@ -25,10 +25,10 @@ import time
 
 import pytest
 
-from wl_expcontroller import welfare as welfare_module
-from wl_expcontroller.bounds import Bounds, Ceiling, Exceeded, Floor
-from wl_expcontroller.dio import Simulated as Card
-from wl_expcontroller.welfare import Absent, Deployment, Rig, Simulated, Welfare
+from wl_xcon import welfare as welfare_module
+from wl_xcon.bounds import Bounds, Ceiling, Exceeded, Floor
+from wl_xcon.dio import Simulated as Card
+from wl_xcon.welfare import Absent, Deployment, Rig, Simulated, Welfare
 
 
 def _bounds(daily_fluid: float = 250.0, **over: float) -> Bounds:
@@ -1675,7 +1675,7 @@ import inspect
 import re
 from pathlib import Path
 
-from wl_expcontroller import bounds as bounds_module
+from wl_xcon import bounds as bounds_module
 
 #: A magnitude is finite and non-negative; an instant is merely finite. Every entry
 #: point below is one or the other, and that distinction is the rule the earlier

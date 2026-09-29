@@ -10,9 +10,9 @@ scores the average of one eye doing the task and one eye doing nothing.
 task could declare a left-eye criterion, run, record, and be scored on both.
 """
 
-from wl_expcontroller.check import check
-from wl_expcontroller.run import run_trial
-from wl_expcontroller.task import (
+from wl_xcon.check import check
+from wl_xcon.run import run_trial
+from wl_xcon.task import (
     After,
     Disc,
     Hold,

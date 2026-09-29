@@ -9,8 +9,8 @@ without reading the source (ADR-0006).
 
 from __future__ import annotations
 
-from wl_expcontroller.simulate import Subject, simulate
-from wl_expcontroller.task import (
+from wl_xcon.simulate import Subject, simulate
+from wl_xcon.task import (
     After,
     Entered,
     Exited,
@@ -160,7 +160,7 @@ def test_a_simulated_animal_will_not_look_at_a_stimulus_that_is_not_there():
     fixation point at the moment it asked for fixation passed 2,000 trials with a
     clean report. Found by review 2026-08-31.
     """
-    from wl_expcontroller.task import Show, Stimulus
+    from wl_xcon.task import Show, Stimulus
 
     def task(with_show: bool) -> Trial:
         fix = Stimulus("fix", at=(0.0, 0.0))
@@ -197,7 +197,7 @@ def test_a_simulated_animal_will_not_look_at_a_stimulus_that_is_not_there():
 def test_a_remembered_window_needs_no_stimulus():
     """A memory-guided saccade is scored against a blank location on purpose, so
     gating acquisition on a visible stimulus would make the paradigm unsimulatable."""
-    from wl_expcontroller.task import REMEMBERED
+    from wl_xcon.task import REMEMBERED
 
     trial = Trial(
         start="hold",

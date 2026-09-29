@@ -14,7 +14,7 @@ by `wl-preproc`, and `codes.PROVISIONAL` carries them.
 
 from dataclasses import replace
 
-from wl_expcontroller.codes import PROVISIONAL, Allocation
+from wl_xcon.codes import PROVISIONAL, Allocation
 
 #: Looked up by name, not by type: this module imports `PROVISIONAL` to build on
 #: it, so two `Allocation` instances are visible and picking "the only one" would

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from wl_expcontroller.scheduler import (
+from wl_xcon.scheduler import (
     Block,
     Condition,
     Constrained,
@@ -17,7 +17,7 @@ from wl_expcontroller.scheduler import (
     Scheduler,
     WithReplacement,
 )
-from wl_expcontroller.task import Outcome
+from wl_xcon.task import Outcome
 
 
 def _block(**kwargs) -> Block:

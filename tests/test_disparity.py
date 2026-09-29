@@ -16,8 +16,8 @@ whole point, and the reason cyclopean form is a category of its own.
 
 import pytest
 
-from wl_expcontroller.check import check
-from wl_expcontroller.task import (
+from wl_xcon.check import check
+from wl_xcon.task import (
     RDS,
     After,
     Corrugation,

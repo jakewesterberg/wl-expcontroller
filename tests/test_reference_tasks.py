@@ -14,13 +14,13 @@ from pathlib import Path
 import pytest
 
 from tasks.rig import RIG
-from wl_expcontroller.calibration import constellation
-from wl_expcontroller.check import check
-from wl_expcontroller.geometry import Housing
-from wl_expcontroller.photometry import Calibration, xyY
-from wl_expcontroller.run import Recorded
-from wl_expcontroller.simulate import Subject, simulate
-from wl_expcontroller.task import (
+from wl_xcon.calibration import constellation
+from wl_xcon.check import check
+from wl_xcon.geometry import Housing
+from wl_xcon.photometry import Calibration, xyY
+from wl_xcon.run import Recorded
+from wl_xcon.simulate import Subject, simulate
+from wl_xcon.task import (
     Entered,
     Hold,
     Exited,

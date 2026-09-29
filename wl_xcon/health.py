@@ -32,9 +32,9 @@ from __future__ import annotations
 
 import math
 
-from wl_expcontroller.cli import _clock
-from wl_expcontroller.link import Telemetry
-from wl_expcontroller.task import Family, Outcome
+from wl_xcon.cli import _clock
+from wl_xcon.link import Telemetry
+from wl_xcon.task import Family, Outcome
 
 #: `wl_preproc.contracts.protocol.SCHEMA_VERSION`, read from their source 2026-09-26.
 #: `tests/test_health.py` compares the two, so a bump on their side fails here first.

@@ -38,10 +38,10 @@ import time
 from dataclasses import dataclass
 from importlib import resources
 
-from wl_expcontroller import health as _health
-from wl_expcontroller.cli import _clock
-from wl_expcontroller.link import RECENT_OUTCOMES, Telemetry
-from wl_expcontroller.task import Family, Outcome
+from wl_xcon import health as _health
+from wl_xcon.cli import _clock
+from wl_xcon.link import RECENT_OUTCOMES, Telemetry
+from wl_xcon.task import Family, Outcome
 
 
 @dataclass(frozen=True, slots=True)
@@ -820,7 +820,7 @@ def fragments(frame: Telemetry | None, view: View) -> dict[str, str]:
 
 @dataclass(frozen=True, slots=True)
 class Font:
-    """One face the page uses: bundled at `wl_expcontroller/fonts/<directory>/<file>`
+    """One face the page uses: bundled at `wl_xcon/fonts/<directory>/<file>`
     and served by `wlx serve` at `/fonts/<file>`."""
 
     family: str
@@ -874,7 +874,7 @@ def font_bytes(font: Font) -> bytes:
     """A bundled font file, read as package data -- the same bytes from a checkout and
     from an installed wheel (`pyproject.toml`'s `package-data`)."""
     return (
-        resources.files("wl_expcontroller")
+        resources.files("wl_xcon")
         .joinpath("fonts")
         .joinpath(font.directory)
         .joinpath(font.file)

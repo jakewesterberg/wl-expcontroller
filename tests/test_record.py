@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from wl_expcontroller.record import REFUSAL_LOG_LIMIT, SessionRecord, welfare_note
+from wl_xcon.record import REFUSAL_LOG_LIMIT, SessionRecord, welfare_note
 
 
 def test_the_record_lands_where_wl_preproc_expects_it(tmp_path):
@@ -184,8 +184,8 @@ def test_a_simulated_session_writes_a_real_session_directory(tmp_path):
     """P2's exit condition. The simulator and the rig write the same record through
     the same code, which is what makes a simulated session evidence about a real one
     rather than a rehearsal of it."""
-    from wl_expcontroller.simulate import Subject, run_session
-    from wl_expcontroller.task import (
+    from wl_xcon.simulate import Subject, run_session
+    from wl_xcon.task import (
         After,
         Entered,
         On,
@@ -206,7 +206,7 @@ def test_a_simulated_session_writes_a_real_session_directory(tmp_path):
                 go=[
                     On(Entered("fix"), Outcome.CORRECT),
                     On(After(P_TIMEOUT := __import__(
-                        "wl_expcontroller.task", fromlist=["P"]
+                        "wl_xcon.task", fromlist=["P"]
                     ).P("timeout")), Outcome.NO_FIXATION),
                 ],
             ),
@@ -256,8 +256,8 @@ def test_the_refusal_log_limit_matches_the_in_memory_refusal_caps():
     They are not the same *rule*: the file keeps the oldest rows and the feed keeps
     the newest (`taskd`'s tests say why). It is the size that has to agree.
     """
-    from wl_expcontroller.link import REFUSAL_HISTORY
-    from wl_expcontroller.record import REFUSAL_LOG_LIMIT
+    from wl_xcon.link import REFUSAL_HISTORY
+    from wl_xcon.record import REFUSAL_LOG_LIMIT
 
     assert REFUSAL_LOG_LIMIT == REFUSAL_HISTORY
 

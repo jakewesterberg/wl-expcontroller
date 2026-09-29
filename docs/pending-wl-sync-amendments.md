@@ -18,7 +18,7 @@ all three (S3 §3).
 `wl_sync/session.py` mints `YYYY-MM-DD_NN` and its own docstring states the consumers:
 *"Everything downstream — the rig directory layout, the ELN, wl-preproc — consumes it."*
 `wl-preproc/contracts/paths.py` imports `SessionId` from this package and keys the whole session
-directory on it, and `wl-expcontroller` writes into `xcon/` beneath that directory.
+directory on it, and `wl-xcon` writes into `xcon/` beneath that directory.
 
 **But nothing offers the value to another host.** The date half is derivable; `_NN` is not. A
 task controller starting up has no way to know which session it is in.
@@ -30,7 +30,7 @@ task controller starting up has no way to know which session it is in.
 minting `_02`."* If a task PC assumed `_01`, it would be a **second authority on session
 identity** — right almost always, and silently wrong exactly when the day is unusual, which is
 when a lost recording hurts most. That is the same class of error S3 spent its whole length
-deleting from wl-expcontroller's own design.
+deleting from wl-xcon's own design.
 
 ## The ask
 
@@ -76,7 +76,7 @@ Because this package mints the identity, so whichever answer is right is a fact 
 `YYYY-MM-DD_NN`, not about anyone's table. And because the rig owner is the only person who
 knows whether two animals will ever work in one day.
 
-## What wl-expcontroller did meanwhile
+## What wl-xcon did meanwhile
 
 Adopted the interpretation that is correct under **either** resolution, so nothing here is
 blocked on an answer: outputs live under the sync box's session id, and **every record names its
@@ -112,7 +112,7 @@ finished.
 
 # Not an ask — three things we now depend on, recorded so a change here is visible
 
-None of these need to change. They are written down because `wl-expcontroller` now relies on
+None of these need to change. They are written down because `wl-xcon` now relies on
 them and `wlo dependents wl-sync` would not otherwise show it:
 
 1. **The sync box independently records every event word we strobe** (`W` records via PIO
@@ -121,5 +121,5 @@ them and `wlo dependents wl-sync` would not otherwise show it:
 2. **The barcode carries identity, not timing**, and one frame is guaranteed in any 2.0 s
    window. We never emit one and never derive time from one.
 3. **Cameras free-run and the box records their `ExposureActive` strobes** on GPIO 26/27. So
-   `wl-expcontroller` does not trigger cameras and does not set their rate — a role it might
+   `wl-xcon` does not trigger cameras and does not set their rate — a role it might
    otherwise have assumed.

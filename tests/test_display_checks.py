@@ -7,8 +7,8 @@ dynamically. Both, because a static check finds it without a subject and simulat
 finds it without the author having coupled anything.
 """
 
-from wl_expcontroller.check import check
-from wl_expcontroller.task import (
+from wl_xcon.check import check
+from wl_xcon.task import (
     REMEMBERED,
     After,
     Disc,

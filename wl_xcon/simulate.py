@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 
 from typing import TYPE_CHECKING
 
-from wl_expcontroller.run import Result, run_trial
-from wl_expcontroller.task import (
+from wl_xcon.run import Result, run_trial
+from wl_xcon.task import (
     Entered,
     expand_windows,
     Exited,
@@ -33,7 +33,7 @@ from wl_expcontroller.task import (
 )
 
 if TYPE_CHECKING:
-    from wl_expcontroller.record import SessionRecord
+    from wl_xcon.record import SessionRecord
 
 
 @dataclass

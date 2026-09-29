@@ -16,7 +16,7 @@ from dataclasses import replace
 import pytest
 
 from tasks.rig import RIG
-from wl_expcontroller.calibration import (
+from wl_xcon.calibration import (
     DIRECT_REGION_DEG,
     MIN_CONDITIONING,
     RAW_DEFINITION,
@@ -33,7 +33,7 @@ from wl_expcontroller.calibration import (
     n_terms,
     region,
 )
-from wl_expcontroller.geometry import Geometry, Housing
+from wl_xcon.geometry import Geometry, Housing
 
 GEOMETRY = Geometry.stereoscope(
     panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
@@ -507,7 +507,7 @@ def test_they_decline_a_file_claiming_a_different_raw_feature(tmp_path):
 def test_the_constellation_becomes_one_scheduler_condition_per_target():
     """Presenting the targets is ordinary block business -- no bespoke sequencer --
     so this asserts the translation rather than the sequencing."""
-    from wl_expcontroller.calibration import conditions
+    from wl_xcon.calibration import conditions
 
     built = conditions(GEOMETRY, window_deg=3.0, hold_s=0.15, timeout_s=2.0, repeats=4)
     targets = constellation(GEOMETRY)
@@ -528,7 +528,7 @@ def test_every_condition_supplies_every_parameter_the_task_declares():
     that refuses. Asserted against the task's own declarations so adding a parameter
     to the task without adding it here fails here."""
     from tasks.calibration import calibration as calibration_task
-    from wl_expcontroller.calibration import conditions
+    from wl_xcon.calibration import conditions
 
     declared = {param.name for param in calibration_task.params}
     for condition in conditions(GEOMETRY, window_deg=3.0, hold_s=0.15, timeout_s=2.0):

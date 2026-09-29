@@ -16,7 +16,7 @@ import random
 from collections import deque
 from dataclasses import dataclass, field
 
-from wl_expcontroller.task import Outcome
+from wl_xcon.task import Outcome
 
 class Counting:
     """Which outcomes pay a condition's debt. **Declared per block** (PI, 2026-08-31),

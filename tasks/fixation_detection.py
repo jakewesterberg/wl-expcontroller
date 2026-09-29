@@ -7,7 +7,7 @@ live-editable between trials and the console's widgets are generated from these
 declarations. A literal would be invisible to all of that.
 """
 
-from wl_expcontroller.task import (
+from wl_xcon.task import (
     After,
     Bounded,
     Mark,

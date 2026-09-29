@@ -1,4 +1,4 @@
-"""The core must never acquire a transport dependency (`wl_expcontroller/link.py`'s
+"""The core must never acquire a transport dependency (`wl_xcon/link.py`'s
 own docstring; CLAUDE.md's core/display split; S9a §5's argument, which holds
 identically for the console). A rig operator running `wlx run` from a terminal needs
 neither `zmq` nor `msgpack`, and this repository keeps a Python 3.13 CI leg that
@@ -58,13 +58,13 @@ def test_link_taskd_cli_health_serve_and_web_import_with_zmq_and_msgpack_unavail
     assert "BLOCKED: import msgpack raised" in result.stdout, result.stdout
     # ...and only then did the six modules under test import successfully, from
     # this worktree specifically (R9).
-    assert "PASS: wl_expcontroller.link imported" in result.stdout, result.stdout
-    assert "PASS: wl_expcontroller.taskd imported" in result.stdout, result.stdout
-    assert "PASS: wl_expcontroller.cli imported" in result.stdout, result.stdout
+    assert "PASS: wl_xcon.link imported" in result.stdout, result.stdout
+    assert "PASS: wl_xcon.taskd imported" in result.stdout, result.stdout
+    assert "PASS: wl_xcon.cli imported" in result.stdout, result.stdout
     # P4d-2b b1: the browser console imports no transport either.
-    assert "PASS: wl_expcontroller.health imported" in result.stdout, result.stdout
-    assert "PASS: wl_expcontroller.serve imported" in result.stdout, result.stdout
-    assert "PASS: wl_expcontroller.web imported" in result.stdout, result.stdout
+    assert "PASS: wl_xcon.health imported" in result.stdout, result.stdout
+    assert "PASS: wl_xcon.serve imported" in result.stdout, result.stdout
+    assert "PASS: wl_xcon.web imported" in result.stdout, result.stdout
     assert str(_REPO_ROOT) in result.stdout, (
         f"expected all six imports to resolve under {_REPO_ROOT}:\n{result.stdout}"
     )

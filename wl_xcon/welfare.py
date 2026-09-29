@@ -62,7 +62,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
 
-from wl_expcontroller.bounds import (
+from wl_xcon.bounds import (
     Bounds,
     Exceeded,
     Reconciliation,

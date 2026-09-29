@@ -56,7 +56,7 @@ def test_exemptions_carry_a_reason():
 
 
 def test_a_changed_module_selects_itself():
-    modules, _ = gate.select(["wl_expcontroller/calibration.py"])
+    modules, _ = gate.select(["wl_xcon/calibration.py"])
     assert modules == ["calibration"]
 
 
@@ -75,7 +75,7 @@ def test_a_test_file_with_no_module_of_that_name_selects_nothing():
 
 def test_changes_are_unioned():
     modules, _ = gate.select(
-        ["wl_expcontroller/eye.py", "tests/test_dio.py", "README.md"]
+        ["wl_xcon/eye.py", "tests/test_dio.py", "README.md"]
     )
     assert modules == ["dio", "eye"]
 
@@ -206,7 +206,7 @@ def test_a_shard_beyond_the_module_count_is_empty_in_list_order():
 
 def test_shard_groups_respects_given_counts_not_module_name_length():
     """Balance is by function count, not by how many modules land in a group --
-    passing counts directly (rather than reading `wl_expcontroller/*.py`) is what
+    passing counts directly (rather than reading `wl_xcon/*.py`) is what
     makes this provable without depending on the current state of the package."""
     counts = {"big": 10, "small1": 3, "small2": 3, "small3": 4}
     groups = gate.shard_groups(list(counts), 2, counts=counts)
@@ -245,7 +245,7 @@ def test_changed_only_does_not_escalate_on_a_global_change_and_says_so():
 
 
 def test_changed_only_still_selects_the_changed_module_when_nothing_global_moved():
-    modules, why = gate.select(["wl_expcontroller/gaze.py"], changed_only=True)
+    modules, why = gate.select(["wl_xcon/gaze.py"], changed_only=True)
     assert modules == ["gaze"]
 
 
@@ -282,7 +282,7 @@ def test_changed_only_still_sweeps_the_modules_a_push_changed_beside_a_shared_fi
     by the b2a plan's pre-flight). The directly changed module and its test file
     must still be swept, and the reason must still say what was not escalated."""
     modules, why = gate.select(
-        [shared, "wl_expcontroller/serve.py", "tests/test_gaze.py"], changed_only=True
+        [shared, "wl_xcon/serve.py", "tests/test_gaze.py"], changed_only=True
     )
     assert modules == ["gaze", "serve"]
     assert "does not escalate" in why
@@ -320,7 +320,7 @@ def test_shard_combined_with_changed_only_slices_only_the_smaller_selection():
     selection of two modules, sharded six ways, is mostly empty shards -- expected,
     and covered by `shard_groups`'s own emptiness tests."""
     modules, _ = gate.select(
-        ["wl_expcontroller/dio.py", "wl_expcontroller/eye.py"], changed_only=True
+        ["wl_xcon/dio.py", "wl_xcon/eye.py"], changed_only=True
     )
     assert modules == ["dio", "eye"]
     groups = gate.shard_groups(modules, 6)

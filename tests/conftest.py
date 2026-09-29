@@ -48,7 +48,7 @@ def zmq_cleanup():
     `ZmqLink`/`ZmqConsole` instances (`wlx run --link`'s end-to-end test) without this
     protection, which reintroduced the exact 300 s mutation hang the next paragraph
     describes, one commit after it was fixed: `tools/mutate.py --returns None
-    wl_expcontroller/link.py close` timed out again, this time from contexts
+    wl_xcon/link.py close` timed out again, this time from contexts
     `test_cli.py` left abandoned rather than `test_link.py`'s. Same fixture, same
     reasoning, just visible to every file in this directory instead of one.
 
@@ -58,7 +58,7 @@ def zmq_cleanup():
     neuters that too). Every test that used to clean up by calling `link.close()` or
     `with ZmqLink(...) as link:` left an abandoned `Context` behind under that
     mutation, because the call site still ran but the method did nothing. That is
-    what made `tools/mutate.py wl_expcontroller/link.py close` hang past its 300 s
+    what made `tools/mutate.py wl_xcon/link.py close` hang past its 300 s
     timeout. This paragraph used to blame pytest's own object graph, and to call
     the `weakref.finalize` safety net no help. **The actual mechanism was found on
     2026-09-27, and it was the net itself** (`link._release`'s docstring has it).

@@ -16,7 +16,7 @@ import os
 import pytest
 
 from _frames import ENDPOINT, frame
-from wl_expcontroller.health import (
+from wl_xcon.health import (
     HEALTH_SCHEMA,
     ago,
     expects_frames,

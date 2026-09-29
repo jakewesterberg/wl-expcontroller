@@ -25,15 +25,15 @@ import pytest
 # Autouse: every `ZmqLink`/`ZmqConsole` built here, `main()`'s own included, has its
 # context destroyed at teardown without `close()` (`tests/_zmq_release.py`).
 from _zmq_release import _every_zmq_context_released  # noqa: F401
-from wl_expcontroller.bounds import Exceeded
-from wl_expcontroller.cli import (
+from wl_xcon.bounds import Exceeded
+from wl_xcon.cli import (
     _RETURN_PROMPT,
     _hours_minutes,
     _wall_clock_time,
     main,
     render,
 )
-from wl_expcontroller.link import (
+from wl_xcon.link import (
     SCHEMA,
     Control,
     ParamRow,
@@ -96,7 +96,7 @@ def _a_session_that_cannot_finish_fails_instead_of_running_on(monkeypatch):
     `conftest.py` is untouched, so the mutation gate does not escalate to a full
     sweep for it.
     """
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     real_run, real_trial = taskd.Session.run, taskd.run_trial
     left: list = [None]
@@ -129,7 +129,7 @@ def test_a_task_with_a_blocking_finding_exits_one(tmp_path, capsys):
     to be able to refuse it without parsing prose."""
     bad = tmp_path / "bad_task.py"
     bad.write_text(
-        "from wl_expcontroller.task import After, On, Outcome, State, Trial\n"
+        "from wl_xcon.task import After, On, Outcome, State, Trial\n"
         "t = Trial(start='a', states=[\n"
         "    State('a', go=[On(After(1.0), Outcome.CORRECT)]),\n"
         "    State('orphan', go=[On(After(1.0), Outcome.CORRECT)]),\n"
@@ -168,7 +168,7 @@ def test_an_allocation_file_must_define_ALLOCATION(tmp_path):
     `PROVISIONAL` -- so two are visible and picking "the only one" would be picking
     arbitrarily."""
     bad = tmp_path / "alloc.py"
-    bad.write_text("from wl_expcontroller.codes import PROVISIONAL\n")
+    bad.write_text("from wl_xcon.codes import PROVISIONAL\n")
 
     with pytest.raises(SystemExit, match="must define ALLOCATION"):
         main(["check", GOOD, "--allocation", str(bad)])
@@ -364,7 +364,7 @@ def test_wlx_run_binds_the_mark_endpoint_when_link_names_three(tmp_path, monkeyp
             super().__init__(*args, **kwargs)
             built.append(self)
 
-    monkeypatch.setattr("wl_expcontroller.link.ZmqLink", _SpyLink)
+    monkeypatch.setattr("wl_xcon.link.ZmqLink", _SpyLink)
 
     for session_id, link in (
         ("2027-01-14_31", "tcp://127.0.0.1:0,tcp://127.0.0.1:0,tcp://127.0.0.1:0"),
@@ -601,7 +601,7 @@ def test_wlx_run_with_link_closes_it_when_the_session_ends(tmp_path, monkeypatch
             closed.append(True)
             super().close()
 
-    monkeypatch.setattr("wl_expcontroller.link.ZmqLink", _SpyLink)
+    monkeypatch.setattr("wl_xcon.link.ZmqLink", _SpyLink)
 
     exit_code = main(
         [
@@ -1171,7 +1171,7 @@ def test_console_with_no_write_needs_no_actor(monkeypatch):
         def receive(self) -> None:
             raise TimeoutError("stub console: nothing to receive")
 
-    monkeypatch.setattr("wl_expcontroller.link.ZmqConsole", _StubConsole)
+    monkeypatch.setattr("wl_xcon.link.ZmqConsole", _StubConsole)
 
     code = main(["console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2"])
 
@@ -1250,7 +1250,7 @@ def test_console_reports_an_interrupted_watch_as_interrupted(monkeypatch, capsys
         def receive(self) -> None:
             raise KeyboardInterrupt
 
-    monkeypatch.setattr("wl_expcontroller.link.ZmqConsole", _StubConsole)
+    monkeypatch.setattr("wl_xcon.link.ZmqConsole", _StubConsole)
 
     code = _main_uninterrupted(
         ["console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2"]
@@ -1321,7 +1321,7 @@ def test_console_reports_a_second_commands_timeout_cleanly(monkeypatch, capsys):
         def receive(self) -> None:
             raise AssertionError("the receive loop must never be reached here")
 
-    monkeypatch.setattr("wl_expcontroller.link.ZmqConsole", _StubConsole)
+    monkeypatch.setattr("wl_xcon.link.ZmqConsole", _StubConsole)
 
     code = main(
         [
@@ -1744,7 +1744,7 @@ shorter than the thirty-minute confirmation threshold, so the band between them 
 empty there. This is a test fixture and never leaves the suite.
 """
 
-from wl_expcontroller.bounds import Bounds, Ceiling, Floor
+from wl_xcon.bounds import Bounds, Ceiling, Floor
 
 BOUNDS = Bounds(
     subject="REFERENCE",
@@ -2281,7 +2281,7 @@ def test_a_linked_headless_run_never_calls_await_return(tmp_path, monkeypatch):
     def _tracked(self, give_up, heartbeat=1.0):
         calls.append(True)
 
-    monkeypatch.setattr("wl_expcontroller.taskd.Session.await_return", _tracked)
+    monkeypatch.setattr("wl_xcon.taskd.Session.await_return", _tracked)
 
     exit_code = main(
         [
@@ -2486,7 +2486,7 @@ def test_ctrl_c_in_the_loop_still_takes_the_return_then_says_why_it_stopped(
     head, left fixed by the interrupt, is released as the post-loop phase begins --
     so the return prompt comes first; then the summary names the stop, and `wlx run`
     exits 130 as the return prompt's own Ctrl-C does."""
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     real, calls = taskd.run_trial, [0]
 
@@ -2552,7 +2552,7 @@ def test_a_second_ctrl_c_during_the_post_loop_wait_is_recorded_and_exits_130(
     `join(0.01)` patch below -- so the wait loop's first check is guaranteed to find
     `phase == "running"` and a live thread, call `join(0.01)`, and hit the patch,
     whatever the host's scheduling looks like."""
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     real_run_trial, calls = taskd.run_trial, [0]
 
@@ -2614,7 +2614,7 @@ def test_a_fault_during_the_loop_prints_the_stop_reason_before_the_return_prompt
     fault, `welfare.deliver` has already counted the failed delivery as `commanded`,
     so a supplement figure printed here would count a delivery that never
     happened."""
-    from wl_expcontroller import taskd
+    from wl_xcon import taskd
 
     real_run_trial, calls = taskd.run_trial, [0]
 
@@ -2651,7 +2651,7 @@ def test_a_fault_during_the_loop_prints_the_stop_reason_before_the_return_prompt
 def _card_fails_at_head_fixation(monkeypatch, raising: BaseException) -> None:
     """The simulated card raises on its first strobe, which in `wlx run` is
     `HEAD_FIXED`: the departure is already marked, and the loop has not begun."""
-    from wl_expcontroller import dio
+    from wl_xcon import dio
 
     def emit(self, code: int) -> None:
         raise raising
@@ -2708,7 +2708,7 @@ def test_a_task_refused_by_its_checks_records_that_the_session_did_not_start(
     departure is marked, and the return row says why the interval stays open."""
     bad = tmp_path / "bad_task.py"
     bad.write_text(
-        "from wl_expcontroller.task import After, On, Outcome, State, Trial\n"
+        "from wl_xcon.task import After, On, Outcome, State, Trial\n"
         "t = Trial(start='a', states=[\n"
         "    State('a', go=[On(After(1.0), Outcome.CORRECT)]),\n"
         "    State('orphan', go=[On(After(1.0), Outcome.CORRECT)]),\n"
@@ -2829,7 +2829,7 @@ def test_a_failure_in_the_post_loop_phase_is_raised_not_swallowed(tmp_path, monk
     def _boom(self, give_up, heartbeat=1.0):
         raise RuntimeError("publish failed")
 
-    monkeypatch.setattr("wl_expcontroller.taskd.Session.await_return", _boom)
+    monkeypatch.setattr("wl_xcon.taskd.Session.await_return", _boom)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "now")
 

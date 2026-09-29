@@ -12,7 +12,7 @@ at 8am.
 
 from __future__ import annotations
 
-from wl_expcontroller.task import (
+from wl_xcon.task import (
     arrays_of,
     After,
     Custom,

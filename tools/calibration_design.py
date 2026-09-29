@@ -66,8 +66,8 @@ except ImportError as exc:  # pragma: no cover - operator-facing
     ) from exc
 
 from tasks.rig import RIG  # noqa: E402
-from wl_expcontroller.calibration import DIRECT_REGION_DEG, REACH  # noqa: E402
-from wl_expcontroller.geometry import Geometry  # noqa: E402
+from wl_xcon.calibration import DIRECT_REGION_DEG, REACH  # noqa: E402
+from wl_xcon.geometry import Geometry  # noqa: E402
 
 #: The geometry the 2026-09-05 record was measured on: S0's 31.5-inch 16:9 panel (an
 #: 80.01 cm diagonal) at 57 cm, as S0 described the rig then. Each eye sees half the

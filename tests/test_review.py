@@ -8,8 +8,8 @@ deliverable, not a convenience.
 
 from __future__ import annotations
 
-from wl_expcontroller.review import render
-from wl_expcontroller.task import (
+from wl_xcon.review import render
+from wl_xcon.task import (
     After,
     Mark,
     Hold,

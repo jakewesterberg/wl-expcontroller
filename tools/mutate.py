@@ -14,8 +14,8 @@ direction reports a **false pass** -- the mutation never actually ran, and a vac
 test is pronounced sound. That is the failure this exists to prevent, so it cannot
 depend on anyone remembering to clear a cache.
 
-    python3 tools/mutate.py wl_expcontroller/check.py _unbounded_waits
-    python3 tools/mutate.py --all wl_expcontroller/check.py
+    python3 tools/mutate.py wl_xcon/check.py _unbounded_waits
+    python3 tools/mutate.py --all wl_xcon/check.py
 """
 
 from __future__ import annotations

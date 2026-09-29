@@ -91,7 +91,7 @@ def _standing_outcomes() -> dict[object, int]:
     the range this project allocates. Pushing it into their range would be
     convenient for one analysis and wrong about who owns what.
     """
-    from wl_expcontroller.task import Outcome
+    from wl_xcon.task import Outcome
 
     return {
         Outcome.CORRECT: _TRIAL_CORRECT,

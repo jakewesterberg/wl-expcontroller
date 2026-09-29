@@ -599,7 +599,7 @@ with the failure it was written against and where the argument lives.
 > are checked by hand, so they are kept to the two that the table's own length states.
 
 The first column is **the literal head of the message, greppable** — `grep -rn "<phrase>"
-wl_expcontroller/` lands on the `raise`. Interpolated values are elided.
+wl_xcon/` lands on the `raise`. Interpolated values are elided.
 
 | Refusal (greppable) | Written against | Argument |
 |---|---|---|
@@ -687,8 +687,8 @@ gap, for a task-layer session. Read from source the same day:
   `Reward`. **`Reward` means fluid**: it names an entry in the bounded config and reaches
   `welfare.Rig.reward` → `Welfare.deliver` → the pump.
 - S1 §2.3 lists `Token(+1 / -1)` and `SetPersistent(...)` in the vocabulary. **Neither is
-  implemented**, and no cross-trial persistent state exists anywhere in `wl_expcontroller` —
-  `grep -rn "Token\|SetPersistent\|persistent" wl_expcontroller/` returns nothing.
+  implemented**, and no cross-trial persistent state exists anywhere in `wl_xcon` —
+  `grep -rn "Token\|SetPersistent\|persistent" wl_xcon/` returns nothing.
 - So a trial that has a reward period and pays a **token** rather than fluid (§5.2c, the PI's
   own description) cannot be expressed. The paragraph above describes a conversion bound for a
   mechanism that has no representation to bound.

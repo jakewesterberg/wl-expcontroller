@@ -5,12 +5,12 @@ from __future__ import annotations
 import dataclasses
 import math
 
-from wl_expcontroller.codes import PROVISIONAL, Allocation
-from wl_expcontroller.components import Registry
-from wl_expcontroller.findings import Finding
-from wl_expcontroller.geometry import VIEWS, Geometry
-from wl_expcontroller.photometry import DKL, Calibration, Color, unrealizable, xyY
-from wl_expcontroller.task import (
+from wl_xcon.codes import PROVISIONAL, Allocation
+from wl_xcon.components import Registry
+from wl_xcon.findings import Finding
+from wl_xcon.geometry import VIEWS, Geometry
+from wl_xcon.photometry import DKL, Calibration, Color, unrealizable, xyY
+from wl_xcon.task import (
     RDS,
     After,
     Array,
@@ -614,7 +614,7 @@ def _appearances(trial: Trial):
     is as real as one written into a `Show`, and checking only the latter would skip
     exactly the stimuli this vocabulary was extended to express.
     """
-    from wl_expcontroller.task import Appearance, Show, Update
+    from wl_xcon.task import Appearance, Show, Update
 
     seen = []
     for _, action in actions_of(trial):

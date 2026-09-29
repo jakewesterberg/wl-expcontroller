@@ -10,9 +10,9 @@ photometry, and a claim nobody measured is a claim that is usually false.
 
 import pytest
 
-from wl_expcontroller.check import check
-from wl_expcontroller.photometry import DKL, Calibration, xyY
-from wl_expcontroller.task import (
+from wl_xcon.check import check
+from wl_xcon.photometry import DKL, Calibration, xyY
+from wl_xcon.task import (
     REMEMBERED,
     After,
     Disc,

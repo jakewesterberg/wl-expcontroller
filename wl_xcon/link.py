@@ -13,7 +13,7 @@ current with the code rather than pointing at a module that does not exist.
 
 **Not welfare-critical, and it must not become one.** CLAUDE.md requires human review
 before merge for welfare-critical code; `docs/design/architecture.md` names
-`wl_expcontroller/bounds.py` and `wl_expcontroller/welfare.py` as the two such
+`wl_xcon/bounds.py` and `wl_xcon/welfare.py` as the two such
 modules, "and nothing else." This file carries no ceiling, no clock and no pump, and
 is deliberately not a third. It reads
 `welfare`; it never decides anything on its own about what `welfare` reports -- a
@@ -44,7 +44,7 @@ import re
 from dataclasses import dataclass, field
 from typing import ClassVar, Protocol
 
-from wl_expcontroller.welfare import DAILY_FLUID, OUT_OF_CAGE
+from wl_xcon.welfare import DAILY_FLUID, OUT_OF_CAGE
 
 #: Bumped whenever a field changes meaning or disappears. ADR-0003: "schema-versioned
 #: messages ... version field from day one". A console reading an older schema than it
@@ -1874,7 +1874,7 @@ class ZmqLink:
         `tests/test_cli.py`'s first end-to-end `--link` test built its own
         `ZmqLink`/`ZmqConsole` instances without `test_link.py`'s `zmq_cleanup`
         fixture, module-local at the time, and `tools/mutate.py --returns None
-        wl_expcontroller/link.py close` hung past 300 s again. That was fixed by
+        wl_xcon/link.py close` hung past 300 s again. That was fixed by
         moving `zmq_cleanup` to `conftest.py`, and, for the one `ZmqLink` the test
         has no handle to register -- the one `main()` builds and closes on a
         background thread -- by an explicit `gc.collect()` after that thread

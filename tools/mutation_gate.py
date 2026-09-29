@@ -7,7 +7,7 @@ This selects the subset a change can actually have affected, so a push pays for 
 it touched. **The full sweep still runs nightly** (`.github/workflows/ci.yml`), and
 that is not decoration: see "What this can miss", below.
 
-**A new module cannot silently escape the gate.** Every file in `wl_expcontroller/`
+**A new module cannot silently escape the gate.** Every file in `wl_xcon/`
 must appear in `RETURNS` or in `EXEMPT` with a reason, and this script fails if one
 does not. That is the actual hazard here -- `findings.py` was added earlier today and
 was never added to the workflow's hand-maintained module list, so it would have gone
@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = "wl_expcontroller"
+PACKAGE = "wl_xcon"
 
 #: Module -> what a neutered body returns, which decides how sharp the answer is.
 #: `[]` for modules whose functions return lists that callers concatenate: it fails
@@ -156,7 +156,7 @@ def select(changed: list[str], *, changed_only: bool = False) -> tuple[list[str]
             if stem in RETURNS:
                 chosen.add(stem)
         elif path.startswith("tests/test_") and path.endswith(".py"):
-            # `tests/test_gaze.py` covers `wl_expcontroller/gaze.py`. A test file with
+            # `tests/test_gaze.py` covers `wl_xcon/gaze.py`. A test file with
             # no module of that name -- `test_reference_tasks.py` -- selects nothing,
             # and the nightly is what covers the gap that leaves.
             stem = Path(path).stem[len("test_") :]
@@ -168,7 +168,7 @@ def select(changed: list[str], *, changed_only: bool = False) -> tuple[list[str]
 
 
 def _function_count(module: str) -> int:
-    """Distinct function names in `wl_expcontroller/<module>.py`, ast-counted.
+    """Distinct function names in `wl_xcon/<module>.py`, ast-counted.
 
     The same rule `tools/mutate.py --all` uses to build its target list -- every
     `def`, module-level or a method, each name counted once even when several
@@ -199,7 +199,7 @@ def shard_groups(
     Counted per module (`_function_count`), not by how many modules land in a
     group: `serve.py` alone has 38 functions to `components.py`'s 1, so splitting
     by module count would hand one shard many times another's work. `counts`, when
-    given, is used instead of reading `wl_expcontroller/*.py` -- which is what lets
+    given, is used instead of reading `wl_xcon/*.py` -- which is what lets
     a test prove the balancing without depending on the package's current shape.
 
     Greedy, least-loaded first: process modules in a fixed order (function count

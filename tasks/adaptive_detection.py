@@ -12,7 +12,7 @@ between trials, where it always belonged.
 
 from dataclasses import dataclass, field
 
-from wl_expcontroller.task import (
+from wl_xcon.task import (
     After,
     Bounded,
     Mark,

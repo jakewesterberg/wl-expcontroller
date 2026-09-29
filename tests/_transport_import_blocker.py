@@ -9,10 +9,10 @@ test suite reaches any single test, `tests/test_link.py` has almost certainly al
 imported real `zmq`/`msgpack` (its `ZmqLink`/`ZmqConsole` tests need them), so a
 blocker installed in that same process would protect nothing. Only a fresh
 interpreter, with the blocker installed before either name is first imported, proves
-the property this file exists to prove: that `wl_expcontroller.link`,
-`wl_expcontroller.taskd`, and (since Task 6's fix round 1 added the module-level
-`from wl_expcontroller import link as _link` that `wlx console`/`wlx run --link` use)
-`wl_expcontroller.cli` do not require a transport dependency to import.
+the property this file exists to prove: that `wl_xcon.link`,
+`wl_xcon.taskd`, and (since Task 6's fix round 1 added the module-level
+`from wl_xcon import link as _link` that `wlx console`/`wlx run --link` use)
+`wl_xcon.cli` do not require a transport dependency to import.
 
 **Why `find_spec`, never `find_module`.** Task 1 of this slice originally shipped a
 verification using a `sys.meta_path` finder that defined only `find_module`. Task 1's
@@ -33,7 +33,7 @@ from pathlib import Path
 
 # This worktree's own source, ahead of anything else on sys.path. R9 (see
 # .superpowers/sdd/2026-09-19-p4d1-console-link/progress.md): the shared conda base
-# env used to run this suite holds an editable install of wl_expcontroller pointing at
+# env used to run this suite holds an editable install of wl_xcon pointing at
 # the MAIN checkout, not this worktree, so a subprocess given no explicit path would
 # silently prove this property of the wrong tree. Computed relative to this file
 # rather than hard-coded, so the check is correct regardless of where this worktree
@@ -78,22 +78,22 @@ if _failed_to_block:
     )
     sys.exit(1)
 
-import wl_expcontroller.link as _link  # noqa: E402
-import wl_expcontroller.taskd as _taskd  # noqa: E402
-# Task 6's fix round 1: `cli.py` now does `from wl_expcontroller import link as
+import wl_xcon.link as _link  # noqa: E402
+import wl_xcon.taskd as _taskd  # noqa: E402
+# Task 6's fix round 1: `cli.py` now does `from wl_xcon import link as
 # _link` at module level (`wlx console`, `wlx run --link` need `link.Telemetry`/
 # `ZmqLink`/etc. by name). `wlx run` with no `--link` is exactly "a rig operator
 # running wlx run from a terminal" this module's own docstring names -- if that
 # import ever stopped being lazy inside `link.py` itself, this is the file that
 # would first drag `zmq`/`msgpack` in behind it, and this check would miss that
 # regression entirely if `cli` were never added here.
-import wl_expcontroller.cli as _cli  # noqa: E402
+import wl_xcon.cli as _cli  # noqa: E402
 # P4d-2b b1: the browser console's three modules. `serve` reaches `zmq` only through
 # `link.ZmqConsole`, inside its telemetry thread, so importing it -- or `web` and
 # `health`, which it renders with -- must acquire no transport.
-import wl_expcontroller.health as _health  # noqa: E402
-import wl_expcontroller.serve as _serve  # noqa: E402
-import wl_expcontroller.web as _web  # noqa: E402
+import wl_xcon.health as _health  # noqa: E402
+import wl_xcon.serve as _serve  # noqa: E402
+import wl_xcon.web as _web  # noqa: E402
 
 # Not just "it imported" -- imported from THIS worktree, not a stale editable-install
 # target (R9 again). A path from outside _REPO_ROOT would mean this whole script
@@ -111,12 +111,12 @@ for _name, _mod in (
 ):
     _resolved = Path(_mod.__file__).resolve()
     if not _resolved.is_relative_to(_REPO_ROOT):
-        print(f"ABORT: wl_expcontroller.{_name} imported from outside this worktree: {_resolved}")
+        print(f"ABORT: wl_xcon.{_name} imported from outside this worktree: {_resolved}")
         sys.exit(1)
 
-print(f"PASS: wl_expcontroller.link imported ({_link.__file__})")
-print(f"PASS: wl_expcontroller.taskd imported ({_taskd.__file__})")
-print(f"PASS: wl_expcontroller.cli imported ({_cli.__file__})")
-print(f"PASS: wl_expcontroller.health imported ({_health.__file__})")
-print(f"PASS: wl_expcontroller.serve imported ({_serve.__file__})")
-print(f"PASS: wl_expcontroller.web imported ({_web.__file__})")
+print(f"PASS: wl_xcon.link imported ({_link.__file__})")
+print(f"PASS: wl_xcon.taskd imported ({_taskd.__file__})")
+print(f"PASS: wl_xcon.cli imported ({_cli.__file__})")
+print(f"PASS: wl_xcon.health imported ({_health.__file__})")
+print(f"PASS: wl_xcon.serve imported ({_serve.__file__})")
+print(f"PASS: wl_xcon.web imported ({_web.__file__})")

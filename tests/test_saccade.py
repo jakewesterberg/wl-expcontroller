@@ -18,7 +18,7 @@ import random
 
 import pytest
 
-from wl_expcontroller.saccade import (
+from wl_xcon.saccade import (
     DEFAULT_LAMBDA,
     DEFAULT_MIN_DURATION_SAMPLES,
     VERSION,
@@ -157,7 +157,7 @@ def test_a_saccade_whose_window_touched_a_gap_is_flagged_not_dropped():
 
 def test_the_gap_ceiling_matches_the_trackers_staleness_by_default():
     """Two answers to 'is this still about the same stretch of time' would drift."""
-    from wl_expcontroller.eye import Tracker
+    from wl_xcon.eye import Tracker
 
     assert Params().max_gap_s == Tracker.staleness
 

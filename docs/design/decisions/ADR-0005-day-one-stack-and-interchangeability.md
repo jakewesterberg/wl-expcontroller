@@ -20,7 +20,7 @@ it names a controller. The lab opens January 2027 (`wl-preproc/docs/CHECKPOINT.m
 
 ## Decision
 
-1. **wl-expcontroller is the day-one stack.** MonkeyLogic is not deployed as the working
+1. **wl-xcon is the day-one stack.** MonkeyLogic is not deployed as the working
    controller. v1 must reach the training ladder plus a first recording task, 2D and
    monocular.
 2. **Interchangeability with MonkeyLogic is maintained at the rig-contract and data layer
@@ -28,7 +28,7 @@ it names a controller. The lab opens January 2027 (`wl-preproc/docs/CHECKPOINT.m
    conventions and event-code vocabulary are controller-agnostic and owned by `wl-sync` and
    `wl-exptasks`, so either controller can drive the same rig and downstream consumers cannot
    tell which ran.
-3. **The task PC dual-boots** — a supported Linux for wl-expcontroller, Windows for
+3. **The task PC dual-boots** — a supported Linux for wl-xcon, Windows for
    MonkeyLogic and MATLAB — sharing one NI PCIe-6343 and one set of MDR68 cables.
 4. **No shared task language, and no maintained MonkeyLogic task twins.** The swap is
    insurance, verified once (spec map S12), not a parallel development effort.

@@ -1,4 +1,4 @@
-# ADR-0001: Scope and process for wl-expcontroller
+# ADR-0001: Scope and process for wl-xcon
 
 - Status: Accepted; decision 3 superseded by ADR-0005 (2026-08-31)
 - Date: 2026-08-30
@@ -20,7 +20,7 @@ is the main risk (docs/pitfalls.md).
    ADR-0005.** The bridge assumed a MonkeyLogic task library that does not exist
    (`wl-exptasks` holds no code and its own manifest states the behavioural stack is
    unchosen), so switching to it would have meant writing that library from scratch
-   under pressure. wl-expcontroller is the day-one stack; see ADR-0005 for the
+   under pressure. wl-xcon is the day-one stack; see ADR-0005 for the
    replacement commitment and pitfalls P12 for the replacement mitigation.
 
 ## Alternatives considered

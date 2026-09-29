@@ -9,8 +9,8 @@ holds it in `hold_fix`, which is only correct if a `Show` persists. Found by rev
 
 import pytest
 
-from wl_expcontroller.run import Quiet, Scripted, run_trial
-from wl_expcontroller.task import (
+from wl_xcon.run import Quiet, Scripted, run_trial
+from wl_xcon.task import (
     After,
     Disc,
     Entered,
