@@ -90,12 +90,18 @@ def _load_bounds(path: Path):
 
 
 def _load_named(path: Path, name: str) -> object:
-    """Import a settings file and return what it defines as `name`, or `None`."""
+    """Import a settings file and return what it defines as `name`, or `None`. A
+    settings object refuses bad values when it is built, which happens inside the
+    file, so a `ValueError` from running it is said as a refusal sentence rather than
+    left as a traceback."""
     spec = importlib.util.spec_from_file_location(path.stem, path)
     if spec is None or spec.loader is None:
         raise SystemExit(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except ValueError as refused:
+        raise SystemExit(f"refused: {path}: {refused}") from refused
     return vars(module).get(name)
 
 

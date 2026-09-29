@@ -167,6 +167,40 @@ def _either_task(tmp_path, reach: float) -> str:
     return str(path)
 
 
+def _bad_settings(tmp_path) -> Path:
+    """A settings file whose object refuses its own value as it is built."""
+    bad = tmp_path / "zero.py"
+    bad.write_text(
+        "from wl_xcon.geometry import SubjectSettings\n"
+        "SETTINGS = SubjectSettings(subject='REFERENCE', half_ipd_cm=0.0)\n",
+        encoding="utf-8",
+    )
+    return bad
+
+
+def test_wlx_run_says_a_settings_file_that_refuses_itself_in_a_sentence(tmp_path):
+    """A settings object refuses bad values as the file builds it: that is a refusal
+    sentence, not a traceback, and nothing is recorded."""
+    argv = _run_args(tmp_path, "--out-of-cage-at", _hhmm(), "--subject-settings", str(_bad_settings(tmp_path)))
+    argv[argv.index("direct")] = "stereoscope"
+
+    with pytest.raises(SystemExit) as refused:
+        main(argv)
+
+    assert str(refused.value).startswith("refused:")
+    assert "not a half-IPD" in str(refused.value)
+    assert not (tmp_path / "2027-01-14_01").exists()
+
+
+def test_wlx_check_says_a_settings_file_that_refuses_itself_in_a_sentence(tmp_path):
+    with pytest.raises(SystemExit) as refused:
+        main(["check", GOOD, "--rig", RIG_FILE, "--view", "stereoscope",
+              "--subject-settings", str(_bad_settings(tmp_path))])
+
+    assert str(refused.value).startswith("refused:")
+    assert "not a half-IPD" in str(refused.value)
+
+
 def test_wlx_check_needs_the_rigs_settings(capsys):
     """Check 8 holds a task to the field the rig shows. A check with no field is one
     that did not run, so `--rig` is required rather than defaulted."""
