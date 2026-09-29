@@ -698,6 +698,41 @@ tests, each through the page's endpoints as well as the service's commands:
 - every refusal of the departure and the return, through the page exactly as through the
   terminal.
 
+### 6.6 Decided by the b3a-1 plan (2026-09-29), for the PI's review with §6.4
+
+`docs/superpowers/plans/2026-09-29-p4d2b-b3a1-session-service.md` decided what this section
+left open; the welfare ones are in §6.4's summary.
+- **End session releases the head, then takes the return** (plan decision 6): the release is
+  recorded when End session is pressed, so it is pressed as the animal leaves the chair; the
+  return follows in the same command or a later one. A return typed earlier than the release
+  is refused by `welfare`'s existing cross-check; `now` is always accepted.
+- **`runs.jsonl` has two rows per run**, `start` and `end`, joined by `run` (decision 4), so a
+  run's start and its acknowledgements are on disk before its first trial.
+- **Stranded** means a `departure` row with no `returned` after it, which includes `wlx run`'s
+  `return not recorded` sessions and a record with a torn line (decision 10).
+- **`wlx taskd` needs an allocation carrying `HEAD_FIXED`, `HEAD_RELEASED`, `PARAM_CHANGED`,
+  `RUN_START` and `RUN_END`** (decision 12), where §6.1 listed `--allocation` as optional.
+- **The idle frame is its own shape** on the same socket and schema (decision 8), and
+  **pre-flight adds a starting-values item** (decision 13); `RUN_END` is strobed only for a
+  run that ended by design (decision 5).
+
+And by the plan's review, while it was built (2026-09-29), each in `wl_xcon/service.py` or
+`wl_xcon/preflight.py`:
+- **A confirm or an amend is taken only as the answer to a question the service posed**
+  (`service._unasked`): for that mark, that session and the instant it asked about, and for
+  a departure the animal, deployment and setup of the open it asked about. A far mark is
+  therefore always two requests, the first answered by the question on the frame; the
+  question stays until it is answered or replaced, so a refused answer can be corrected.
+- **A session id, an animal, a task, and a stranded record's animal are each one folder
+  name** (`service._folder_name`, decision 19 extended): a stranded record whose animal is
+  not one is refused, its `bounds.py` never loaded, until the record is repaired by hand.
+- **The pump calibration is an acknowledgeable unknown only while the pump is the simulator
+  or absent** (`preflight.unmeasured`); any other pump fails the item, which is S9a §10's
+  dated dependency as a refusal rather than a reminder.
+- **An End refused before anything is marked stops no run** (`Service._unended`): one naming
+  another session, or confirming a return nobody was asked about, is refused during a run
+  exactly as between runs.
+
 ## 7. Not in this slice
 
 - Plots (accuracy over time, RT distribution, accuracy by position) — their own slice, with

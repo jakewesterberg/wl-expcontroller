@@ -514,6 +514,9 @@ tracker*, only *is it healthy* — which is a real three-state question.
   record**: which checks were unknown, and who accepted them.
 - **pass** → proceeds.
 
+Built in P4d-2b b3a (`wl_xcon/preflight.py`'s `gate`), for runs started from `wlx taskd`;
+`wlx run` takes no acknowledgement and records that none was taken.
+
 The failure mode this is shaped against is not proceeding on an unknown. It is **a gate
 that cries wolf and gets clicked through**, because a gate people route around protects
 nothing. Refusing only on evidence of a problem, and recording acceptance where evidence
@@ -531,7 +534,9 @@ is measured (`docs/CHECKPOINT.md`, "Open measurements"). An unmeasured millilitr
 conversion therefore cannot reach an animal whatever preflight allows. **If anyone writes
 that driver, this rule must be revisited before it ships** — at that point an
 acknowledgeable unknown would mean a per-delivery ceiling enforced against a number
-nobody measured, while appearing to work.
+nobody measured, while appearing to work. Since P4d-2b b3a the code holds this too:
+`preflight.unmeasured` makes the calibration unknown only while the pump is the simulator or
+absent, and fails it for any other pump.
 
 ---
 

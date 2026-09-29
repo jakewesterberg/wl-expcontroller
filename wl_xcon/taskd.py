@@ -11,11 +11,12 @@ a single unnamed block rather than as a second loop, because a second loop is a
 second place for the ceilings to be checked -- and a limit enforced in one of two
 paths is a limit that depends on which path a session took.
 
-**Wired, not yet reachable.** `Session.link` drains commands into `Session.set` and
-publishes telemetry, once per trial boundary and never per frame (below) -- but
-nothing yet puts a second process on the other end of it. The ZMQ transport and `wlx
-console` are later tasks in this same work package. There is also no preflight yet
-beyond the two refusals below.
+**Reached over the link.** `Session.link` drains commands into `Session.set` and
+publishes telemetry, once per trial boundary and never per frame (below); `wlx run
+--link` and `wlx taskd` bind it to ZMQ (`link.ZmqLink`), and `wlx console` and `wlx
+serve` are the other end. **A run `wlx taskd` starts is checked before it starts**
+(`preflight.py`, under S9a §10's rule); a `wlx run` run is not, and the two refusals
+below stand before every run of either.
 
 **Two refusals stand between a session and its first trial**, and both are the shape
 this file exists to hold. A task with a blocking finding does not run, because a
