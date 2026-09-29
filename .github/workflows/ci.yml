@@ -105,8 +105,21 @@ jobs:
     # list this replaced had silently omitted `bounds` (the welfare-critical module),
     # `scheduler` and `findings` while CHECKPOINT described "a mutation gate over
     # every module".
+    #
+    # **Sharded six ways since 2026-09-29** (XC-141), the same `--shard K/6` split the
+    # nightly uses, applied to whatever `--changed-only` selected. A merge push diffs
+    # against the previous `main`, so a long branch's whole range is its changed set.
+    # b2a's merge (run `36497082927`) selected eight modules and ran into the
+    # 360-minute limit in one job, and was cancelled with 200 caught and none
+    # survived, after the branch's sharded full sweep had already passed on the
+    # same code. A small selection leaves most shards empty, and an empty shard
+    # passes at once (`mutation gate: 0 module(s)`).
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,7 +135,7 @@ jobs:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
       - run: pip install -e ".[dev,contract,console]"
-      - name: Mutation gate (changed modules only)
+      - name: Mutation gate (changed modules only, shard ${{ matrix.shard }}/6)
         # WLX_REQUIRE_PREPROC applies to every sweep now, not just the two that named
         # it: each sweep runs the whole suite as its baseline, and a baseline with the
         # contract tests skipped is a baseline that proves less than it appears to.
@@ -142,7 +155,7 @@ jobs:
               base="origin/main"
             fi
           fi
-          python tools/mutation_gate.py --changed-only --base "$base"
+          python tools/mutation_gate.py --changed-only --base "$base" --shard ${{ matrix.shard }}/6
 
   mutation-full:
     # The full sweep -- every module in RETURNS, nothing left out by a diff -- split

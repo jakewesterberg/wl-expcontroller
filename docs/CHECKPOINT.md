@@ -335,7 +335,9 @@ figure was one low. In order:
 approved its four welfare items ("Approve all four") and the mark check's measured cost
 ("Ship, verify on rig": V12 is XC-139). It was fast-forwarded once CI and the full sweep on
 the rebased branch read green; "How it merged" below has both. **Everything open is in
-`docs/backlog.md`** (next free ID XC-141). Next, in order:
+`docs/backlog.md`** (next free ID XC-142). **First, read `main`'s CI** on `31568ad` (the
+end-to-end sessions paced) and on the commit that shards the push gate (XC-141): every
+shard's log, not the run's badge. Then read the 2026-09-29 nightly the same way. Next, in order:
 1. **XC-053:** the Python package `wl_expcontroller` → `wl_xcon`, with current code and docs.
    This is the PI's split: names first, code after b2a.
 2. **XC-109:** the local folder `~/GitHub/wl-expcontroller` → `~/GitHub/wl-xcon`. Move the
