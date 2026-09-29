@@ -78,6 +78,7 @@ fluid and session-duration accounting (a fluid **floor**, an out-of-cage **ceili
 token-to-fluid conversion, stimulation bounds and gating, and the bounded-config loader.
 
 **In code, that is `wl_xcon/bounds.py`, `wl_xcon/welfare.py` and `wl_xcon/marks.py`, two
+functions in `wl_xcon/preflight.py` (`out_of_cage`, `gate`), two
 functions in `wl_xcon/cli.py` plus one line inside a third — and, since P4d-2b b2a, five
 functions in `wl_xcon/taskd.py` plus two parts of a sixth (`Session._command`'s `held`
 pass-through and one `except` line), and one function in `wl_xcon/link.py`.** The
@@ -95,11 +96,14 @@ so the parsing and the confirmation are part of the limit. **The two `cli` funct
 which answer a person gave, and the name and reason an amendment carries — and **the
 line is `main`'s `_marks.depart(session, departure)`**, which marks the departure as
 `marks` decided it, `confirmed=` included, which `welfare._refuse_unconfirmed` trusts
-its caller on. A change to any of these, or to the `taskd` and `link` functions and the
-two parts of `Session._command` below, is a change requiring review; a change elsewhere
-is not.
+its caller on. A change to any of these, or to the two `preflight` functions, the
+`taskd` and `link` functions and the two parts of `Session._command` below, is a change
+requiring review; a change elsewhere is not.
 
-**`preflight.out_of_cage` and `preflight.gate`** (P4d-2b b3a): the first is what refuses a new run once the out-of-cage limit is reached between runs, and the second is S9a §10's rule — fail blocks, an unknown proceeds only on a named acknowledgement written into `runs.jsonl` — and a mistake in it lets a run start that should not.
+**`preflight.out_of_cage` and `preflight.gate`** (P4d-2b b3a): the first is what refuses
+a new run once the out-of-cage limit is reached between runs, and the second is S9a
+§10's rule — fail blocks, an unknown proceeds only on a named acknowledgement written
+into `runs.jsonl` — and a mistake in it lets a run start that should not.
 
 **The three `taskd` functions are `Session._ends`, `Session._hold` and
 `Session._manual_reward`** (P4d-2b b2a, 2026-09-28; the third since the PI's 2026-09-28
