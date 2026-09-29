@@ -99,6 +99,8 @@ its caller on. A change to any of these, or to the `taskd` and `link` functions 
 two parts of `Session._command` below, is a change requiring review; a change elsewhere
 is not.
 
+**`preflight.out_of_cage` and `preflight.gate`** (P4d-2b b3a): the first is what refuses a new run once the out-of-cage limit is reached between runs, and the second is S9a §10's rule — fail blocks, an unknown proceeds only on a named acknowledgement written into `runs.jsonl` — and a mistake in it lets a run start that should not.
+
 **The three `taskd` functions are `Session._ends`, `Session._hold` and
 `Session._manual_reward`** (P4d-2b b2a, 2026-09-28; the third since the PI's 2026-09-28
 amendment). `_ends` is the one place the trial loop asks `welfare.must_stop`, between
