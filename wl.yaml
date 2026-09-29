@@ -19,14 +19,14 @@ summary: >-
 status:
   phase: >-
     Simulated sessions, the terminal and browser consoles with controls from
-    the box (P4d-2b b2a: pause, resume, a manual reward while paused, marks and
-    a scheduled stop), telemetry, the welfare bounds and direct view part 1 are
-    on main, with 1508 tests and a mutation gate in CI (sharded six ways on
-    push and in the nightly full sweep).
+    the box, telemetry, the welfare bounds, and direct view: every session
+    runs in the setup its operator chose (`wlx run --rig --view`), and the
+    load-time checks hold each task to that setup's field. 1557 tests and a
+    mutation gate in CI (sharded six ways on push and in the nightly full
+    sweep).
   next: >-
-    Direct view part 2 (the chosen setup wired into session start), then b2b
-    (remote sign-in through wl-works). See docs/CHECKPOINT.md and
-    docs/backlog.md.
+    The local folder rename to wl-xcon (XC-109), then b2b (remote sign-in
+    through wl-works). See docs/CHECKPOINT.md and docs/backlog.md.
   describes: HEAD
 
 # The task PC. The role name is proposed, not settled -- S0 fixes the rig role
