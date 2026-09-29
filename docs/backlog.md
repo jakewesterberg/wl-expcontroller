@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-156.**
+**Next free ID: XC-157.**
 
 ## Brainstorms queued for the PI
 
@@ -83,6 +83,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-153** `wlx run --deployment rig-fixed` with no `--allocation` raises `KeyError` looking up `HEAD_FIXED` after the departure is already on record, instead of refusing at start. — 2026-09-29, [b3a-1 plan, decision 12](superpowers/plans/2026-09-29-p4d2b-b3a1-session-service.md#plan-decisions) — waits on: nothing
 - **XC-154** A clock time with an out-of-range year (`0001-01-01T00:00`, `9999-12-31T23:59`) raises a bare `ValueError` at `wlx run`'s interactive amend prompt (a traceback; the departure fails safe) and at its return prompt, which stops asking, writes `return not recorded` and tracebacks, leaving the interval open. — 2026-09-29, [`wl_xcon/marks.py`'s `clock_time`](../wl_xcon/cli.py) — waits on: nothing
 - **XC-155** Emit the `TRIAL_NUMBER` (0x8001) escape at the start of every trial and `CONDITION` (0x8003) inside it, and record the condition's number in `trials.jsonl` beside its name: nothing calls `encode.words_for`, so a real session gives wl-preproc no trials at all (it identifies a trial by the stream's `TRIAL_NUMBER` alone and joins the record by it). **The number must be unique within the session**: since b3a-1 a session holds several runs and a run's trial index restarts, so it cannot simply be that index. **Tell wl-preproc the key field's name** when it is settled: since its `a2e2cf1` (branch `spec/nwb-publishing`) it joins no line of a `trials.jsonl` whose lines name a run, until it reads that key. — 2026-09-29, wl-preproc's report (its `docs/pending-wl-xcon-amendments.md`, NWB piece 2a); [`wl_xcon/encode.py`](../wl_xcon/encode.py) — waits on: nothing
+- **XC-156** Check `_overlapping_windows` raises `TypeError` (`_closest_approach`'s `a_x, a_y = a.at`) for a scored window whose position is a whole-point parameter (`Window.at = P(...)`), a legal form, so `wlx run` crashes at load on such a task instead of checking it; the same class as XC-036. — 2026-09-29, [`wl_xcon/check.py`'s `_closest_approach`](../wl_xcon/check.py) — waits on: nothing
 - **XC-143** Check 8 adds an item ring's radius but not the depth of a corrugated or slanted stereogram used as an `Array`'s item (`looks` or `among`), so an array of deep stereograms near the edge can pass. — 2026-09-29, [check.py's `_offscreen_stimuli`](../wl_xcon/check.py) — waits on: nothing
 - **XC-144** Check 8 tests centres (a stimulus's, or an array's items') and never a stimulus's own size, so a 6° disc centred at 11.5° passes the stereoscope's ±12° mask. — 2026-09-29, [check.py's `_offscreen_stimuli`](../wl_xcon/check.py) — waits on: nothing
 
