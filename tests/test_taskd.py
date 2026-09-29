@@ -3285,6 +3285,9 @@ def test_a_mark_the_allocation_cannot_strobe_is_stamped_and_says_so(tmp_path):
             if name != "OPERATOR_MARK"
         },
     )
+    # The code is looked up once, at construction (b3a-1 Task 3), so a swap made after
+    # it has to be looked up again, as a session built on that allocation would have.
+    session._mark_code = session._code("OPERATOR_MARK")
 
     session.run()
 
@@ -4020,3 +4023,178 @@ def test_a_second_manual_reward_in_the_same_drain_as_one_that_reaches_a_fluid_st
         "the session has reached its scheduled stop after 0.15 mL this session, so no "
         "reward is given; it ends at this pass"
     )
+
+
+# --- a session between runs (b3a-1 Task 3) ------------------------------------
+
+MARK_CODE_B3A = 4133  # OPERATOR_MARK
+
+
+def _service_session(tmp_path, link=None, **spec) -> Session:
+    """A `wlx taskd` session, opened: its spec names no run, and it waits between runs.
+    Its wall follows its frames, as `_session`'s does."""
+    made = Session(
+        _spec(tmp_path, task="", trials=0, values={}, **spec),
+        card=Card(),
+        pump=Pump(),
+        link=link if link is not None else Simulated(),
+        service=True,
+    )
+    made.wall_clock = lambda: WALL_NOW + made.now()
+    made.left_cage(at=WALL_NOW)
+    if made.spec.deployment is Deployment.RIG_FIXED:
+        made.head_fixed(at=made.wall_now())
+    made.open(how="wlx taskd")
+    return made
+
+
+def test_a_service_session_waits_between_runs_and_keeps_the_head_fixed(tmp_path):
+    """Plan decisions 1 and 6: a service session sits between runs before its first and
+    after each, and its head is released only when the session is ended."""
+    session = _service_session(tmp_path)
+    assert session.phase == "between_runs" and session.run_index is None
+
+    session.run(_run_spec(trials=2))
+
+    assert (session.phase, session.run_index, session.stop_kind) == ("between_runs", 0, "completed")
+    assert session.welfare.fixed_wall_at is not None and session.welfare.released_wall_at is None
+    assert 4129 not in session.card.codes
+    config = json.loads((session.directory / "config.json").read_text())
+    assert config["service"] is True
+
+
+def test_a_service_session_runs_only_between_runs_and_only_a_run_it_is_given(tmp_path):
+    session = _service_session(tmp_path)
+
+    with pytest.raises(ValueError, match="names no task"):
+        session.run()
+    session.end_runs("jake")
+    with pytest.raises(RuntimeError, match="between runs"):
+        session.run(_run_spec(trials=1))
+
+
+def test_a_change_staged_as_a_service_run_ends_is_dropped_and_said(tmp_path):
+    """Plan decision 2: nothing between runs applies a staged change, so it is dropped,
+    and the feed says so rather than showing it staged for a run that may never come."""
+    link = Simulated()
+    session = _service_session(tmp_path, link=link)
+    link.queue(SetParameter(name="fix_hold", value=0.5, by="jake"))
+    link.queue(Stop(by="jake"))
+
+    session.run(_run_spec(trials=5))
+
+    assert session.staged == ()
+    assert "fix_hold 0.30 → 0.50 was not applied: run 0 ended first" in [
+        control[3] for control in session.controls
+    ]
+
+
+def test_between_runs_a_command_for_a_run_is_refused_and_a_mark_is_stamped_and_noted(tmp_path):
+    session = _service_session(tmp_path)
+
+    session.receive(Pause(by="jake"))
+    session.stamp(9)
+    session.receive(
+        Mark(mark=9, note="restless", by="jake", pressed_at=None, received_at=None)
+    )
+
+    assert "no run is in progress" in session.refusals[-1][2]
+    said = [control[3] for control in session.controls]
+    assert said[-2:] == ["mark 1 stamped with no run in progress", 'mark 1: "restless"']
+    assert session.card.codes[-1] == MARK_CODE_B3A, "strobed, before any run too"
+
+
+def test_each_phase_of_a_service_session_refuses_a_command_in_its_own_words(tmp_path):
+    """Task 2's review: a command's refusal must describe the phase the session is in.
+    Before the first run and between runs, no run is in progress -- never "ended"."""
+    session = _service_session(tmp_path)
+
+    session.receive(SetParameter(name="fix_hold", value=0.5, by="jake"))
+    session.receive(Stop(by="jake"))
+    before_first = [why for _, _, why in session.refusals]
+    session.run(_run_spec(trials=1))
+    session.receive(SetParameter(name="fix_hold", value=0.5, by="jake"))
+    between = session.refusals[-1][2]
+    session.end_runs("jake")
+    session.receive(SetParameter(name="fix_hold", value=0.5, by="jake"))
+    awaiting = session.refusals[-1][2]
+    session.returned_to_cage(session.wall_now(), by="jake", how="the page")
+    session.close(how="wlx taskd")
+    session.receive(Stop(by="jake"))
+    closed = session.refusals[-1][2]
+
+    for why in [*before_first, between]:
+        assert "no run is in progress" in why and "start a run first" in why
+        assert "ended" not in why and "return" not in why
+    assert "the session has ended and is waiting for the animal's return" in awaiting
+    assert "recorded from the page" in awaiting
+    assert "the session has ended" in closed
+
+
+def test_a_run_session_keeps_the_terminal_sentence_after_its_loop(tmp_path):
+    """`service=False` is unchanged: its post-loop refusal names wlx run's terminal."""
+    session = _session(_spec(tmp_path, trials=1))
+    session.run()
+    session.phase = "awaiting_return"  # what `await_return` sets, without its heartbeat loop
+
+    session.receive(SetParameter(name="fix_hold", value=0.5, by="jake"))
+
+    assert "marked at wlx run's terminal" in session.refusals[-1][2]
+
+
+def test_between_runs_past_the_limit_the_warning_says_the_animal_must_come_back(tmp_path):
+    """P4d-2a's rule for a session with no loop left to stop, between runs too: past the
+    limit, the warning is `must_stop`'s sentence."""
+    wall = [WALL_NOW]
+    session = _service_session(tmp_path)
+    session.wall_clock = lambda: wall[0]
+    wall[0] = WALL_NOW + 900.0  # past `_bounds`' 800 s ceiling
+
+    warning = session.duration_warning(session.wall_now())
+
+    assert warning == session.welfare.must_stop(session.wall_now())
+    assert "ceiling" in warning
+
+
+def test_ending_the_runs_releases_the_head_once_and_waits_for_the_return(tmp_path):
+    session = _service_session(tmp_path)
+
+    session.end_runs("jake")
+
+    assert session.phase == "awaiting_return"
+    assert session.welfare.released_wall_at is not None
+    assert session.card.codes.count(4129) == 1
+    assert session.stop_kind == "operator"
+    assert session.stopped_because == "session ended by jake, before any run"
+    with pytest.raises(RuntimeError):
+        session.end_runs("jake")
+
+
+def test_ending_the_runs_after_a_run_keeps_how_the_run_ended(tmp_path):
+    session = _service_session(tmp_path)
+    session.run(_run_spec(trials=2))
+
+    session.end_runs("jake")
+
+    assert (session.stop_kind, session.stopped_because) == ("completed", "every block is finished")
+
+
+def test_closing_needs_the_return_then_ends_the_session_with_one_closed_frame(tmp_path):
+    link = Simulated()
+    session = _service_session(tmp_path, link=link, deployment=Deployment.RIG_CHAIRED)
+    # One run first: until Task 4, a frame needs a run's scheduler to be built from.
+    session.run(_run_spec(trials=1))
+    session.end_runs("jake")
+
+    with pytest.raises(RuntimeError, match="not home"):
+        session.close(how="wlx taskd")
+    session.returned_to_cage(session.wall_now(), by="jake", how="the page")
+    session.close(how="wlx taskd")
+
+    assert session.phase == "closed" and session.ended_wall_at is not None
+    assert link.published[-1].phase == "closed"
+    kinds = [
+        json.loads(line)["kind"]
+        for line in (session.directory / "welfare_notes.jsonl").read_text().splitlines()
+    ]
+    assert kinds[-2:] == ["returned", "session ended"]

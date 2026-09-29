@@ -292,6 +292,12 @@ class Session:
     #: a hard rule. `Absent()` is a real configuration, not a stub: the cage-side kiosk
     #: runs unattended.
     link: object = field(default_factory=_link.Absent)
+    #: Whether this is a `wlx taskd` session, which holds several runs (P4d-2b spec
+    #: §6.1; the b3a-1 plan, decision 1): it waits `between_runs` before its first and
+    #: after each, keeps its head fixed until `end_runs`, and drops a staged change a
+    #: run never applied. `False` -- `wlx run`'s, and every direct caller's -- ends as it
+    #: always has: head released at its run's end, then `await_return`.
+    service: bool = False
     welfare: Welfare = field(init=False)
     rig: Rig = field(init=False)
     allocation: Allocation = field(init=False)
@@ -310,6 +316,15 @@ class Session:
     #: Which of the session's runs is in progress, or was last: 0 for the first. `None`
     #: before any has started (P4d-2b spec §6.3), never 0.
     run_index: int | None = field(init=False, default=None)
+    #: The pre-flight of the run about to start, as a `link.Preflight`, or `None` (P4d-2b
+    #: spec §6.3). Set by `wlx taskd`, which takes it; cleared when a run starts.
+    preflight: object = field(init=False, default=None)
+    #: A far mark a console owes an answer on, as a `link.Question`, or `None` -- for a
+    #: service session, the return's *confirm or re-type* (P4d-2b spec §6.2). Set by
+    #: `wlx taskd`; cleared when a run starts.
+    question: object = field(init=False, default=None)
+    #: The task files `wlx taskd` offers this session's runs, for a console's form.
+    offered_tasks: tuple = field(init=False, default=())
     _elapsed: float = field(init=False, default=0.0, repr=False)
     _staged: list = field(init=False, default_factory=list, repr=False)
     _sequence: int = field(init=False, default=0, repr=False)
@@ -394,6 +409,9 @@ class Session:
             Path(self.spec.allocation) if self.spec.allocation else None
         )
         self._run_codes = (self._code("RUN_START"), self._code("RUN_END"))
+        # Looked up once, here, since the allocation never changes: a mark stamped
+        # before the first run -- a service session between runs -- is strobed too.
+        self._mark_code = self._code("OPERATOR_MARK")
         self.welfare = Welfare(
             bounds=self.spec.bounds,
             pump=self.pump,
@@ -451,7 +469,9 @@ class Session:
 
         `approaching_limit`'s sentence, as during the loop. **After the loop, past the
         limit, `must_stop`'s** (P4d-2a spec §4): there is no loop left to stop, and
-        the warning is what tells someone the animal is still out.
+        the warning is what tells someone the animal is still out. **Between runs too**
+        (P4d-2b spec §6.1): no loop is running to stop, so past the limit the warning
+        is `must_stop`'s, and a new run is refused (`preflight.out_of_cage`).
 
         **At `wall_now`, the caller's reading, not one of its own** (Task 7 fix round
         1): `link.Telemetry.of` reads the wall once per frame and hands the same
@@ -468,7 +488,7 @@ class Session:
         if self.welfare.returned_wall_at is not None:
             return None
         warning = self.welfare.approaching_limit(wall_now)
-        if warning is None and self.phase == "awaiting_return":
+        if warning is None and self.phase in ("awaiting_return", "between_runs"):
             warning = self.welfare.must_stop(wall_now)
         return warning
 
@@ -551,6 +571,8 @@ class Session:
             self.spec.root, self.spec.session_id, self.spec.subject
         )
         self._record.configure(self._fixed_config())
+        if self.service:
+            self.phase = "between_runs"
 
     def _fixed_config(self) -> dict:
         """What `config.json` holds (P4d-2b spec §6.3): what is fixed for the whole
@@ -560,6 +582,7 @@ class Session:
         return {
             "session_id": self.spec.session_id,
             "subject": self.spec.subject,
+            "service": self.service,
             "deployment": self.spec.deployment.value,
             "bounds": {
                 "ceilings": {
@@ -722,13 +745,13 @@ class Session:
         if far is not None:
             self._note("return confirmed", at, by, how)
 
-    def return_not_recorded(self, why: str) -> None:
+    def return_not_recorded(self, why: str, how: str = "wlx run") -> None:
         """Say in the record why the interval was left open (P4d-2a spec §3).
 
         A process killed outright cannot write this, and then the missing `returned`
         row is the signal; every other way of ending without a return says why.
         """
-        self._note("return not recorded", self.wall_now(), "", "wlx run", reason=why)
+        self._note("return not recorded", self.wall_now(), "", how, reason=why)
 
     def head_fixed(self, at: float) -> None:
         """The action `wlx run` takes, S8 §5.2 requires, before a `RIG_FIXED` session
@@ -1064,6 +1087,8 @@ class Session:
             number = len(self._stamped) + 1
             if frame is not None:
                 said = f"mark {number} stamped in trial {index}, frame {frame}"
+            elif self.phase != "running":
+                said = f"mark {number} stamped with no run in progress"
             elif paused:
                 said = f"mark {number} stamped while paused, before trial {index}"
             else:
@@ -1426,13 +1451,25 @@ class Session:
         reads it (`_manual_reward`): the PI's manual reward is given while paused, and
         never while a pause drained in this same pass has yet to hold.
         """
+        if isinstance(command, _link.Mark) and self.service and self.phase != "running":
+            # A mark's note, between runs or awaiting the return: joined to its stamp
+            # (`stamp`), since a mark is never refused once pressed.
+            self._mark_note(command, index)
+            return
         if self.phase != "running":
             self._refuse(
                 command.name if isinstance(command, _link.SetParameter) else command.KIND,
                 command.by,
-                "the session has ended and is waiting for the animal's return to its "
-                "cage, which is marked at wlx run's terminal; a command sent now is "
-                "not applied",
+                "no run is in progress, so a command for a run is not applied; start a "
+                "run first"
+                if self.phase == "between_runs"
+                else "the session has ended and is waiting for the animal's return to its "
+                "cage, which is recorded from the page (End session); a command sent now "
+                "is not applied"
+                if self.service
+                else "the session has ended and is waiting for the animal's return to its "
+                "cage, which is marked at wlx run's terminal; a command sent now is not "
+                "applied",
             )
             return
         if isinstance(command, _link.Stop):
@@ -1616,6 +1653,82 @@ class Session:
 
         return make
 
+    def end_runs(self, by: str) -> None:
+        """No further run in this session (P4d-2b spec §6.2, *End session*; the b3a-1
+        plan, decision 6): it stops taking runs, its head is released, and it waits for
+        its animal's return, as `wlx run`'s does after its one run.
+
+        **The release is recorded now, before the return**, because `welfare` refuses a
+        return while the head is fixed and one before the release: End session is
+        pressed as the animal leaves the chair, and the return follows when it is home.
+        A session that ran no run is given a stop reason saying so; one that did keeps
+        its last run's, which is how its runs ended. Only a service session between runs
+        may do this; `wlx taskd` stops a run in progress first."""
+        if not self.service or self.phase != "between_runs":
+            raise RuntimeError(
+                f"end_runs() is for a service session between runs, and this one is "
+                f"{self.phase or 'not open'}"
+            )
+        if not self.stopped_because:
+            self.stopped_because = f"session ended by {by}, before any run"
+            self.stop_kind = "operator"
+        if self.welfare.fixed_wall_at is not None and self.welfare.released_wall_at is None:
+            self.head_released(self.wall_now())
+        self.phase = "awaiting_return"
+        self._control(
+            "end", by, f"session ended by {by}: waiting for the animal's return", self._index
+        )
+
+    def close(self, how: str) -> None:
+        """The animal is home: the session's own clock ended, and its one `closed` frame
+        (`await_return` does the same for `wlx run`'s). Refused until the return is
+        recorded."""
+        if self.welfare.returned_wall_at is None:
+            raise RuntimeError(
+                "close() before the return is recorded: the animal is not home"
+            )
+        self.phase = "closed"
+        self.end(how=how)
+        self.publish()
+
+    def stamp(self, mark: int) -> None:
+        """A mark signal that arrived with no trial loop checking for one -- a service
+        session between runs, or awaiting its return -- stamped and written at once, as
+        the paused loop stamps one (P4d-2b spec §5.1)."""
+        self._stamp(mark, None)
+        self._settle_stamps(self._index)
+
+    def refuse(self, name: str, by: str, why: str) -> None:
+        """One refusal onto this session's feed from outside its trial loop: a console
+        command `wlx taskd` could not act on. See `refusals`."""
+        self._refuse(name, by, why)
+
+    def receive(self, command) -> None:
+        """A console command that reached this session outside a run (`wlx taskd`, between
+        runs or awaiting the return): `_command` refuses it for its phase, or joins a
+        mark's note."""
+        self._command(command, self._index)
+
+    def publish(self) -> None:
+        """One frame of this session as it stands, for a caller between its runs."""
+        self._publish()
+
+    def _after_service_run(self) -> None:
+        """A service session's run is over (the b3a-1 plan, decisions 1 and 2): back
+        between runs, where nothing applies a staged change, so any left is dropped and
+        said on the feed -- a row kept would read "applies at the next trial" of a run
+        that may never come."""
+        for name, was, now, by, _bounded in self._staged:
+            self._feed(
+                "set",
+                by,
+                self.wall_now(),
+                f"{name} {_shown(was)} → {_shown(now)} was not applied: run "
+                f"{self.run_index} ended first",
+            )
+        self._staged.clear()
+        self.phase = "between_runs"
+
     def _publish(self) -> None:
         """One frame from the state the loop last left -- the body of `run()`'s
         `publish`, kept callable after the loop so `await_return` publishes the same
@@ -1649,6 +1762,11 @@ class Session:
         """
         if self.opened_wall_at is None:
             self.open()
+        if self.service and self.phase != "between_runs":
+            raise RuntimeError(
+                f"a service session runs only between runs, and this one is "
+                f"{self.phase or 'not open'}: no run starts once the session has ended"
+            )
         if self._record is None:
             raise RuntimeError(
                 "session.run() called after session.end(): the session's record is "
@@ -1680,6 +1798,8 @@ class Session:
         self.paused_at = None
         self.scheduled_stop = None
         self._recent.clear()
+        self.preflight = None
+        self.question = None
 
         scheduler = Scheduler(blocks=self._plan(run), seed=run.seed)
         make_world = self.world if self.world is not None else self._agent(run)
@@ -1716,7 +1836,6 @@ class Session:
         self._scheduler = scheduler
         self._index = 0
         self.phase = "running"
-        self._mark_code = self._code("OPERATOR_MARK")
         #: Whether this run's `RUN_END` went out: only on an ending by design.
         ended_strobed = False
         # **The per-frame mark check** (P4d-2b spec §5.1), handed to `run_trial` as
@@ -1877,11 +1996,12 @@ class Session:
             # session that had no `HEAD_FIXED` -- a restraint record for restraint
             # nothing marked, which is the zero-where-an-absence-belongs failure
             # `chair_seconds` refuses on the other surface. On the wall, like the
-            # fixation (P4d-2a spec §10).
+            # fixation (P4d-2a spec §10). A service session's head stays fixed between
+            # runs and is released by `end_runs` (the b3a-1 plan, decision 6).
             if end_code is not None:
                 self.card.emit(end_code)
                 ended_strobed = True
-            if self.spec.deployment is Deployment.RIG_FIXED:
+            if self.spec.deployment is Deployment.RIG_FIXED and not self.service:
                 self.head_released(self.wall_now())
             return tally.census()
         except KeyboardInterrupt:
@@ -1943,7 +2063,11 @@ class Session:
                         strobed=ended_strobed,
                     )
                 finally:
-                    record.close()
+                    try:
+                        record.close()
+                    finally:
+                        if self.service:
+                            self._after_service_run()
 
     def await_return(self, give_up: threading.Event, heartbeat: float = 1.0) -> None:
         """Keep a rig session's out-of-cage clock visible until the animal is home.
