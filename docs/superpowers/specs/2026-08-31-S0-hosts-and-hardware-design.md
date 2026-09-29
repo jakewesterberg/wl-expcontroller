@@ -391,8 +391,8 @@ operator picks the setup at session start (`2026-09-28-direct-view-design.md` §
 - **The rig's settings are `tasks/rig.py`**, a `geometry.Rig`: the panel's active area, `Z`,
   the mask's half-angle and the housings' rectangles, each with its margin. No rig
   configuration existed before it. The housings are empty until measured, so direct view
-  refuses on this rig's settings. No session is checked against the file until
-  direct view part 2 (`wlx run --view`).
+  refuses on this rig's settings. Sessions are checked against the file
+  since direct view part 2 (`wlx run --rig`, 2026-09-29).
 
 ---
 

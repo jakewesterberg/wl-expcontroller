@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from _rig import DIRECT
+from _rig import DIRECT, STEREOSCOPE
 from wl_xcon.bounds import Bounds, Ceiling, Floor
 from wl_xcon.link import (
     MARK_BYTES,
@@ -1950,6 +1950,18 @@ def test_schema_8_reads_the_pause_the_schedule_and_the_feed_from_the_session():
     )
     assert telemetry.controls_dropped == 3
     assert telemetry.view == "direct" and telemetry.half_ipd_cm is None
+
+
+def test_a_stereoscope_session_publishes_its_view_and_the_half_ipd_its_field_was_built_for():
+    """`Telemetry.of` reads `spec.geometry.half_ipd_cm`, not only `view`: direct view's
+    `None` alone would stay green with that read dropped."""
+    session = _session_with(delivered_ml=1.0, already_today=3.0)
+    session.spec.geometry = STEREOSCOPE
+
+    telemetry = Telemetry.of(session, Tally(), _scheduler(), index=1)
+
+    assert telemetry.view == "stereoscope"
+    assert telemetry.half_ipd_cm == 1.6
 
 
 def test_a_running_session_with_nothing_scheduled_says_so_with_none():

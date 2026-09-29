@@ -372,9 +372,9 @@ class Trial:
     tolerances: "Tolerances" = field(default_factory=lambda: Tolerances())
     #: Which setup the task is written for: `"direct"`, `"stereoscope"` or `"either"`
     #: (direct-view spec §3). **`"either"` is safe as the default** because the field
-    #: check runs against the setup the session chose -- once direct view part 2 passes
-    #: the session's geometry; until then only the tests run it -- so an undeclared
-    #: task in the stereoscope is held to its mask. Disparity, a random-dot stereogram
+    #: check runs against the setup the session chose -- `taskd` and `wlx check` pass
+    #: the session's geometry (`wlx run --rig --view`) -- so an undeclared task in the
+    #: stereoscope is held to its mask. Disparity, a random-dot stereogram
     #: or a stimulus shown to one eye needs `"stereoscope"`, and the checker says so.
     view: str = "either"
 

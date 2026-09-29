@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-145.**
+**Next free ID: XC-146.**
 
 ## Brainstorms queued for the PI
 
@@ -24,9 +24,8 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 ## Features not yet planned
 
-- **XC-003** Direct view part 2: `wlx run --view`, the chosen setup's geometry in `taskd`'s and `wlx check`'s load-time checks (a missing geometry fails loudly), the session record and a telemetry field. — 2026-09-28, [direct-view spec §8](superpowers/specs/2026-09-28-direct-view-design.md#8-what-changes-and-in-what-order) — waits on: nothing
 - **XC-004** Show `Trial.view` in the review artifact. — 2026-09-28, [direct view part 1 plan](superpowers/plans/2026-09-28-direct-view-part1.md), final review M6 — waits on: nothing
-- **XC-005** The stereoscope's calibration task, over the ±12° mask. — 2026-09-28, [`tasks/calibration.py`'s docstring](../tasks/calibration.py) — waits on: XC-003
+- **XC-005** The stereoscope's calibration task, over the ±12° mask. — 2026-09-28, [`tasks/calibration.py`'s docstring](../tasks/calibration.py) — waits on: nothing
 - **XC-006** The `pupil − CR1` gaze fallback beyond P4's reach: the switching rule, its own map, and a per-sample method flag. — 2026-09-27, [S5 §1](superpowers/specs/2026-08-31-S5-eye-tracking-design.md#1-most-of-the-calibration-is-already-decided-and-not-by-us) — waits on: nothing
 - **XC-007** Record the staleness of the sample each gaze decision used in the trial record, and strobe `TRACKER_STALE` on a stall in a critical epoch; neither exists in the code. — 2026-08-31, [S5 §4.1 items 1 and 4](superpowers/specs/2026-08-31-S5-eye-tracking-design.md#41-the-design-that-tolerates-it) — waits on: nothing
 - **XC-008** Strobe the `PARAM_CHANGE` escape with the session's sequence number instead of the payload-less `PARAM_CHANGED` (4130); wl-preproc added it as `0x8005` in `5ea827b`. — 2026-08-31, [CHECKPOINT, "What does not exist"](CHECKPOINT.md#what-does-not-exist-and-matters) — waits on: nothing
@@ -61,6 +60,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 ## Deferred defects
 
+- **XC-145** A missing `--rig` or `--subject-settings` path (like `--bounds`, `--allocation` or the task path) is a `FileNotFoundError` traceback rather than a refusal sentence. — 2026-09-29, [cli.py's `_load_named`](../wl_xcon/cli.py) — waits on: nothing
 - **XC-039** A change staged on a session's last pass is never applied and never recorded, a record gap on the reward path. — 2026-09-19, [next-session §6 item 2](next-session.md#6-p4d-2a-is-on-main-p4d-2b-b1-is-built-b2-is-next) — waits on: nothing
 - **XC-040** `tools/mutate.py` counts any non-zero pytest exit as `caught`, so a collection error (exit 2, no test ran) reads as coverage instead of failing the gate as inconclusive. — 2026-09-20, [CHECKPOINT, "The sweep is green"](CHECKPOINT.md#the-sweep-is-green-and-four-of-its-entries-are-green-for-a-reason-that-is-not-a-test) — waits on: nothing
 - **XC-041** `link.decode` checks that a frame's fields are present but not their types, so `floor_ml="x"` passes `Hub.offer`, leaves `/health` `ok` and loops the page on "stream lost". — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing

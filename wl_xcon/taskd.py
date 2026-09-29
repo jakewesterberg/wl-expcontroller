@@ -161,7 +161,7 @@ class SessionSpec:
     #: The field this session's stimuli are held to: the setup the operator chose at
     #: session start, built from the rig's settings (direct-view spec §3). **Required,
     #: with no default**, as `bounds` is: a session with no field is one whose check 8
-    #: never ran, which is how every session ran until direct view part 2.
+    #: never ran, which is how every session ran before direct view part 2 (2026-09-29).
     geometry: Geometry
     #: The session's plan. `None` means one block of `trials` trials, which is the
     #: same code path with one block in it.

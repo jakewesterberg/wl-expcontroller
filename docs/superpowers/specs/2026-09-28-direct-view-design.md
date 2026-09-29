@@ -63,7 +63,7 @@ The rig's settings hold everything the geometry needs:
 - the mask's half-angle;
 - the sensor housings' rectangles (§4).
 
-A subject's `E` comes from its record. **A field that is not the rig's is never used to pass a
+A subject's `E` comes from its record. **From a per-animal settings file** (PI, 2026-09-29), named at session start with `--subject-settings` as the bounded config is with `--bounds`, and refused for another animal; `Rig.half_ipd_range_cm` refuses an `E` the stereoscope is not built for. **A field that is not the rig's is never used to pass a
 task.** The tests' fixtures stand for this rig, and say so.
 
 **Degrees are the API**, as S4 already has it. The display module will map degrees to pixels
@@ -80,7 +80,7 @@ field the checks use is the same one it will draw into.
 
 **The operator chooses at session start, and there is no default.** `wlx run` takes a required
 `--view direct|stereoscope`. The page gets the same choice when sessions start from it (P4d-2b
-slice b3). The choice is:
+slice b3). `--rig` names the rig's settings, and a task that does not pass the load-time checks in the chosen setup is refused before the session opens (plan `2026-09-29-direct-view-part2.md`, decision 7). The choice is:
 - written into the session snapshot and the session record;
 - published in telemetry, and shown by `wlx console` and the page for the whole session (a
   telemetry schema bump, taken after b2a's schema 8).

@@ -468,9 +468,9 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
     could not measure reports safety it does not provide.
 
     Skipped when no geometry is supplied: a task is not wrong for being checked
-    without a rig, it is unchecked, and the caller knows which it wanted. **No caller
-    outside the tests supplies one yet**: `taskd` and `wlx check` call `check()`
-    without a geometry until direct view part 2 passes the session's in.
+    without a rig, it is unchecked, and the caller knows which it wanted. **`taskd` and
+    `wlx check` supply one** (`wlx run --rig --view`); `check()` without a geometry is
+    only for callers that have no rig (`wlx review`, the tests).
     """
     if geometry is None:
         return []
@@ -1163,9 +1163,9 @@ def _view_faults(trial: Trial, geometry: Geometry | None) -> list[Finding]:
     **Stereo content needs the stereoscope, with or without a geometry**: it is a
     property of the task, not of the session, so it is refused at every load. **Against
     a geometry, a task written for the other setup is refused, naming both**, so a
-    caller that passes the session's geometry has nothing else to do. That caller is
-    direct view part 2: until then `taskd` and `wlx check` pass none, and only the
-    tests reach the mismatch. An unrecognized `view` is refused outright, as an
+    caller that passes the session's geometry has nothing else to do. `taskd` and
+    `wlx check` are those callers (`wlx run --rig --view`); without a geometry (`wlx
+    review`, the tests) only the stereo-content finding is reachable. An unrecognized `view` is refused outright, as an
     unrecognized eye is: it would be checked as neither.
     """
     if trial.view not in TRIAL_VIEWS:

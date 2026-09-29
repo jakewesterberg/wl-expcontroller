@@ -273,9 +273,10 @@ sensors' housings, or the stereoscope's viewport stopped by its mask.
 **A task says which setup it is written for**: `Trial.view`, `"direct"`, `"stereoscope"` or
 `"either"` (the default). Disparity, a random-dot stereogram or a stimulus shown to one eye needs
 `"stereoscope"`, a load-time finding at every load. Check 8 against the session's field, and the
-refusal of a task written for the other setup, need the session's geometry, which `taskd` and
-`wlx check` do not pass until direct view part 2 (`wlx run --view`, after P4d-2b b2a merges);
-until then only the tests reach them.
+refusal of a task written for the other setup, need the session's geometry, and **the checks now
+run against the session's own field, from `--rig` and `--view`** (`wlx run` and `wlx check`,
+direct view part 2, 2026-09-29): a task that does not pass in the chosen setup is refused before
+the session opens. The setup is in the session record and in telemetry schema 9.
 
 Through the stereoscope each eye views one half of the panel through redirection mirrors.
 Therefore one window, one flip, one refresh clock, no genlock — **two viewports on one

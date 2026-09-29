@@ -255,9 +255,9 @@ class Rig:
     `direct` refuses, because `Geometry` does, and the stereoscope still works -- its
     mask hides the sensors.
 
-    **Nothing outside the tests builds a session's field from this yet.** `wlx run
-    --view`, which passes the chosen setup's field to `taskd`'s load-time check, is
-    direct view part 2, after P4d-2b slice b2a merges (both change session start).
+    **A session's field is built from this**: `wlx run --rig` names the file and
+    `--view` the setup, and `taskd`'s load-time check runs against that field before
+    anything is recorded (direct view part 2, 2026-09-29).
     """
 
     panel_width_cm: float

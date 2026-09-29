@@ -16,8 +16,12 @@ the one welfare interaction an operator is asked to perform. Review found that; 
 closes it.
 
     wlx run tasks/fixation_detection.py --bounds tasks/twelve_hour_bounds.py \\
+        --rig tests/_rig.py --view direct --allocation tasks/allocation.py \\
         --root /tmp/dry-run --session-id 2027-01-14_01 --subject REFERENCE \\
         --out-of-cage-at 2027-01-14T06:00 --delivered-today 0 --trials 2
+
+The dry run uses the tests' stand-in rig because `tasks/rig.py`'s direct view refuses
+until the housings are measured.
 
 **Twelve hours is not a placeholder and is not this file inventing one.** It is the
 institutional figure, documented in S8 §5.2 item 4 and in `welfare.py`'s docstring, and
