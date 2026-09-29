@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-154.**
+**Next free ID: XC-155.**
 
 ## Brainstorms queued for the PI
 
@@ -81,6 +81,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-119** wlx review's render prints task and allocation names straight from file-sourced task definitions, without the control-character stripping cli.render and web.py apply to every wire-sourced string. — 2026-09-28, [review.py's `render`](../wl_xcon/review.py) — waits on: nothing
 - **XC-120** A 403 or 413 response can close the connection with the request body unread, risking a TCP reset instead of the JSON refusal reaching the client. — 2026-09-28, [serve.py](../wl_xcon/serve.py) — waits on: nothing
 - **XC-153** `wlx run --deployment rig-fixed` with no `--allocation` raises `KeyError` looking up `HEAD_FIXED` after the departure is already on record, instead of refusing at start. — 2026-09-29, [b3a-1 plan, decision 12](superpowers/plans/2026-09-29-p4d2b-b3a1-session-service.md#plan-decisions) — waits on: nothing
+- **XC-154** A clock time with an out-of-range year (`0001-01-01T00:00`, `9999-12-31T23:59`) raises a bare `ValueError` at `wlx run`'s interactive amend prompt (a traceback) and at its return prompt (ending the prompt instead of re-asking). — 2026-09-29, [`wl_xcon/marks.py`'s `clock_time`](../wl_xcon/cli.py) — waits on: nothing
 - **XC-143** Check 8 adds an item ring's radius but not the depth of a corrugated or slanted stereogram used as an `Array`'s item (`looks` or `among`), so an array of deep stereograms near the edge can pass. — 2026-09-29, [check.py's `_offscreen_stimuli`](../wl_xcon/check.py) — waits on: nothing
 - **XC-144** Check 8 tests centres (a stimulus's, or an array's items') and never a stimulus's own size, so a 6° disc centred at 11.5° passes the stereoscope's ±12° mask. — 2026-09-29, [check.py's `_offscreen_stimuli`](../wl_xcon/check.py) — waits on: nothing
 
