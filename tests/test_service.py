@@ -253,6 +253,19 @@ def test_a_far_departure_is_asked_confirm_or_amend_and_opens_once_confirmed(tmp_
     assert (rows[1]["how"], rows[1]["by"]) == ("confirmed on the page", BY)
 
 
+def test_an_answered_question_is_gone_from_the_idle_frame_after_its_session(tmp_path):
+    """A question is kept until it is answered: once its departure is marked it is gone,
+    so the idle frame after that session ends asks nothing of the next animal's."""
+    service = _service(tmp_path)
+    far = typed(3 * 3600)
+    _step(service, _open(departure=far))
+    _step(service, _open(departure=far, answer="confirm"))
+
+    idle = _step(service, _end())
+
+    assert isinstance(idle, Idle) and idle.question is None
+
+
 def test_a_far_departure_amended_on_the_page_is_marked_at_the_corrected_time(tmp_path):
     """Asked first: an amendment answers the warning (Ruling 1 of the b3a-1 review)."""
     service = _service(tmp_path)
@@ -615,6 +628,27 @@ def test_a_stranded_animal_whose_bounds_file_is_gone_is_refused_saying_so(tmp_pa
 
     assert "restore it" in _refused(refused)[-1]
     assert service.stranded != []
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [("BOUNDS = not_defined_anywhere\n", "NameError"), ("x = 1\n", "must define BOUNDS")],
+)
+def test_a_stranded_animal_whose_bounds_file_will_not_load_is_refused_not_a_crash(
+    tmp_path, text, said
+):
+    """The animal's files are code, as `_open` says of them: a broken bounded config is a
+    refusal with what to do, never the service's end, and the animal stays stranded."""
+    folders = _folders(tmp_path)
+    _strand(folders[2])
+    (folders[0] / "REFERENCE" / "bounds.py").write_text(text)
+    service = _made(folders)
+
+    refused = _step(service, _end(session_id="2027-01-13_01"))
+
+    assert said in _refused(refused)[-1] and "repair it" in _refused(refused)[-1]
+    assert [s.session_id for s in service.stranded] == ["2027-01-13_01"]
+    assert _kinds(folders[2], "2027-01-13_01") == ["departure"]
 
 
 def test_a_service_stopped_with_a_session_open_leaves_it_stranded_for_the_next(tmp_path):
