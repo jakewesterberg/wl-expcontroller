@@ -367,7 +367,9 @@ class Session:
     #: When a console paused the session, on the session's anchored clock, or `None`
     #: while trials run (P4d-2b spec §5.1). Set at the boundary the `Pause` was
     #: drained at, cleared by `Resume`; a session stopped while paused keeps it, as
-    #: the truth of how it ended. Published as `Telemetry.paused_at`.
+    #: the truth of how it ended -- until, for a service session, its run is over:
+    #: between runs nothing is paused (`_after_service_run`; the b3a-1 final review,
+    #: Minor 3). Published as `Telemetry.paused_at`.
     paused_at: float | None = field(init=False, default=None)
     #: The consoles' changes feed: the last `link.CONTROL_HISTORY` control events as
     #: `(kind, by, at, said)`, oldest first -- see `controls`.
@@ -1749,7 +1751,9 @@ class Session:
         """A service session's run is over (the b3a-1 plan, decisions 1 and 2): back
         between runs, where nothing applies a staged change, so any left is dropped and
         said on the feed -- a row kept would read "applies at the next trial" of a run
-        that may never come."""
+        that may never come. **And nothing is paused**: a run stopped while paused
+        published its last frame paused, as the truth of how it ended, and a between-runs
+        frame saying "paused" would read as a run held and waiting."""
         for name, was, now, by, _bounded in self._staged:
             self._feed(
                 "set",
@@ -1759,6 +1763,7 @@ class Session:
                 f"{self.run_index} ended first",
             )
         self._staged.clear()
+        self.paused_at = None
         self.phase = "between_runs"
 
     def _publish(self) -> None:

@@ -1216,6 +1216,24 @@ def test_a_stop_during_a_run_is_the_runs_and_ends_only_the_run(tmp_path):
     assert _kinds(service.root) == ["departure", "session opened"]
 
 
+def test_a_run_stopped_while_paused_leaves_no_pause_on_the_frames_between_runs(tmp_path):
+    """The b3a-1 final review, Minor 3: the run's own last frame keeps its pause, as the
+    truth of how it ended, but between runs nothing is paused, and a frame that said
+    "paused" there would be read as a run held and waiting."""
+    link = _Script({3: [Pause(by=BY)], 4: [Stop(by=BY)]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+
+    frame = _step(service, _start(trials=1000))
+
+    assert any(
+        isinstance(f, Telemetry) and f.phase == "running" and f.paused_at is not None
+        for f in link.published
+    ), "the run was paused when it stopped"
+    assert (frame.phase, frame.stop_kind, frame.paused_at) == ("between_runs", "operator", None)
+    assert _step(service).paused_at is None
+
+
 def test_during_a_run_the_services_own_commands_are_refused_not_queued(tmp_path):
     """Review Focus 4: a second start sent while a run is in progress -- a double click --
     is refused, never started after the first."""
