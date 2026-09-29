@@ -6,6 +6,7 @@ injected wall; the end-to-end tests at the bottom drive a real service over Zero
 from __future__ import annotations
 
 import gc
+import inspect
 import json
 import shutil
 import threading
@@ -30,7 +31,7 @@ from wl_xcon.link import (
     Telemetry,
 )
 from wl_xcon.record import welfare_note
-from wl_xcon.service import Service
+from wl_xcon.service import Service, _fresh_seed
 from wl_xcon.taskd import Session
 
 ALLOCATION = "tasks/allocation.py"
@@ -551,13 +552,30 @@ def test_every_mark_is_taken_on_the_thread_that_serves(tmp_path, monkeypatch):
         _end(),
     ):
         service.link.queue(command)
-
-    service.serve(stop)
+    # A watchdog, so a pass that never drains fails this test rather than hanging the
+    # suite: the harness noticing a hang is not a test noticing (CLAUDE.md).
+    watchdog = threading.Timer(10.0, stop.set)
+    watchdog.start()
+    try:
+        service.serve(stop)
+    finally:
+        watchdog.cancel()
 
     assert [name for name, _ in taken] == [
         "amend_mark", "left_cage", "head_fixed", "head_released", "returned_to_cage",
     ]
     assert {thread for _, thread in taken} == {threading.get_ident()}
+
+
+def test_a_service_given_no_seed_draws_each_one_fresh_as_the_record_can_hold_it():
+    """Plan decision 15: a run's seed is the service's to draw, and is written into its
+    start row so the run can be replayed -- a whole number from 0 below 2**31. The runs
+    that read it are the service's (decision 18), not yet built."""
+    drawn = [_fresh_seed() for _ in range(64)]
+
+    assert all(type(seed) is int and 0 <= seed < 2**31 for seed in drawn)
+    assert len(set(drawn)) > 1, "fresh, not one number"
+    assert inspect.signature(Service).parameters["seed"].default is _fresh_seed
 
 
 # --- between runs ---------------------------------------------------------------
