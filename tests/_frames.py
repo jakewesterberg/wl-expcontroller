@@ -1,5 +1,5 @@
 """A complete `Telemetry` frame, at this build's `SCHEMA`, for the browser console's
-tests (P4d-2b b1; schema 8's fields since b2a, schema 9's since direct view part 2).
+tests (P4d-2b b1; schema 8's fields since b2a, schema 9's since direct view part 2, schema 10's since b3a).
 
 Imported by `test_health.py`, `test_web.py` and `test_serve.py` as
 `from _frames import frame`; never collected, because its name does not start with
@@ -8,7 +8,8 @@ field that may be `None` holds a number here, so a test that wants an absence as
 for it by name -- **except schema 8's `paused_at` and `scheduled_stop`**, whose
 `None` is the ordinary running session (not paused, nothing scheduled), and whose
 number would make every frame here a paused one. Schema 9's `half_ipd_cm` is `None` for
-the same kind of reason: the frame is a direct-view session, which has none.
+the same kind of reason: the frame is a direct-view session, which has none. Schema 10's `preflight` and
+`question` are `None` for the ordinary frame, like `paused_at`.
 """
 
 from __future__ import annotations
@@ -70,6 +71,11 @@ def frame(**overrides) -> Telemetry:
         controls_dropped=0,
         view="direct",
         half_ipd_cm=None,
+        run_index=0,
+        service=False,
+        preflight=None,
+        question=None,
+        offered_tasks=(),
     )
     return replace(base, **overrides) if overrides else base
 

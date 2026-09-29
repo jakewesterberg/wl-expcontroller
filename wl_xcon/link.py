@@ -2,7 +2,9 @@
 
 S9a §6-§10 designs the console; **§9, "The telemetry contract," is what this file
 implements.** This file holds the message (`Telemetry`, `Staged`, `Refused`), the
-commands a console sends back (`SetParameter`, `Stop`, `Command`), the port a session
+idle frame `wlx taskd` publishes while no session is open (`Idle`, since schema 10),
+the commands a console sends back (`SetParameter`, `Stop`, and since b3a the service's
+`OpenSession`, `CheckRun`, `StartRun` and `EndSession`; `Command`), the port a session
 publishes and drains through (`Link`, `Absent`, `Simulated`), its wire encoding
 (`encode`/`decode`, plus the command-side `_encode_command`/`_decode_command`), and
 the one live transport that carries all of it over a real socket (`ZmqLink`,
@@ -106,7 +108,16 @@ from wl_xcon.welfare import DAILY_FLUID, OUT_OF_CAGE
 #: `half_ipd_cm`, the animal's half-IPD its stereoscope field was built for (`None` in
 #: direct view). Nothing changed meaning. A schema-8 reader refuses a schema-9 frame,
 #: and a schema-9 reader a schema-8 one, by name (`SchemaMismatch`).
-SCHEMA = 9
+#:
+#: 10 (2026-09-29, P4d-2b b3a): sessions of several runs, and a service between them.
+#: `phase` gains `between_runs`; `run_index` names the run (`None` before any);
+#: `block` and `task` are `None` before a session's first run; `preflight` is the run
+#: about to start's; `question` a far mark a console owes an answer on; `service` says a
+#: frame came from `wlx taskd`, whose stream a run's stop does not end; `offered_tasks`
+#: what it offers. **And a second shape, `Idle`**, published while no session is open
+#: (phase `idle`). Nothing else changed meaning. A reader of 9 refuses 10 and 10 refuses
+#: 9, by name, before any other field -- for both shapes (`SchemaMismatch`).
+SCHEMA = 10
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -257,6 +268,102 @@ class Control:
 
 
 @dataclass(frozen=True, slots=True)
+class PreflightItem:
+    """One pre-flight item (P4d-2b spec §6.2): its name as a person acknowledges it,
+    `pass`, `unknown` or `fail`, and the sentence saying why."""
+
+    name: str
+    result: str
+    said: str
+
+
+@dataclass(frozen=True, slots=True)
+class Preflight:
+    """The pre-flight of a run about to start (spec §6.3: "the run about to start
+    carries its pre-flight results"): its task file, and its items in order."""
+
+    task: str
+    items: tuple
+
+
+@dataclass(frozen=True, slots=True)
+class Question:
+    """A far mark a console owes an answer on (P4d-2b spec §6.2): which mark, for which
+    session, the instant it was typed as, `welfare`'s sentence, and the answers --
+    `confirm` or `amend` for a departure, `confirm` or `re-type` for a return."""
+
+    mark: str
+    session_id: str
+    at: float
+    said: str
+    answers: tuple
+
+
+@dataclass(frozen=True, slots=True)
+class Stranded:
+    """A session found under `--root` with a departure and no return (P4d-2b spec §6.1):
+    its id, its animal, and the departure's instant -- `None`, with an empty subject,
+    when its record has a line that is not a row and cannot be read."""
+
+    session_id: str
+    subject: str
+    left_at: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class Idle:
+    """What `wlx taskd` publishes while no session is open (P4d-2b spec §6.1): **not a
+    `Telemetry` with its fields empty**, since every one of those describes a session,
+    and a console that promises never to guess at a fluid figure or a clock has none to
+    show here (the b3a-1 plan, decision 8). The stranded sessions that keep a new one
+    from opening, a question owed on a departure, the service's refusals with the
+    link's, and what a console may open a session with."""
+
+    schema: int
+    #: Always `"idle"`: the field `decode` tells the two shapes apart by.
+    phase: str
+    #: The service's own anchored clock, as `Telemetry.wall_at` is a session's.
+    wall_at: float
+    stranded: tuple
+    question: Question | None
+    refusals: tuple
+    refusals_dropped: int
+    #: The animals under `--subjects` with a bounded config, by folder name.
+    animals: tuple
+    #: The task files under `--tasks`.
+    offered_tasks: tuple
+
+    @classmethod
+    def of(
+        cls,
+        *,
+        wall_at: float,
+        stranded,
+        question: Question | None,
+        refusals,
+        refusals_dropped: int,
+        link,
+        animals,
+        offered_tasks,
+    ) -> "Idle":
+        """One idle frame: the service's refusals and the link's, capped at
+        `REFUSAL_HISTORY` and counted, as `Telemetry.of` caps a session's."""
+        combined = tuple(refusals) + tuple(link.refused)
+        kept = combined[-REFUSAL_HISTORY:]
+        return cls(
+            schema=SCHEMA,
+            phase="idle",
+            wall_at=wall_at,
+            stranded=tuple(stranded),
+            question=question,
+            refusals=kept,
+            refusals_dropped=link.refused_dropped + refusals_dropped + len(combined) - len(kept),
+            animals=tuple(animals),
+            offered_tasks=tuple(offered_tasks),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class Telemetry:
     """What a session tells its consoles, once per trial boundary.
 
@@ -269,7 +376,8 @@ class Telemetry:
     session_id: str
     subject: str
     trial_index: int
-    block: str
+    #: `None` before a session's first run (schema 10).
+    block: str | None
     #: Empty until the session has stopped (mirrors `taskd.Session.stopped_because`).
     stopped_because: str
     #: Why the session stopped, as a kind rather than a sentence: `completed`,
@@ -370,9 +478,9 @@ class Telemetry:
     #: showed fifty refusals and said nothing about the four hundred before them
     #: would be the silent-drop failure this field exists to prevent.
     refusals_dropped: int
-    #: `session.spec.task` -- the task file this session loaded: S9a §3's
-    #: configuration information (P4d-2b spec §3). Also in the config snapshot.
-    task: str
+    #: `session.task`: the run in progress or the last one; `None` before a session's
+    #: first run (schema 10). S9a §3's configuration information (P4d-2b spec §3).
+    task: str | None
     #: `session.spec.allocation`. Empty is the provisional allocation (`cli`).
     allocation: str
     #: `session.spec.bounds_config`: the bounded config's file. Empty when nobody
@@ -426,6 +534,18 @@ class Telemetry:
     #: stereoscope's field was built for, from its settings file (PI, 2026-09-29).
     #: `None` in direct view, which has none.
     half_ipd_cm: float | None
+    #: `session.run_index`: the run in progress or the last one; `None` before any
+    #: (P4d-2b spec §6.3), never 0.
+    run_index: int | None
+    #: `session.service`: a frame from `wlx taskd`, whose stream a run's stop does not
+    #: end (the b3a-1 plan, decision 9).
+    service: bool
+    #: `session.preflight`: the run about to start's, or `None`.
+    preflight: Preflight | None
+    #: `session.question`: the answer a console owes on a far mark, or `None`.
+    question: Question | None
+    #: `session.offered_tasks`: the task files `wlx taskd` offers; empty for `wlx run`.
+    offered_tasks: tuple
 
     @classmethod
     def of(cls, session, tally, scheduler, index: int) -> "Telemetry":
@@ -483,7 +603,7 @@ class Telemetry:
             session_id=session.spec.session_id,
             subject=session.spec.subject,
             trial_index=index,
-            block=scheduler.block.name,
+            block=None if scheduler is None else scheduler.block.name,
             # No `condition`: telemetry is published at the boundary, *before* the
             # next condition is drawn, so the field could only ever be empty. A field
             # that is always empty is worse than an absent one -- a console renders it
@@ -519,9 +639,11 @@ class Telemetry:
             ),
             deployment=session.spec.deployment.value,
             duration_warning=session.duration_warning(wall_now),
-            outcomes={k.value: v for k, v in tally.outcomes.items()},
-            hangs=tally.hangs,
-            owed={c: scheduler.owed(c) for c in scheduler.upcoming()},
+            # No run yet, no tally and no scheduler: zero trials and no outcome are
+            # true of a session that has not run, so they are empty, not `None`.
+            outcomes={} if tally is None else {k.value: v for k, v in tally.outcomes.items()},
+            hangs=0 if tally is None else tally.hangs,
+            owed={} if scheduler is None else {c: scheduler.owed(c) for c in scheduler.upcoming()},
             # `session.staged`, the public property -- never `session._staged`. This
             # module reaches into `Session` only through its declared surface; a
             # private attribute read across the module boundary is exactly the kind
@@ -542,7 +664,7 @@ class Telemetry:
             # P4d-2b b1 (spec §3, §4.1). The configuration is the spec's -- what the
             # config snapshot records -- and the rest is `welfare`'s and the
             # session's own, read through their public surface.
-            task=session.spec.task,
+            task=session.task,
             allocation=session.spec.allocation,
             bounds_config=session.spec.bounds_config,
             params=tuple(ParamRow(*row) for row in session.parameters),
@@ -572,11 +694,54 @@ class Telemetry:
             controls_dropped=session.controls_dropped,
             view=session.spec.geometry.view,
             half_ipd_cm=session.spec.geometry.half_ipd_cm,
+            # P4d-2b b3a (spec §6.3): the session's own, through its public surface.
+            run_index=session.run_index,
+            service=session.service,
+            preflight=session.preflight,
+            question=session.question,
+            offered_tasks=tuple(session.offered_tasks),
         )
 
 
-def encode(telemetry: Telemetry) -> bytes:
-    """`Telemetry` to msgpack, the wire format ADR-0003 named alongside ZeroMQ.
+def _refusals_out(refusals) -> list:
+    return [{"name": r.name, "by": r.by, "why": r.why} for r in refusals]
+
+
+def _preflight_out(preflight: Preflight | None) -> dict | None:
+    if preflight is None:
+        return None
+    return {
+        "task": preflight.task,
+        "items": [{"name": i.name, "result": i.result, "said": i.said} for i in preflight.items],
+    }
+
+
+def _question_out(question: Question | None) -> dict | None:
+    if question is None:
+        return None
+    return {
+        "mark": question.mark,
+        "session_id": question.session_id,
+        "at": question.at,
+        "said": question.said,
+        "answers": list(question.answers),
+    }
+
+
+def _question_in(data: dict | None) -> Question | None:
+    if data is None:
+        return None
+    return Question(
+        mark=data["mark"],
+        session_id=data["session_id"],
+        at=data["at"],
+        said=data["said"],
+        answers=tuple(data["answers"]),
+    )
+
+
+def encode(telemetry: Telemetry | Idle) -> bytes:
+    """`Telemetry` (or, while no session is open, `Idle`) to msgpack, the wire format ADR-0003 named alongside ZeroMQ.
 
     Imports `msgpack` **lazily, inside this function** -- the same discipline as
     `ZmqLink`/`ZmqConsole` below and required by this task: `link.py` is imported by
@@ -593,6 +758,25 @@ def encode(telemetry: Telemetry) -> bytes:
     recursive helper to invert itself correctly.
     """
     import msgpack
+
+    if isinstance(telemetry, Idle):
+        return msgpack.packb(
+            {
+                "schema": telemetry.schema,
+                "phase": telemetry.phase,
+                "wall_at": telemetry.wall_at,
+                "stranded": [
+                    {"session_id": s.session_id, "subject": s.subject, "left_at": s.left_at}
+                    for s in telemetry.stranded
+                ],
+                "question": _question_out(telemetry.question),
+                "refusals": _refusals_out(telemetry.refusals),
+                "refusals_dropped": telemetry.refusals_dropped,
+                "animals": list(telemetry.animals),
+                "offered_tasks": list(telemetry.offered_tasks),
+            },
+            use_bin_type=True,
+        )
 
     payload = {
         "schema": telemetry.schema,
@@ -618,7 +802,7 @@ def encode(telemetry: Telemetry) -> bytes:
             {"name": s.name, "was": s.was, "now": s.now, "by": s.by, "bounded": s.bounded}
             for s in telemetry.staged
         ],
-        "refusals": [{"name": r.name, "by": r.by, "why": r.why} for r in telemetry.refusals],
+        "refusals": _refusals_out(telemetry.refusals),
         "refusals_dropped": telemetry.refusals_dropped,
         "task": telemetry.task,
         "allocation": telemetry.allocation,
@@ -657,6 +841,11 @@ def encode(telemetry: Telemetry) -> bytes:
         "controls_dropped": telemetry.controls_dropped,
         "view": telemetry.view,
         "half_ipd_cm": telemetry.half_ipd_cm,
+        "run_index": telemetry.run_index,
+        "service": telemetry.service,
+        "preflight": _preflight_out(telemetry.preflight),
+        "question": _question_out(telemetry.question),
+        "offered_tasks": list(telemetry.offered_tasks),
     }
     return msgpack.packb(payload, use_bin_type=True)
 
@@ -690,7 +879,7 @@ class SchemaMismatch(FrameError):
         )
 
 
-def decode(payload: bytes) -> Telemetry:
+def decode(payload: bytes) -> Telemetry | Idle:
     """The inverse of `encode`, rebuilding `Staged`/`Refused` rather than leaving
     them as the plain dicts msgpack hands back.
 
@@ -709,6 +898,9 @@ def decode(payload: bytes) -> Telemetry:
     day rendered as a confident `0.0` is exactly the failure `welfare.shortfall()`
     exists to prevent, and a console showing it would be the same failure one hop
     further downstream.
+
+    **Two shapes, one schema** (b3a): a frame whose `phase` is `idle` is an `Idle`,
+    checked for its schema first like every other.
 
     **The schema is read and checked first, before any other field** (fix round 1,
     I3): see `SchemaMismatch`. Every other way this can fail -- bytes that are not
@@ -732,6 +924,8 @@ def decode(payload: bytes) -> Telemetry:
     if schema != SCHEMA:
         raise SchemaMismatch(schema)
     try:
+        if data.get("phase") == "idle":
+            return _idle_from(data)
         return _telemetry_from(data)
     except (KeyError, TypeError) as exc:
         raise FrameError(
@@ -748,6 +942,21 @@ def _describe(exc: Exception) -> str:
     space naming nothing, which reads as truncated rather than as "no message"."""
     message = str(exc)
     return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+
+
+def _idle_from(data: dict) -> Idle:
+    """`_telemetry_from`'s twin for the idle shape."""
+    return Idle(
+        schema=data["schema"],
+        phase=data["phase"],
+        wall_at=data["wall_at"],
+        stranded=tuple(Stranded(**s) for s in data["stranded"]),
+        question=_question_in(data["question"]),
+        refusals=tuple(Refused(**r) for r in data["refusals"]),
+        refusals_dropped=data["refusals_dropped"],
+        animals=tuple(data["animals"]),
+        offered_tasks=tuple(data["offered_tasks"]),
+    )
 
 
 def _telemetry_from(data: dict) -> Telemetry:
@@ -796,6 +1005,18 @@ def _telemetry_from(data: dict) -> Telemetry:
         controls_dropped=data["controls_dropped"],
         view=data["view"],
         half_ipd_cm=data["half_ipd_cm"],
+        run_index=data["run_index"],
+        service=data["service"],
+        preflight=(
+            None
+            if data["preflight"] is None
+            else Preflight(
+                task=data["preflight"]["task"],
+                items=tuple(PreflightItem(**i) for i in data["preflight"]["items"]),
+            )
+        ),
+        question=_question_in(data["question"]),
+        offered_tasks=tuple(data["offered_tasks"]),
     )
 
 
@@ -930,6 +1151,70 @@ class ManualReward:
     by: str
 
 
+@dataclass(frozen=True, slots=True)
+class OpenSession:
+    """Open a session in `wlx taskd` (P4d-2b spec §6.2): who sends it, the session id,
+    the animal (a folder under `--subjects`), the deployment (`rig_fixed` or
+    `rig_chaired`), the setup (`direct` or `stereoscope`), the departure **as typed**,
+    the fluid already given today or `None`, and the answer to a far departure --
+    `None`, `"confirm"`, or `"amend"` with the corrected time as typed and a reason."""
+
+    KIND: ClassVar[str] = "open"
+
+    by: str
+    session_id: str
+    animal: str
+    deployment: str
+    view: str
+    departure: str
+    delivered_today: float | None
+    answer: str | None
+    amend_to: str | None
+    amend_reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class CheckRun:
+    """Take a run's pre-flight without starting it (spec §6.2: "Pre-flight is shown
+    before the run starts"): a task file under `--tasks` and its starting values."""
+
+    KIND: ClassVar[str] = "check"
+
+    by: str
+    task: str
+    values: dict
+
+
+@dataclass(frozen=True, slots=True)
+class StartRun:
+    """Start a run: its task, starting values and trial count, and **the unknown
+    pre-flight items this person acknowledges, by name** (S9a §10). The service takes
+    the pre-flight again when this arrives, and starts nothing unless it passes."""
+
+    KIND: ClassVar[str] = "start"
+
+    by: str
+    task: str
+    values: dict
+    trials: int
+    acknowledged: tuple
+
+
+@dataclass(frozen=True, slots=True)
+class EndSession:
+    """End a session (spec §6.2): stop a run in progress, release the head, and record
+    the return -- `returned` as typed, or `None` to end the runs and give it later;
+    `confirm` for a far one. While no session is open, `session_id` names a stranded
+    session to record the return of; otherwise it may name the open one or be `None`."""
+
+    KIND: ClassVar[str] = "end"
+
+    by: str
+    session_id: str | None
+    returned: str | None
+    confirm: bool
+
+
 Command = (
     SetParameter
     | Stop
@@ -939,6 +1224,10 @@ Command = (
     | ScheduleStop
     | CancelScheduledStop
     | ManualReward
+    | OpenSession
+    | CheckRun
+    | StartRun
+    | EndSession
 )
 
 #: The kinds of scheduled stop, in the order a person is offered them.
@@ -1005,7 +1294,8 @@ def check_schedule(kind: object, value: object) -> str | None:
 
 def _encode_command(command: Command) -> bytes:
     """A command to msgpack -- `SetParameter`, `Stop`, and since P4d-2b b2a `Pause`,
-    `Resume`, `Mark`, `ScheduleStop`, `CancelScheduledStop` and `ManualReward` --
+    `Resume`, `Mark`, `ScheduleStop`, `CancelScheduledStop` and `ManualReward`, and
+    since P4d-2b b3a `OpenSession`, `CheckRun`, `StartRun` and `EndSession` --
     tagged by kind so `_decode_command` knows which dataclass to rebuild.
 
     Private, unlike `encode`/`decode`: its callers are `ZmqConsole.send` and
@@ -1042,6 +1332,27 @@ def _encode_command(command: Command) -> bytes:
             "value": command.value,
             "by": command.by,
         }
+    elif isinstance(command, OpenSession):
+        payload = {
+            "kind": "open", "by": command.by, "session_id": command.session_id,
+            "animal": command.animal, "deployment": command.deployment,
+            "view": command.view, "departure": command.departure,
+            "delivered_today": command.delivered_today, "answer": command.answer,
+            "amend_to": command.amend_to, "amend_reason": command.amend_reason,
+        }
+    elif isinstance(command, (CheckRun, StartRun)):
+        payload = {
+            "kind": command.KIND, "by": command.by, "task": command.task,
+            "values": dict(command.values),
+        }
+        if isinstance(command, StartRun):
+            payload["trials"] = command.trials
+            payload["acknowledged"] = list(command.acknowledged)
+    elif isinstance(command, EndSession):
+        payload = {
+            "kind": "end", "by": command.by, "session_id": command.session_id,
+            "returned": command.returned, "confirm": command.confirm,
+        }
     else:
         raise TypeError(f"no wire encoding for {command!r}")
     return msgpack.packb(payload, use_bin_type=True)
@@ -1066,6 +1377,11 @@ class CommandRefused(ValueError):
 #: bound on what one packet can put into a refusal row, the record and every frame,
 #: not a rule about names: nothing a person types is this long.
 TEXT_LIMIT = 200
+#: The most starting values one `CheckRun` or `StartRun` may carry, and the most items
+#: one may acknowledge: bounds on one packet's reach into a refusal row, the record and
+#: every frame, not rules about tasks -- no task here declares a dozen parameters.
+VALUES_LIMIT = 64
+ACKNOWLEDGED_LIMIT = 16
 
 
 def _quoted(value: object) -> str:
@@ -1147,6 +1463,43 @@ def _setting(value: object, name: str, by: str) -> float | str:
     return float(value)
 
 
+def _word(data: dict, key: str, kind: str, by: str, *, optional: bool = False) -> str | None:
+    """A field that is one non-empty string of at most `TEXT_LIMIT` characters, or
+    `None` where `optional` allows it; refused otherwise, naming the field."""
+    value = data.get(key)
+    if value is None and optional:
+        return None
+    if not isinstance(value, str) or not value or len(value) > TEXT_LIMIT:
+        raise CommandRefused(
+            kind,
+            by,
+            f"a {kind!r} command's {key} is text of 1 to {TEXT_LIMIT} characters, and "
+            f"{_quoted(value)} is not, so it is refused",
+        )
+    return value
+
+
+def _values(data: dict, kind: str, by: str) -> dict:
+    """A run's starting values: at most `VALUES_LIMIT` names, each a parameter name, each
+    value what a setting may be (`_setting`, M8's rule, called unchanged)."""
+    values = data.get("values")
+    if not isinstance(values, dict) or len(values) > VALUES_LIMIT:
+        raise CommandRefused(
+            kind,
+            by,
+            f"a {kind!r} command's values are at most {VALUES_LIMIT} named settings, "
+            f"and these are not, so it is refused",
+        )
+    checked = {}
+    for name, value in values.items():
+        if not isinstance(name, str) or not name or len(name) > TEXT_LIMIT:
+            raise CommandRefused(
+                kind, by, f"a starting value's name {_quoted(name)} is not one, so it is refused"
+            )
+        checked[name] = _setting(value, name, by)
+    return checked
+
+
 def _decode_command(payload: bytes) -> Command:
     """The inverse of `_encode_command`. `ZmqLink.drain` is the only caller.
 
@@ -1193,6 +1546,100 @@ def _decode_command(payload: bytes) -> Command:
         if why is not None:
             raise CommandRefused("schedule", by, f"{why}, so it is refused")
         return ScheduleStop(kind=data["stop"], value=data["value"], by=by)
+    if kind == "open":
+        by = _actor(data.get("by"), "open")
+        if data.get("deployment") not in ("rig_fixed", "rig_chaired"):
+            raise CommandRefused(
+                "open", by,
+                f"a session's deployment is rig_fixed or rig_chaired, and "
+                f"{_quoted(data.get('deployment'))} is neither, so it is refused",
+            )
+        if data.get("view") not in ("direct", "stereoscope"):
+            raise CommandRefused(
+                "open", by,
+                f"a session's setup is direct or stereoscope, and "
+                f"{_quoted(data.get('view'))} is neither, so it is refused",
+            )
+        if data.get("answer") not in (None, "confirm", "amend"):
+            raise CommandRefused(
+                "open", by,
+                f"a departure is answered confirm, amend or none, and "
+                f"{_quoted(data.get('answer'))} is none of them, so it is refused",
+            )
+        delivered = data.get("delivered_today")
+        if delivered is not None:
+            try:
+                finite = (
+                    not isinstance(delivered, bool)
+                    and isinstance(delivered, (int, float))
+                    and math.isfinite(delivered)
+                )
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise CommandRefused(
+                    "open", by,
+                    f"delivered_today is mL or nothing, and {_quoted(delivered)} is "
+                    f"neither, so it is refused",
+                )
+            delivered = float(delivered)
+        reason = data.get("amend_reason", "")
+        if not isinstance(reason, str) or len(reason) > NOTE_LIMIT:
+            raise CommandRefused(
+                "open", by,
+                f"an amend_reason is text of at most {NOTE_LIMIT} characters, so this "
+                f"one is refused",
+            )
+        return OpenSession(
+            by=by,
+            session_id=_word(data, "session_id", "open", by),
+            animal=_word(data, "animal", "open", by),
+            deployment=data["deployment"],
+            view=data["view"],
+            departure=_word(data, "departure", "open", by),
+            delivered_today=delivered,
+            answer=data.get("answer"),
+            amend_to=_word(data, "amend_to", "open", by, optional=True),
+            amend_reason=reason,
+        )
+    if kind in ("check", "start"):
+        by = _actor(data.get("by"), kind)
+        task = _word(data, "task", kind, by)
+        values = _values(data, kind, by)
+        if kind == "check":
+            return CheckRun(by=by, task=task, values=values)
+        trials = data.get("trials")
+        if isinstance(trials, bool) or not isinstance(trials, int) or not 1 <= trials <= TRIALS_LIMIT:
+            raise CommandRefused(
+                "start", by,
+                f"a run's trials are a whole number from 1 to {TRIALS_LIMIT}, and "
+                f"{_quoted(trials)} is not one, so it is refused",
+            )
+        acknowledged = data.get("acknowledged")
+        if (
+            not isinstance(acknowledged, (list, tuple))
+            or len(acknowledged) > ACKNOWLEDGED_LIMIT
+            or not all(isinstance(a, str) and 0 < len(a) <= TEXT_LIMIT for a in acknowledged)
+        ):
+            raise CommandRefused(
+                "start", by,
+                f"a run's acknowledged items are at most {ACKNOWLEDGED_LIMIT} names, and "
+                f"{_quoted(acknowledged)} is not that, so it is refused",
+            )
+        return StartRun(by=by, task=task, values=values, trials=trials, acknowledged=tuple(acknowledged))
+    if kind == "end":
+        by = _actor(data.get("by"), "end")
+        confirm = data.get("confirm", False)
+        if not isinstance(confirm, bool):
+            raise CommandRefused(
+                "end", by, f"confirm is true or false, and {_quoted(confirm)} is neither, so it is refused"
+            )
+        return EndSession(
+            by=by,
+            session_id=_word(data, "session_id", "end", by, optional=True),
+            returned=_word(data, "returned", "end", by, optional=True),
+            confirm=confirm,
+        )
     raise ValueError(f"unknown command kind on the wire: {_quoted(kind)}")
 
 
@@ -1257,7 +1704,7 @@ class Link(Protocol):
     #: `REFUSAL_HISTORY`. Rolled into `Telemetry.refusals_dropped`.
     refused_dropped: int
 
-    def publish(self, telemetry: Telemetry) -> None:
+    def publish(self, telemetry: Telemetry | Idle) -> None:
         """Offer telemetry to whoever is listening. **Must never block**: latest-wins
         telemetry that could stall a trial boundary would make a view able to delay an
         experiment."""
@@ -1296,7 +1743,7 @@ class Absent:
     #: Always zero, for the same reason: nothing to keep, so nothing to discard.
     refused_dropped: int = 0
 
-    def publish(self, telemetry: Telemetry) -> None:
+    def publish(self, telemetry: Telemetry | Idle) -> None:
         return None
 
     def drain(self) -> list[Command]:
@@ -1338,7 +1785,7 @@ class Simulated:
     def queue(self, command) -> None:
         self._queued.append(command)
 
-    def publish(self, telemetry: Telemetry) -> None:
+    def publish(self, telemetry: Telemetry | Idle) -> None:
         self.published.append(telemetry)
 
     def drain(self) -> list[Command]:
@@ -1673,7 +2120,7 @@ class ZmqLink:
         #: the next `drain()`.
         self.mark_malformed: int = 0
 
-    def publish(self, telemetry: Telemetry) -> None:
+    def publish(self, telemetry: Telemetry | Idle) -> None:
         """Offer telemetry to whoever is subscribed. **Never blocks** (S9a §9: "ZMQ
         PUB drops rather than blocks, because latest-wins telemetry must never stall
         a frame"): sent with `zmq.DONTWAIT`, and a full send queue -- `zmq.Again` --

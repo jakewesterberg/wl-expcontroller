@@ -4073,6 +4073,22 @@ def test_a_service_session_runs_only_between_runs_and_only_a_run_it_is_given(tmp
         session.run(_run_spec(trials=1))
 
 
+def test_a_service_session_ended_without_a_run_still_builds_its_frames(tmp_path):
+    """Task 3's carry, pinned: `Telemetry.of` read `scheduler.block` and raised for a
+    session that never ran, so `publish()` and `close()` crashed after `end_runs`. Schema
+    10's block and task are `None` before a first run, and the frame builds."""
+    link = Simulated()
+    session = _service_session(tmp_path, link=link)
+    session.end_runs("jake")
+
+    session.publish()
+
+    frame = link.published[-1]
+    assert (frame.run_index, frame.block, frame.task) == (None, None, None)
+    assert (frame.outcomes, frame.hangs, frame.owed) == ({}, 0, {})
+    assert frame.phase == "awaiting_return" and frame.service is True
+
+
 def test_a_change_staged_as_a_service_run_ends_is_dropped_and_said(tmp_path):
     """Plan decision 2: nothing between runs applies a staged change, so it is dropped,
     and the feed says so rather than showing it staged for a run that may never come."""

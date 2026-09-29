@@ -932,6 +932,11 @@ def _telemetry(**overrides) -> Telemetry:
         controls_dropped=0,
         view="direct",
         half_ipd_cm=None,  # direct view's, like `paused_at`'s `None`
+        run_index=0,
+        service=False,
+        preflight=None,  # schema 10's, like `paused_at`'s `None`
+        question=None,
+        offered_tasks=(),
     )
     return replace(base, **overrides) if overrides else base
 

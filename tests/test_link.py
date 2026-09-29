@@ -26,14 +26,21 @@ from wl_xcon.link import (
     REFUSAL_HISTORY,
     Absent,
     CancelScheduledStop,
+    CheckRun,
     CommandRefused,
     Control,
+    EndSession,
     FrameError,
+    Idle,
     ManualReward,
     Mark,
     NotDelivered,
+    OpenSession,
     ParamRow,
     Pause,
+    Preflight,
+    PreflightItem,
+    Question,
     Refused,
     RemoteBindRefused,
     Resume,
@@ -44,7 +51,9 @@ from wl_xcon.link import (
     Simulated,
     SetParameter,
     Staged,
+    StartRun,
     Stop,
+    Stranded,
     TEXT_LIMIT,
     Telemetry,
     Unacknowledged,
@@ -171,6 +180,14 @@ def _session_with(
         scheduled_stop=None,
         controls=(),
         controls_dropped=0,
+        # Read by `Telemetry.of` since schema 10 (P4d-2b b3a): the run in progress
+        # or the last one, and the service's own fields.
+        task="tasks/fixation_detection.py",
+        run_index=0,
+        service=False,
+        preflight=None,
+        question=None,
+        offered_tasks=(),
     )
 
 
@@ -1939,7 +1956,7 @@ def test_schema_8_reads_the_pause_the_schedule_and_the_feed_from_the_session():
 
     telemetry = Telemetry.of(session, Tally(), _scheduler(), index=40)
 
-    assert telemetry.schema == SCHEMA == 9
+    assert telemetry.schema == SCHEMA == 10
     assert telemetry.paused_at == 1_700_000_100.0
     assert telemetry.scheduled_stop == ScheduledStop(
         kind="trials", target=48.0, by="jake (box, unverified)", said="after trial 48"
@@ -2002,15 +2019,15 @@ def test_a_frame_carries_the_setup_the_session_runs_in():
     assert decode(encode(stereo)).view == "stereoscope"
     assert decode(encode(stereo)).half_ipd_cm == 1.6
     assert decode(encode(_telemetry())).half_ipd_cm is None
-    assert SCHEMA == 9
+    assert SCHEMA == 10
 
 
-def test_a_schema_7_frame_is_refused_by_a_schema_9_reader():
-    """§3's schema rule: a reader built for 9 refuses 7 by name, before touching a
+def test_a_schema_7_frame_is_refused_by_a_schema_10_reader():
+    """§3's schema rule: a reader built for 10 refuses 7 by name, before touching a
     field (`SchemaMismatch`), and says which it reads."""
     old = encode(replace(_telemetry(), schema=7))
 
-    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 9"):
+    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 10"):
         decode(old)
 
 
@@ -2071,3 +2088,181 @@ def test_a_command_the_rig_took_and_never_acknowledged_is_told_from_one_never_se
 
     assert issubclass(Unacknowledged, NotDelivered)
     assert not isinstance(not_sent.value, Unacknowledged)
+
+
+# ---------------------------------------------------------------------------
+# P4d-2b b3a-1: schema 10, the idle frame, and the service's commands
+# ---------------------------------------------------------------------------
+
+PREFLIGHT = Preflight(
+    task="fixation_detection.py",
+    items=(
+        PreflightItem("task checks", "pass", "passes"),
+        PreflightItem("pump calibration", "unknown", "not measured (V10)"),
+    ),
+)
+QUESTION = Question(
+    mark="return",
+    session_id="2027-01-14_01",
+    at=1_700_000_000.0,
+    said="the return given for subject 'A' is 9000 s before the clock",
+    answers=("confirm", "re-type"),
+)
+
+
+def test_schema_10_survives_the_wire_with_its_absences_intact():
+    """Spec §6.3: the run index, `None` before any run; the pending run's pre-flight;
+    the question a console owes an answer on; and whether a service sent it."""
+    populated = _telemetry(
+        run_index=2, service=True, preflight=PREFLIGHT, question=QUESTION,
+        offered_tasks=("fixation_detection.py",), phase="between_runs",
+    )
+    before_any_run = _telemetry(run_index=None, block=None, task=None, service=True)
+
+    for original in (populated, before_any_run, _telemetry()):
+        assert decode(encode(original)) == original
+    assert type(decode(encode(populated)).preflight.items[0]) is PreflightItem
+    assert type(decode(encode(populated)).question) is Question
+    assert SCHEMA == 10
+
+
+def test_a_session_before_its_first_run_has_no_block_task_or_counts():
+    """Unknown is `None`, never a guess (S9a §9): with no run, there is no block and no
+    task; zero trials and no outcome are true."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    session.task = None
+    session.run_index = None
+
+    telemetry = Telemetry.of(session, None, None, index=0)
+
+    assert (telemetry.block, telemetry.task, telemetry.run_index) == (None, None, None)
+    assert (telemetry.outcomes, telemetry.hangs, telemetry.owed) == ({}, 0, {})
+
+
+def test_an_idle_frame_is_its_own_shape_and_survives_the_wire():
+    """The b3a-1 plan, decision 8: no session, so none of a session's numbers."""
+    idle = Idle(
+        schema=SCHEMA,
+        phase="idle",
+        wall_at=1_700_000_000.0,
+        stranded=(Stranded("2027-01-13_01", "B", 1_699_990_000.0), Stranded("2027-01-13_02", "", None)),
+        question=replace(QUESTION, mark="departure", answers=("confirm", "amend")),
+        refusals=(Refused(name="open", by="jake", why="a session is open"),),
+        refusals_dropped=0,
+        animals=("A", "B"),
+        offered_tasks=("fixation_detection.py",),
+    )
+
+    restored = decode(encode(idle))
+
+    assert restored == idle
+    assert all(type(s) is Stranded for s in restored.stranded)
+
+
+def test_an_idle_frame_of_another_schema_is_refused_by_name():
+    old = encode(
+        Idle(
+            schema=9, phase="idle", wall_at=1.0, stranded=(), question=None,
+            refusals=(), refusals_dropped=0, animals=(), offered_tasks=(),
+        )
+    )
+
+    with pytest.raises(SchemaMismatch, match="carried schema 9 and this console reads schema 10"):
+        decode(old)
+
+
+def test_an_idle_frame_carries_the_links_refusals_too_capped_and_counted():
+    link = Simulated()
+    link.refused.extend(Refused("<transport>", "<unknown>", f"bad {i}") for i in range(3))
+    mine = [Refused("open", "jake", f"refused {i}") for i in range(REFUSAL_HISTORY)]
+
+    idle = Idle.of(
+        wall_at=1.0, stranded=(), question=None, refusals=mine, refusals_dropped=4,
+        link=link, animals=(), offered_tasks=(),
+    )
+
+    assert len(idle.refusals) == REFUSAL_HISTORY
+    assert idle.refusals[-1].why == "bad 2"
+    assert idle.refusals_dropped == 4 + 3
+
+
+SERVICE_COMMANDS = (
+    OpenSession(
+        by="jake (box, unverified)", session_id="2027-01-14_01", animal="A",
+        deployment="rig_fixed", view="direct", departure="09:30", delivered_today=12.5,
+        answer="amend", amend_to="08:45", amend_reason="typed 09:30 for 08:45",
+    ),
+    CheckRun(by="jake", task="fixation_detection.py", values={"fix_hold": 0.3, "looks": "circle"}),
+    StartRun(
+        by="jake", task="fixation_detection.py", values={"fix_hold": 0.3}, trials=100,
+        acknowledged=("pump calibration", "eye tracker"),
+    ),
+    EndSession(by="jake", session_id=None, returned="now", confirm=True),
+)
+
+
+@pytest.mark.parametrize("command", SERVICE_COMMANDS, ids=lambda c: c.KIND)
+def test_the_services_commands_cross_a_real_socket_intact(zmq_cleanup, command):
+    link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
+    console = zmq_cleanup(ZmqConsole(link.pub_endpoint, link.rep_endpoint))
+
+    console.send(command)
+
+    assert _decode_command(_encode_command(command)) == command
+    assert _drain_until(link) == [command]
+
+
+@pytest.mark.parametrize(
+    ("fields", "said"),
+    [
+        ({"kind": "open", "session_id": 7}, "session_id"),
+        ({"kind": "open", "deployment": "cage_side"}, "rig_fixed or rig_chaired"),
+        ({"kind": "open", "view": "sideways"}, "direct or stereoscope"),
+        ({"kind": "open", "answer": "maybe"}, "confirm, amend or none"),
+        ({"kind": "open", "delivered_today": float("nan")}, "delivered_today"),
+        ({"kind": "open", "delivered_today": True}, "delivered_today"),
+        ({"kind": "open", "amend_reason": "x" * 501}, "amend_reason"),
+        ({"kind": "start", "values": {"fix_hold": "x" * 201}}, "at most 200"),
+        ({"kind": "start", "values": {"fix_hold": float("inf")}}, "not a real number"),
+        ({"kind": "start", "values": {f"p{i}": 1.0 for i in range(65)}}, "at most 64"),
+        ({"kind": "start", "trials": 0}, "trials"),
+        ({"kind": "start", "trials": True}, "trials"),
+        ({"kind": "start", "acknowledged": "pump calibration"}, "acknowledged"),
+        ({"kind": "start", "acknowledged": ["x"] * 17}, "acknowledged"),
+        ({"kind": "check", "task": ""}, "task"),
+        ({"kind": "end", "confirm": "yes"}, "confirm"),
+        ({"kind": "end", "returned": 1_700_000_000}, "returned"),
+    ],
+)
+def test_a_service_command_with_a_malformed_field_is_refused_before_it_exists(fields, said):
+    """M8's rule for the new commands: every field checked where the bytes become a
+    command, the refusal naming what it could of the command and its sender."""
+    base = {
+        "open": {
+            "by": "jake", "session_id": "2027-01-14_01", "animal": "A",
+            "deployment": "rig_fixed", "view": "direct", "departure": "09:30",
+            "delivered_today": None, "answer": None, "amend_to": None, "amend_reason": "",
+        },
+        "check": {"by": "jake", "task": "t.py", "values": {}},
+        "start": {"by": "jake", "task": "t.py", "values": {}, "trials": 3, "acknowledged": []},
+        "end": {"by": "jake", "session_id": None, "returned": None, "confirm": False},
+    }[fields["kind"]]
+
+    with pytest.raises(CommandRefused) as refused:
+        _decode_command(_packed(**{**base, **fields}))
+
+    assert refused.value.name == fields["kind"] or refused.value.name in fields.get("values", {})
+    assert said in refused.value.why
+
+
+def test_an_end_command_whose_confirm_is_not_a_bool_is_never_coerced():
+    """Task 1's carry: `marks.page_return` refuses a `confirm` that is not exactly
+    `True` or `False`, so the wire refuses a `1`, a `"true"` and a missing-typed value
+    before an `EndSession` exists, and an absent one is `False`."""
+    base = {"kind": "end", "by": "jake", "session_id": None, "returned": None}
+
+    for bad in (1, 0, "true", [True], 1.0):
+        with pytest.raises(CommandRefused, match="confirm"):
+            _decode_command(_packed(**base, confirm=bad))
+    assert _decode_command(_packed(**base)).confirm is False
+    assert _decode_command(_packed(**base, confirm=True)).confirm is True
