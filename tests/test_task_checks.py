@@ -34,10 +34,13 @@ from wl_xcon.task import (
 from wl_xcon.check import check
 from dataclasses import replace
 
-from tasks.rig import RIG
+# `GEOMETRY` is the rig's stereoscope at the drawing's `E` = 1.6 cm: a 63.15 cm path, and
+# the ±13.15° × ±14.77° viewport stopped by the PI's ±12° mask. `DIRECT` is the rig in
+# direct view. Both are `tests/_rig.py`'s, with its stand-in housings.
+from _rig import DIRECT, STEREOSCOPE as GEOMETRY
 from wl_xcon.codes import PROVISIONAL, Allocation
 from wl_xcon.components import Registry
-from wl_xcon.geometry import Geometry, Housing
+from wl_xcon.geometry import Geometry
 
 
 def test_a_state_no_transition_can_reach_is_reported():
@@ -264,21 +267,6 @@ def test_a_resolving_custom_component_is_accepted_but_flagged_for_review():
 
     assert [f.code for f in findings] == ["custom-component-needs-review"]
     assert findings[0].blocking is False
-
-
-#: The rig's stereoscope (`tasks/rig.py`) at the drawing's `E` = 1.6 cm: a 63.15 cm path,
-#: and the ±13.15° × ±14.77° viewport stopped by the PI's ±12° mask.
-GEOMETRY = RIG.stereoscope(half_ipd_cm=1.6)
-
-#: The rig in direct view, with **stand-in housings**: the real ones are unmeasured
-#: (direct-view spec §9 item 1). One per bottom corner, 4 × 3 cm with a 0.5 cm margin.
-DIRECT = replace(
-    RIG,
-    housings=(
-        Housing(left_cm=0.0, right_cm=4.0, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
-        Housing(left_cm=54.997, right_cm=58.997, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
-    ),
-).direct()
 
 
 def test_a_stimulus_outside_the_field_is_refused():

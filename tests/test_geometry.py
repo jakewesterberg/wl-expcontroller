@@ -17,8 +17,9 @@ from dataclasses import replace
 
 import pytest
 
+from _rig import DIRECT, RIG as STAND_IN_RIG
 from tasks.rig import RIG
-from wl_xcon.geometry import Geometry, Housing
+from wl_xcon.geometry import Geometry, SubjectSettings
 
 #: The PG27UCDM through the stereoscope, the screen at 50 cm, `E` = 1.6 cm
 #: (S0 §5.1, §5.2; PI 2026-09-27, 2026-09-28).
@@ -142,14 +143,7 @@ def test_the_field_edge_is_where_the_drawing_puts_it():
 #: **Stand-ins for the light sensors' housings, not a measurement**: the real ones are
 #: measured at build (direct-view spec §9 item 1). One per bottom corner, 4 × 3 cm with
 #: a 0.5 cm margin, in cm from the active area's bottom-left corner.
-HOUSINGS = (
-    Housing(left_cm=0.0, right_cm=4.0, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
-    Housing(left_cm=54.997, right_cm=58.997, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
-)
-
-#: The PG27UCDM seen directly with the screen at 50 cm (direct-view spec §2), with the
-#: stand-in housings.
-DIRECT = Geometry.direct(58.997, 33.293, screen_distance_cm=50.0, housings=HOUSINGS)
+HOUSINGS = STAND_IN_RIG.housings
 
 #: The same screen through the stereoscope at `E` = 1.6 cm, stopped by the PI's ±12° mask.
 MASKED = Geometry.stereoscope(
@@ -362,3 +356,41 @@ def test_the_rig_gives_the_stereoscope_its_mask_and_the_subjects_path():
     for half_ipd_cm in (1.5, 1.6, 1.9):
         field = RIG.stereoscope(half_ipd_cm=half_ipd_cm)
         assert (field.half_field_h_deg, field.half_field_v_deg) == (12.0, 12.0)
+
+
+def test_subject_settings_refuse_a_blank_subject_or_an_impossible_half_ipd():
+    """One animal's settings, from the file named at session start (PI, 2026-09-29).
+    A blank subject could match nothing it is checked against, and a half-IPD that
+    is not a positive number is not a distance."""
+    assert SubjectSettings(subject="A", half_ipd_cm=1.6).half_ipd_cm == 1.6
+    for subject, half in (("", 1.6), ("A", 0.0), ("A", -1.6), ("A", float("nan"))):
+        with pytest.raises(ValueError):
+            SubjectSettings(subject=subject, half_ipd_cm=half)
+
+
+def test_the_stereoscope_refuses_a_half_ipd_it_is_not_built_for():
+    """The optics drawing tabulates IPD 30-38 mm (S0 §7.1.3), so the rig is built for
+    half-IPDs 1.5-1.9 cm. Outside that, the mirrors and the field are nobody's drawing."""
+    assert RIG.half_ipd_range_cm == (1.5, 1.9)
+    RIG.stereoscope(half_ipd_cm=1.5)
+    RIG.stereoscope(half_ipd_cm=1.9)
+    for half in (1.49, 1.91, float("nan")):
+        with pytest.raises(ValueError, match="IPD 30-38 mm"):
+            RIG.stereoscope(half_ipd_cm=half)
+
+
+def test_a_geometry_carries_the_half_ipd_it_was_built_for():
+    """The record and telemetry read the animal's half-IPD from the field it built,
+    not from a second copy. Direct view has none, and refuses one."""
+    assert RIG.stereoscope(half_ipd_cm=1.6).half_ipd_cm == 1.6
+    assert DIRECT.half_ipd_cm is None
+    with pytest.raises(ValueError, match="direct view has no half-IPD"):
+        replace(DIRECT, half_ipd_cm=1.6)
+
+
+def test_the_reference_subject_is_the_reference_bounds_subject():
+    """So the reference settings can never quietly become a real animal's."""
+    from tasks.reference_bounds import BOUNDS
+    from tasks.reference_subject import SETTINGS
+
+    assert SETTINGS.subject == BOUNDS.subject == "REFERENCE"

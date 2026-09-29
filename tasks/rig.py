@@ -16,8 +16,8 @@ field without them would pass a stimulus drawn under a housing, and a guessed re
 number nobody measured. The tests stand for this rig with stand-in housings they label as
 such.
 
-**No session is checked against this file yet**: `wlx run --view` and `wlx check --view` load
-it in direct view part 2, after P4d-2b slice b2a merges (both change session start).
+**Sessions are checked against this file** since direct view part 2: `wlx run --rig` and
+`wlx check --rig` load it and build the chosen setup's field from it.
 """
 
 from wl_xcon.geometry import Rig
@@ -33,6 +33,9 @@ RIG = Rig(
     # The stereoscope's removable mask at the panel, starting at ±12° (PI, 2026-09-28;
     # optics drawing §5).
     mask_deg=12.0,
+    # The half-IPDs the stereoscope is built for: IPD 30-38 mm, the optics drawing's
+    # eye-separation table (S0 §7.1.3). An animal outside it is refused.
+    half_ipd_range_cm=(1.5, 1.9),
     # NOT YET MEASURED: the light sensors' housings, each a rectangle with its margin,
     # measured at build from the real sensors (direct-view spec §4, §9 item 1). Until
     # then direct view refuses to exist on these settings.

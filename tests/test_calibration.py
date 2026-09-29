@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import replace
 
 import pytest
 
-from tasks.rig import RIG
+from _rig import DIRECT, RIG
 from wl_xcon.calibration import (
     DIRECT_REGION_DEG,
     MIN_CONDITIONING,
@@ -33,7 +32,7 @@ from wl_xcon.calibration import (
     n_terms,
     region,
 )
-from wl_xcon.geometry import Geometry, Housing
+from wl_xcon.geometry import Geometry
 
 GEOMETRY = Geometry.stereoscope(
     panel_width_cm=58.997, panel_height_cm=33.293, screen_distance_cm=50.0, half_ipd_cm=1.6
@@ -148,15 +147,6 @@ def test_a_ring_cannot_carry_a_second_order_map():
 # The constellation per setup (direct-view spec §6)
 # ---------------------------------------------------------------------------
 
-#: The rig in direct view, with **stand-in housings**: the real ones are unmeasured
-#: (direct-view spec §9 item 1). One per bottom corner, 4 × 3 cm with a 0.5 cm margin.
-DIRECT = replace(
-    RIG,
-    housings=(
-        Housing(left_cm=0.0, right_cm=4.0, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
-        Housing(left_cm=54.997, right_cm=58.997, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
-    ),
-).direct()
 
 #: The rig's stereoscope at `E` = 1.6 cm, stopped by its ±12° mask.
 MASKED = RIG.stereoscope(half_ipd_cm=1.6)

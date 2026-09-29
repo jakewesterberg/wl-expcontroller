@@ -111,6 +111,11 @@ class Geometry:
     #: The light sensors' housings, direct view's alone: through the stereoscope the
     #: mask hides them. **Direct view refuses to exist without them.**
     housings: tuple[Housing, ...] = ()
+    #: The half-IPD, `E`, a stereoscope field was built for, in cm: one animal's,
+    #: from its settings file (PI, 2026-09-29). `None` in direct view, which has none.
+    #: Kept on the field so the record and telemetry read it from the object that
+    #: decided the field, never from a second copy.
+    half_ipd_cm: float | None = None
 
     def __post_init__(self) -> None:
         if self.view not in VIEWS:
@@ -137,6 +142,11 @@ class Geometry:
                 f"geometry would silently narrow the field to a value nothing at the "
                 f"rig sets"
             )
+        if self.view == "direct" and self.half_ipd_cm is not None:
+            raise ValueError(
+                "direct view has no half-IPD: both eyes see the one screen at its own "
+                "distance, so an animal's eye spacing changes nothing in its field"
+            )
 
     @classmethod
     def stereoscope(
@@ -162,6 +172,7 @@ class Geometry:
             panel_height_cm=panel_height_cm,
             viewing_distance_cm=screen_distance_cm + panel_width_cm / 4 - half_ipd_cm,
             mask_deg=mask_deg,
+            half_ipd_cm=half_ipd_cm,
         )
 
     @classmethod
@@ -255,6 +266,10 @@ class Rig:
     screen_distance_cm: float
     #: The stereoscope's mask, as a half-angle (±12° to start, PI 2026-09-28).
     mask_deg: float
+    #: The half-IPDs the stereoscope is built for, in cm: the optics drawing's
+    #: eye-separation table, IPD 30-38 mm (S0 §7.1.3). An animal outside it is refused
+    #: rather than given a field nobody drew.
+    half_ipd_range_cm: tuple[float, float]
     housings: tuple[Housing, ...] = ()
 
     def direct(self) -> Geometry:
@@ -266,8 +281,15 @@ class Rig:
         )
 
     def stereoscope(self, half_ipd_cm: float) -> Geometry:
-        """Through the stereoscope, for one subject's half-IPD, `E`, which comes from
-        its record (spec §2)."""
+        """Through the stereoscope, for one animal's half-IPD, `E`, from its settings
+        file (spec §2; PI, 2026-09-29)."""
+        low, high = self.half_ipd_range_cm
+        if not low <= half_ipd_cm <= high:
+            raise ValueError(
+                f"a half-IPD of {half_ipd_cm:g} cm is outside the {low:g}-{high:g} cm "
+                f"this stereoscope is built for (IPD {20 * low:g}-{20 * high:g} mm, the "
+                f"optics drawing's table); its mirrors and its field are unknown there"
+            )
         return Geometry.stereoscope(
             self.panel_width_cm,
             self.panel_height_cm,
@@ -275,3 +297,28 @@ class Rig:
             half_ipd_cm=half_ipd_cm,
             mask_deg=self.mask_deg,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SubjectSettings:
+    """One animal's settings, from the file named at session start with
+    `--subject-settings` (PI, 2026-09-29), as its bounded config is named with
+    `--bounds`.
+
+    Today it holds what the stereoscope's field needs and nothing more: the animal's
+    half-IPD, `E`, "measured per animal" (optics drawing §2; backlog XC-082). Direct
+    view reads nothing from it. `subject` is checked against the session's own, so one
+    animal's eye spacing cannot quietly become another's.
+    """
+
+    subject: str
+    half_ipd_cm: float
+
+    def __post_init__(self) -> None:
+        if not self.subject:
+            raise ValueError("subject settings name no subject")
+        if not (math.isfinite(self.half_ipd_cm) and self.half_ipd_cm > 0):
+            raise ValueError(
+                f"half_ipd_cm={self.half_ipd_cm!r} is not a half-IPD: half the distance "
+                f"between the eyes' centers, in cm, a positive number"
+            )

@@ -8,15 +8,13 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from tasks.rig import RIG
+from _rig import DIRECT, RIG
 from wl_xcon.calibration import constellation
 from wl_xcon.check import check
-from wl_xcon.geometry import Housing
 from wl_xcon.photometry import Calibration, xyY
 from wl_xcon.run import Recorded
 from wl_xcon.simulate import Subject, simulate
@@ -32,15 +30,8 @@ from wl_xcon.task import (
 TASKS = Path(__file__).resolve().parents[1] / "tasks"
 
 #: The rig in direct view (`tasks/rig.py`), where every reference task runs, with
-#: **stand-in housings**: the real ones are unmeasured (direct-view spec §9 item 1). One
-#: per bottom corner, 4 × 3 cm with a 0.5 cm margin.
-GEOMETRY = replace(
-    RIG,
-    housings=(
-        Housing(left_cm=0.0, right_cm=4.0, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
-        Housing(left_cm=54.997, right_cm=58.997, bottom_cm=0.0, top_cm=3.0, margin_cm=0.5),
-    ),
-).direct()
+#: stand-in housings (`tests/_rig.py`).
+GEOMETRY = DIRECT
 VALUES = {
     "fix_timeout": 4.0,
     "fix_hold": 0.3,
