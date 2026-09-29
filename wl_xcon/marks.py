@@ -52,8 +52,9 @@ TIME_FORMATS = "HH:MM, HH:MM:SS, or an ISO 8601 date-time such as 2027-01-13T22:
 def clock_time(text: str) -> float:
     """An operator's clock time to POSIX seconds. `argparse`'s `type=` for the mark.
 
-    **Welfare-critical, outside the two welfare modules** (P4d-2a final review I5,
-    `docs/design/architecture.md`): it turns what an operator types into the instants
+    **Welfare-critical** (P4d-2a final review I5, when it was `cli._wall_clock_time`;
+    whole, with this module, since b3a; `docs/design/architecture.md`): it turns what an
+    operator types into the instants
     that bound the out-of-cage interval -- the departure, and a return typed as a
     clock time -- so a mistake here moves the one limit a session has, and a change
     here wants the same human review as `welfare.py`.
@@ -63,7 +64,7 @@ def clock_time(text: str) -> float:
 
     - **Timezone: this host's local zone.** A value with no offset is read in the
       zone the lab machine is configured for, which is the clock on the wall the
-      operator is reading. A value that carries its own offset is honoured as given.
+      operator is reading. A value that carries its own offset is honored as given.
     - **Date: today, on this host, and never rolled back.** A bare `HH:MM` later than
       now is refused as being in the future rather than quietly becoming a departure
       twenty-three hours ago. An overnight departure is typed with its date.
@@ -103,14 +104,14 @@ def clock_time(text: str) -> float:
     instants and does nothing else with it, and handing it a rich object would put
     calendar arithmetic inside a welfare-critical file.
 
-    **The departure is read here, by argparse, before the session exists** -- it has
-    no `now` spelling -- and `welfare.left_cage` compares it with
-    `Session.wall_now()`, which is anchored to the host clock when the session is
-    created a moment later (`welfare.SessionClock`, Ruling 8). So the host calendar this
-    resolves against and the session's wall are one base at the departure; they
-    could part only by an adjustment of the host clock between parsing the command
-    line and creating the session. The return's `now` is the session's reading, for
-    the reason `clock_or_now` gives.
+    **The departure has no `now` spelling, and is read a moment from the session's
+    wall being anchored** to the host clock (`welfare.SessionClock`, Ruling 8): at the
+    terminal by argparse, just before the session is created; from the page by
+    `page_departure`, just after the service has built it. `welfare.left_cage` compares
+    it with `Session.wall_now()`, so the host calendar this resolves against and the
+    session's wall are one base at the departure; they could part only by an
+    adjustment of the host clock in that moment. The return's `now` is the session's
+    reading, for the reason `clock_or_now` gives.
     """
     raw = text.strip()
     for fmt in ("%H:%M", "%H:%M:%S"):
@@ -142,9 +143,9 @@ def clock_or_now(text: str, now: Callable[[], float]) -> float:
     """`now`, or a clock time as `clock_time` reads one. For the return, which
     is usually marked at the moment it happens (P4d-2a).
 
-    **Welfare-critical, outside the two welfare modules** (P4d-2a final review I5,
-    `docs/design/architecture.md`): the instant it returns closes the out-of-cage
-    interval.
+    **Welfare-critical** (P4d-2a final review I5, when it was `cli._clock_or_now`;
+    whole, with this module, since b3a; `docs/design/architecture.md`): the instant it
+    returns closes the out-of-cage interval.
 
     **`now` is read from `now()` -- the session's clock, `Session.wall_now` -- never
     from `time.time()`** (Task 7 fix round 1). The return is compared with marks taken

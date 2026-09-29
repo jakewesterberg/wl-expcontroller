@@ -327,6 +327,9 @@ def _settle_departure(session, args) -> _marks.Departure:
 
     **A confirmation's `by` is `--as` if it was given and empty otherwise**: the PI asked
     for a name on the amendment, and an interactive `c` has none to record honestly.
+    `how` is what carries what a reader of the welfare record needs -- whether a person
+    or a flag answered -- since a wrapper with the flag baked in is how this ruling
+    would otherwise be defeated in silence.
     """
     at = args.out_of_cage_at
     given = {"by": args.actor, "how": "--out-of-cage-at"}

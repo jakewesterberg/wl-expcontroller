@@ -287,7 +287,7 @@ def unmeasured(pump: object) -> list[PreflightItem]:
         pump_item = PreflightItem(
             PUMP_CALIBRATION,
             UNKNOWN,
-            "no pump calibration has been measured (V10), so no millilitre is known to "
+            "no pump calibration has been measured (V10), so no milliliter is known to "
             "be what the valve gives; this rig's pump is the simulator. Acknowledgeable "
             "only because no real pump driver exists yet -- when one is written, S9a §10 "
             "says this rule must be revisited before it ships",

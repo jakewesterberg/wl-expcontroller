@@ -534,9 +534,10 @@ is measured (`docs/CHECKPOINT.md`, "Open measurements"). An unmeasured millilitr
 conversion therefore cannot reach an animal whatever preflight allows. **If anyone writes
 that driver, this rule must be revisited before it ships** — at that point an
 acknowledgeable unknown would mean a per-delivery ceiling enforced against a number
-nobody measured, while appearing to work. Since P4d-2b b3a the code holds this too:
-`preflight.unmeasured` makes the calibration unknown only while the pump is the simulator or
-absent, and fails it for any other pump.
+nobody measured, while appearing to work. Since P4d-2b b3a the code holds this for the runs
+`wlx taskd` starts: `preflight.unmeasured` makes the calibration unknown only while the pump
+is the simulator or absent, and fails it for any other pump. `wlx run` takes no pre-flight,
+so its runs are not covered; today it builds only the simulator's pump.
 
 ---
 
