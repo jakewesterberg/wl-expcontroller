@@ -569,18 +569,23 @@ plans. b3a was designed in three sections, each approved as written below.
   required but the allocation and the mark endpoint, as for `wlx run`.
 - **Idle** until a session opens: it publishes a frame whose `phase` is `idle`, and the page
   shows *no session open* beside the form that opens one.
-- **One session at a time**, because one rig holds one animal. A session holds several
-  **runs**, one after another; the day's welfare state (the out-of-cage interval, the day's
-  fluid, restraint) lives in the session and outlasts every run.
+- **One session at a time, any number a day**, because one rig holds one animal at a time: a
+  rig may run monkey A in the morning and monkey B in the afternoon, one session each (PI,
+  2026-09-29, a reminder while this was being planned). A session holds several **runs**, one
+  after another. **Welfare state belongs to the session, which is one animal's**: its
+  out-of-cage interval, its fluid (with what the animal was already given today, from
+  wl-works) and its restraint live in the session and outlast every run, and none of it
+  carries from one animal's session to the next. A new session opens once the previous one
+  has ended with its animal's return.
 - **Stop ends the run, not the session.** Between runs (`phase` `between_runs`) the
   out-of-cage clock keeps running and is published. **The out-of-cage limit** ends a run in
   progress, as it ends a session today; reached between runs, it refuses a new run, and the
   page asks for the return. A scheduled stop (b2a) ends the run it was set on.
 - **Nothing is quietly lost to a crash.** Everything a session has done is in its record as it
   happens. On start, the service looks under `--root` for a session with a departure and no
-  return; while one exists it **refuses to open a new session** until someone records that
-  animal's return time, and the page shows the stranded session and asks for it. An animal out
-  of its cage is never forgotten because a process died.
+  return; while one exists it **refuses to open a new session**, for that animal or any other,
+  until someone records that animal's return time, and the page shows the stranded session and
+  asks for it. An animal out of its cage is never forgotten because a process died.
 - **`wlx run` stays**, for the terminal: it opens a session, runs one run and ends it, through
   the same session and run code as the service, so the terminal and the page are two peers on
   one path and not two implementations.
@@ -593,6 +598,9 @@ Writes only from the rig PC's own browser (§2's four checks), until b2b.
 
 - **Open.** The page asks for:
   - the operator's name, once, as now (`NAME (box, unverified)`);
+  - **the session id**, as `wlx run --session-id` takes it, until the sync box mints session
+    identity (wl-sync owns it); a second session on one rig in one day has its own id, and an
+    id already used under `--root` is refused;
   - **the animal**, chosen from the folders under `--subjects`, each named for its subject and
     holding its bounded config (`bounds.py`, defining `BOUNDS`, whose subject must match) and,
     for the stereoscope, its settings (`settings.py`, defining `SETTINGS`); an animal whose
