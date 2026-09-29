@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from wl_xcon.record import REFUSAL_LOG_LIMIT, SessionRecord, welfare_note
+from wl_xcon.record import RUNS, REFUSAL_LOG_LIMIT, SessionRecord, welfare_note
 
 
 def test_the_record_lands_where_wl_preproc_expects_it(tmp_path):
@@ -85,7 +85,7 @@ def test_a_trial_is_on_disk_before_the_session_ends(tmp_path):
     the lesson wl-sync learned when its own recorder held a whole session in memory
     and a crash took all of it."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=1, outcome="correct", params={"fix_hold": 0.3})
+    record.trial(index=1, outcome="correct", params={"fix_hold": 0.3}, run=0)
 
     written = (
         tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
@@ -98,8 +98,8 @@ def test_every_trial_carries_its_whole_resolved_parameter_set(tmp_path):
     """P16. A pointer to "the config" is not enough: a change mid-session is
     invisible at analysis time unless each trial says what it actually ran with."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=1, outcome="correct", params={"fix_hold": 0.3})
-    record.trial(index=2, outcome="correct", params={"fix_hold": 0.9})
+    record.trial(index=1, outcome="correct", params={"fix_hold": 0.3}, run=0)
+    record.trial(index=2, outcome="correct", params={"fix_hold": 0.9}, run=0)
 
     rows = [
         json.loads(line)
@@ -116,7 +116,7 @@ def test_the_subject_is_on_every_trial_not_only_in_a_header(tmp_path):
     keyed on the sync box's day-scoped id. Naming the subject per trial is what
     makes a day partition correctly whatever wl-sync decides about `_02`."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=1, outcome="correct", params={})
+    record.trial(index=1, outcome="correct", params={}, run=0)
 
     row = json.loads(
         (tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl").read_text()
@@ -125,30 +125,78 @@ def test_the_subject_is_on_every_trial_not_only_in_a_header(tmp_path):
     assert row["subject"] == "A"
 
 
-def test_the_config_snapshot_records_the_whole_precedence_chain(tmp_path):
-    """S8 §3.4. Recording only the resolved values loses where each came from, and
-    "why was fix_hold 0.3 that day" is a question asked months later when the layers
-    are the only thing that answers it."""
+def test_the_config_is_written_as_given(tmp_path):
+    """P4d-2b spec §6.3: `config.json` holds what is fixed for the whole session; what
+    varies by run is in `runs.jsonl`. The record writes what it is given."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.snapshot(
-        layers={
-            "rig": {"fix_hold": 0.2},
-            "subject": {"fix_hold": 0.3},
-            "session": {},
-        },
-        resolved={"fix_hold": 0.3},
-        versions={"task": "detection@3", "code": "abc1234"},
-        setup={"view": "direct"},
-    )
+    record.configure({"subject": "A", "setup": {"view": "direct"}})
 
-    written = json.loads(
-        (tmp_path / "2027-01-14_01" / "xcon" / "config.json").read_text()
-    )
+    written = json.loads((tmp_path / "2027-01-14_01" / "xcon" / "config.json").read_text())
 
-    assert written["resolved"]["fix_hold"] == 0.3
-    assert written["layers"]["rig"]["fix_hold"] == 0.2
-    assert written["versions"]["code"] == "abc1234"
-    assert written["setup"] == {"view": "direct"}
+    assert written == {"subject": "A", "setup": {"view": "direct"}}
+
+
+def test_a_session_record_opens_no_file_until_something_is_written(tmp_path):
+    record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
+
+    assert record.directory.is_dir()
+    assert list(record.directory.iterdir()) == []
+
+
+def test_the_trial_file_is_reopened_for_each_run_and_every_row_names_its_run(tmp_path):
+    """Spec §6.3: "Every trial row names its run." The record lives for the session and
+    its trial file for a run: closed with one, reopened by the next one's first trial."""
+    record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
+    record.trial(index=0, outcome="correct", params={}, run=0)
+    record.close()
+    record.trial(index=0, outcome="no_response", params={}, run=1)
+    record.close()
+    record.close()  # a second close does nothing
+
+    rows = [
+        json.loads(line)
+        for line in (record.directory / "trials.jsonl").read_text().splitlines()
+    ]
+    assert [(row["run"], row["index"], row["outcome"]) for row in rows] == [
+        (0, 0, "correct"),
+        (1, 0, "no_response"),
+    ]
+
+
+def test_a_run_row_carries_its_event_its_run_and_its_local_time(tmp_path):
+    record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
+    record.run_row("start", 0, 1_700_000_000.0, task="t.py", unplanned=True)
+    record.run_row("end", 0, 1_700_000_060.0, stop_kind="completed")
+
+    rows = [json.loads(line) for line in (record.directory / RUNS).read_text().splitlines()]
+
+    assert [(row["event"], row["run"], row["at"]) for row in rows] == [
+        ("start", 0, 1_700_000_000.0),
+        ("end", 0, 1_700_000_060.0),
+    ]
+    assert rows[0]["task"] == "t.py" and rows[0]["unplanned"] is True
+    assert "local" in rows[0]["at_local"]
+
+
+def test_the_refusal_cap_is_the_sessions_and_each_run_says_what_it_dropped(tmp_path):
+    """`REFUSAL_LOG_LIMIT` is how many rows a session writes, across its runs; a run
+    that dropped rows says so at its close, and a run that dropped none adds nothing."""
+    record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
+    for i in range(REFUSAL_LOG_LIMIT):
+        record.refusal("reward_correct", 1.0 + i, "jake", "over", i, float(i))
+    record.close()
+    for i in range(3):
+        record.refusal("reward_correct", 2.0, "jake", "over", i, float(i))
+    record.close()
+    record.close()
+
+    rows = [
+        json.loads(line)
+        for line in (record.directory / "refusals.jsonl").read_text().splitlines()
+    ]
+    notices = [row for row in rows if row.get("truncated")]
+    assert len(rows) == REFUSAL_LOG_LIMIT + 1
+    assert [(n["kept"], n["dropped"]) for n in notices] == [(REFUSAL_LOG_LIMIT, 3)]
 
 
 def test_a_parameter_change_is_recorded_against_the_sequence_number_it_strobed(tmp_path):
@@ -172,7 +220,7 @@ def test_a_crash_leaves_every_trial_written_so_far(tmp_path):
     file is on disk mid-session, not at the end of one."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
     for index in range(5):
-        record.trial(index=index, outcome="correct", params={})
+        record.trial(index=index, outcome="correct", params={}, run=0)
     del record  # no close(), no __exit__ -- the process died
 
     lines = (
@@ -242,10 +290,11 @@ def test_closing_releases_the_file_and_the_context_manager_does_it_for_you(tmp_p
     `__exit__` surviving -- three methods nothing exercised.
     """
     with SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A") as r:
-        r.trial(index=1, outcome="correct", params={})
-        assert not r._trials.closed
+        r.trial(index=1, outcome="correct", params={}, run=0)
+        handle = r._trials
+        assert not handle.closed
 
-    assert r._trials.closed
+    assert handle.closed and r._trials is None
 
 
 def test_the_refusal_log_limit_matches_the_in_memory_refusal_caps():

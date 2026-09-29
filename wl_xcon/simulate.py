@@ -357,5 +357,6 @@ def simulate(
                 index=index,
                 outcome=result.outcome.value if result.outcome else "hang",
                 params=dict(values or {}),
+                run=0,  # one simulated run; a session of several is `taskd`'s
             )
     return tally.census()

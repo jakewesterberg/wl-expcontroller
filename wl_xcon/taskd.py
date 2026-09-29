@@ -143,6 +143,10 @@ class SessionSpec:
     trials: int
     frame_period: float
     seed: int
+    #: The values trials run with: for `wlx run`'s one run, its values; for a session of
+    #: several runs, the run in progress or the last one, **replaced from its `RunSpec`
+    #: when each starts** (the b3a-1 plan, decision 3) -- the one dict `Session.set` and
+    #: `_apply_staged` read and write, so neither needs a second place to look.
     values: dict
     #: The ceilings this session runs under. **Required**: a session with no bounded
     #: config is a session with no limits, and `Welfare` refuses one missing either
@@ -201,6 +205,38 @@ class SessionSpec:
     #: the welfare clocks count it as they count everything: on the wall (P4d-2a
     #: spec §10), for however long it actually takes.
     iti: float = 0.5
+
+
+@dataclass
+class RunSpec:
+    """One run of a session: a task and what it starts with (P4d-2b spec §6.1). A
+    session holds several; each is its own task, trial count, seed, starting values and
+    plan, while the session's welfare, clocks and record go on across them."""
+
+    task: str
+    trials: int
+    seed: int
+    values: dict
+    blocks: list[Block] | None = None
+
+    @classmethod
+    def of(cls, spec: SessionSpec) -> RunSpec:
+        """The run a `SessionSpec` describes: `wlx run`'s one run. **Its values are the
+        spec's own dict**, not a copy, so a change applied during the run is in
+        `spec.values` afterwards, as it always was. A spec that names no task -- a
+        `wlx taskd` session's -- describes no run, and is refused."""
+        if not spec.task:
+            raise ValueError(
+                "this session's spec names no task, so it describes no run; pass a "
+                "RunSpec, as wlx taskd does for each of its runs"
+            )
+        return cls(
+            task=spec.task,
+            trials=spec.trials,
+            seed=spec.seed,
+            values=spec.values,
+            blocks=spec.blocks,
+        )
 
 
 @dataclass
@@ -271,10 +307,18 @@ class Session:
     #: `link.Telemetry.refusals_dropped`, so a cap can never read as a quiet session.
     refusals_dropped: int = field(init=False, default=0)
     blocks_run: list = field(init=False, default_factory=list)
+    #: Which of the session's runs is in progress, or was last: 0 for the first. `None`
+    #: before any has started (P4d-2b spec §6.3), never 0.
+    run_index: int | None = field(init=False, default=None)
     _elapsed: float = field(init=False, default=0.0, repr=False)
     _staged: list = field(init=False, default_factory=list, repr=False)
     _sequence: int = field(init=False, default=0, repr=False)
     _record: SessionRecord | None = field(init=False, default=None, repr=False)
+    #: The run in progress or the last one, or `None` before any.
+    _run: RunSpec | None = field(init=False, default=None, repr=False)
+    #: `RUN_START` and `RUN_END`, looked up once as the session is built (P4d-2b spec
+    #: §6.3), `None` each where the allocation has none.
+    _run_codes: tuple = field(init=False, default=(None, None), repr=False)
     #: `""` until `run()` opens the record, then `running`; `await_return` moves it
     #: to `awaiting_return` and `closed` (P4d-2a). Published as `Telemetry.phase`.
     phase: str = field(init=False, default="")
@@ -349,6 +393,7 @@ class Session:
         self.allocation = _load_allocation(
             Path(self.spec.allocation) if self.spec.allocation else None
         )
+        self._run_codes = (self._code("RUN_START"), self._code("RUN_END"))
         self.welfare = Welfare(
             bounds=self.spec.bounds,
             pump=self.pump,
@@ -500,6 +545,46 @@ class Session:
             )
         self.opened_wall_at = self.wall_now()
         self._note("session opened", self.opened_wall_at, "", how)
+        # The record lives for the session (P4d-2b spec §6.3): its folder and what is
+        # fixed for the session, written as it opens.
+        self._record = SessionRecord.open(
+            self.spec.root, self.spec.session_id, self.spec.subject
+        )
+        self._record.configure(self._fixed_config())
+
+    def _fixed_config(self) -> dict:
+        """What `config.json` holds (P4d-2b spec §6.3): what is fixed for the whole
+        session. The setup as numbers, as direct-view spec §3 asked -- the distance
+        degrees were computed on is what a question months later needs."""
+        geometry = self.spec.geometry
+        return {
+            "session_id": self.spec.session_id,
+            "subject": self.spec.subject,
+            "deployment": self.spec.deployment.value,
+            "bounds": {
+                "ceilings": {
+                    name: dataclasses.asdict(ceiling)
+                    for name, ceiling in self.spec.bounds.ceilings.items()
+                },
+                "minima": {
+                    name: dataclasses.asdict(floor)
+                    for name, floor in self.spec.bounds.minima.items()
+                },
+            },
+            "versions": {
+                "bounds": self.spec.bounds_config,
+                "rig": self.spec.rig_config,
+                "subject_settings": self.spec.subject_settings,
+            },
+            "setup": {
+                "view": geometry.view,
+                "half_ipd_cm": geometry.half_ipd_cm,
+                "viewing_distance_cm": geometry.viewing_distance_cm,
+                "half_field_deg": [geometry.half_field_h_deg, geometry.half_field_v_deg],
+                "mask_deg": geometry.mask_deg,
+                "housings": [dataclasses.asdict(h) for h in geometry.housings],
+            },
+        }
 
     def end(self, how: str = "terminal") -> None:
         """Stop the session's own clock. See `open()` for what it is and why.
@@ -529,6 +614,9 @@ class Session:
             )
         self.ended_wall_at = self.wall_now()
         self._note("session ended", self.ended_wall_at, "", how)
+        if self._record is not None:
+            self._record.close()
+            self._record = None
 
     # --- out of cage, and restraint ---------------------------------------
 
@@ -776,6 +864,14 @@ class Session:
         self._staged.append((name, self.spec.values.get(name), value, by, False))
 
     @property
+    def task(self) -> str | None:
+        """The task of the run in progress or the last run, or `None` before any (P4d-2b
+        spec §6.3). The run a `SessionSpec` describes counts before it starts."""
+        if self._run is not None:
+            return self._run.task
+        return self.spec.task or None
+
+    @property
     def staged(self) -> tuple:
         """Every accepted change not yet applied: `(name, was, now, by, bounded)`,
         the exact shape `link.Telemetry.of` reads to build its `Staged` rows.
@@ -856,7 +952,7 @@ class Session:
             at = self.wall_now()
         self._feed(kind, by, at, feed)
         if self._record is not None:
-            self._record.control(kind, by, at, index, **detail)
+            self._record.control(kind, by, at, index, run=self.run_index, **detail)
         return at
 
     def _feed(self, kind: str, by: str, at: float, said: str) -> None:
@@ -1414,8 +1510,14 @@ class Session:
             self._refuse(command.name, command.by, why)
 
     def _params(self) -> dict[str, Param]:
-        trial = self._trial if self._trial is not None else self._load()
-        return {p.name: p for p in trial.params}
+        """The declarations of the run's task: the run in progress or the last one, or
+        the task a `SessionSpec` names before its run starts. **None before any run of a
+        session whose spec names no task** (`wlx taskd`'s), so a setting then is refused
+        as undeclared."""
+        trial = self._trial
+        if trial is None and self.spec.task:
+            trial = self._trial = _load_trial(Path(self.spec.task))
+        return {} if trial is None else {p.name: p for p in trial.params}
 
     def _apply_staged(self, index: int) -> None:
         """Applied atomically in the inter-trial interval, and all of them at once.
@@ -1461,7 +1563,9 @@ class Session:
             else:
                 self.spec.values[name] = now
             if self._record is not None:
-                self._record.parameter_change(self._sequence, name, was, now, by)
+                self._record.parameter_change(
+                    self._sequence, name, was, now, by, run=self.run_index
+                )
             self.card.emit(self.allocation.code_for("PARAM_CHANGED"))
             self._feed(
                 "set",
@@ -1475,18 +1579,14 @@ class Session:
 
     _trial: Trial | None = field(init=False, default=None, repr=False)
 
-    def _load(self) -> Trial:
-        self._trial = _load_trial(Path(self.spec.task))
-        return self._trial
-
-    def _plan(self) -> list[Block]:
-        """The session's blocks, or the one block a flat session is."""
-        if self.spec.blocks:
-            return self.spec.blocks
+    def _plan(self, run: RunSpec) -> list[Block]:
+        """The run's blocks, or the one block a flat run is."""
+        if run.blocks:
+            return run.blocks
         return [
             Block(
                 name="session",
-                conditions=[Condition("session", {}, target=self.spec.trials)],
+                conditions=[Condition("session", {}, target=run.trials)],
                 # Every trial pays, including aborts. A flat "run N trials" means N
                 # trials, not N completed ones -- the completed-trial reading is what
                 # a condition target expresses, and a session that quietly ran on
@@ -1495,7 +1595,7 @@ class Session:
             )
         ]
 
-    def _agent(self):
+    def _agent(self, run: RunSpec):
         """The default world: one behaviour agent, told about each trial.
 
         One `Subject` for the session rather than one per trial, because its
@@ -1503,7 +1603,7 @@ class Session:
         reseed to the same animal every time, and every trial would be identical.
         """
         subject = Subject(
-            seed=self.spec.seed,
+            seed=run.seed,
             hazards=self.spec.hazards,
             engagement=self.spec.engagement,
             lapse=self.spec.lapse,
@@ -1524,26 +1624,35 @@ class Session:
             _link.Telemetry.of(self, self._tally, self._scheduler, self._index)
         )
 
-    def run(self) -> Census:
-        """Open the in-session clock if nothing has, check, then require the marks,
+    def run(
+        self,
+        run: RunSpec | None = None,
+        *,
+        preflight_rows: list | None = None,
+        by: str = "",
+    ) -> Census:
+        """One run: open the in-session clock if nothing has, check, require the marks,
         then run, then record.
 
-        **In that order, and it is load-bearing.** A malformed task is refused before
-        anything else happens -- ideally before the animal is in the chair at all --
-        and a session whose welfare marks are missing is refused before its first
-        frame, by `welfare.preflight` rather than by a second copy of the rule here.
+        **`run` is `None` for the run the `SessionSpec` describes** -- `wlx run`'s one
+        run, and every call written before sessions held several -- and a `RunSpec` for
+        each of a `wlx taskd` session's (P4d-2b spec §6.1). `preflight_rows` are the
+        pre-flight's items as `runs.jsonl` records them, with who acknowledged each
+        unknown one (`preflight.rows`), and `by` who started the run; `wlx run` takes no
+        pre-flight (the b3a-1 plan, decision 13), and its start row says `null`.
 
-        **`open()` runs first, ahead of the check it would otherwise be refused
-        alongside** (P4d-2a spec §10 item 3): a direct API user who never called
-        `open()` still gets a `session opened` row and a working
-        `Telemetry.in_session_seconds`, even on a task that goes on to refuse.
-        `wlx run` calls `open()` itself, earlier still -- before the departure is
-        even marked -- so this is a no-op there and only a backstop for everyone
-        else.
+        **In that order, and it is load-bearing.** A malformed task is refused before
+        anything else happens, and a session whose welfare marks are missing is refused
+        before its first frame, by `welfare.preflight` rather than by a second copy of
+        the rule here. **What belongs to a run starts afresh only once both pass**, so a
+        refused run leaves the last run's state, and its frames, as they were.
         """
         if self.opened_wall_at is None:
             self.open()
-        trial = self._load()
+        implied = run is None
+        if implied:
+            run = RunSpec.of(self.spec)
+        trial = _load_trial(Path(run.task))
         findings = check(trial, self.allocation, geometry=self.spec.geometry)
         blocking = [f for f in findings if f.blocking]
         if blocking:
@@ -1553,42 +1662,58 @@ class Session:
             )
         self.welfare.preflight(self.wall_now())
 
-        scheduler = Scheduler(blocks=self._plan(), seed=self.spec.seed)
-        make_world = self.world if self.world is not None else self._agent()
+        # **A run of its own** (the b3a-1 plan, decision 2): what belongs to a run
+        # starts afresh; the session's welfare, clocks, record, feeds and bounded
+        # config go on. A change staged before `run()` is not dropped here: it applies
+        # at this run's first boundary, as a live write always has.
+        self._trial = trial
+        self._run = run
+        if not implied:
+            self.spec.values = dict(run.values)
+        self.run_index = 0 if self.run_index is None else self.run_index + 1
+        self.stopped_because, self.stop_kind = "", None
+        self.paused_at = None
+        self.scheduled_stop = None
+        self._recent.clear()
+
+        scheduler = Scheduler(blocks=self._plan(run), seed=run.seed)
+        make_world = self.world if self.world is not None else self._agent(run)
         tally = Tally()
         self.blocks_run = [scheduler.block.name]
-
-        record = SessionRecord.open(
-            self.spec.root, self.spec.session_id, self.spec.subject
-        )
-        self._record = record
-        geometry = self.spec.geometry
-        record.snapshot(
-            layers={"session": dict(self.spec.values)},
+        record = self._record
+        start_code, end_code = self._run_codes
+        record.run_row(
+            "start",
+            self.run_index,
+            self.wall_now(),
+            task=run.task,
+            allocation=self.spec.allocation,
+            versions={"task": run.task, "allocation": self.spec.allocation},
+            trials=run.trials,
+            seed=run.seed,
+            blocks=None if not run.blocks else [block.name for block in run.blocks],
+            layers={"run": dict(self.spec.values)},
             resolved=dict(self.spec.values),
-            versions={
-                "task": self.spec.task,
-                "allocation": self.spec.allocation,
-                "bounds": self.spec.bounds_config,
-                "rig": self.spec.rig_config,
-                "subject_settings": self.spec.subject_settings,
+            # The welfare-bounded values it starts with -- a reward size set in an
+            # earlier run of this session carries into this one (Question 1, PI).
+            bounded={
+                name: ceiling.value
+                for name, ceiling in self.spec.bounds.ceilings.items()
+                if name != OUT_OF_CAGE
             },
-            # Direct-view spec §3: the setup, and the field it gave, as numbers -- the
-            # distance degrees were computed on is what a question months later needs.
-            setup={
-                "view": geometry.view,
-                "half_ipd_cm": geometry.half_ipd_cm,
-                "viewing_distance_cm": geometry.viewing_distance_cm,
-                "half_field_deg": [geometry.half_field_h_deg, geometry.half_field_v_deg],
-                "mask_deg": geometry.mask_deg,
-                "housings": [dataclasses.asdict(h) for h in geometry.housings],
-            },
+            # Every run is unplanned until the day's plan arrives from wl-works: XC-150.
+            unplanned=True,
+            preflight=preflight_rows,
+            by=by,
+            strobed=start_code is not None,
         )
         self._tally = tally
         self._scheduler = scheduler
         self._index = 0
         self.phase = "running"
         self._mark_code = self._code("OPERATOR_MARK")
+        #: Whether this run's `RUN_END` went out: only on an ending by design.
+        ended_strobed = False
         # **The per-frame mark check** (P4d-2b spec §5.1), handed to `run_trial` as
         # its one per-frame hook. Bound once, here, so each frame is two calls and a
         # test on a small integer; `_stamp` runs only when a signal arrived.
@@ -1600,6 +1725,8 @@ class Session:
                 stamp(mark, frame)
 
         try:
+            if start_code is not None:
+                self.card.emit(start_code)
             index = 0
             #: Block transitions taken. Bounded by the plan -- see the check below.
             advanced = 0
@@ -1734,6 +1861,7 @@ class Session:
                     params=values,
                     block=scheduler.block.name,
                     condition=condition.name,
+                    run=self.run_index,
                 )
                 if self.observe is not None:
                     self.observe(condition, values, result)
@@ -1745,6 +1873,9 @@ class Session:
             # nothing marked, which is the zero-where-an-absence-belongs failure
             # `chair_seconds` refuses on the other surface. On the wall, like the
             # fixation (P4d-2a spec §10).
+            if end_code is not None:
+                self.card.emit(end_code)
+                ended_strobed = True
             if self.spec.deployment is Deployment.RIG_FIXED:
                 self.head_released(self.wall_now())
             return tally.census()
@@ -1787,17 +1918,27 @@ class Session:
             publish()
             raise
         finally:
-            # A trial that faulted or was interrupted has no boundary after it, so
-            # the marks its frames stamped -- already strobed -- are written here,
-            # while the record is still open (P4d-2b b2a). **The close does not
-            # depend on that write** (the b2a final review): a write that raises --
-            # a full disk -- still propagates, after the record is closed.
+            # A trial that faulted or was interrupted has no boundary after it, so the
+            # marks its frames stamped -- already strobed -- are written here. **Then
+            # the run's end row, from here on every way out**, so a fault is in
+            # `runs.jsonl` too; **then the close**, which depends on neither write.
             try:
                 if self._stamps:
                     self._settle_stamps(self._index)
             finally:
-                record.close()
-                self._record = None
+                try:
+                    record.run_row(
+                        "end",
+                        self.run_index,
+                        self.wall_now(),
+                        stopped_because=self.stopped_because,
+                        stop_kind=self.stop_kind,
+                        trials=self._index,
+                        blocks_run=list(self.blocks_run),
+                        strobed=ended_strobed,
+                    )
+                finally:
+                    record.close()
 
     def await_return(self, give_up: threading.Event, heartbeat: float = 1.0) -> None:
         """Keep a rig session's out-of-cage clock visible until the animal is home.

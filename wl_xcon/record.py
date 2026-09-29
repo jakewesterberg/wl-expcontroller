@@ -29,7 +29,7 @@ from typing import TextIO
 XCON_DIRNAME = "xcon"
 
 #: How many refusal rows one session writes before it stops writing them (PI,
-#: 2026-09-19).
+#: 2026-09-19), across all of its runs (b3a).
 #:
 #: **A bound on an untrusted peer's reach into the record, and on the write load
 #: between trials.** `taskd.Session._command` records a row for every refused
@@ -82,6 +82,17 @@ WELFARE_NOTES = "welfare_notes.jsonl"
 #: is paused, schedule, cancel and stop, each a row here, as fast as it can send them,
 #: and nothing caps this file against it.
 CONTROLS = "controls.jsonl"
+
+#: One row when each run starts and one when it ends (P4d-2b spec §6.3), joined by
+#: `run`: the task, the allocation and their versions, the values and the bounded values
+#: it started with, `unplanned`, the pre-flight with who acknowledged each unknown item,
+#: and who started it; then when it ended, why, and how many trials it ran.
+#:
+#: **Two rows, not the spec's one** (the b3a-1 plan, decision 4), so a run's start, and
+#: the acknowledgements it started on, are on disk before its first trial: a process
+#: that dies mid-run leaves the start row, and the missing end row is the signal, as a
+#: missing `returned` row is for the out-of-cage interval.
+RUNS = "runs.jsonl"
 
 
 def welfare_note(
@@ -158,21 +169,22 @@ def _local(posix_seconds: float) -> str:
 class SessionRecord:
     directory: Path
     subject: str
-    _trials: TextIO
-    #: Refusal rows written, and refusals seen after the limit. `close` turns a
-    #: non-zero drop count into one notice row -- see `refusal`.
+    #: The trial file, opened by a run's first trial and closed with the run (`close`),
+    #: `None` between runs. **The record itself lives for the session** (P4d-2b spec
+    #: §6.3): one folder, one `config.json`, and one refusal cap across its runs.
+    _trials: TextIO | None = None
+    #: Refusal rows written this session, and refusals seen past the cap since the last
+    #: notice. `close` turns a non-zero drop count into one notice row -- see `refusal`.
     _refusals_written: int = 0
     _refusals_dropped: int = 0
 
     @classmethod
     def open(cls, root: Path, session_id: str, subject: str) -> SessionRecord:
+        """The session's folder, made now; no file is opened until something is
+        written."""
         directory = Path(root) / session_id / XCON_DIRNAME
         directory.mkdir(parents=True, exist_ok=True)
-        return cls(
-            directory=directory,
-            subject=subject,
-            _trials=(directory / "trials.jsonl").open("a", encoding="utf-8"),
-        )
+        return cls(directory=directory, subject=subject)
 
     def trial(
         self,
@@ -181,6 +193,8 @@ class SessionRecord:
         params: dict,
         block: str = "",
         condition: str = "",
+        *,
+        run: int,
     ) -> None:
         """One trial's record, flushed before returning.
 
@@ -193,11 +207,17 @@ class SessionRecord:
         day while the session directory is keyed on the sync box's day-scoped id
         (S3 §2). Naming it per trial makes a day partition correctly whatever
         `wl-sync` decides about `_02`.
+
+        **And the run it is part of** (P4d-2b spec §6.3: "every trial row names its
+        run"), since a session holds several and each counts its trials from 0.
         """
+        if self._trials is None:
+            self._trials = (self.directory / "trials.jsonl").open("a", encoding="utf-8")
         self._trials.write(
             json.dumps(
                 {
                     "index": index,
+                    "run": run,
                     "subject": self.subject,
                     "outcome": outcome,
                     "params": params,
@@ -210,30 +230,36 @@ class SessionRecord:
         )
         self._trials.flush()
 
-    def snapshot(
-        self, layers: dict[str, dict], resolved: dict, versions: dict, setup: dict
-    ) -> None:
-        """The config a session ran under, layers and all.
-
-        **The precedence chain, not only the resolved values** (S8 §3.4). Recording
-        what a parameter *was* loses where it came from, and "why was `fix_hold` 0.3
-        that day" is asked months later, when the layers are the only thing that
-        answers it.
-
-        **And the setup it ran in** (direct-view spec §3): required, so a snapshot
-        cannot be written without it.
-        """
+    def configure(self, fixed: dict) -> None:
+        """What is fixed for the whole session (P4d-2b spec §6.3): the animal, the
+        deployment, the bounded config, the rig, the subject settings and the setup,
+        written as `taskd.Session.open` gives them. What varies by run -- the task, its
+        values, its layers -- is in `runs.jsonl`."""
         (self.directory / "config.json").write_text(
-            json.dumps(
-                {"layers": layers, "resolved": resolved, "versions": versions, "setup": setup},
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
+            json.dumps(fixed, indent=2, sort_keys=True), encoding="utf-8"
         )
 
+    def run_row(self, event: str, run: int, at: float, **fields: object) -> None:
+        """One row of `RUNS`: `event` `"start"` or `"end"`, the run's index, the instant
+        on the session's anchored clock with its local time and zone, and the run's own
+        fields, written as given."""
+        with (self.directory / RUNS).open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {"event": event, "run": run, "at": at, "at_local": _local(at), **fields},
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+
     def parameter_change(
-        self, sequence: int, name: str, was: object, now: object, by: str
+        self,
+        sequence: int,
+        name: str,
+        was: object,
+        now: object,
+        by: str,
+        run: int | None = None,
     ) -> None:
         """One live parameter change, joined to the recording by `sequence`.
 
@@ -243,6 +269,9 @@ class SessionRecord:
 
         `by` records the origin -- console, control API, or the task -- because one
         validated write path with an unrecorded actor is only half the guarantee.
+
+        `run` is the run it happened in: `taskd` always passes it, since a session holds
+        several and each numbers its own changes from the session's one sequence.
         """
         with (self.directory / "parameter_changes.jsonl").open(
             "a", encoding="utf-8"
@@ -255,6 +284,7 @@ class SessionRecord:
                         "was": was,
                         "now": now,
                         "by": by,
+                        "run": run,
                     },
                     sort_keys=True,
                 )
@@ -354,21 +384,20 @@ class SessionRecord:
             )
 
     def close(self) -> None:
-        """Release the trial handle, and account for a truncated refusal log first.
+        """The end of a run: the notice for refusals dropped since the last one, then
+        the trial file. **Called once per run, and again when the session ends**; a
+        close with nothing to write or close does nothing.
 
-        **The notice row is written here because only here is the count final.** It
-        carries `truncated`, which no refusal row does, so the two are told apart by
-        shape rather than by position. A session nobody flooded gets no notice at
-        all: evidence of a cap that appeared on every session would stop being read.
+        **The notice row carries `truncated`**, which no refusal row does, so the two
+        are told apart by shape. `kept` is the session's count so far and `dropped` the
+        run's, and the drop count starts again after it, so each notice says what its
+        own run lost. A session nobody flooded gets none: evidence of a cap that
+        appeared on every session would stop being read.
 
-        A crash hard enough to skip `close` leaves the kept rows and no notice --
-        the same tail-loss this file's module docstring accepts everywhere else, and
-        the live console had the count in `Telemetry.refusals_dropped` throughout.
-        """
+        A crash hard enough to skip this leaves the kept rows and no notice -- the
+        tail-loss this module's docstring accepts everywhere else."""
         if self._refusals_dropped:
-            with (self.directory / "refusals.jsonl").open(
-                "a", encoding="utf-8"
-            ) as handle:
+            with (self.directory / "refusals.jsonl").open("a", encoding="utf-8") as handle:
                 handle.write(
                     json.dumps(
                         {
@@ -387,7 +416,10 @@ class SessionRecord:
                     )
                     + "\n"
                 )
-        self._trials.close()
+            self._refusals_dropped = 0
+        if self._trials is not None:
+            self._trials.close()
+            self._trials = None
 
     def __enter__(self) -> SessionRecord:
         return self

@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import sys
+import textwrap
 import threading
 import time
 from pathlib import Path
@@ -49,7 +50,7 @@ from wl_xcon.record import REFUSAL_LOG_LIMIT
 from wl_xcon.scheduler import Block, Condition, Counting, Scheduler
 from wl_xcon.simulate import Tally
 from wl_xcon.task import Outcome
-from wl_xcon.taskd import PAUSE_HOUSEKEEPING_S, Session, SessionSpec
+from wl_xcon.taskd import PAUSE_HOUSEKEEPING_S, RunSpec, Session, SessionSpec
 from wl_xcon.welfare import Deployment, Simulated as Pump
 from _rig import DIRECT, STEREOSCOPE
 
@@ -161,6 +162,32 @@ def _session(spec, link=None, left_cage_ago: float = 0.0) -> Session:
     return session
 
 
+RUN_START, RUN_END = 4135, 4136
+
+
+def _runs(session: Session) -> list[dict]:
+    return [
+        json.loads(line)
+        for line in (session.directory / "runs.jsonl").read_text().splitlines()
+    ]
+
+
+def _trial_rows(session: Session) -> list[dict]:
+    return [
+        json.loads(line)
+        for line in (session.directory / "trials.jsonl").read_text().splitlines()
+    ]
+
+
+def _run_spec(trials: int = 3, seed: int = 2, **values) -> RunSpec:
+    return RunSpec(
+        task="tasks/fixation_detection.py",
+        trials=trials,
+        seed=seed,
+        values={**VALUES, **values},
+    )
+
+
 def _parameter_changes(session: Session) -> list[dict]:
     """Every parameter change actually written to `parameter_changes.jsonl`, in the
     order recorded. Reads the file on disk rather than `session._staged` or anything
@@ -221,8 +248,160 @@ def test_a_session_writes_its_record_and_its_config(tmp_path):
 
     assert len(trials) == 20
     assert json.loads(trials[0])["subject"] == "A"
-    assert config["resolved"]["fix_hold"] == 0.3
-    assert config["versions"]["task"].endswith("fixation_detection.py")
+    runs = [json.loads(line) for line in (directory / "runs.jsonl").read_text().splitlines()]
+
+    assert runs[0]["resolved"]["fix_hold"] == 0.3
+    assert runs[0]["versions"]["task"].endswith("fixation_detection.py")
+    assert "resolved" not in config, "what varies by run is in runs.jsonl (spec §6.3)"
+
+
+def test_the_run_a_session_spec_describes_is_run_0_in_every_file_it_writes(tmp_path):
+    """Spec §6.3: a row per run -- as a start and an end (Plan decision 4) -- and every
+    trial row names its run. `wlx run`'s one run is run 0, with no pre-flight taken."""
+    session = _session(_spec(tmp_path, trials=5))
+    session.set("fix_hold", 0.5, by="console")
+
+    session.run()
+
+    start, end = _runs(session)
+    assert (start["event"], start["run"], end["event"], end["run"]) == ("start", 0, "end", 0)
+    assert start["task"] == "tasks/fixation_detection.py"
+    assert start["versions"] == {
+        "task": "tasks/fixation_detection.py",
+        "allocation": "tasks/allocation.py",
+    }
+    assert start["resolved"]["fix_hold"] == 0.3, "what it started with, before the staged 0.5"
+    assert start["layers"] == {"run": start["resolved"]}
+    assert start["bounded"] == {"reward_correct": 0.15}
+    assert (start["unplanned"], start["preflight"], start["trials"], start["seed"]) == (
+        True, None, 5, 1,
+    )
+    assert (end["stop_kind"], end["trials"], end["strobed"]) == ("completed", 5, True)
+    assert {row["run"] for row in _trial_rows(session)} == {0}
+    assert _parameter_changes(session)[0]["run"] == 0
+    assert session.run_index == 0
+
+
+def test_a_run_is_strobed_where_it_starts_and_where_it_ends(tmp_path):
+    session = _session(_spec(tmp_path, trials=3))
+
+    session.run()
+
+    codes = session.card.codes
+    assert codes[:2] == [4128, RUN_START], "after HEAD_FIXED, before the first trial"
+    assert codes[-2:] == [RUN_END, 4129], "after the last trial, before HEAD_RELEASED"
+    assert codes.count(RUN_START) == codes.count(RUN_END) == 1
+
+
+def test_a_run_that_faults_writes_its_end_row_and_strobes_no_run_end(tmp_path, monkeypatch):
+    """Plan decision 5: `RUN_END` marks a run that ended by design. A fault's end row is
+    still written, from `run()`'s `finally`, and says what happened."""
+    from wl_xcon import taskd
+
+    def faults(*args, **kwargs):
+        raise RuntimeError("the display went away")
+
+    monkeypatch.setattr(taskd, "run_trial", faults)
+    session = _session(_spec(tmp_path, trials=3))
+
+    with pytest.raises(RuntimeError):
+        session.run()
+
+    end = _runs(session)[-1]
+    assert (end["event"], end["stop_kind"], end["strobed"]) == ("end", "fault", False)
+    assert "the display went away" in end["stopped_because"]
+    assert RUN_END not in session.card.codes
+
+
+def test_a_run_whose_allocation_has_no_run_codes_runs_and_says_it_was_not_strobed(tmp_path):
+    allocation = tmp_path / "no_run_codes.py"
+    allocation.write_text(
+        textwrap.dedent(
+            f"""
+            import dataclasses, importlib.util
+            _spec = importlib.util.spec_from_file_location(
+                "_reference_allocation", {str(Path("tasks/allocation.py").resolve())!r}
+            )
+            _module = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(_module)
+            ALLOCATION = dataclasses.replace(
+                _module.ALLOCATION,
+                task_events={{
+                    code: name
+                    for code, name in _module.ALLOCATION.task_events.items()
+                    if name not in ("RUN_START", "RUN_END")
+                }},
+            )
+            """
+        )
+    )
+    session = _session(_spec(tmp_path, trials=2, allocation=str(allocation)))
+
+    session.run()
+
+    start, end = _runs(session)
+    assert (start["strobed"], end["strobed"], end["stop_kind"]) == (False, False, "completed")
+
+
+def test_a_second_run_starts_afresh_and_the_session_goes_on(tmp_path):
+    """Plan decision 2, the run's half and the session's half. Rig-chaired, so no head
+    is released between the two runs of a session that is not a service's."""
+    session = _session(_spec(tmp_path, deployment=Deployment.RIG_CHAIRED))
+    session.run(_run_spec(trials=4, fix_hold=0.4))
+    fluid = session.welfare.commanded
+    session.scheduled_stop = ("trials", 99.0, "jake", "after trial 99")
+
+    census = session.run(_run_spec(trials=2))
+
+    assert session.run_index == 1
+    assert sum(census.outcomes.values()) + census.hangs == 2, "the second run's own count"
+    assert session.stop_kind == "completed" and session.scheduled_stop is None
+    assert session.spec.values["fix_hold"] == 0.3, "the second run's own starting values"
+    assert session.welfare.commanded >= fluid, "the session's fluid goes on"
+    assert len(session.recent_outcomes) == 2
+    rows = _trial_rows(session)
+    assert [(row["run"], row["index"]) for row in rows] == [
+        (0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1),
+    ]
+    assert [(row["event"], row["run"]) for row in _runs(session)] == [
+        ("start", 0), ("end", 0), ("start", 1), ("end", 1),
+    ]
+
+
+def test_an_explicit_run_starts_from_a_copy_of_its_values(tmp_path):
+    session = _session(_spec(tmp_path, deployment=Deployment.RIG_CHAIRED))
+    run = _run_spec(trials=1)
+
+    session.run(run)
+
+    assert session.spec.values == run.values
+    assert session.spec.values is not run.values, "the RunSpec is the caller's, unchanged"
+
+
+def test_the_config_holds_what_is_fixed_and_is_written_as_the_session_opens(tmp_path):
+    """Spec §6.3: the animal, the deployment, the bounded config, the rig, the subject
+    settings and the setup -- written by `open()`, before any run."""
+    session = _session(
+        _spec(tmp_path, bounds_config="subjects/A/bounds.py", rig_config="tests/_rig.py")
+    )
+
+    session.open()
+
+    config = json.loads((session.directory / "config.json").read_text())
+    assert (config["session_id"], config["subject"], config["deployment"]) == (
+        "2027-01-14_01", "A", "rig_fixed",
+    )
+    assert config["bounds"]["ceilings"]["reward_correct"] == {
+        "value": 0.15, "maximum": 0.4, "unit": "mL",
+    }
+    assert config["bounds"]["minima"]["daily_fluid"] == {"value": 250.0, "unit": "mL"}
+    assert config["versions"] == {
+        "bounds": "subjects/A/bounds.py",
+        "rig": "tests/_rig.py",
+        "subject_settings": "",
+    }
+    assert config["setup"]["view"] == "direct"
+    assert not {"layers", "resolved"} & set(config)
 
 
 def test_the_m1_gate_one_thousand_deterministic_trials_with_full_outputs(tmp_path):
@@ -704,7 +883,10 @@ def test_a_live_write_is_recorded_with_its_origin(tmp_path):
         ).read_text().splitlines()
     ]
     assert changes == [
-        {"sequence": 1, "name": "fix_hold", "was": 0.3, "now": 0.5, "by": "console"}
+        {
+            "sequence": 1, "name": "fix_hold", "was": 0.3, "now": 0.5, "by": "console",
+            "run": 0,
+        }
     ]
 
 
@@ -2574,7 +2756,7 @@ def test_the_out_of_cage_limit_still_ends_a_paused_session(tmp_path):
     assert session.stop_kind == "limit"
     assert session.stopped_because.startswith("out_of_cage")
     assert len(link.waits) == 3, "800 s is past after the third five-minute wait"
-    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    assert not (session.directory / "trials.jsonl").exists(), "no trial ran"
     clocks = [frame.out_of_cage_seconds for frame in link.published]
     assert clocks == sorted(clocks) and clocks[-1] > 800.0, "the clock kept running"
     assert link.published[-1].stop_kind == "limit"
@@ -2598,7 +2780,7 @@ def test_the_limit_still_ends_a_paused_session_with_refused_commands_on_the_way(
     assert session.stop_kind == "limit"
     assert session.stopped_because.startswith("out_of_cage")
     assert len(link.waits) == 3, "the limit still lands on the third wait, same as with no commands"
-    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    assert not (session.directory / "trials.jsonl").exists(), "no trial ran"
     assert len(session.refusals) == 3
 
 
@@ -2625,7 +2807,7 @@ def test_the_limit_still_ends_a_paused_session_with_a_mark_stamped_on_every_wait
     assert session.stop_kind == "limit"
     assert session.stopped_because.startswith("out_of_cage")
     assert len(link.waits) == 3, "the limit still lands on the third wait, same as with no marks"
-    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    assert not (session.directory / "trials.jsonl").exists(), "no trial ran"
     marks = [row for row in _controls_rows(session) if row["kind"] == "mark"]
     assert len(marks) == 3, "one mark row per wait before the end"
 
@@ -2647,7 +2829,7 @@ def test_the_limit_still_ends_a_paused_session_when_a_resume_lands_the_same_pass
     assert session.stopped_because.startswith("out_of_cage")
     assert len(link.waits) == 3, "the limit still lands on the third wait, same as with no resume"
     assert RESUME_CODE in session.card.codes, "the resume still strobed before the limit ended it"
-    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran after the pause"
+    assert not (session.directory / "trials.jsonl").exists(), "no trial ran after the pause"
 
 
 def test_a_setting_staged_while_paused_applies_when_trials_resume(tmp_path):
@@ -3667,7 +3849,7 @@ def test_a_manual_reward_that_reaches_a_fluid_stop_ends_the_paused_session_in_th
     assert [row["kind"] for row in _controls_rows(session)] == [
         "schedule", "pause", "reward", "scheduled_stop",
     ]
-    assert not (session.directory / "trials.jsonl").read_text().strip(), "no trial ran"
+    assert not (session.directory / "trials.jsonl").exists(), "no trial ran"
     assert link.published[-1].stop_kind == "operator"
 
 

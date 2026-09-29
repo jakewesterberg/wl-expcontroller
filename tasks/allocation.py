@@ -89,5 +89,12 @@ ALLOCATION: Allocation = replace(
         # this range for the reason the three above are; wl-exptasks owns the final
         # numbering (P4d-2b spec §5.6).
         4134: "MANUAL_REWARD",
+        # A run's start and end (P4d-2b spec §6.3, 2026-09-29): a session holds several
+        # runs, and the recording shows where each task began and ended. `RUN_END` is
+        # strobed for a run that ended by design, not after a fault (the b3a-1 plan,
+        # decision 5). Provisional, in this range for the reason the four above are;
+        # wl-xtasks owns the final numbering.
+        4135: "RUN_START",
+        4136: "RUN_END",
     },
 )
