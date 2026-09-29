@@ -349,10 +349,34 @@ merging by fast-forward, **all built, reviewed and on `main`** (`14658e5`):
 **The local folder is `~/GitHub/wl-xcon`** since 2026-09-29 (XC-109, done by the PI in a
 terminal between sessions): this project's Claude memory moved with it, the package was
 reinstalled from it (`wlx check` against the stand-in rig reads `no findings`), and the suite
-reads `1557 passed` there. **Everything open is in `docs/backlog.md`** (next free ID XC-147).
+reads `1557 passed` there. **Everything open is in `docs/backlog.md`** (next free ID XC-154).
+**Later on 2026-09-29, b2b was asked of wl-works and b3a designed, planned and started:**
+- **b2b (XC-015) waits on wl-works, which said yes.** Its sign-in needs four wl-works changes
+  (a client per rig, the rig page as return address, tokens whose audience is the rig, a
+  cross-origin token endpoint), asked in `docs/pending-wl-works-amendments.md` ("Signing in from
+  a rig's page") and **answered yes the same day** by wl-works' session with the PI, with
+  conditions (a `control-rigs` permission; one-hour tokens renewing for 24 hours), built after
+  its row 45a-2. Asked of us: an https page and certificate per rig (XC-151), the rig list
+  (XC-152), and a sign-out on the rig page. A private route to wl.works is probably not needed.
+  **wl-works found no trace of our 2026-09-19 client ask**: it never landed there.
+- **b3a (XC-016) is designed** (P4d-2b spec §6, approved in conversation section by section),
+  after the PI chose to build it while wl-works answers. His rulings: b3 cut into b3a (the rig
+  service, several runs per session, open/run/end from the page, pre-flight) and b3b (the
+  library pull and the day's plan, XC-150); **the page takes the departure and the return**,
+  amending P4d-2a §10; one always-on rig service; any number of sessions a day, one animal
+  each (his reminder); a reward size changed in a run stays for the rest of that session.
+- **b3a-1, the engine, is being built** from the approved plan
+  `docs/superpowers/plans/2026-09-29-p4d2b-b3a1-session-service.md` (10 tasks,
+  subagent-driven), on branch `p4d2b-b3a1-session-service` in the worktree
+  `.claude/worktrees/b3a1`. **Its ledger is `.claude/worktrees/b3a1/.superpowers/sdd/2026-09-29-p4d2b-b3a1-session-service/progress.md`**
+  (git-ignored): after a lost session, read it and `git log` on the branch, and resume at the
+  first task without a `complete` line. New welfare-critical code (`marks.py`, `stranded.py`,
+  parts of `preflight.py` and `service.py`, `Welfare.restore_departure`) goes to the PI as a
+  numbered summary before merge. b3a-2 (the page's forms) is planned after it.
+
 Next:
-1. **b2b:** remote sign-in through wl-works (XC-015), and a stop that jumps the command queue
-   (XC-121).
+1. **Finish b3a-1** (above), then plan and build **b3a-2**.
+2. **b2b** once wl-works says its side is deployed, with XC-151 and XC-152.
 
 XC-142 (the sibling renames, `wl-exptasks` and `wl-expviz`, still in our code and documents),
 XC-140 (`scheduler.record`'s CI timeout), XC-143 and XC-144 (check 8's two remaining gaps) and
