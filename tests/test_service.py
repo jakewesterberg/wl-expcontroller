@@ -800,6 +800,27 @@ class _Script(Simulated):
         return super().drain()
 
 
+def test_a_run_is_checked_or_started_only_between_the_runs_of_an_open_session(tmp_path):
+    """With no session open there is no animal to run; once End session has been sent,
+    the session waits for its animal's return, and no run starts in it."""
+    service = _service(tmp_path)
+    never = "no session is open, so no run starts; open a session first"
+    ended = "the session has ended and waits for its animal's return, so no run starts"
+
+    idle = _step(service, CheckRun(by=BY, task=TASK, values={}), _start())
+
+    assert isinstance(idle, Idle)
+    assert [(r.name, r.why) for r in idle.refusals] == [("check", never), ("start", never)]
+    _step(service, _open())
+    _step(service, _end(returned=None))
+
+    waiting = _step(service, CheckRun(by=BY, task=TASK, values={}), _start())
+
+    assert (waiting.phase, waiting.preflight, waiting.run_index) == ("awaiting_return", None, None)
+    assert [(r.name, r.why) for r in waiting.refusals[-2:]] == [("check", ended), ("start", ended)]
+    assert _runs(service.root) == [] and 4135 not in service.session.card.codes
+
+
 def test_a_check_shows_the_runs_preflight_and_starts_nothing(tmp_path):
     service = _service(tmp_path)
     _step(service, _open())
@@ -865,6 +886,7 @@ def test_a_run_with_a_failing_item_does_not_start_even_acknowledged(tmp_path, ov
 @pytest.mark.parametrize("task", ["missing.py", "../fixation_detection.py", "notes.txt"])
 def test_a_task_that_is_not_a_file_under_the_tasks_folder_is_refused_by_name(tmp_path, task):
     service = _service(tmp_path)
+    (service.tasks / "notes.txt").write_text("x = 1\n")  # a file, and not a task file
     _step(service, _open())
 
     frame = _step(service, _start(task=task))
