@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-142.**
+**Next free ID: XC-143.**
 
 ## Brainstorms queued for the PI
 
@@ -24,7 +24,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 ## Features not yet planned
 
-- **XC-003** Direct view part 2: `wlx run --view`, the chosen setup's geometry in `taskd`'s and `wlx check`'s load-time checks (a missing geometry fails loudly), the session record and a telemetry field. — 2026-09-28, [direct-view spec §8](superpowers/specs/2026-09-28-direct-view-design.md#8-what-changes-and-in-what-order) — waits on: b2a's merge; XC-036, XC-037 and XC-038 fixed first
+- **XC-003** Direct view part 2: `wlx run --view`, the chosen setup's geometry in `taskd`'s and `wlx check`'s load-time checks (a missing geometry fails loudly), the session record and a telemetry field. — 2026-09-28, [direct-view spec §8](superpowers/specs/2026-09-28-direct-view-design.md#8-what-changes-and-in-what-order) — waits on: XC-036, XC-037 and XC-038 fixed first
 - **XC-004** Show `Trial.view` in the review artifact. — 2026-09-28, [direct view part 1 plan](superpowers/plans/2026-09-28-direct-view-part1.md), final review M6 — waits on: nothing
 - **XC-005** The stereoscope's calibration task, over the ±12° mask. — 2026-09-28, [`tasks/calibration.py`'s docstring](../tasks/calibration.py) — waits on: XC-003
 - **XC-006** The `pupil − CR1` gaze fallback beyond P4's reach: the switching rule, its own map, and a per-sample method flag. — 2026-09-27, [S5 §1](superpowers/specs/2026-08-31-S5-eye-tracking-design.md#1-most-of-the-calibration-is-already-decided-and-not-by-us) — waits on: nothing
@@ -36,11 +36,11 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-012** Write the task's event-code table into the session directory, so nothing downstream must re-derive it from the task. — 2026-09-19, [CHECKPOINT, "The console design"](CHECKPOINT.md#the-console-design-brainstormed-and-settled) — waits on: nothing
 - **XC-013** Demo mode: run a task with keyboard and mouse gaze (roadmap M1; P4d-2b slice b4). — 2026-08-31, [roadmap M1](roadmap.md#m1--simulated-skeleton) — waits on: nothing
 - **XC-014** Operator documentation, how to run a session for a tech or student, with the D4 acceptance test (a stranger runs a session). — 2026-08-31, [roadmap M1](roadmap.md#m1--simulated-skeleton) — waits on: nothing
-- **XC-015** P4d-2b b2b: the controls for people signed in to wl-works, reward size included, with the `Verified`/`Local` actor split (P4d-3). — 2026-09-27, [CHECKPOINT, 2026-09-27 afternoon](CHECKPOINT.md#what-moved-on-2026-09-27-afternoon-b1-merged-b2-designed-the-camera-ci) — waits on: b2a's merge; XC-102; a route from the rigs to wl-works
-- **XC-016** P4d-2b b3: sessions from the page (new, load, end), the task-library pull, and preflight under S9a §10's rule (P4d-5), on a box service that holds a session across runs. — 2026-09-26, [P4d-2b spec §4.0](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#40-rulings-held-from-the-mockup-rounds) — waits on: b2a's merge
+- **XC-015** P4d-2b b2b: the controls for people signed in to wl-works, reward size included, with the `Verified`/`Local` actor split (P4d-3). — 2026-09-27, [CHECKPOINT, 2026-09-27 afternoon](CHECKPOINT.md#what-moved-on-2026-09-27-afternoon-b1-merged-b2-designed-the-camera-ci) — waits on: XC-102; a route from the rigs to wl-works
+- **XC-016** P4d-2b b3: sessions from the page (new, load, end), the task-library pull, and preflight under S9a §10's rule (P4d-5), on a box service that holds a session across runs. — 2026-09-26, [P4d-2b spec §4.0](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#40-rulings-held-from-the-mockup-rounds) — waits on: nothing
 - **XC-017** A preflight clock-skew check against wl-works' NTP. — 2026-09-20, [CHECKPOINT, "wl-works will run NTP"](CHECKPOINT.md#wl-works-will-run-ntp-and-lab-hosts-will-synchronize-to-it) — waits on: XC-016; XC-103
 - **XC-018** Load an animal's task parameters from an earlier session, from a source still open (pushed at session open, or read from earlier records). — 2026-09-26, [P4d-2b spec §4.0](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#40-rulings-held-from-the-mockup-rounds) — waits on: XC-016
-- **XC-019** P4d-2b b5: training tools, and a manual reward at any time (welfare-critical). — 2026-09-26, [P4d-2b spec §4.0](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#40-rulings-held-from-the-mockup-rounds) — waits on: b2a's merge
+- **XC-019** P4d-2b b5: training tools, and a manual reward at any time (welfare-critical). — 2026-09-26, [P4d-2b spec §4.0](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#40-rulings-held-from-the-mockup-rounds) — waits on: nothing
 - **XC-020** P4d-2b b6: package the code a session used when it ends, and send it with the session to wl-nas. — 2026-09-26, [P4d-2b spec §4.0](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#40-rulings-held-from-the-mockup-rounds) — waits on: wl-nas existing; who pushes the package to GitHub (proposed as wl-preproc's job)
 - **XC-021** The accepted console-review items no slice has taken: a trial-phase timeline, the strip and actions kept in full screen, recording status, stalled-animal and tracker alerts, and eye-map quality with recenter drift. — 2026-09-26, [P4d-2b spec §4.0](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#40-rulings-held-from-the-mockup-rounds) — waits on: nothing
 - **XC-022** The console's plots (accuracy over time, RT distribution, accuracy by position), with a per-trial `rt_approx_ms` (P4d-4). — 2026-09-26, [P4d-2b spec §5](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#5-not-in-this-slice) — waits on: nothing
@@ -52,12 +52,12 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-028** Frame-accurate `Update` semantics for gaze-anchored stimuli. — 2026-08-31, [S1 §10 item 5](superpowers/specs/2026-08-31-S1-task-model-design.md#10-open-items) — waits on: XC-068
 - **XC-029** Whether `TARGET_POSITION` ever needs a disparity field, or stereo targets stay in our record. — 2026-08-31, [S4 §12 item 1](superpowers/specs/2026-08-31-S4-stimulus-presentation-design.md#12-open-items) — waits on: a stereo task that needs it (roadmap M8)
 - **XC-030** The kiosk's stimulus vocabulary: S4's whole set, or a subset. — 2026-08-31, [S13 §6 item 3](superpowers/specs/2026-08-31-S13-kiosk-design.md#6-open-items) (also S4 §12 item 4) — waits on: XC-107
-- **XC-031** P9, the camera system: one headless camera box per rig, every camera controlled from expcontroller. — 2026-09-27, [P9 spec, §7's prerequisites](superpowers/specs/2026-09-27-P9-camera-system-design.md#7-outside-this-repository-asks-not-assumptions) — waits on: b2a's merge; a license ADR for the camera and encoder libraries, put to the PI; XC-093; the hardware; wl-nas
+- **XC-031** P9, the camera system: one headless camera box per rig, every camera controlled from expcontroller. — 2026-09-27, [P9 spec, §7's prerequisites](superpowers/specs/2026-09-27-P9-camera-system-design.md#7-outside-this-repository-asks-not-assumptions) — waits on: a license ADR for the camera and encoder libraries, put to the PI; XC-093; the hardware; wl-nas
 - **XC-032** P10, a clean-room DPI eye tracker in C++ as a headless service on P9's framework, with its ADR. — 2026-09-27, [P9 spec §8](superpowers/specs/2026-09-27-P9-camera-system-design.md#8-p10-the-eye-tracker-spike--done-2026-09-27) — waits on: P9's cameras, for the validation video
 - **XC-033** Design-check the custom trigger fan-out board, its lamp-strobe stage included. — 2026-09-27, [S0 §7.4](superpowers/specs/2026-08-31-S0-hosts-and-hardware-design.md#74-the-trigger-fan-out-board-custom-needs-a-design-check) — waits on: the primary camera's Line 2 low level, measured
 - **XC-034** A synthetic multi-stream session generator and V6's reconstruction round-trip, run in CI through wl-preproc's harness. — 2026-08-31, [validation V6](validation.md#v6--sync-reconstruction-round-trip) — waits on: nothing
 - **XC-035** S12's swap check: whether it needs a task, or a signal generator suffices. — 2026-08-31, [S12 §5 item 2](superpowers/specs/2026-08-31-S12-parity-and-swap-design.md#5-open-items) — waits on: nothing (roadmap M10)
-- **XC-121** Let a Stop jump the command queue instead of landing up to one trial boundary per queued command late, as part of b2b's pipelining. — 2026-09-28, [S9a §7](superpowers/specs/2026-08-31-S9a-console-design.md#7-processes-and-protocol); `c0d0ba4` — waits on: b2a's merge
+- **XC-121** Let a Stop jump the command queue instead of landing up to one trial boundary per queued command late, as part of b2b's pipelining. — 2026-09-28, [S9a §7](superpowers/specs/2026-08-31-S9a-console-design.md#7-processes-and-protocol); `c0d0ba4` — waits on: nothing
 
 ## Deferred defects
 
@@ -115,6 +115,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-136** link.py's timeout and retry path is missing two tests: a wire-count assertion that a timed-out command is not resent, and a `deliver()` right after a connect-timeout NotDelivered on the no-reset path. — 2026-09-28, [link.py's `ZmqCommands.deliver`](../wl_xcon/link.py) — waits on: nothing
 - **XC-137** `--allow-host` values are stored exactly as given and never normalized through `host_name`, unlike every other name `box_names` builds. — 2026-09-28, [serve.py's `box_names`](../wl_xcon/serve.py) — waits on: nothing
 - **XC-138** tools/measure_mark_check.py's check-alone loop divides its call count by 20 with integer division, silently truncating for a count not divisible by 20. — 2026-09-28, [tools/measure_mark_check.py](../tools/measure_mark_check.py) — waits on: nothing
+- **XC-142** Current code and documents still call the task library `wl-exptasks` (or `wl-mllib`) and the viewer `wl-expviz`, renamed `wl-xtasks` and `wl-xviz` on 2026-09-28; rename them as XC-053 renamed this package, with naming notes in dated documents (`wl_xcon/codes.py`, `tasks/allocation.py`, `wl.yaml`, ADR-0007 and S2 hold most). — 2026-09-29, [`wl.yaml`](../wl.yaml) — waits on: nothing
 
 ## Needs the rig
 
