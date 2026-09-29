@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from _frames import frame, view
-from wl_xcon.link import Control, ParamRow, Refused, ScheduledStop, Staged
+from _frames import frame, idle, view
+from wl_xcon.link import Control, ParamRow, Question, Refused, ScheduledStop, Staged, Stranded
 from wl_xcon.web import (
     _SCRIPT,
     CONTROLS_AT_THE_BOX,
@@ -1178,3 +1178,72 @@ def test_a_double_click_on_give_reward_gives_only_one_reward():
     ).group(1)
     assert "rewardAllowed" not in command_body
     assert "rewardAllowed" not in post_body
+
+
+def test_the_page_with_no_session_open_says_so_and_puts_a_stranded_animal_first():
+    panes = fragments(
+        idle(
+            stranded=(Stranded("2027-01-13_01", "<b>B</b>", 1_700_000_000.0),),
+            question=Question("departure", "2027-01-14_01", 1.0, "far <i>", ("confirm", "amend")),
+            refusals=(Refused("open", "jake", "refused <script>"),),
+        ),
+        view(),
+    )
+
+    assert set(panes) == set(FRAGMENT_IDS)
+    assert 'data-state="idle"' in panes["state"]
+    assert panes["banners"].index("Stranded") < panes["banners"].index("Confirm")
+    assert "&lt;b&gt;B&lt;/b&gt;" in panes["banners"] and "<b>B" not in panes["banners"]
+    assert "far &lt;i&gt; · answer confirm or amend" in panes["banners"]
+    assert "Waiting" not in panes["banners"]
+    assert "refused &lt;script&gt;" in panes["rt-changes"]
+    assert "controls · no session open" in panes["controls"]
+    assert "none open · wlx taskd is idle" in panes["rt-health"]
+    assert '<span class="pill warn">degraded</span>' in panes["rt-health"], "an animal is stranded"
+
+
+def test_the_page_escapes_control_characters_and_markup_in_an_idle_frames_text():
+    panes = fragments(
+        idle(
+            stranded=(Stranded("<s>", "B\x1b[2J<", None),),
+            question=Question("return", "<q>", 1.0, "far\x1b", ("<a>",)),
+            refusals=(Refused("<n>", "<by>", "<why>\x1b"),),
+        ),
+        view(),
+    )
+
+    joined = "".join(panes.values())
+    for raw in ("<s>", "<q>", "<a>", "<n>", "<by>", "<why>"):
+        assert raw not in joined
+
+
+def test_the_page_between_runs_says_which_run_ended_and_offers_no_run_controls():
+    panes = fragments(
+        frame(phase="between_runs", service=True, run_index=1, stop_kind="operator", stopped_because="stopped by jake"),
+        view(),
+    )
+
+    assert 'data-state="between-runs"' in panes["state"] and "run 1 ended" in panes["state"]
+    assert "Run 1 ended" in panes["banners"]
+    assert "controls · no run in progress" in panes["controls"]
+    assert '<span class="k">Run</span><span class="v">1</span>' in panes["head-id"]
+
+
+def test_the_page_before_a_sessions_first_run_shows_no_block_and_no_task():
+    panes = fragments(
+        frame(phase="between_runs", service=True, run_index=None, block=None, task=None, trial_index=0, outcomes={}),
+        view(),
+    )
+
+    assert "between runs" in panes["state"] and "None" not in panes["head-id"]
+    assert "no run yet" in panes["setup"] and "no run yet" in panes["end"]
+
+
+def test_the_page_shows_the_question_a_return_owes():
+    panes = fragments(
+        frame(phase="awaiting_return", service=True, stop_kind="operator", stopped_because="session ended by jake",
+              question=Question("return", "2027-01-14_01", 1.0, "the return is far", ("confirm", "re-type"))),
+        view(),
+    )
+
+    assert "the return is far · answer confirm or re-type" in panes["banners"]

@@ -40,7 +40,7 @@ from importlib import resources
 
 from wl_xcon import health as _health
 from wl_xcon.cli import _clock, _setup_words
-from wl_xcon.link import RECENT_OUTCOMES, Telemetry
+from wl_xcon.link import RECENT_OUTCOMES, Idle, Telemetry
 from wl_xcon.task import Family, Outcome
 
 
@@ -183,6 +183,14 @@ def _state(frame: Telemetry | None) -> str:
     a session that ended while paused shows how it ended, never *paused*."""
     if frame is None:
         return '<span class="pill neutral" data-state="none">no session</span>'
+    if frame.phase == "between_runs":
+        label = (
+            "between runs"
+            if frame.run_index is None
+            else f"between runs · run {frame.run_index} ended · {frame.stop_kind}"
+        )
+        tone = "crit" if frame.stop_kind in ("fault", "limit") else "neutral"
+        return f'<span class="pill {tone}" data-state="between-runs">{_e(label)}</span>'
     if frame.stop_kind is None and frame.paused_at is not None:
         return (
             f'<span class="pill warn" data-state="paused">paused · since '
@@ -210,7 +218,8 @@ def _head(frame: Telemetry | None) -> str:
         ("Session", _e(frame.session_id), ""),
         ("Subject", _e(frame.subject), ""),
         ("Deployment", _e(frame.deployment), ""),
-        ("Block", _e(frame.block), ""),
+        ("Run", "—" if frame.run_index is None else _e(frame.run_index), ""),
+        ("Block", "—" if frame.block is None else _e(frame.block), ""),
         ("Trial", _e(frame.trial_index), f' data-trial="{_e(frame.trial_index)}"'),
         ("In session", in_session, ""),
     )
@@ -400,9 +409,16 @@ def _banners(frame: Telemetry | None, view: View) -> str:
     if frame.duration_warning:
         tone = "crit" if frame.stop_kind == "limit" else "warn"
         out.append(_banner(tone, "Warning", _e(frame.duration_warning)))
+    if frame.question is not None:
+        out.append(_question_banner(frame.question))
     if frame.stopped_because:
         tone = "crit" if frame.stop_kind in ("fault", "limit") else "info"
-        out.append(_banner(tone, "Ended", _e(frame.stopped_because)))
+        tag = (
+            f"Run {frame.run_index} ended"
+            if frame.phase == "between_runs" and frame.run_index is not None
+            else "Ended"
+        )
+        out.append(_banner(tone, tag, _e(frame.stopped_because)))
     return "".join(out)
 
 
@@ -451,6 +467,8 @@ def _controls(frame: Telemetry | None, view: View) -> str:
     §2 sentence, which is also said beside them."""
     if frame is None:
         return '<span class="nm">controls · no session</span>'
+    if frame.phase == "between_runs":
+        return '<span class="nm">controls · no run in progress</span>'
     if frame.stop_kind is not None:
         return '<span class="nm">controls · the session has ended</span>'
     off = _off(view)
@@ -553,7 +571,7 @@ def _wrong(frame: Telemetry | None) -> str:
     return "".join(rows)
 
 
-def _health_pane(frame: Telemetry | None, view: View) -> str:
+def _health_pane(frame: Telemetry | Idle | None, view: View) -> str:
     """*wl-works sees*: `/health`'s verdict and readings, as they would be sent --
     `health.response` itself, from the same `View` fields `serve`'s `/health` hands
     it, so the two cannot disagree about a refusal (Ruling 11)."""
@@ -733,7 +751,7 @@ def _setup(frame: Telemetry | None) -> str:
         ("session", _e(frame.session_id)),
         ("subject", _e(frame.subject)),
         ("deployment", _e(frame.deployment)),
-        ("task", _e(frame.task)),
+        ("task", '<span class="nm">no run yet</span>' if frame.task is None else _e(frame.task)),
         (
             "allocation",
             _e(frame.allocation)
@@ -781,6 +799,8 @@ def _end(frame: Telemetry | None) -> str:
     reason = (
         _e(frame.stopped_because)
         if frame.stopped_because
+        else '<span class="nm">no run yet</span>'
+        if frame.phase == "between_runs"
         else '<span class="nm">still running</span>'
     )
     return (
@@ -792,10 +812,79 @@ def _end(frame: Telemetry | None) -> str:
     )
 
 
-def fragments(frame: Telemetry | None, view: View) -> dict[str, str]:
+def _question_banner(question) -> str:
+    """The answer a console owes on a far mark (P4d-2b spec §6.2). The buttons that give
+    it are b3a-2's; this says what is owed."""
+    return _banner(
+        "warn",
+        "Confirm",
+        f"{_e(question.said)} · answer "
+        f"{' or '.join(_e(answer) for answer in question.answers)} "
+        f"(session {_e(question.session_id)})",
+    )
+
+
+def _idle_banners(frame: Idle, view: View) -> str:
+    """A refused frame, then every stranded animal, then a question owed -- where a
+    person looks first. The form that opens a session is b3a-2's."""
+    out = []
+    if view.rejected:
+        out.append(_banner("crit", "Refused", _e(view.rejected)))
+    for found in frame.stranded:
+        text = (
+            f"session {_e(found.session_id)}: its welfare record cannot be read, so its "
+            f"animal's return cannot be checked; no session opens until the file is "
+            f"repaired and the return recorded"
+            if found.left_at is None
+            else f"{_e(found.subject)} left its cage at {_clock_time(found.left_at)} in "
+            f"session {_e(found.session_id)}, and its return is not recorded; no session "
+            f"opens until it is"
+        )
+        out.append(_banner("crit", "Stranded", text))
+    if frame.question is not None:
+        out.append(_question_banner(frame.question))
+    if not out:
+        out.append(_banner("info", "Idle", "no session open"))
+    return "".join(out)
+
+
+def _idle_refusals(frame: Idle) -> str:
+    rows = []
+    if frame.refusals_dropped:
+        rows.append(
+            f'<div class="ev refused"><span class="kind">refused</span><span>'
+            f"{_e(frame.refusals_dropped)} earlier refusal(s) not shown: only the most "
+            f"recent {len(frame.refusals)} are kept</span></div>"
+        )
+    for refusal in frame.refusals:
+        rows.append(
+            f'<div class="ev refused"><span class="kind">refused</span><span>'
+            f"{_e(refusal.name)} by {_e(refusal.by)}: {_e(refusal.why)}</span></div>"
+        )
+    return "".join(rows) or '<span class="nm">nothing refused</span>'
+
+
+def _idle(frame: Idle, view: View) -> dict[str, str]:
+    """The page while `wlx taskd` has no session open (P4d-2b spec §6.1: "the page
+    shows *no session open*"): every pane as before any frame, except the pill, the
+    header, the banners, the controls, *wl-works sees* (`/health` as it would be sent
+    for this frame, stranded animals included) and the refusals."""
+    panes = fragments(None, view)
+    panes["state"] = '<span class="pill neutral" data-state="idle">no session open</span>'
+    panes["head-id"] = '<span class="nm">no session open</span>'
+    panes["banners"] = _idle_banners(frame, view)
+    panes["controls"] = '<span class="nm">controls · no session open</span>'
+    panes["rt-health"] = _health_pane(frame, view)
+    panes["rt-changes"] = _idle_refusals(frame)
+    return panes
+
+
+def fragments(frame: Telemetry | Idle | None, view: View) -> dict[str, str]:
     """Every pane of the page for one frame, keyed by the id of the element each one
     fills (`FRAGMENT_IDS`, in that order). `frame` is `None` before any has arrived,
-    and every pane then says so."""
+    and every pane then says so; an `Idle` is `wlx taskd` with no session open."""
+    if isinstance(frame, Idle):
+        return _idle(frame, view)
     return {
         "state": _state(frame),
         "head-id": _head(frame),

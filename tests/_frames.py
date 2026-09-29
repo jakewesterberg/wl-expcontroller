@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from wl_xcon.link import SCHEMA, ParamRow, Telemetry
+from wl_xcon.link import SCHEMA, Idle, ParamRow, Stranded, Telemetry
 from wl_xcon.web import View
 
 
@@ -95,5 +95,22 @@ def view(**overrides) -> View:
         endpoint=ENDPOINT,
         can_write=True,
         can_mark=True,
+    )
+    return replace(base, **overrides) if overrides else base
+
+
+def idle(**overrides) -> Idle:
+    """`wlx taskd` with no session open: nothing stranded, nothing owed, two animals and
+    one task to offer."""
+    base = Idle(
+        schema=SCHEMA,
+        phase="idle",
+        wall_at=1_700_000_041.5,
+        stranded=(),
+        question=None,
+        refusals=(),
+        refusals_dropped=0,
+        animals=("A", "B"),
+        offered_tasks=("fixation_detection.py",),
     )
     return replace(base, **overrides) if overrides else base

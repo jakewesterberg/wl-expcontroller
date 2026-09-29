@@ -15,7 +15,8 @@ import os
 
 import pytest
 
-from _frames import ENDPOINT, frame
+from _frames import ENDPOINT, frame, idle
+from wl_xcon.link import Stranded
 from wl_xcon.health import (
     HEALTH_SCHEMA,
     ago,
@@ -58,6 +59,18 @@ LIMIT = (
 #: the absences and markup a reading must survive.
 CASES = {
     "no session": (None, None),
+    "idle": (idle(), 1.0),
+    "stranded": (idle(stranded=(Stranded("2027-01-13_01", "B", 1_699_990_000.0),)), 1.0),
+    "between runs": (
+        frame(phase="between_runs", service=True, run_index=0, stop_kind="completed",
+              stopped_because="every block is finished"),
+        1.0,
+    ),
+    "before the first run": (
+        frame(phase="between_runs", service=True, run_index=None, block=None, task=None,
+              trial_index=0, outcomes={}),
+        1.0,
+    ),
     "running": (frame(), 1.0),
     "warning": (frame(duration_warning=WARNING), 1.0),
     "stale": (frame(), 45.0),
@@ -118,6 +131,10 @@ EXPECTED = {
     "fault": "down",
     "cage-side": "ok",
     "markup": "ok",
+    "idle": "ok",
+    "stranded": "degraded",
+    "between runs": "ok",
+    "before the first run": "ok",
 }
 
 
@@ -210,6 +227,9 @@ def test_exactly_one_reading_is_featured(case):
         ("ended by the limit", "state"),
         ("fault", "state"),
         ("cage-side", "state"),
+        ("idle", "state"),
+        ("stranded", "stranded"),
+        ("between runs", "out_of_cage"),
     ],
 )
 def test_the_featured_reading_is_the_one_that_drove_the_verdict(case, key):
@@ -651,3 +671,54 @@ def test_a_paused_session_is_said_to_be_paused_and_is_ok():
 
     assert values["state"] == "paused · trial 40 · block session"
     assert verdict(found, frame_age_s=1.0, stale_after_s=30.0, rejected=None) == "ok"
+
+
+def test_a_service_between_runs_that_goes_quiet_is_degraded():
+    """The b3a-1 plan, decision 9: a service publishes between runs and while idle, so
+    silence there is a stale stream, as a running session's is."""
+    for quiet in (
+        frame(phase="between_runs", service=True, stop_kind="completed", stopped_because="done"),
+        idle(),
+    ):
+        assert expects_frames(quiet)
+        assert verdict(quiet, frame_age_s=45.0, stale_after_s=30.0, rejected=None) == "degraded"
+
+
+def test_the_readings_say_no_session_is_open_and_which_animal_is_stranded():
+    rows = {
+        r["key"]: r["value"]
+        for r in readings(
+            idle(stranded=(Stranded("2027-01-13_01", "B<", 1.0),)),
+            frame_age_s=1.0, stale_after_s=30.0, rejected=None, endpoint=ENDPOINT,
+        )
+    }
+
+    assert rows["session"] == "none open · wlx taskd is idle"
+    assert rows["state"] == "idle · no session open · an animal's return is not recorded"
+    assert rows["stranded"] == "2027-01-13_01 · B(lt) · return not recorded"
+
+
+def test_between_runs_the_state_names_the_run_and_how_it_ended():
+    rows = {
+        r["key"]: r["value"]
+        for r in readings(
+            frame(phase="between_runs", service=True, run_index=2, stop_kind="operator",
+                  stopped_because="stopped by jake"),
+            frame_age_s=1.0, stale_after_s=30.0, rejected=None, endpoint=ENDPOINT,
+        )
+    }
+
+    assert rows["state"] == "between runs · run 2 ended (operator): stopped by jake"
+
+
+def test_a_frame_with_no_task_yet_is_worded_not_printed_as_none():
+    rows = {
+        r["key"]: r["value"]
+        for r in readings(
+            frame(phase="between_runs", service=True, run_index=None, block=None, task=None,
+                  trial_index=0, outcomes={}),
+            frame_age_s=1.0, stale_after_s=30.0, rejected=None, endpoint=ENDPOINT,
+        )
+    }
+
+    assert "None" not in "".join(rows.values())

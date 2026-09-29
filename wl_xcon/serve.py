@@ -142,7 +142,7 @@ class Hub:
         self._marks = marks
         self._steady = steady
         self._lock = threading.Lock()
-        self._frame: _link.Telemetry | None = None
+        self._frame: _link.Telemetry | _link.Idle | None = None
         #: When `_frame` arrived, on `steady`.
         self._received: float | None = None
         #: `(steady, trial_index)` sampled at most every `RATE_SAMPLE_S`, within
@@ -155,27 +155,35 @@ class Hub:
         self._subscribers: dict[queue.Queue, bool] = {}
         self._closed = False
 
-    def offer(self, frame: _link.Telemetry) -> None:
+    def offer(self, frame: _link.Telemetry | _link.Idle) -> None:
         """Keep `frame` as the latest and hand it to every open stream.
 
         The rate window restarts when the session changes or its trial count goes
         back: a new `wlx run` on the same link is a new session, and a rate across two
-        would describe neither. A good frame clears a refusal (`reject`).
+        would describe neither. An `Idle` frame is held like any other and empties the
+        rate window; a new run, whose trial count starts again, restarts it too. A good
+        frame clears a refusal (`reject`).
         """
         now = self._steady()
         with self._lock:
             previous = self._frame
-            if (
-                previous is None
-                or previous.session_id != frame.session_id
-                or frame.trial_index < previous.trial_index
-            ):
+            if isinstance(frame, _link.Idle):
+                # No session, so no trials and no rate (P4d-2b spec §6.1).
                 self._points.clear()
-            if not self._points or now - self._points[-1][0] >= RATE_SAMPLE_S:
-                self._points.append((now, frame.trial_index))
-            while now - self._points[0][0] > RATE_WINDOW_S:
-                self._points.popleft()
-            self._newest = (now, frame.trial_index)
+                self._newest = None
+            else:
+                if (
+                    previous is None
+                    or isinstance(previous, _link.Idle)
+                    or previous.session_id != frame.session_id
+                    or frame.trial_index < previous.trial_index
+                ):
+                    self._points.clear()
+                if not self._points or now - self._points[-1][0] >= RATE_SAMPLE_S:
+                    self._points.append((now, frame.trial_index))
+                while now - self._points[0][0] > RATE_WINDOW_S:
+                    self._points.popleft()
+                self._newest = (now, frame.trial_index)
             self._frame, self._received, self._rejected = frame, now, None
             subscribers = list(self._subscribers)
         for subscriber in subscribers:
@@ -210,7 +218,7 @@ class Hub:
 
     def snapshot(
         self, *, on_box: bool, stale_after_s: float, can_write: bool = False
-    ) -> tuple[_link.Telemetry | None, _web.View]:
+    ) -> tuple[_link.Telemetry | _link.Idle | None, _web.View]:
         """The latest frame and the `View` a render of it needs, read together. The
         frame's age is on `steady` alone (ledger Ruling 1). `can_write` is the
         handler's to say (P4d-2b b2a, `may_write`); a caller that does not say gets a

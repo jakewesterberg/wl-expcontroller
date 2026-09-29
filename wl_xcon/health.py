@@ -33,7 +33,7 @@ from __future__ import annotations
 import math
 
 from wl_xcon.cli import _clock
-from wl_xcon.link import Telemetry
+from wl_xcon.link import Idle, Telemetry
 from wl_xcon.task import Family, Outcome
 
 #: `wl_preproc.contracts.protocol.SCHEMA_VERSION`, read from their source 2026-09-26.
@@ -112,24 +112,26 @@ def families(outcomes: dict) -> list[tuple[str, str, list[tuple[str, object]]]]:
     return grouped
 
 
-def expects_frames(frame: Telemetry | None) -> bool:
-    """Whether more frames are due: the loop is running, or a rig session is still
-    publishing its out-of-cage clock until the return (P4d-2a). Only then is silence
-    a stale stream -- an ended session's last frame is its last. The page's stale
-    timer runs on the same answer."""
-    return frame is not None and (
-        frame.stop_kind is None or frame.phase == "awaiting_return"
-    )
+def expects_frames(frame: Telemetry | Idle | None) -> bool:
+    """Whether more frames are due: the loop is running, a rig session is still
+    publishing its out-of-cage clock until the return (P4d-2a), or `wlx taskd` sent it,
+    which publishes between runs and while idle (the b3a-1 plan, decision 9). Only then
+    is silence a stale stream. The page's stale timer runs on the same answer."""
+    if frame is None:
+        return False
+    if isinstance(frame, Idle):
+        return True
+    return frame.service or frame.stop_kind is None or frame.phase == "awaiting_return"
 
 
-def _stale(frame: Telemetry | None, frame_age_s: float | None, stale_after_s: float) -> bool:
+def _stale(frame: Telemetry | Idle | None, frame_age_s: float | None, stale_after_s: float) -> bool:
     return (
         expects_frames(frame) and frame_age_s is not None and frame_age_s >= stale_after_s
     )
 
 
 def verdict(
-    frame: Telemetry | None,
+    frame: Telemetry | Idle | None,
     *,
     frame_age_s: float | None,
     stale_after_s: float,
@@ -147,7 +149,15 @@ def verdict(
       due: `degraded`
     - ended by the out-of-cage limit and not yet back: `degraded`
     - otherwise -- running normally, or ended any other way: `ok`
+    - `wlx taskd` idle: `ok`; `degraded` while a stranded session exists, a frame was
+      refused, or the stream went quiet
     """
+    if isinstance(frame, Idle):
+        # No session: `ok`, unless a frame was refused, the stream went quiet, or an
+        # animal's return is missing -- `degraded` until it is recorded, as a session
+        # ended on its limit is (spec §3's table; the b3a-1 plan, decision 10).
+        stale = _stale(frame, frame_age_s, stale_after_s)
+        return "degraded" if rejected or stale or frame.stranded else "ok"
     if frame is not None and frame.stop_kind == "fault":
         return "down"
     if rejected:
@@ -163,12 +173,22 @@ def verdict(
     return "ok"
 
 
-def _state_text(frame: Telemetry) -> str:
+def _state_text(frame: Telemetry | Idle) -> str:
+    if isinstance(frame, Idle):
+        text = "idle · no session open"
+        return f"{text} · an animal's return is not recorded" if frame.stranded else text
+    if frame.phase == "between_runs":
+        if frame.run_index is None:
+            return "between runs · no run yet"
+        return (
+            f"between runs · run {frame.run_index} ended ({frame.stop_kind}): "
+            f"{frame.stopped_because}"
+        )
     if frame.stop_kind is None:
         # P4d-2b b2a: a paused session is running and holding -- said, so a trial
         # count standing still does not read as a stalled rig. Not a verdict.
         doing = "running" if frame.paused_at is None else "paused"
-        return f"{doing} · trial {frame.trial_index} · block {frame.block}"
+        return f"{doing} · trial {frame.trial_index} · block {'none yet' if frame.block is None else frame.block}"
     text = f"ended ({frame.stop_kind}): {frame.stopped_because}"
     if frame.phase == "awaiting_return":
         return f"{text} · awaiting the return to the cage"
@@ -200,7 +220,7 @@ def _age_text(frame_age_s: float | None) -> str:
 
 
 def _featured(
-    frame: Telemetry | None, verdict_: str, stale: bool, rejected: str | None
+    frame: Telemetry | Idle | None, verdict_: str, stale: bool, rejected: str | None
 ) -> str:
     """The one reading wl-works' home page shows: the most urgent (PI, 2026-09-26,
     spec §3) -- the warning, else the state of a session that faulted or ended on the
@@ -209,6 +229,10 @@ def _featured(
     is bounded by, else the state."""
     if frame is None:
         return "refused" if rejected else "state"
+    if isinstance(frame, Idle):
+        if frame.stranded:
+            return "stranded"
+        return "refused" if rejected else "last_frame" if stale else "state"
     if frame.duration_warning:
         return "duration_warning"
     if verdict_ == "down" or (frame.stop_kind == "limit" and frame.phase != "closed"):
@@ -223,7 +247,7 @@ def _featured(
 
 
 def readings(
-    frame: Telemetry | None,
+    frame: Telemetry | Idle | None,
     *,
     frame_age_s: float | None,
     stale_after_s: float,
@@ -259,9 +283,29 @@ def readings(
             *refused,
             ("last_frame", "Last frame", _age_text(frame_age_s)),
         ]
-    else:
+    elif isinstance(frame, Idle):
         rows = [
-            ("session", "Session", f"{frame.session_id} · {frame.subject} · {frame.task}"),
+            ("session", "Session", "none open · wlx taskd is idle"),
+            ("state", "State", _state_text(frame)),
+            *refused,
+        ]
+        if frame.stranded:
+            rows.append(
+                (
+                    "stranded",
+                    "Stranded",
+                    " · ".join(
+                        f"{found.session_id} · {found.subject or 'record unreadable'} · "
+                        f"return not recorded"
+                        for found in frame.stranded
+                    ),
+                )
+            )
+        rows.append(("last_frame", "Last frame", _age_text(frame_age_s)))
+    else:
+        task = frame.task if frame.task is not None else "no run yet"
+        rows = [
+            ("session", "Session", f"{frame.session_id} · {frame.subject} · {task}"),
             ("state", "State", _state_text(frame)),
             *refused,
             ("out_of_cage", "Time out of cage", _cage_text(frame)),
@@ -303,7 +347,7 @@ def readings(
 
 
 def response(
-    frame: Telemetry | None,
+    frame: Telemetry | Idle | None,
     *,
     frame_age_s: float | None,
     stale_after_s: float,

@@ -30,7 +30,9 @@ import pytest
 # context destroyed at teardown without `close()` (`tests/_zmq_release.py`).
 from _rig import PATH as RIG_FILE
 from _zmq_release import _every_zmq_context_released  # noqa: F401
+from _frames import idle
 from wl_xcon import cli
+from wl_xcon import link as _link
 from wl_xcon.bounds import Exceeded
 from wl_xcon.cli import (
     _RETURN_PROMPT,
@@ -43,11 +45,15 @@ from wl_xcon.link import (
     SCHEMA,
     Control,
     ParamRow,
+    Preflight,
+    PreflightItem,
+    Question,
     Refused,
     ScheduledStop,
     SetParameter,
     Staged,
     Stop,
+    Stranded,
     Telemetry,
     ZmqConsole,
     ZmqLink,
@@ -3412,3 +3418,83 @@ def test_console_strips_control_characters_from_wire_text():
     # new ones -- the replacement character shows sanitizing actually ran here.
     refused_line = next(line for line in lines if line.startswith("  refused:"))
     assert "\ufffd" in refused_line
+
+
+def test_the_terminal_console_says_no_session_is_open_and_what_is_stranded():
+    shown = render(
+        idle(
+            stranded=(Stranded("2027-01-13_01", "B\x1b[2J", 1_700_000_000.0), Stranded("2027-01-13_02", "", None)),
+            refusals=(Refused("open", "jake", "no session opens while <b>"),),
+        )
+    )
+
+    assert shown.splitlines()[0] == "no session open  (wlx taskd, idle)"
+    assert "STRANDED: B\ufffd[2J, session 2027-01-13_01, left its cage at" in shown
+    assert "session 2027-01-13_02: its welfare record cannot be read" in shown
+    assert "animals: A, B" in shown and "tasks offered: fixation_detection.py" in shown
+    assert "refused: open by jake: no session opens while <b>" in shown
+
+
+def test_the_terminal_console_strips_control_characters_from_an_idle_frames_text():
+    shown = render(
+        idle(
+            question=Question("departure", "2027-01-14_01", 1.0, "far\x1b[2J", ("confirm", "am\rend")),
+            refusals=(Refused("open\x1b", "ja\nke", "why\x07"),),
+        )
+    )
+
+    assert "\x1b" not in shown and "\r" not in shown and "\x07" not in shown
+    assert len(shown.splitlines()) == 1 + 1 + 2 + 1
+
+
+def test_the_terminal_console_shows_a_session_between_runs_honestly():
+    shown = render(
+        _telemetry(
+            phase="between_runs", service=True, run_index=None, block=None, task=None,
+            preflight=Preflight("fixation_detection.py", (PreflightItem("pump calibration", "unknown", "not measured (V10)"),)),
+            question=Question("return", "2027-01-14_01", 1.0, "the return is far", ("confirm", "re-type")),
+        )
+    )
+
+    assert "block none yet" in shown and "task: no run yet" in shown
+    assert "phase: between runs" in shown and "run: none yet" in shown
+    assert "runs: opened, run and ended from a console (wlx taskd)" in shown
+    assert "pre-flight (fixation_detection.py): pump calibration unknown: not measured (V10)" in shown
+    assert "QUESTION (return, session 2027-01-14_01): the return is far -- answer confirm or re-type" in shown
+
+
+def test_wlx_console_keeps_watching_a_service_past_a_runs_end(monkeypatch, capsys):
+    """The b3a-1 plan, decision 9: a service's run stop is not the last frame, so the
+    watch goes on -- through between runs and idle -- until the operator interrupts."""
+    frames = iter(
+        [
+            _telemetry(service=True, stop_kind="completed", stopped_because="every block is finished"),
+            _telemetry(service=True, phase="between_runs", stop_kind="completed", stopped_because="every block is finished"),
+            idle(),
+        ]
+    )
+
+    class _Console:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def send(self, command):
+            return None
+
+        def receive(self):
+            try:
+                return next(frames)
+            except StopIteration:
+                raise KeyboardInterrupt from None
+
+    monkeypatch.setattr(_link, "ZmqConsole", _Console)
+
+    assert main(["console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2"]) == 130
+    out = capsys.readouterr().out
+    assert "phase: between runs" in out and "no session open" in out

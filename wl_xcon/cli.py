@@ -707,7 +707,72 @@ def _printable(text: str) -> str:
     )
 
 
-def render(frame: _link.Telemetry) -> str:
+def _moment(at: object) -> str:
+    """A wire instant as this host's local date, minute and zone, or `an unknown time`
+    for one it cannot show -- never a crash of the screen."""
+    try:
+        return _local(at)
+    except (OverflowError, OSError, ValueError, TypeError):
+        return "an unknown time"
+
+
+def _question_line(question: _link.Question) -> str:
+    """The answer a console owes on a far mark, as the page offers it (spec §6.2)."""
+    return (
+        f"  QUESTION ({_printable(question.mark)}, session "
+        f"{_printable(question.session_id)}): {_printable(question.said)} -- answer "
+        f"{' or '.join(_printable(answer) for answer in question.answers)}"
+    )
+
+
+def _refusal_lines(refusals: tuple, dropped: int) -> list[str]:
+    """The refusal feed's lines, the dropped count above them -- `render`'s own, for a
+    session's frame and an idle one alike."""
+    if not refusals:
+        return ["  refused: none"]
+    lines = []
+    if dropped:
+        lines.append(
+            f"  refused: {dropped} earlier refusal(s) NOT SHOWN -- only the most recent "
+            f"{len(refusals)} are kept (link.REFUSAL_HISTORY)"
+        )
+    for refusal in refusals:
+        lines.append(
+            f"  refused: {_printable(refusal.name)} by {_printable(refusal.by)}: "
+            f"{_printable(refusal.why)}"
+        )
+    return lines
+
+
+def _render_idle(frame: _link.Idle) -> str:
+    """`wlx taskd` with no session open (P4d-2b spec §6.1): any stranded animal first,
+    then a question owed, what a session may be opened with, and the refusals."""
+    lines = ["no session open  (wlx taskd, idle)"]
+    for found in frame.stranded:
+        if found.left_at is None:
+            lines.append(
+                f"  STRANDED: session {_printable(found.session_id)}: its welfare record "
+                f"cannot be read; no session opens until it is repaired and its "
+                f"animal's return recorded"
+            )
+        else:
+            lines.append(
+                f"  STRANDED: {_printable(found.subject)}, session "
+                f"{_printable(found.session_id)}, left its cage at {_moment(found.left_at)}, "
+                f"this host's local time; its return is not recorded, and no session "
+                f"opens until it is"
+            )
+    if frame.question is not None:
+        lines.append(_question_line(frame.question))
+    lines.append(f"  animals: {', '.join(_printable(a) for a in frame.animals) or 'none'}")
+    lines.append(
+        f"  tasks offered: {', '.join(_printable(t) for t in frame.offered_tasks) or 'none'}"
+    )
+    lines.extend(_refusal_lines(frame.refusals, frame.refusals_dropped))
+    return "\n".join(lines)
+
+
+def render(frame: _link.Telemetry | _link.Idle) -> str:
     """One screen's worth of a `Telemetry` frame -- S9a §4's panes this slice has
     data for: fluid, chair, trials by outcome, what is still owed, staged changes
     and refusals. `wlx console`'s only view of a running session.
@@ -811,10 +876,17 @@ def render(frame: _link.Telemetry) -> str:
     this function formats itself, and the lines and labels it composes itself, need
     no such treatment; only text read off `frame` (or an object reached from it)
     does.
+
+    **Schema 10 adds runs and the service** (P4d-2b b3a): the run, whether `wlx taskd`
+    holds the session, the pre-flight of the run about to start, and a question owed; an
+    `Idle` frame is `_render_idle`'s.
     """
+    if isinstance(frame, _link.Idle):
+        return _render_idle(frame)
     lines = [
         f"session {_printable(frame.session_id)}  subject {_printable(frame.subject)}  "
-        f"trial {frame.trial_index}  block {_printable(frame.block)}",
+        f"trial {frame.trial_index}  "
+        f"block {'none yet' if frame.block is None else _printable(frame.block)}",
     ]
     # Named rather than derived. Two of the three kinds answer `None` for chair time
     # for different reasons, and a console that worked out which from the pattern of
@@ -827,7 +899,7 @@ def render(frame: _link.Telemetry) -> str:
     # empty allocation is the provisional one (`_load_allocation`), and an empty
     # bounds path means the caller built `Bounds` in code.
     lines.append(
-        f"  task: {_printable(frame.task)}"
+        f"  task: {'no run yet' if frame.task is None else _printable(frame.task)}"
         f"  allocation: {_printable(frame.allocation) or 'PROVISIONAL (none given)'}"
         f"  bounds: {_printable(frame.bounds_config) or 'not given'}"
     )
@@ -846,6 +918,14 @@ def render(frame: _link.Telemetry) -> str:
     # space rather than the internal underscore -- this line is for a person, not
     # a match against the field's own wire spelling.
     lines.append(f"  phase: {_printable(frame.phase).replace('_', ' ')}")
+    # Schema 10 (P4d-2b b3a): which run, and whether a service holds the session.
+    lines.append("  run: none yet" if frame.run_index is None else f"  run: {frame.run_index}")
+    if frame.service:
+        lines.append("  runs: opened, run and ended from a console (wlx taskd)")
+    if frame.offered_tasks:
+        lines.append(
+            f"  tasks offered: {', '.join(_printable(t) for t in frame.offered_tasks)}"
+        )
     # Schema 8 (P4d-2b b2a). The pause's instant as a clock time on this host, like
     # the last reward's; one this host cannot show is `unknown`, never a crash.
     paused_at = None if frame.paused_at is None else _time_of_day(frame.paused_at)
@@ -869,6 +949,8 @@ def render(frame: _link.Telemetry) -> str:
     # `welfare.approaching_limit` and not rebuilt here (PI, 2026-09-20).
     if frame.duration_warning:
         lines.append(f"  WARNING: {_printable(frame.duration_warning)}")
+    if frame.question is not None:
+        lines.append(_question_line(frame.question))
 
     lines.append(f"  fluid session: {frame.fluid_session_ml:.2f} mL")
     lines.append(
@@ -975,6 +1057,12 @@ def render(frame: _link.Telemetry) -> str:
     )
     lines.append(f"  still owed: {still_owed or 'none'}")
 
+    if frame.preflight is not None:
+        for item in frame.preflight.items:
+            lines.append(
+                f"  pre-flight ({_printable(frame.preflight.task)}): "
+                f"{_printable(item.name)} {_printable(item.result)}: {_printable(item.said)}"
+            )
     if frame.staged:
         for change in frame.staged:
             # Fix round 1, minor: a bare "(task)"/"(bounded)" tag names an
@@ -1016,22 +1104,7 @@ def render(frame: _link.Telemetry) -> str:
     else:
         lines.append("  controls: none")
 
-    if frame.refusals:
-        # Before the rows, not after: a person reads down and would otherwise see
-        # fifty refusals and learn only at the bottom that there were four hundred.
-        if frame.refusals_dropped:
-            lines.append(
-                f"  refused: {frame.refusals_dropped} earlier refusal(s) NOT SHOWN "
-                f"-- only the most recent {len(frame.refusals)} are kept "
-                f"(link.REFUSAL_HISTORY)"
-            )
-        for refusal in frame.refusals:
-            lines.append(
-                f"  refused: {_printable(refusal.name)} by {_printable(refusal.by)}: "
-                f"{_printable(refusal.why)}"
-            )
-    else:
-        lines.append("  refused: none")
+    lines.extend(_refusal_lines(frame.refusals, frame.refusals_dropped))
 
     return "\n".join(lines)
 
@@ -1751,7 +1824,14 @@ def main(argv: list[str] | None = None) -> int:
                     frame = console.receive()
                     print(render(frame))
                     print()
-                    if frame.stopped_because:
+                    # A session's stop ends the watch -- unless `wlx taskd` sent it,
+                    # whose stream goes on between runs and while idle (the b3a-1
+                    # plan, decision 9): watched until Ctrl-C.
+                    if (
+                        isinstance(frame, _link.Telemetry)
+                        and not frame.service
+                        and frame.stopped_because
+                    ):
                         break
             except KeyboardInterrupt:
                 # Final-review minor: this used to fall through to `return 0`, so a

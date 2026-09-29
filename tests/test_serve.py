@@ -27,7 +27,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from _frames import ENDPOINT, frame
+from _frames import ENDPOINT, frame, idle
 from _rig import DIRECT, PATH as RIG_FILE
 # Autouse: every `ZmqLink`/`ZmqConsole` built here, `wlx serve`'s telemetry thread's and
 # `wlx run --link`'s included, has its context destroyed at teardown without `close()`.
@@ -37,6 +37,7 @@ from wl_xcon.cli import main
 from wl_xcon.link import (
     SCHEMA,
     CancelScheduledStop,
+    Idle,
     ManualReward,
     Mark,
     NotDelivered,
@@ -3709,3 +3710,22 @@ def test_e2e_a_reward_pressed_while_paused_is_one_correct_trial_reward_on_the_re
     at = codes.index(MANUAL_REWARD_CODE)
     assert codes.index(PAUSE_CODE) < at
     assert FIX_ON not in codes[at:], "no trial ran after the pause"
+
+
+def test_an_idle_frame_is_held_and_derives_no_rate():
+    """No session, no trials: the rate window empties, and a session's next frame
+    starts it afresh."""
+    steady = _Clock()
+    hub = _hub(steady)
+    hub.offer(frame(trial_index=10))
+    steady.t += 2.0
+    hub.offer(frame(trial_index=12))
+    steady.t += 2.0
+
+    hub.offer(idle())
+
+    latest, view_ = hub.snapshot(on_box=True, stale_after_s=30.0)
+    assert isinstance(latest, Idle) and view_.trials_per_min is None
+    steady.t += 2.0
+    hub.offer(frame(trial_index=0))
+    assert hub.trials_per_min() is None
