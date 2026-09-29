@@ -19,11 +19,13 @@ import threading
 import time
 from dataclasses import replace
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 # Autouse: every `ZmqLink`/`ZmqConsole` built here, `main()`'s own included, has its
 # context destroyed at teardown without `close()` (`tests/_zmq_release.py`).
+from _rig import PATH as RIG_FILE
 from _zmq_release import _every_zmq_context_released  # noqa: F401
 from wl_xcon.bounds import Exceeded
 from wl_xcon.cli import (
@@ -120,7 +122,7 @@ def _a_session_that_cannot_finish_fails_instead_of_running_on(monkeypatch):
 
 
 def test_a_clean_task_exits_zero(capsys):
-    assert main(["check", GOOD, "--allocation", ALLOCATION]) == 0
+    assert main(["check", GOOD, "--rig", RIG_FILE, "--allocation", ALLOCATION]) == 0
     assert "no findings" in capsys.readouterr().out
 
 
@@ -136,7 +138,7 @@ def test_a_task_with_a_blocking_finding_exits_one(tmp_path, capsys):
         "])\n"
     )
 
-    assert main(["check", str(bad)]) == 1
+    assert main(["check", str(bad), "--rig", RIG_FILE]) == 1
     assert "unreachable-state" in capsys.readouterr().out
 
 
@@ -144,8 +146,98 @@ def test_an_unallocated_code_is_refused_without_an_allocation(capsys):
     """The default allocation has no task events on purpose. A task emitting any
     code fails until a real allocation is loaded, which is correct for a project
     whose whole guardrail is that codes come from elsewhere."""
-    assert main(["check", GOOD]) == 1
+    assert main(["check", GOOD, "--rig", RIG_FILE]) == 1
     assert "unallocated-code" in capsys.readouterr().out
+
+
+def _either_task(tmp_path, reach: float) -> str:
+    """`fixation_detection` declared for either setup, its target reaching `reach`°."""
+    text = Path("tasks/fixation_detection.py").read_text(encoding="utf-8")
+    written_for = 'view="direct"'
+    target = 'Param("target_position", unit="deg", low=-16.0, high=16.0)'
+    assert text.count(written_for) == 1 and text.count(target) == 1
+    text = text.replace(written_for, 'view="either"').replace(
+        target, f'Param("target_position", unit="deg", low={-reach}, high={reach})'
+    )
+    # One file per reach: two files of the same name, size and second share a bytecode
+    # cache entry, and the second would silently load the first's task.
+    path = tmp_path / f"either_detection_{abs(reach):g}.py"
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+def test_wlx_check_needs_the_rigs_settings(capsys):
+    """Check 8 holds a task to the field the rig shows. A check with no field is one
+    that did not run, so `--rig` is required rather than defaulted."""
+    with pytest.raises(SystemExit) as exited:
+        main(["check", GOOD])
+    assert exited.value.code == 2
+    assert "--rig" in capsys.readouterr().err
+
+
+def test_wlx_check_holds_an_either_task_to_every_setup(tmp_path, capsys):
+    """Without `--view`, every setup the task allows (direct-view spec §8). ±16° fits
+    direct view and not the stereoscope's ±12° mask, so an either-task reaching it is
+    refused, and one reaching 10° passes both."""
+    assert main(["check", _either_task(tmp_path, 16.0), "--rig", RIG_FILE, "--allocation", ALLOCATION]) == 1
+    out = capsys.readouterr().out
+    assert "checked against: direct view" in out
+    assert "stimulus-off-screen" in out and "stereoscope field" in out
+
+    assert main(["check", _either_task(tmp_path, 10.0), "--rig", RIG_FILE, "--allocation", ALLOCATION]) == 0
+
+
+def test_wlx_check_view_checks_one_setup(tmp_path, capsys):
+    wide = _either_task(tmp_path, 16.0)
+
+    assert main(["check", wide, "--rig", RIG_FILE, "--allocation", ALLOCATION, "--view", "direct"]) == 0
+    assert main(["check", GOOD, "--rig", RIG_FILE, "--allocation", ALLOCATION, "--view", "stereoscope"]) == 1
+    assert "wrong-setup" in capsys.readouterr().out
+
+
+def test_wlx_check_on_the_stereoscope_checks_both_ends_of_the_rigs_range(tmp_path, capsys):
+    """With no animal named, both ends of the half-IPDs the rig is built for, so a task
+    that passes, passes for every animal it could run on."""
+    main(["check", _either_task(tmp_path, 10.0), "--rig", RIG_FILE, "--view", "stereoscope"])
+    out = capsys.readouterr().out
+    assert "checked against: the stereoscope, half-IPD 1.50 cm" in out
+    assert "checked against: the stereoscope, half-IPD 1.90 cm" in out
+
+    main(
+        [
+            "check", _either_task(tmp_path, 10.0), "--rig", RIG_FILE,
+            "--view", "stereoscope", "--subject-settings", "tasks/reference_subject.py",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "half-IPD 1.60 cm" in out and "1.50" not in out
+
+
+def test_wlx_check_refuses_direct_view_on_a_rig_whose_housings_are_unmeasured():
+    """Review Focus 2: `tasks/rig.py`'s direct view refuses to exist until the housings
+    are measured, and says so as a sentence."""
+    with pytest.raises(SystemExit) as exited:
+        main(["check", GOOD, "--rig", "tasks/rig.py"])
+    assert str(exited.value).startswith("refused: direct view's field excludes")
+
+
+def test_a_rig_or_settings_file_that_defines_nothing_is_refused(tmp_path):
+    """Review Focus 5."""
+    empty = tmp_path / "empty.py"
+    empty.write_text("X = 1\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="must define RIG"):
+        main(["check", GOOD, "--rig", str(empty)])
+    with pytest.raises(SystemExit, match="must define SETTINGS"):
+        main(["check", GOOD, "--rig", RIG_FILE, "--subject-settings", str(empty)])
+
+
+def test_subject_settings_for_another_animal_are_refused(tmp_path):
+    """Review Focus 3."""
+    from wl_xcon.cli import _load_subject_settings
+
+    with pytest.raises(SystemExit) as exited:
+        _load_subject_settings(Path("tasks/reference_subject.py"), "B")
+    assert "'REFERENCE'" in str(exited.value) and "'B'" in str(exited.value)
 
 
 def test_review_renders_the_artifact(capsys):
@@ -160,7 +252,7 @@ def test_a_file_with_no_trial_says_so(tmp_path):
     empty.write_text("x = 1\n")
 
     with pytest.raises(SystemExit, match="0 trials"):
-        main(["check", str(empty)])
+        main(["check", str(empty), "--rig", RIG_FILE])
 
 
 def test_an_allocation_file_must_define_ALLOCATION(tmp_path):
@@ -171,7 +263,7 @@ def test_an_allocation_file_must_define_ALLOCATION(tmp_path):
     bad.write_text("from wl_xcon.codes import PROVISIONAL\n")
 
     with pytest.raises(SystemExit, match="must define ALLOCATION"):
-        main(["check", GOOD, "--allocation", str(bad)])
+        main(["check", GOOD, "--rig", RIG_FILE, "--allocation", str(bad)])
 
 
 def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):

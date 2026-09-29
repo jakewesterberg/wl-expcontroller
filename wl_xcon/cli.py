@@ -26,6 +26,7 @@ from wl_xcon.bounds import Bounds, Exceeded
 from wl_xcon.check import check
 from wl_xcon.review import render as render_review
 from wl_xcon.codes import PROVISIONAL, Allocation
+from wl_xcon.geometry import VIEWS, Geometry, Rig, SubjectSettings
 from wl_xcon.task import Trial
 from wl_xcon.welfare import Deployment
 
@@ -86,6 +87,88 @@ def _load_bounds(path: Path):
     if not isinstance(found, Bounds):
         raise SystemExit(f"{path} must define BOUNDS")
     return found
+
+
+def _load_named(path: Path, name: str) -> object:
+    """Import a settings file and return what it defines as `name`, or `None`."""
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return vars(module).get(name)
+
+
+def _load_rig(path: Path) -> Rig:
+    """Load a rig's display settings (direct-view spec §2): a Python file defining
+    `RIG`, as `tasks/rig.py` does. Refused when it defines none, as a bounded config
+    without `BOUNDS` is: a check against no field is a check that did not run."""
+    found = _load_named(path, "RIG")
+    if not isinstance(found, Rig):
+        raise SystemExit(f"{path} must define RIG, a geometry.Rig")
+    return found
+
+
+def _load_subject_settings(path: Path, subject: str | None) -> SubjectSettings:
+    """Load one animal's settings (PI, 2026-09-29): a Python file defining `SETTINGS`.
+    **Refused for another animal**, as a bounded config is, when `subject` is given:
+    one animal's eye spacing is not another's."""
+    found = _load_named(path, "SETTINGS")
+    if not isinstance(found, SubjectSettings):
+        raise SystemExit(f"{path} must define SETTINGS, a geometry.SubjectSettings")
+    if subject is not None and found.subject != subject:
+        raise SystemExit(
+            f"refused: {path} holds {found.subject!r}'s settings and this session is "
+            f"for {subject!r}; one animal's eye spacing is not another's"
+        )
+    return found
+
+
+def _setup_words(view: object, half_ipd_cm: object) -> str:
+    """A setup in words, for `wlx check`, the terminal console and the page. Takes
+    wire values, so anything that is not a finite number is said, not formatted
+    (Review Focus 4)."""
+    if view == "direct":
+        return "direct view"
+    if view != "stereoscope":
+        return f"an unknown setup ({_printable(str(view))})"
+    if half_ipd_cm is None:
+        return "the stereoscope, half-IPD not given"
+    if not isinstance(half_ipd_cm, (int, float)) or not math.isfinite(half_ipd_cm):
+        return "the stereoscope, half-IPD unreadable"
+    return f"the stereoscope, half-IPD {half_ipd_cm:.2f} cm"
+
+
+def _setups(
+    trial: Trial, rig: Rig, view: str | None, settings: SubjectSettings | None
+) -> list[Geometry]:
+    """The fields `wlx check` holds a task to (direct-view spec §8): the setup named, or
+    every setup the task allows. Through the stereoscope, one animal's field when its
+    settings are given, and otherwise the fields at **both ends** of the half-IPDs the
+    rig is built for, so a task that passes, passes for every animal it could run on.
+    A task whose `view` is unrecognized gets none, and `check` refuses it by name."""
+    views = (
+        [view]
+        if view is not None
+        else {
+            "direct": ["direct"],
+            "stereoscope": ["stereoscope"],
+            "either": ["direct", "stereoscope"],
+        }.get(trial.view, [])
+    )
+    halves = [settings.half_ipd_cm] if settings else list(rig.half_ipd_range_cm)
+    try:
+        return [
+            geometry
+            for name in views
+            for geometry in (
+                [rig.direct()]
+                if name == "direct"
+                else [rig.stereoscope(half) for half in halves]
+            )
+        ]
+    except ValueError as refused:
+        raise SystemExit(f"refused: {refused}") from refused
 
 
 def _clock(seconds: float) -> str:
@@ -1065,6 +1148,31 @@ def main(argv: list[str] | None = None) -> int:
     checker = sub.add_parser("check", help="run the load-time checks on a task file")
     checker.add_argument("task", type=Path)
     checker.add_argument("--allocation", type=Path, default=None)
+    checker.add_argument(
+        "--rig",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help="the rig's display settings: a Python file defining RIG, as tasks/rig.py "
+        "does. Required: check 8 holds a task to the field the rig shows, and a check "
+        "with no field is one that did not run",
+    )
+    checker.add_argument(
+        "--view",
+        choices=VIEWS,
+        default=None,
+        help="check against this setup only; omitted, against every setup the task "
+        "allows (direct-view spec §8)",
+    )
+    checker.add_argument(
+        "--subject-settings",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="one animal's settings, a Python file defining SETTINGS: the stereoscope "
+        "is then checked at that animal's half-IPD, rather than at both ends of the "
+        "rig's range",
+    )
 
     reviewer = sub.add_parser(
         "review", help="render the artifact a task is approved from"
@@ -1745,7 +1853,24 @@ def main(argv: list[str] | None = None) -> int:
         print(render_review(_load_trial(args.task), allocation.task_events))
         return 0
 
-    findings = check(_load_trial(args.task), _load_allocation(args.allocation))
+    trial = _load_trial(args.task)
+    allocation = _load_allocation(args.allocation)
+    rig = _load_rig(args.rig)
+    settings = (
+        _load_subject_settings(args.subject_settings, None)
+        if args.subject_settings is not None
+        else None
+    )
+    geometries = _setups(trial, rig, args.view, settings)
+    for geometry in geometries:
+        print(f"checked against: {_setup_words(geometry.view, geometry.half_ipd_cm)}")
+    # One list across the setups, each finding once: most findings are the task's own
+    # and read the same in every setup, while check 8's name the field they failed in.
+    findings: list = []
+    for geometry in geometries or [None]:
+        for finding in check(trial, allocation, geometry=geometry):
+            if finding not in findings:
+                findings.append(finding)
     for finding in findings:
         marker = "refused " if finding.blocking else "review  "
         print(f"{marker} {finding.code:28} {finding.detail}")
