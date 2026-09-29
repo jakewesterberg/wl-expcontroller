@@ -18,7 +18,11 @@ closes it.
     wlx run tasks/fixation_detection.py --bounds tasks/twelve_hour_bounds.py \\
         --rig tests/_rig.py --view direct --allocation tasks/allocation.py \\
         --root /tmp/dry-run --session-id 2027-01-14_01 --subject REFERENCE \\
-        --out-of-cage-at 2027-01-14T06:00 --delivered-today 0 --trials 2
+        --out-of-cage-at YYYY-MM-DDTHH:MM --delivered-today 0 --trials 2
+
+Give the clock time about nine hours before now, with its date: that is more than
+`welfare.CONFIRM_MARK_WITHIN` ago and inside the twelve-hour ceiling, so the prompt is
+offered.
 
 The dry run uses the tests' stand-in rig because `tasks/rig.py`'s direct view refuses
 until the housings are measured.

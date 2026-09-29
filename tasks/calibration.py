@@ -20,9 +20,8 @@ the animal really held it, and reward that. Turning held fixations into a map is
 
 **Written for direct view** (`view="direct"`, direct-view spec §8), over its ±15° region.
 The stereoscope's constellation, over its ±12° mask, is `calibration.constellation`'s too, and
-the task that presents it does not exist yet: it waits for the first stereoscope session
-(`wlx run --view stereoscope` exists since direct view part 2; the rig's stereoscope
-settings are what the session still needs).
+the task that presents it does not exist yet: it is backlog item XC-005, not yet written.
+(`wlx run --view stereoscope` exists since direct view part 2.)
 """
 
 from wl_xcon.task import (

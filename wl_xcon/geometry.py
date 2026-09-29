@@ -317,7 +317,12 @@ class SubjectSettings:
     def __post_init__(self) -> None:
         if not self.subject:
             raise ValueError("subject settings name no subject")
-        if not (math.isfinite(self.half_ipd_cm) and self.half_ipd_cm > 0):
+        # `bool` is an `int`; `None` is the placeholder for an unmeasured animal.
+        if (
+            isinstance(self.half_ipd_cm, bool)
+            or not isinstance(self.half_ipd_cm, (int, float))
+            or not (math.isfinite(self.half_ipd_cm) and self.half_ipd_cm > 0)
+        ):
             raise ValueError(
                 f"half_ipd_cm={self.half_ipd_cm!r} is not a half-IPD: half the distance "
                 f"between the eyes' centers, in cm, a positive number"

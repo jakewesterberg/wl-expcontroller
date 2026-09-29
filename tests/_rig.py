@@ -6,13 +6,27 @@ one per bottom corner, 4 × 3 cm with a 0.5 cm margin, and **nobody measured the
 Everything else is `tasks/rig.py`'s own.
 
 Also a rig settings file: it defines `RIG`, so `wlx run --rig` and `wlx check --rig`
-can load it by `PATH`. Never collected, since its name does not start with `test_`.
+can load it by `PATH`. Never collected, since its name does not start with `test_`. It loads `tasks/rig.py`
+by path because `tasks/` is not part of the installed package, so `import tasks` works
+under pytest's `pythonpath` and fails under the real `wlx`.
 """
 
+import importlib.util
 from dataclasses import replace
+from pathlib import Path
 
-from tasks.rig import RIG as _THIS_RIG
 from wl_xcon.geometry import Housing
+
+
+def _load_this_rig():
+    path = Path(__file__).resolve().parents[1] / "tasks" / "rig.py"
+    spec = importlib.util.spec_from_file_location("_tasks_rig_by_path", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.RIG
+
+
+_THIS_RIG = _load_this_rig()
 
 RIG = replace(
     _THIS_RIG,

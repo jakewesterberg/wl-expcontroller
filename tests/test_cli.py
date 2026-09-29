@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import subprocess
+import sys
 import threading
 import time
 from dataclasses import replace
@@ -127,6 +130,34 @@ def test_a_clean_task_exits_zero(capsys):
     assert "no findings" in capsys.readouterr().out
 
 
+def test_the_installed_command_can_load_the_test_rig(tmp_path):
+    """The in-process suite gets `tasks/` from pytest's `pythonpath`; the installed
+    `wlx` does not ship it and a console script does not put the working directory on
+    `sys.path`. `-P` reproduces that, so a rig file that imports `tasks` fails here as
+    it does at the bench (final review of direct view part 2, item 1)."""
+    root = Path(__file__).resolve().parents[1]
+    # `wl_xcon` alone on the path, as an installed package is: putting the repository
+    # root there would also hand the child `tasks/`, which is what is being tested.
+    (tmp_path / "wl_xcon").symlink_to(root / "wl_xcon", target_is_directory=True)
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-P",
+            "-c",
+            "import sys; from wl_xcon.cli import main; sys.exit(main(sys.argv[1:]))",
+            "check", GOOD, "--allocation", ALLOCATION, "--rig", RIG_FILE,
+        ],
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "no findings" in done.stdout
+
+
 def test_a_task_with_a_blocking_finding_exits_one(tmp_path, capsys):
     """Exit status is the contract: whatever loads a task on a rig, or in CI, has
     to be able to refuse it without parsing prose."""
@@ -176,6 +207,64 @@ def _bad_settings(tmp_path) -> Path:
         encoding="utf-8",
     )
     return bad
+
+
+def test_wlx_check_says_a_rig_file_of_an_older_shape_in_a_sentence(tmp_path):
+    """A rig file written before `half_ipd_range_cm` existed fails as a `TypeError`
+    while it runs: a refusal sentence, not a traceback (final review, item 2)."""
+    old = tmp_path / "old_rig.py"
+    old.write_text("from wl_xcon.geometry import Rig\nRIG = Rig()\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as refused:
+        main(["check", GOOD, "--rig", str(old), "--allocation", ALLOCATION])
+
+    assert str(refused.value).startswith("refused:")
+
+
+def test_wlx_check_refuses_a_task_whose_view_it_does_not_know(tmp_path, capsys):
+    """No setup is named for such a task, so there is no geometry to loop over. The
+    check must still run once without one: dropping that would print "no findings" for
+    a task that was never checked (final review, item 3)."""
+    text = Path(GOOD).read_text(encoding="utf-8")
+    assert text.count('view="direct"') == 1
+    sideways = tmp_path / "sideways.py"
+    sideways.write_text(text.replace('view="direct"', 'view="sideways"'), encoding="utf-8")
+
+    assert main(["check", str(sideways), "--rig", RIG_FILE, "--allocation", ALLOCATION]) == 1
+    out = capsys.readouterr().out
+    assert "unknown-view" in out
+    assert "no findings" not in out
+
+
+def test_wlx_check_refuses_settings_that_a_direct_view_check_would_ignore(capsys):
+    """`--subject-settings` holds the stereoscope's half-IPD. Given with `--view direct`
+    it would be read by nothing and said nowhere; `wlx run` refuses it, in the same
+    sentence (final review, item 5)."""
+    with pytest.raises(SystemExit) as refused:
+        main(["check", GOOD, "--rig", RIG_FILE, "--allocation", ALLOCATION,
+              "--view", "direct", "--subject-settings", "tasks/reference_subject.py"])
+
+    assert str(refused.value) == cli._DIRECT_READS_NO_SETTINGS
+    assert str(refused.value).startswith("refused: --subject-settings holds")
+
+
+def test_wlx_check_of_an_either_task_on_an_unmeasured_direct_view_points_at_the_other(tmp_path):
+    """The whole check is refused, correctly, since the direct view cannot exist. The
+    sentence also says which setup can still be checked (final review, item 7)."""
+    with pytest.raises(SystemExit) as refused:
+        main(["check", _either_task(tmp_path, 10.0), "--rig", "tasks/rig.py",
+              "--allocation", ALLOCATION])
+
+    assert str(refused.value).startswith("refused:")
+    assert "--view stereoscope" in str(refused.value)
+
+
+def test_wlx_run_says_which_setup_it_is_holding_the_session_to(tmp_path, capsys):
+    """Without `--link` the setup was shown nowhere on the terminal (final review,
+    item 6)."""
+    assert main(_run_args(tmp_path, "--out-of-cage-at", _hhmm())) == 0
+
+    assert "  setup: direct view" in capsys.readouterr().out.splitlines()
 
 
 def test_wlx_run_says_a_settings_file_that_refuses_itself_in_a_sentence(tmp_path):

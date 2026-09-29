@@ -205,9 +205,10 @@ this section originally attributed them to V1).
 - `check.py`:
   - check 8 against the session's field;
   - the disparity-requires-stereoscope finding.
-- **The load-time checks get the geometry they have never had:** `taskd` and `wlx check` today
-  call `check()` without one, so check 8 never runs outside the tests. `wlx run --view` passes
-  the chosen setup's geometry to `taskd`'s load-time check.
+- **The load-time checks get the geometry they have never had:** they used to call `check()`
+  without one, so check 8 never ran outside the tests. Now `wlx run --rig --view` passes the
+  chosen setup's geometry to `taskd`'s load-time check, and `wlx check --rig` builds the
+  geometry of every setup the task allows.
 - `wlx check --view` checks against one setup. Without `--view`, it checks against every setup
   the task allows.
 - `wlx run --view`, the session snapshot and record, and a telemetry field shown by

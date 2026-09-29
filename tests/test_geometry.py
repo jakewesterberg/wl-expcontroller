@@ -368,6 +368,15 @@ def test_subject_settings_refuse_a_blank_subject_or_an_impossible_half_ipd():
             SubjectSettings(subject=subject, half_ipd_cm=half)
 
 
+def test_subject_settings_refuse_a_half_ipd_that_is_not_a_number():
+    """`None` is the natural placeholder while an animal's half-IPD is unmeasured
+    (XC-082): it is refused in a sentence, not left as a `TypeError`. A `bool` is an
+    `int` and would otherwise pass as 1 cm."""
+    for half in (None, "1.6", True):
+        with pytest.raises(ValueError, match="not a half-IPD"):
+            SubjectSettings(subject="A", half_ipd_cm=half)
+
+
 def test_the_stereoscope_refuses_a_half_ipd_it_is_not_built_for():
     """The optics drawing tabulates IPD 30-38 mm (S0 §7.1.3), so the rig is built for
     half-IPDs 1.5-1.9 cm. Outside that, the mirrors and the field are nobody's drawing."""

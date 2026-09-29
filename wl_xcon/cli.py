@@ -93,14 +93,15 @@ def _load_named(path: Path, name: str) -> object:
     """Import a settings file and return what it defines as `name`, or `None`. A
     settings object refuses bad values when it is built, which happens inside the
     file, so a `ValueError` from running it is said as a refusal sentence rather than
-    left as a traceback."""
+    left as a traceback. So is a `TypeError`: a file written before a field existed
+    fails as a missing argument."""
     spec = importlib.util.spec_from_file_location(path.stem, path)
     if spec is None or spec.loader is None:
         raise SystemExit(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
-    except ValueError as refused:
+    except (ValueError, TypeError) as refused:
         raise SystemExit(f"refused: {path}: {refused}") from refused
     return vars(module).get(name)
 
@@ -128,6 +129,13 @@ def _load_subject_settings(path: Path, subject: str | None) -> SubjectSettings:
             f"for {subject!r}; one animal's eye spacing is not another's"
         )
     return found
+
+
+#: Said by `wlx run` and `wlx check` alike, so the two cannot drift apart.
+_DIRECT_READS_NO_SETTINGS = (
+    "refused: --subject-settings holds the stereoscope's half-IPD, and direct view "
+    "reads nothing from it; leave it off, or pass --view stereoscope"
+)
 
 
 def _setup_words(view: object, half_ipd_cm: object) -> str:
@@ -168,18 +176,24 @@ def _setups(
         }.get(trial.view, [])
     )
     halves = [settings.half_ipd_cm] if settings else list(rig.half_ipd_range_cm)
-    try:
-        return [
-            geometry
-            for name in views
-            for geometry in (
+    geometries: list[Geometry] = []
+    for name in views:
+        try:
+            geometries.extend(
                 [rig.direct()]
                 if name == "direct"
                 else [rig.stereoscope(half) for half in halves]
             )
-        ]
-    except ValueError as refused:
-        raise SystemExit(f"refused: {refused}") from refused
+        except ValueError as refused:
+            sentence = f"refused: {refused}"
+            if name == "direct" and view is None and len(views) > 1:
+                # Failing closed is right; but the other setup can still be checked.
+                sentence += (
+                    "; the task is also written for the stereoscope, and --view "
+                    "stereoscope checks that setup"
+                )
+            raise SystemExit(sentence) from refused
+    return geometries
 
 
 def _session_geometry(args) -> Geometry:
@@ -190,11 +204,7 @@ def _session_geometry(args) -> Geometry:
     rig = _load_rig(args.rig)
     if args.view == "direct":
         if args.subject_settings is not None:
-            raise SystemExit(
-                "refused: --subject-settings holds the stereoscope's half-IPD, and "
-                "direct view reads nothing from it; leave it off, or pass --view "
-                "stereoscope"
-            )
+            raise SystemExit(_DIRECT_READS_NO_SETTINGS)
         build = rig.direct
     else:
         if args.subject_settings is None:
@@ -1530,6 +1540,11 @@ def main(argv: list[str] | None = None) -> int:
                 + "\n".join(f"  {f.code}: {f.detail}" for f in refusals)
             )
 
+        # Once the check passes, one line, before the `--set` parsing, the link and
+        # the `Session`; not beside `out of cage:`, which sits inside the welfare
+        # path. Without `--link` this is the only place the setup is said here.
+        print(f"  setup: {_setup_words(geometry.view, geometry.half_ipd_cm)}")
+
         values: dict[str, object] = {}
         for assignment in args.set:
             name, sep, raw = assignment.partition("=")
@@ -1959,6 +1974,8 @@ def main(argv: list[str] | None = None) -> int:
         else None
     )
     geometries = _setups(trial, rig, args.view, settings)
+    if settings is not None and geometries and {g.view for g in geometries} == {"direct"}:
+        raise SystemExit(_DIRECT_READS_NO_SETTINGS)
     for geometry in geometries:
         print(f"checked against: {_setup_words(geometry.view, geometry.half_ipd_cm)}")
     # One list across the setups, each finding once: most findings are the task's own
