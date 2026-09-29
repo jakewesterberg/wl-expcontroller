@@ -217,9 +217,10 @@ class Service:
         #: A departure, or a stranded session's return, a console owes an answer on:
         #: kept until it is answered or another replaces it (`_unasked`).
         self.question: _link.Question | None = None
-        #: What `question` was posed for, set and cleared with it: a departure's open --
-        #: its animal, deployment and setup (`_open`) -- or `()` for a stranded return,
-        #: which its session binds (fix round 1 of Task 7).
+        #: What a departure's `question` was posed for -- the animal, deployment and
+        #: setup of its open (fix round 1 of Task 7). **Set whenever a departure question
+        #: is posed, and read only beside one** (`_open`), so it is never cleared; a
+        #: stranded return's question is bound by its session alone.
         self._posed_for: tuple = ()
         #: The service's own refusals while no session is open, capped as a session's.
         self.refusals: list = []
@@ -491,7 +492,7 @@ class Service:
             self._refuse("open", command.by, str(refused))
             return
         # Marked: whatever was asked is answered, or moot now a session is open.
-        self.question, self._posed_for = None, ()
+        self.question = None
         _marks.record_departure(session, decision)
         session.open(how="wlx taskd")
         if session.spec.deployment is Deployment.RIG_FIXED:
@@ -652,7 +653,6 @@ class Service:
                 mark="return", session_id=found.session_id, at=owed.at,
                 said=owed.warning, answers=owed.answers,
             )
-            self._posed_for = ()
             self._refuse(
                 "end", command.by,
                 f"{owed.warning}. Send it again answering confirm, or with the time typed again",
@@ -662,7 +662,7 @@ class Service:
             self._refuse("end", command.by, _sentence(refused))
             return
         if self.question is not None and self.question.session_id == found.session_id:
-            self.question, self._posed_for = None, ()
+            self.question = None
         self.stranded.remove(found)
 
 
