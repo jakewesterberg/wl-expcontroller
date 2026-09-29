@@ -6,7 +6,8 @@
   approved in conversation on 2026-09-27, section by section, and b2b's decisions so far
   are recorded in §5.7. **Amended 2026-09-28**, when the PI approved b2a's plan with one
   change — a manual reward during a pause (§5.0) — in §4.0, §5.0–§5.7. Slices b3–b6 get
-  their own sections as each is designed.
+  their own sections as each is designed. **§6, slice b3a** (sessions from the page), was
+  designed and approved in conversation on 2026-09-29, section by section.
 - **Date:** 2026-09-26
 - **Parent:** S9a §6–§9; ADR-0008; `architecture.md`'s `console` and `labhost` rows
 - **Depends on:** P4d-2a (`2026-09-26-P4d2a-return-to-cage-design.md`, as amended in its
@@ -523,7 +524,137 @@ Designed in full as its own section when b2a has shipped. Decided now:
   - the box path is a permanent peer, never an emergency hatch;
   - a token expiring mid-session interrupts nothing.
 
-## 6. Not in this slice
+## 6. Slice b3a: sessions from the page (approved in conversation 2026-09-29)
+
+b3 is cut in two (PI, 2026-09-29, asked in the UI): **b3a**, a service on the rig that holds
+one animal's session across several runs, opened, run and ended from the page, with the
+pre-flight list; then **b3b**, the task-library pull from GitHub and the day's plan sent
+from wl-works, once wl-xtasks has tasks (it is an empty scaffold today) and wl-works sends
+plans. b3a was designed in three sections, each approved as written below.
+
+### 6.0 Rulings (PI, 2026-09-29, asked in plain terms)
+
+- **Cut b3 into b3a and b3b** ("Session service first").
+- **The page takes the departure and the return**, as the wl-works ELN's stand-in, under the
+  terminal's exact rules. Asked where the two times should be entered once sessions run from
+  the page: "The page takes both times." **This amends P4d-2a spec §10**, where the return was
+  terminal-only and "the browser will not send it" (PI, 2026-09-26: "you can take it out of
+  this interface"). The ELN still owns both ends once it exists; the page, like the terminal,
+  is its stand-in until then. The page's route into those times is **welfare-critical** and
+  goes to the PI for review before merge (§6.4).
+- **One always-on rig service** ("One always-on rig service"), over a launcher with one
+  process per session or the page's server starting each run: all of one animal's welfare
+  state lives in one process, which is the shape S9a §7 already drew.
+
+### 6.1 The rig service
+
+- **`wlx taskd`** runs all day on the rig PC. It is started with the rig's settings file
+  (`--rig`, as `wlx run` takes it), the folder of per-animal files (`--subjects`), the task
+  folder (`--tasks`), the allocation (`--allocation`), the session root (`--root`) and the
+  console link (`--link PUB,REP[,MARK]`, loopback unless `--link-allow-remote`, as now). All
+  required but the allocation and the mark endpoint, as for `wlx run`.
+- **Idle** until a session opens: it publishes a frame whose `phase` is `idle`, and the page
+  shows *no session open* beside the form that opens one.
+- **One session at a time**, because one rig holds one animal. A session holds several
+  **runs**, one after another; the day's welfare state (the out-of-cage interval, the day's
+  fluid, restraint) lives in the session and outlasts every run.
+- **Stop ends the run, not the session.** Between runs (`phase` `between_runs`) the
+  out-of-cage clock keeps running and is published. **The out-of-cage limit** ends a run in
+  progress, as it ends a session today; reached between runs, it refuses a new run, and the
+  page asks for the return. A scheduled stop (b2a) ends the run it was set on.
+- **Nothing is quietly lost to a crash.** Everything a session has done is in its record as it
+  happens. On start, the service looks under `--root` for a session with a departure and no
+  return; while one exists it **refuses to open a new session** until someone records that
+  animal's return time, and the page shows the stranded session and asks for it. An animal out
+  of its cage is never forgotten because a process died.
+- **`wlx run` stays**, for the terminal: it opens a session, runs one run and ends it, through
+  the same session and run code as the service, so the terminal and the page are two peers on
+  one path and not two implementations.
+- **`wlx serve` is unchanged in kind**: its own process, restartable without touching
+  `taskd`, as S9a §7 requires. It gains the commands below and the page's forms.
+
+### 6.2 Opening, running and ending a session from the page
+
+Writes only from the rig PC's own browser (§2's four checks), until b2b.
+
+- **Open.** The page asks for:
+  - the operator's name, once, as now (`NAME (box, unverified)`);
+  - **the animal**, chosen from the folders under `--subjects`, each named for its subject and
+    holding its bounded config (`bounds.py`, defining `BOUNDS`, whose subject must match) and,
+    for the stereoscope, its settings (`settings.py`, defining `SETTINGS`); an animal whose
+    files are missing, or whose files name another subject, is refused;
+  - **the deployment kind**, head-fixed or chaired (`rig-fixed`, `rig-chaired`);
+  - **the setup**, direct or stereoscope (direct view part 2's rules);
+  - **the departure time**, a clock time as `--out-of-cage-at` takes it;
+  - the fluid already given today, optional, from wl-works (`--delivered-today`).
+- **The departure follows the terminal's rules exactly.** The page sends the text as typed;
+  the service parses it with the terminal's own parser and applies `welfare`'s own refusals:
+  not in the future, not longer ago than the subject's ceiling. A departure more than
+  `welfare.CONFIRM_MARK_WITHIN` ago is answered *confirm or amend*, and the page offers exactly
+  the terminal's two choices: confirm it, or amend it with a reason and a name (PI,
+  2026-09-20). **One shared piece of code decides**, called by the terminal and by the service,
+  so the rules cannot drift.
+- **Each run.**
+  - **The task** is chosen from `--tasks`. Every run is **unplanned** until b3b brings the day's
+    plan, and the page says so each time, with the warning that an unplanned run lowers the
+    session's timing tier (§4.0).
+  - **Pre-flight** is shown before the run starts, under S9a §10's one rule: **fail blocks,
+    unknown proceeds on a named acknowledgement written into the record, pass proceeds.** The
+    items today: the task's load-time checks in the session's setup (fail if any blocks); the
+    bounded config and, in the stereoscope, the settings (fail if refused); the out-of-cage
+    mark (`welfare.preflight`); the pump calibration (V10) and the eye tracker's health, both
+    **unknown** until measured.
+  - **Starting values** are the task's own. Remembering an animal's values from its last
+    session stays with XC-018.
+  - **During a run**, the controls are b2a's, unchanged.
+- **End.** *End session* asks for the return time, under the terminal's return rules: not
+  before the departure, not in the future, confirmed if far from now; there is no amendment for
+  a return, because nothing has been marked yet that one could replace (the terminal's own
+  rule). The session then closes and the page shows its summary. A run still in progress is
+  stopped first.
+
+### 6.3 The record, the recording's events, and the consoles
+
+- **One session folder per session**, as now.
+  - **`runs.jsonl`**, new: one row per run: its index, task, allocation and their versions, the
+    parameter layers it started with, when it started and ended (wall), `unplanned`, the
+    pre-flight results with who acknowledged each unknown, and why it stopped.
+  - **Every trial row names its run.**
+  - **`config.json`** holds what is fixed for the whole session: the animal, the deployment, the
+    bounded config, the rig, the subject settings and the setup. What varies by run moves to
+    `runs.jsonl`.
+  - wl-preproc reads only the eye-calibration files from `xcon/` (its source, read 2026-09-29:
+    `wl_preproc/eye/xcon.py` and `schema/eye.py`), so nothing it depends on moves.
+- **The neural recording's events:** `RUN_START` and `RUN_END`, provisionally **4135** and
+  **4136** in our range beside `PAUSE`, `RESUME`, `OPERATOR_MARK` and `MANUAL_REWARD`
+  (4131–4134); wl-xtasks owns the final numbering. The recording then shows where each task
+  began and ended.
+- **Telemetry, schema 10:** `phase` gains `idle` and `between_runs`; each frame carries the run
+  index (`None` when no run has started); the run about to start carries its pre-flight
+  results; the out-of-cage and fluid cells stay live between runs. Unknown stays `None`,
+  never `0` (S9a §9).
+
+### 6.4 Human review before b3a merges
+
+Welfare-critical, and presented to the PI as a numbered summary to approve:
+- the shared departure and return code, and the page's route into it (the service's parsing,
+  refusals, confirmation and amendment answers);
+- the rule that no new session opens while an animal is stranded, and how a stranded session
+  is found and closed;
+- anything else the plan adds to `docs/design/architecture.md`'s welfare-critical list.
+
+### 6.5 Testing (sim first)
+
+The service runs over the real ZMQ link with the simulated animal, card and pump. End-to-end
+tests, each through the page's endpoints as well as the service's commands:
+- open a session, two runs, end it;
+- the out-of-cage limit reached between runs refuses a new run and asks for the return;
+- a crash and restart refuses a new session until the stranded animal's return is recorded;
+- an unknown pre-flight item acknowledged by name, and found in `runs.jsonl`;
+- every refusal of the departure and the return, through the page exactly as through the
+  terminal.
+
+## 7. Not in this slice
 
 - Plots (accuracy over time, RT distribution, accuracy by position) — their own slice, with
   the per-trial RT and bounded history they need (PI, 2026-09-26)

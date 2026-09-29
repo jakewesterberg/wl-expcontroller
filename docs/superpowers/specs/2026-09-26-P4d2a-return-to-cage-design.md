@@ -218,6 +218,12 @@ Then:
 
 ## 10. Amendment, 2026-09-26: the ELN owns the interval
 
+> **Amended again 2026-09-29 (PI), by the P4d-2b spec §6.0:** once sessions run from the page
+> (slice b3a), **the page takes both the departure and the return**, as the ELN's stand-in,
+> under the terminal's exact rules and through one shared piece of code. The return below,
+> "terminal-only", and "the browser will not send it" describe the design until b3a. The ELN
+> still owns both ends once it exists.
+
 **What the PI ruled**, asked while the P4d-2b console was being mocked up:
 
 - "out-of-cage should be grabbed from the wl-works eln (not built yet), but there should
