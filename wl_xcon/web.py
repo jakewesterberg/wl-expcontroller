@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from importlib import resources
 
 from wl_xcon import health as _health
-from wl_xcon.cli import _clock, _setup_words
+from wl_xcon.cli import _clock, _moment, _setup_words
 from wl_xcon.link import RECENT_OUTCOMES, Idle, Telemetry
 from wl_xcon.task import Family, Outcome
 
@@ -826,7 +826,10 @@ def _question_banner(question) -> str:
 
 def _idle_banners(frame: Idle, view: View) -> str:
     """A refused frame, then every stranded animal, then a question owed -- where a
-    person looks first. The form that opens a session is b3a-2's."""
+    person looks first. The form that opens a session is b3a-2's. A stranded departure
+    is given as this host's local date, minute and zone, as the terminal gives it
+    (`cli._moment`): an animal out since days ago must not read as since this morning
+    (the b3a-1 final review, Minor 1)."""
     out = []
     if view.rejected:
         out.append(_banner("crit", "Refused", _e(view.rejected)))
@@ -836,7 +839,7 @@ def _idle_banners(frame: Idle, view: View) -> str:
             f"animal's return cannot be checked; no session opens until the file is "
             f"repaired and the return recorded"
             if found.left_at is None
-            else f"{_e(found.subject)} left its cage at {_clock_time(found.left_at)} in "
+            else f"{_e(found.subject)} left its cage at {_e(_moment(found.left_at))} in "
             f"session {_e(found.session_id)}, and its return is not recorded; no session "
             f"opens until it is"
         )

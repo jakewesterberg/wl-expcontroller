@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from _frames import frame, idle, view
+from wl_xcon.cli import _local
 from wl_xcon.link import Control, ParamRow, Question, Refused, ScheduledStop, Staged, Stranded
 from wl_xcon.web import (
     _SCRIPT,
@@ -1200,6 +1201,22 @@ def test_the_page_with_no_session_open_says_so_and_puts_a_stranded_animal_first(
     assert "controls · no session open" in panes["controls"]
     assert "none open · wlx taskd is idle" in panes["rt-health"]
     assert '<span class="pill warn">degraded</span>' in panes["rt-health"], "an animal is stranded"
+
+
+@pytest.mark.parametrize("unshowable", [1e20, float("nan")])
+def test_the_pages_stranded_banner_shows_the_departures_date_or_says_it_is_unknown(unshowable):
+    """The b3a-1 final review, Minor 1: the banner gave the departure as a clock time
+    alone, so an animal stranded three days ago read "left its cage at 22:55:14". It is
+    this host's local date, minute and zone, as the terminal gives it (`cli._moment`),
+    or "an unknown time" for an instant this host cannot show."""
+    left_at = 1_700_000_000.0
+    banners = fragments(
+        idle(stranded=(Stranded("2027-01-13_01", "B", left_at), Stranded("2027-01-13_02", "C", unshowable))),
+        view(),
+    )["banners"]
+
+    assert f"B left its cage at {html.escape(_local(left_at))} in session 2027-01-13_01" in banners
+    assert "C left its cage at an unknown time in session 2027-01-13_02" in banners
 
 
 def test_the_page_escapes_control_characters_and_markup_in_an_idle_frames_text():
