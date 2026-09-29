@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-143.**
+**Next free ID: XC-145.**
 
 ## Brainstorms queued for the PI
 
@@ -24,7 +24,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 ## Features not yet planned
 
-- **XC-003** Direct view part 2: `wlx run --view`, the chosen setup's geometry in `taskd`'s and `wlx check`'s load-time checks (a missing geometry fails loudly), the session record and a telemetry field. — 2026-09-28, [direct-view spec §8](superpowers/specs/2026-09-28-direct-view-design.md#8-what-changes-and-in-what-order) — waits on: XC-036, XC-037 and XC-038 fixed first
+- **XC-003** Direct view part 2: `wlx run --view`, the chosen setup's geometry in `taskd`'s and `wlx check`'s load-time checks (a missing geometry fails loudly), the session record and a telemetry field. — 2026-09-28, [direct-view spec §8](superpowers/specs/2026-09-28-direct-view-design.md#8-what-changes-and-in-what-order) — waits on: nothing
 - **XC-004** Show `Trial.view` in the review artifact. — 2026-09-28, [direct view part 1 plan](superpowers/plans/2026-09-28-direct-view-part1.md), final review M6 — waits on: nothing
 - **XC-005** The stereoscope's calibration task, over the ±12° mask. — 2026-09-28, [`tasks/calibration.py`'s docstring](../tasks/calibration.py) — waits on: XC-003
 - **XC-006** The `pupil − CR1` gaze fallback beyond P4's reach: the switching rule, its own map, and a per-sample method flag. — 2026-09-27, [S5 §1](superpowers/specs/2026-08-31-S5-eye-tracking-design.md#1-most-of-the-calibration-is-already-decided-and-not-by-us) — waits on: nothing
@@ -61,9 +61,6 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 ## Deferred defects
 
-- **XC-036** `Stimulus(at=P("pos"))` crashes check 8's `_offscreen_stimuli` with a `TypeError`, which would crash `taskd`'s load once it has a geometry. — 2026-09-28, [CHECKPOINT 2026-09-28, "Resume here"](CHECKPOINT.md#what-moved-on-2026-09-28-the-screen-the-stereoscope-direct-view-and-b2a-under-way) — waits on: nothing
-- **XC-037** `Update(at=…)` and `Update(disparity=…)` escape check 8. — 2026-09-28, [CHECKPOINT 2026-09-28, "Resume here"](CHECKPOINT.md#what-moved-on-2026-09-28-the-screen-the-stereoscope-direct-view-and-b2a-under-way) — waits on: nothing
-- **XC-038** Check 8 reads a position parameter declared by choices only, or without a range, as 0. — 2026-09-28, [CHECKPOINT 2026-09-28, "Resume here"](CHECKPOINT.md#what-moved-on-2026-09-28-the-screen-the-stereoscope-direct-view-and-b2a-under-way) — waits on: nothing
 - **XC-039** A change staged on a session's last pass is never applied and never recorded, a record gap on the reward path. — 2026-09-19, [next-session §6 item 2](next-session.md#6-p4d-2a-is-on-main-p4d-2b-b1-is-built-b2-is-next) — waits on: nothing
 - **XC-040** `tools/mutate.py` counts any non-zero pytest exit as `caught`, so a collection error (exit 2, no test ran) reads as coverage instead of failing the gate as inconclusive. — 2026-09-20, [CHECKPOINT, "The sweep is green"](CHECKPOINT.md#the-sweep-is-green-and-four-of-its-entries-are-green-for-a-reason-that-is-not-a-test) — waits on: nothing
 - **XC-041** `link.decode` checks that a frame's fields are present but not their types, so `floor_ml="x"` passes `Hub.offer`, leaves `/health` `ok` and loops the page on "stream lost". — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing
@@ -81,6 +78,8 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-118** A scheduled stop at a clock time inside a fall-back DST hour resolves 24.75 hours ahead, and a spring-forward gap time resolves however the host's C library does, unverified on the rig's platform. — 2026-09-28, [taskd.py's `_next_occurrence`](../wl_xcon/taskd.py) — waits on: nothing
 - **XC-119** wlx review's render prints task and allocation names straight from file-sourced task definitions, without the control-character stripping cli.render and web.py apply to every wire-sourced string. — 2026-09-28, [review.py's `render`](../wl_xcon/review.py) — waits on: nothing
 - **XC-120** A 403 or 413 response can close the connection with the request body unread, risking a TCP reset instead of the JSON refusal reaching the client. — 2026-09-28, [serve.py](../wl_xcon/serve.py) — waits on: nothing
+- **XC-143** Check 8 adds an item ring's radius but not the depth of a corrugated or slanted stereogram used as an `Array`'s item (`looks` or `among`), so an array of deep stereograms near the edge can pass. — 2026-09-29, [check.py's `_offscreen_stimuli`](../wl_xcon/check.py) — waits on: nothing
+- **XC-144** Check 8 tests centres (a stimulus's, or an array's items') and never a stimulus's own size, so a 6° disc centred at 11.5° passes the stereoscope's ±12° mask. — 2026-09-29, [check.py's `_offscreen_stimuli`](../wl_xcon/check.py) — waits on: nothing
 
 ## Debt
 
@@ -92,7 +91,6 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-054** Settle `task.FixPoint`: S1 §5.1's worked example uses it and no reference task does, so either the tasks use it or S1a §6 drops it. — 2026-09-19, [next-session §3c](next-session.md#3c-one-decision-left-on-the-table) — waits on: nothing
 - **XC-055** Write the ADR for adopting wl-preproc's lab-host protocol (D11). — 2026-08-31, [controller architecture §17](superpowers/specs/2026-08-31-controller-architecture-design.md#17-what-this-changes-in-existing-documents) — waits on: nothing
 - **XC-056** One `tests/_rig.py` for the stand-in sensor housings, instead of a copy in each test file. — 2026-09-28, [direct view part 1 plan](superpowers/plans/2026-09-28-direct-view-part1.md), final review M7 — waits on: nothing
-- **XC-057** `_showing_looks` duplicates `_showing` in `tests/test_task_checks.py`. — 2026-09-28, [direct view part 1 plan](superpowers/plans/2026-09-28-direct-view-part1.md), Task 4 review — waits on: nothing
 - **XC-058** Three blank lines before `class Setup` in `tools/calibration_design.py`. — 2026-09-28, [direct view part 1 plan](superpowers/plans/2026-09-28-direct-view-part1.md), Task 5 review — waits on: nothing
 - **XC-059** The same three-line comment sits in `tasks/fixation_detection.py` and `tasks/adaptive_detection.py`. — 2026-09-28, [direct view part 1 plan](superpowers/plans/2026-09-28-direct-view-part1.md), Task 6 review — waits on: nothing
 - **XC-060** `wlx serve` has no process-level restart test; a manual check covers it. — 2026-09-27, [CHECKPOINT, "Carried forward from b1"](CHECKPOINT.md#what-moved-on-2026-09-27-p4d-2b-slice-b1-the-read-only-browser-console) — waits on: nothing

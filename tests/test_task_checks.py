@@ -8,6 +8,8 @@ import pytest
 
 from wl_xcon.task import (
     RDS,
+    Corrugation,
+    Disc,
     REMEMBERED,
     After,
     Array,
@@ -445,14 +447,15 @@ def test_a_position_parameter_whose_range_stays_inside_the_field_is_accepted():
 # ---------------------------------------------------------------------------
 
 
-def _showing(at, params=()) -> Trial:
+def _showing(at, params=(), **fields) -> Trial:
+    """One state showing stimulus `s` at `at`, with any other `Stimulus` fields."""
     return Trial(
         start="show",
         params=list(params),
         states=[
             State(
                 "show",
-                enter=[Show(Stimulus("s", at=at))],
+                enter=[Show(Stimulus("s", at=at, **fields))],
                 go=[On(After(1.0), Outcome.CORRECT)],
             ),
         ],
@@ -502,6 +505,159 @@ def test_the_mask_refuses_what_the_bare_viewport_would_show():
     assert [f.code for f in check(_showing((12.5, 0.0)), geometry=GEOMETRY)] == [
         "stimulus-off-screen"
     ]
+
+
+# ---------------------------------------------------------------------------
+# Check 8 fails closed: every value a parameter offers, and every Update
+# (XC-036 to XC-038, carried from direct view part 1's final review)
+# ---------------------------------------------------------------------------
+
+
+def _off(trial, geometry=GEOMETRY) -> list:
+    return [f for f in check(trial, geometry=geometry) if f.code == "stimulus-off-screen"]
+
+
+def test_a_whole_position_parameter_is_checked_at_every_point_it_offers():
+    """XC-036: `Stimulus(at=P("pos"))` crashed check 8 with a `TypeError`, indexing a
+    parameter as if it were a pair, and would have crashed `taskd`'s load the day it
+    passed a geometry. A position chosen among points is checked at each of them."""
+    near = [Param("pos", unit="deg", choices=((0.0, 0.0), (5.0, -5.0)))]
+    far = [Param("pos", unit="deg", choices=((0.0, 0.0), (30.0, 0.0)))]
+
+    assert _off(_showing(P("pos"), near)) == []
+    (finding,) = _off(_showing(P("pos"), far))
+    assert "pos" in finding.detail
+    assert "30.0" in finding.detail
+
+
+def test_a_whole_position_parameter_that_offers_no_points_is_refused():
+    """A range, or choices that are not (x, y) points, names no place check 8 can
+    test. It cannot be proved on screen, so it is refused rather than passed."""
+    for param in (
+        Param("pos", unit="deg", low=0.0, high=1.0),
+        Param("pos", unit="deg", choices=(1.0, 2.0)),
+    ):
+        (finding,) = _off(_showing(P("pos"), [param]))
+        assert "cannot be bounded" in finding.detail, param
+
+
+def test_a_coordinate_declared_by_choices_is_checked_at_every_choice():
+    """XC-038: a coordinate chosen among values was read as 0, the one place every
+    field contains, so a choice of 30 degrees passed."""
+    assert _off(_showing((P("x"), 0.0), [Param("x", unit="deg", choices=(0.0, 5.0))])) == []
+    (finding,) = _off(_showing((P("x"), 0.0), [Param("x", unit="deg", choices=(0.0, 30.0))]))
+    assert "30.0" in finding.detail
+
+
+def test_a_coordinate_with_no_two_sided_range_is_refused_rather_than_read_as_zero():
+    """XC-038: no range, half a range, or no declaration at all can each be dialled
+    anywhere, and each was read as 0. Undeclared is also `undeclared-parameter`'s to
+    report; check 8 refuses what it cannot bound either way."""
+    for params in ([Param("x", unit="deg")], [Param("x", unit="deg", low=-5.0)], []):
+        (finding,) = _off(_showing((P("x"), 0.0), params))
+        assert "'x'" in finding.detail and "cannot be bounded" in finding.detail, params
+
+
+def test_a_disparity_declared_by_choices_is_checked_at_every_choice():
+    """XC-038's disparity half. 2 degrees at 11.5 puts one eye's image past the mask."""
+    safe = [Param("d", unit="deg", choices=(0.0, 0.4))]
+    wide = [Param("d", unit="deg", choices=(0.0, 2.0))]
+
+    assert _off(_showing((11.5, 0.0), safe, disparity=P("d"))) == []
+    assert len(_off(_showing((11.5, 0.0), wide, disparity=P("d")))) == 1
+
+
+def test_an_array_radius_declared_by_choices_is_checked_at_every_choice():
+    """An item ring whose radius is chosen among values reaches as far as the
+    largest; read as 0, it was only ever its centre."""
+    ring = [Param("r", unit="deg", choices=(4.0, 20.0))]
+
+    assert len(_off(_showing((0.0, 0.0), ring, looks=Array(radius=P("r"))))) == 1
+
+
+def test_an_appearance_parameter_is_checked_at_each_appearance_it_offers():
+    """An appearance is a parameter too (S1a §4), and one of its choices may be an
+    item ring. Check 8 looked only at a literal `Array`, so a ring offered as a choice
+    was never measured."""
+    looks = [Param("looks", unit="appearance", choices=(Disc(), Array(radius=20.0)))]
+    small = [Param("looks", unit="appearance", choices=(Disc(), Array(radius=4.0)))]
+
+    assert _off(_showing((0.0, 0.0), small, looks=P("looks"))) == []
+    assert len(_off(_showing((0.0, 0.0), looks, looks=P("looks")))) == 1
+
+
+def test_a_corrugation_is_checked_at_both_ends_of_its_amplitude():
+    """The form was evaluated at each parameter's upper bound only, so an amplitude
+    ranging over [-8, 0.1] was measured as 0.1. Its depth reaches 8."""
+    lopsided = [Param("amp", unit="deg", low=-8.0, high=0.1)]
+    patch = RDS(form=Corrugation(sf=0.5, amplitude=P("amp")))
+
+    assert len(_off(_showing((11.5, 0.0), lopsided, looks=patch))) == 1
+
+
+def test_a_corrugation_whose_amplitude_cannot_be_bounded_is_refused():
+    """A form over a parameter the check cannot bound fell back to no depth at all."""
+    chosen = [Param("amp", unit="deg", choices=(0.1, 8.0))]
+    unranged = [Param("amp", unit="deg")]
+    patch = RDS(form=Corrugation(sf=0.5, amplitude=P("amp")))
+
+    assert len(_off(_showing((11.5, 0.0), chosen, looks=patch))) == 1
+    (finding,) = _off(_showing((11.5, 0.0), unranged, looks=patch))
+    assert "cannot be bounded" in finding.detail
+
+
+def _updating(*updates, params=(), at=(0.0, 0.0)) -> Trial:
+    """`s` shown at `at`, then each update in a state of its own, in order."""
+    names = ["show"] + [f"update{i}" for i in range(len(updates))]
+    nexts = names[1:] + [Outcome.CORRECT]
+    return Trial(
+        start="show",
+        params=list(params),
+        states=[
+            State(
+                name,
+                enter=[Show(Stimulus("s", at=at))] if name == "show" else [updates[i - 1]],
+                go=[On(After(1.0), after)],
+            )
+            for i, (name, after) in enumerate(zip(names, nexts))
+        ],
+    )
+
+
+def test_an_update_that_moves_a_stimulus_off_screen_is_refused():
+    """XC-037: `Update(at=...)` escaped check 8, so a stimulus shown legally could be
+    moved off the panel one state later and nothing said so."""
+    assert _off(_updating(Update("s", at=(5.0, 0.0)))) == []
+    (finding,) = _off(_updating(Update("s", at=(30.0, 0.0))))
+    assert "'update0'" in finding.detail
+
+
+def test_an_update_over_a_parameter_is_checked_across_its_range():
+    ranged = [Param("x", unit="deg", low=-30.0, high=0.0)]
+
+    assert len(_off(_updating(Update("s", at=(P("x"), 0.0)), params=ranged))) == 1
+
+
+def test_an_update_that_adds_disparity_is_refused_when_it_takes_one_eye_off_screen():
+    """XC-037's disparity half: the same 2 degrees at 11.5 that a `Show` is refused
+    for, arriving by `Update`."""
+    assert len(_off(_updating(Update("s", disparity=2.0), at=(11.5, 0.0)))) == 1
+
+
+def test_an_update_that_turns_a_stimulus_into_a_wide_ring_is_refused():
+    assert len(_off(_updating(Update("s", looks=Array(radius=20.0))))) == 1
+
+
+def test_two_updates_that_are_each_safe_are_checked_together():
+    """Moving to 11.5 is legal and so is adding 2 degrees of disparity at the centre;
+    after both, one eye is past the mask. An update leaves every property it does not
+    set as an earlier `Show` or `Update` left it, so each is checked against those."""
+    move = Update("s", at=(11.5, 0.0))
+    deepen = Update("s", disparity=2.0)
+
+    assert _off(_updating(move)) == []
+    assert _off(_updating(deepen)) == []
+    assert len(_off(_updating(move, deepen))) >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -650,19 +806,6 @@ def test_a_view_that_is_no_setup_is_refused():
 # ---------------------------------------------------------------------------
 
 
-def _showing_looks(at, looks) -> Trial:
-    return Trial(
-        start="show",
-        states=[
-            State(
-                "show",
-                enter=[Show(Stimulus("s", at=at, looks=looks))],
-                go=[On(After(1.0), Outcome.CORRECT)],
-            ),
-        ],
-    )
-
-
 def test_an_arrays_ring_reaching_a_housing_is_refused_even_though_its_centre_is_legal():
     """Task 3 review: check 8 already refuses a stimulus whose *extent* reaches a
     housing in direct view -- not only one whose centre sits under it. An `Array`'s
@@ -672,7 +815,7 @@ def test_an_arrays_ring_reaching_a_housing_is_refused_even_though_its_centre_is_
     assert DIRECT.can_show(*centre), "the centre alone is legal"
     assert check(_showing(centre), geometry=DIRECT) == []
 
-    (finding,) = check(_showing_looks(centre, Array(radius=2.0)), geometry=DIRECT)
+    (finding,) = check(_showing(centre, looks=Array(radius=2.0)), geometry=DIRECT)
 
     assert finding.code == "stimulus-off-screen"
     assert "direct field, less the light sensors' housings" in finding.detail

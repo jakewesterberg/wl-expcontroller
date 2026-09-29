@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import math
 
 from wl_xcon.codes import PROVISIONAL, Allocation
@@ -23,9 +24,11 @@ from wl_xcon.task import (
     Mark,
     Outcome,
     P,
+    Param,
     Remembered,
     SaccadeTo,
     Show,
+    Stimulus,
     Touched,
     Trial,
     Unchanged,
@@ -296,6 +299,156 @@ def _extremes(value: object, ranges: dict[str, tuple[float, float]]) -> list[flo
     return [float(value)]
 
 
+class _Unbounded(Exception):
+    """A value check 8 cannot bound. Its one argument names the parameter."""
+
+
+def _domain(value: object, params: dict[str, Param]) -> list:
+    """Every value that matters for a property check 8 measures.
+
+    A literal is itself. A parameter is **every choice it offers**, or **both ends of
+    its declared range**, because every value between them is one an experimenter
+    can dial in live. Anything else -- undeclared, no range, half a range -- can be
+    dialled anywhere, so it is `_Unbounded` rather than the 0 it was once read as,
+    which is the one place every field contains (XC-038).
+    """
+    if not isinstance(value, P):
+        return [value]
+    param = params.get(value.name)
+    if param is None:
+        raise _Unbounded(value.name)
+    if param.choices:
+        return list(param.choices)
+    if param.low is not None and param.high is not None:
+        return [param.low, param.high]
+    raise _Unbounded(value.name)
+
+
+def _numbers(value: object, params: dict[str, Param]) -> list[float]:
+    """`_domain`, for a property that is a number: a choice that is not one is not
+    something the field can be tested at."""
+    found = _domain(value, params)
+    if not all(_is_number(v) for v in found):
+        raise _Unbounded(value.name if isinstance(value, P) else repr(value))
+    return [float(v) for v in found]
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _points(at: object, params: dict[str, Param]) -> list[tuple[float, float]]:
+    """Every centre a position can take.
+
+    A pair is each coordinate's values, crossed. A **whole position as one
+    parameter** (`at=P("pos")`) is the points it offers as choices; indexing it as a
+    pair was a `TypeError` that would have crashed `taskd`'s load (XC-036). A range,
+    or choices that are not points, names no place to test.
+    """
+    if isinstance(at, P):
+        offered = _domain(at, params)
+        if not all(
+            isinstance(point, (tuple, list))
+            and len(point) == 2
+            and all(_is_number(c) for c in point)
+            for point in offered
+        ):
+            raise _Unbounded(at.name)
+        return [(float(x), float(y)) for x, y in offered]
+    return [(x, y) for x in _numbers(at[0], params) for y in _numbers(at[1], params)]
+
+
+def _form_reach(patch: RDS, params: dict[str, Param]) -> tuple[float, float]:
+    """The least and greatest depth a stereogram's form reaches, over **every
+    combination** of its parameters' values: evaluating each at its upper bound alone
+    measured an amplitude over [-8, 0.1] as 0.1."""
+    names = sorted({ref.name for ref in _iter_param_refs((patch.form, patch.aperture))})
+    lows, highs = [], []
+    for values in itertools.product(*(_numbers(P(name), params) for name in names)):
+        low, high = patch.disparity_range(dict(zip(names, values)))
+        lows.append(low)
+        highs.append(high)
+    return (min(lows), max(highs))
+
+
+def _reachable(
+    stimulus: Stimulus, params: dict[str, Param]
+) -> list[tuple[float, float]]:
+    """Every point one eye's image of a stimulus can reach, per eye, after disparity.
+
+    Raises `_Unbounded` when a property it depends on cannot be bounded.
+    """
+    points = _points(stimulus.at, params)
+    halves = _numbers(stimulus.disparity, params)
+    reached: list[tuple[float, float]] = []
+    for looks in _domain(stimulus.looks, params):
+        centres = points
+        half = halves
+        if isinstance(looks, Array):
+            # An array's items sit on a ring around the stimulus position, so the
+            # thing that can leave the field is an *item*, never the centre. The
+            # extreme is the widest legal radius: with n a parameter too, every
+            # smaller set is a subset of those positions.
+            widest = max(_numbers(looks.radius, params))
+            centres = [
+                (x + dx, y + dy)
+                for x, y in points
+                for dx in (widest, -widest, 0.0)
+                for dy in (widest, -widest, 0.0)
+            ]
+        if isinstance(looks, RDS) and looks.form is not None:
+            # A disparity *field* has no single value to displace by, so the
+            # extremes of the form are added to the stimulus's own disparity: a
+            # patch centred safely can still push one eye's image off the panel at
+            # the extreme of its corrugation, and only that eye's.
+            low, high = _form_reach(looks, params)
+            half = [value + reach for value in halves for reach in (low, high)]
+        offsets = (min(half) / 2, -min(half) / 2, max(half) / 2, -max(half) / 2)
+        reached.extend((x + offset, y) for x, y in centres for offset in offsets)
+    return reached
+
+
+def _as_updated(trial: Trial) -> dict[int, list[Stimulus]]:
+    """What each `Update` can leave on the display, keyed by the action's `id`.
+
+    An update sets what it names and leaves every other property as an earlier
+    `Show` or `Update` of that stimulus left it. Which earlier one is a question
+    about paths through the task, so each unset property takes **any** value a
+    `Show` or another `Update` of that name gives it. That can only add
+    combinations, never lose one, so what passes here passes on every path.
+    """
+    shows: dict[str, list[Stimulus]] = {}
+    updates: dict[str, list[Update]] = {}
+    for _, action in actions_of(trial):
+        if isinstance(action, Show):
+            shows.setdefault(action.stimulus.name, []).append(action.stimulus)
+        elif isinstance(action, Update):
+            updates.setdefault(action.stimulus, []).append(action)
+    result: dict[int, list[Stimulus]] = {}
+    for name, these in updates.items():
+        shown = shows.get(name, [])
+        if not shown:
+            continue  # nothing to update: `_display_faults` reports that
+        for update in these:
+            sets = update.changes()
+            options = {
+                prop: [sets[prop]]
+                if prop in sets
+                else [getattr(s, prop) for s in shown]
+                + [other.changes()[prop] for other in these if prop in other.changes()]
+                for prop in ("at", "looks", "disparity")
+            }
+            # The first `Show` supplies what check 8 does not measure (its name and
+            # eye); every property it does measure comes from `options`.
+            result[id(update)] = [
+                dataclasses.replace(shown[0], at=at, looks=looks, disparity=disparity)
+                for at in options["at"]
+                for looks in options["looks"]
+                for disparity in options["disparity"]
+            ]
+    return result
+
+
 def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]:
     """S1 §9 check 8: every stimulus can actually be shown.
 
@@ -309,6 +462,11 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
     the light sensors' housings in direct view, the mask through the stereoscope. A
     stimulus under a housing is refused exactly as one off the panel is.
 
+    **It fails closed** (XC-036 to XC-038). Every value a parameter offers is
+    measured, an `Update` is measured like the `Show` it changes, and a property that
+    cannot be bounded is refused rather than read as 0: a check that passes what it
+    could not measure reports safety it does not provide.
+
     Skipped when no geometry is supplied: a task is not wrong for being checked
     without a rig, it is unchecked, and the caller knows which it wanted. **No caller
     outside the tests supplies one yet**: `taskd` and `wlx check` call `check()`
@@ -316,68 +474,59 @@ def _offscreen_stimuli(trial: Trial, geometry: Geometry | None) -> list[Finding]
     """
     if geometry is None:
         return []
-    ranges = {
-        p.name: (p.low, p.high)
-        for p in trial.params
-        if p.low is not None and p.high is not None
-    }
+    params = {p.name: p for p in trial.params}
+    updated = _as_updated(trial)
+    field = (
+        f"the \u00b1{geometry.half_field_h_deg:.1f}\u00b0 \u00d7 "
+        f"\u00b1{geometry.half_field_v_deg:.1f}\u00b0 {geometry.view} field"
+        + (", less the light sensors' housings" if geometry.housings else "")
+    )
     findings: list[Finding] = []
     for name, action in actions_of(trial):
-        if not isinstance(action, Show):
+        if isinstance(action, Show):
+            stimuli = [action.stimulus]
+            what = f"shows a stimulus at ({_described(action.stimulus.at)})"
+        elif isinstance(action, Update) and id(action) in updated:
+            stimuli = updated[id(action)]
+            what = f"updates stimulus {action.stimulus!r}"
+        else:
             continue
-        stimulus = action.stimulus
-        x_values = _extremes(stimulus.at[0], ranges)
-        y_values = _extremes(stimulus.at[1], ranges)
-        if isinstance(stimulus.looks, Array):
-            # An array's items sit on a ring around the stimulus position, so the
-            # thing that can leave the field is an *item*, never the centre. The
-            # extreme is the widest legal radius: with n a parameter too, every
-            # smaller set is a subset of those positions.
-            widest = max(_extremes(stimulus.looks.radius, ranges))
-            x_values = [x + dx for x in x_values for dx in (widest, -widest, 0.0)]
-            y_values = [y + dy for y in y_values for dy in (widest, -widest, 0.0)]
-        half = _extremes(stimulus.disparity, ranges)
-        if isinstance(stimulus.looks, RDS):
-            # A disparity *field* has no single value to displace by, so the
-            # extremes of the form are added to the stimulus's own disparity: a
-            # patch centred safely can still push one eye's image off the panel at
-            # the extreme of its corrugation, and only that eye's.
-            try:
-                low, high = stimulus.looks.disparity_range(
-                    {name: bounds[1] for name, bounds in ranges.items()}
+        try:
+            bad = [
+                point
+                for stimulus in stimuli
+                for point in _reachable(stimulus, params)
+                if not geometry.can_show(*point)
+            ]
+        except _Unbounded as unbounded:
+            findings.append(
+                Finding(
+                    "stimulus-off-screen",
+                    f"state {name!r} {what} whose extent cannot be bounded: "
+                    f"{unbounded.args[0]!r} has neither a two-sided range nor choices "
+                    f"check 8 can measure, so it cannot be proved inside {field}",
                 )
-            except (KeyError, TypeError):
-                low, high = (0.0, 0.0)
-            half = [value + reach for value in half for reach in (low, high)]
-        bad = [
-            (x + offset, y)
-            for x in x_values
-            for y in y_values
-            for offset in (min(half) / 2, -min(half) / 2, max(half) / 2, -max(half) / 2)
-            if not geometry.can_show(x + offset, y)
-        ]
+            )
+            continue
         if not bad:
             continue
-        described = ", ".join(
-            f"{v.name}" if isinstance(v, P) else f"{v:g}"
-            for v in (stimulus.at[0], stimulus.at[1])
-        )
+        disparities = sorted({str(s.disparity) for s in stimuli if s.disparity})
         findings.append(
             Finding(
                 "stimulus-off-screen",
-                f"state {name!r} shows a stimulus at ({described}) which can reach "
-                f"{bad[0][0]:.1f}, {bad[0][1]:.1f} -- outside the "
-                f"\u00b1{geometry.half_field_h_deg:.1f}\u00b0 \u00d7 "
-                f"\u00b1{geometry.half_field_v_deg:.1f}\u00b0 {geometry.view} field"
-                + (", less the light sensors' housings" if geometry.housings else "")
-                + (
-                    f", with disparity {stimulus.disparity}"
-                    if stimulus.disparity
-                    else ""
-                ),
+                f"state {name!r} {what} which can reach "
+                f"{bad[0][0]:.1f}, {bad[0][1]:.1f} -- outside {field}"
+                + (f", with disparity {', '.join(disparities)}" if disparities else ""),
             )
         )
     return findings
+
+
+def _described(at: object) -> str:
+    if isinstance(at, P):
+        return at.name
+    return ", ".join(f"{v.name}" if isinstance(v, P) else f"{v:g}" for v in at)
+
 
 def _unallocated_outcomes(trial: Trial, allocation: Allocation) -> list[Finding]:
     """S1 §9 check 5: every terminal outcome maps to an allocated marker.
