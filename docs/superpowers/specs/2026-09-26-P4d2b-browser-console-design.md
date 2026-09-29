@@ -518,6 +518,20 @@ Designed in full as its own section when b2a has shipped. Decided now:
   - **a network route from each rig to wl-works.** Today wl-works sits behind a rented VPS
     front door, and the lab LAN has no route to its WireGuard side. The permission is the
     PI's (§5.0); the route is infrastructure, and his.
+- **wl-works' answer, 2026-09-29** (`docs/pending-wl-works-amendments.md`, "Signing in from a
+  rig's page", which records it in full): **yes to all four changes**, built after its row
+  45a-2. What it settles for this design:
+  - the rig verifies an RS256 JWT whose `aud` is the rig page's own origin, `iss` read from
+    wl.works' OpenID configuration, keys from its public JWKS (cached), and `exp`; the member
+    is `sub`, their name the `name` claim;
+  - the access token lasts one hour and renews for up to 24 hours while the wl.works sign-in
+    lasts; a member needs wl.works' `control-rigs` permission, checked at sign-in and renewal;
+  - **the rig page must be https**, so `wlx serve` gains TLS and each rig a name and certificate
+    (XC-151); **the rig page needs a sign-out**, since on a shared iPad a token otherwise
+    outlives "Done" by up to an hour;
+  - **the private route above is probably not needed**: the browser signs in at wl.works'
+    public address and the rig fetches its public keys, provided the university network lets
+    `wl.works` through.
 - **Carried from S9a §6:**
   - the actor is `Verified(person, issuer, token id)` for a signed-in person and stays
     `NAME (box, unverified)` at the box;

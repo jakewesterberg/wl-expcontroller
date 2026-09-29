@@ -196,6 +196,45 @@ credential lifecycle.
 
 ## Signing in from a rig's page: what b2b needs (new, 2026-09-29)
 
+> **ANSWERED 2026-09-29: yes to all four, with two conditions and three asks of us.** wl-works
+> designed it with the PI the same day (wl-works `docs/superpowers/specs/2026-09-29-rig-sign-in-design.md`
+> §8, approved in `e057946b` and the commit after; told to this repository by that
+> session). **Built after wl-works' row 45a-2 and its sign-in rate-limit change**, ahead of its
+> other January items; it will say when it is deployed.
+> - **A client per rig**, never one for the fleet, seeded from one line of wl-works'
+>   configuration per rig (a short name and the rig page's address): a public client, PKCE
+>   required, consent skipped, `authorization_code` and `refresh_token`, scopes
+>   `openid profile offline_access`. **Only https rig pages**; a rig taken out of the list is
+>   switched off, not deleted.
+> - **The return address** is exactly the configured page.
+> - **Tokens for the rig:** request `resource=<the rig page's origin>` (e.g.
+>   `https://rig-3.wl.works`); the access token is an RS256 JWT whose `aud` is that origin alone.
+>   No other rig's client and no agent client can get it, and the agent API refuses it. **To
+>   verify on the rig:** the signature against `https://wl.works/api/auth/jwks` (keys cached);
+>   `iss` equals `https://wl.works/api/auth`, read from `/.well-known/openid-configuration`
+>   rather than hard-coded; `aud` is the rig's own origin; `exp`. The member is `sub`; their
+>   name as wl.works shows it is the `name` claim.
+> - **The token endpoint** answers cross-origin for configured rig origins only, with no
+>   credentials: a cookieless fetch.
+> - **Condition A:** a member needs wl.works' new `control-rigs` permission, granted by an admin
+>   to positions or tags (admins have it by default, nobody else does, never an agent), checked
+>   at sign-in and at every renewal; without it wl.works shows a page telling them to ask an
+>   admin.
+> - **Condition B:** the access token lasts **1 hour**; the refresh token **24 hours**, and only
+>   while the wl.works sign-in it came from is active. Signing out, "Done" on a shared iPad,
+>   losing the permission or deactivation each stop renewal; a token already issued still works
+>   at the rig until its hour ends, because the rig checks it offline.
+> - **Asked of wl-xcon:** an **https certificate for each rig page** (one route: a name under
+>   wl.works such as `rig-N.wl.works` pointing at the rig's lab address); **a sign-out on the
+>   rig page**, because on a shared iPad the previous person's token otherwise lasts up to an
+>   hour after "Done"; and **the list of rigs** (name and page address) for wl-works to
+>   configure.
+> - **Correction:** a route from the lab network to wl.works' private side is probably **not**
+>   needed. The member's browser signs in at wl.works' public address as anywhere, and the rig
+>   fetches keys from the public `https://wl.works/api/auth/jwks`. The proviso: the university
+>   network must let `wl.works` through (KU Leuven's FortiGuard has blocked one of its domains
+>   before).
+
 **The design moved after the section above was written.** P4d-2b spec §5.0 and §5.7 (PI,
 2026-09-27): people signed in to wl.works may send every control to a rig from its page,
 reward size included (still capped by the rig's own approved ceiling), and **the browser
@@ -298,7 +337,7 @@ and that is item 5 below.
 5. Whether wl-works can run an NTP server at `ntp.wl.works` reachable from the lab
    network on UDP 123, and open the one-port routing exception that requires (new,
    2026-09-20 — see above). **The hostname is settled by the PI; the route is not.**
-6. Whether signed-in members may send controls to a rig from its page, and, if so, the four
+6. **Answered 2026-09-29: yes, with conditions (above).** Whether signed-in members may send controls to a rig from its page, and, if so, the four
    changes that needs: a client per rig, the rig's callback URL allowed, tokens whose
    audience is the rig, and the rig's page exchanging a code for a token (new, 2026-09-29 —
    see "Signing in from a rig's page"). **The permission for rigs to connect is the PI's and
