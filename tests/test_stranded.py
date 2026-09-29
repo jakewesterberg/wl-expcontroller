@@ -43,6 +43,14 @@ def test_a_record_with_a_torn_line_is_stranded_and_unreadable(tmp_path):
     assert stranded.find(tmp_path) == [Stranded("2027-01-13_01", "", None)]
 
 
+def test_a_record_that_is_not_a_readable_file_is_stranded_and_unreadable(tmp_path):
+    """Fix round 1 of Task 7: an `OSError` reading it -- a folder where the file should
+    be, or one this host may not read -- fails closed, as a torn line does."""
+    (tmp_path / "2027-01-13_01" / "xcon" / "welfare_notes.jsonl").mkdir(parents=True)
+
+    assert stranded.find(tmp_path) == [Stranded("2027-01-13_01", "", None)]
+
+
 def test_no_root_finds_nothing(tmp_path):
     assert stranded.find(tmp_path / "missing") == []
 

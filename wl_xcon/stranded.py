@@ -8,7 +8,8 @@ before merge.
 `welfare_notes.jsonl` has a `departure` row with no `returned` row after it: a process
 that died, a `wlx run` that ended with `return not recorded`, a `wlx taskd` stopped with
 its session open -- each leaves exactly that. **A line that is not a row** -- a crash
-mid-write -- **fails closed**: the session is stranded with its departure unknown, and
+mid-write -- **fails closed**, and so does a record this host cannot read as a file: the
+session is stranded with its departure unknown, and
 its return cannot be taken until the file is repaired by hand, since a departure nobody
 can read is one no return can be checked against.
 
@@ -68,9 +69,11 @@ def find(root: Path) -> list[Stranded]:
                         left_at=float(departure["now"]),
                     )
                 )
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError, OSError):
             # `json.JSONDecodeError` is a `ValueError`; a row that is not an object, or
-            # has no kind, is the others. Fail closed.
+            # has no kind, is the others; a record this host cannot read as a file -- a
+            # folder in its place, no permission -- is an `OSError` (fix round 1 of Task
+            # 7: it crashed the service at start). Fail closed.
             found.append(Stranded(session_id=session_id, subject="", left_at=None))
     return found
 
@@ -125,11 +128,12 @@ def restore(
     then."""
     if found.left_at is None:
         raise Exceeded(
-            f"session {found.session_id}'s welfare record cannot be read: a line of "
-            f"{Path(directory) / WELFARE_NOTES} is not a row, as a process that died while "
-            f"writing it leaves one. Its departure is unknown, so no return can be "
-            f"checked against it: repair the file by hand -- remove the torn line, keep "
-            f"every whole row -- then restart wlx taskd"
+            f"session {found.session_id}'s welfare record cannot be read: "
+            f"{Path(directory) / WELFARE_NOTES} has a line that is not a row, as a "
+            f"process that died while writing it leaves one, or is not a file this host "
+            f"can read. Its departure is unknown, so no return can be checked against "
+            f"it: repair the file by hand -- remove the torn line, keep every whole row, "
+            f"and make it a readable file -- then restart wlx taskd"
         )
     if bounds.subject != found.subject:
         raise Exceeded(

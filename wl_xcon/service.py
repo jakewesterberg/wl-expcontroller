@@ -23,7 +23,8 @@ naming it records the return.
 warning the experimenter must click through (2026-09-20), and the wire cannot tell a
 click-through from a confirm sent blind in the first request. So a far mark with no
 answer puts a `Question` on the frame; an answer is taken while that question is pending,
-for its mark, its session and the instant it asked about; and **the question stays
+for its mark, its session and the instant it asked about -- and, for a departure, the
+animal, deployment and setup of the open it was asked about; and **the question stays
 until it is answered or another replaces it**, so a refused answer -- an amendment with
 no reason -- can be corrected and sent again without the warning being lost.
 
@@ -32,9 +33,10 @@ amendment, the head's fixation and release and the return are each taken while a
 is routed, on the thread running `serve`, one command at a time -- which is what lets
 `taskd.Session.returned_to_cage` run without the lock it once had.
 
-**Welfare-critical: `Service._open`, `Service._end`, `Service._close_stranded` and
-`_unasked`** (`docs/design/architecture.md`): the page's route into the two marks, the
-stranded rule, and which answers are taken. The rest is ordinary.
+**Welfare-critical: `Service._open`, `Service._end`, `Service._close_stranded`,
+`_unasked` and `_folder_name`** (`docs/design/architecture.md`): the page's route into
+the two marks, the stranded rule, which answers are taken, and the rule that keeps a name
+from any wire or record from becoming a path out of `--subjects`. The rest is ordinary.
 
 **The simulators, today**: the card, the pump and the animal are `wlx run`'s, because no
 hardware port exists (docs/CHECKPOINT.md: nothing has touched hardware); a rig's own
@@ -86,6 +88,15 @@ FRAME_PERIOD = 1 / 240
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 
 
+def _folder_name(name: str) -> bool:
+    """**Welfare-critical** (fix round 1 of Task 7). Whether `name` is one folder name
+    (`_NAME`, and no `..`): the one rule for a session id and an animal arriving over the
+    wire, for the animals the idle frame offers, and for a stranded record's animal,
+    whose `bounds.py` is code this service runs -- so a name that is not one never
+    becomes a path, and nothing outside `--subjects` runs for it."""
+    return _NAME.fullmatch(name) is not None and ".." not in name
+
+
 def _fresh_seed() -> int:
     """A run's seed, drawn here and written into its start row (the b3a-1 plan,
     decision 15), so the run can be replayed."""
@@ -108,13 +119,19 @@ def _unasked(
     session_id: str,
     text: str | None,
     now: Callable[[], float] | None = None,
+    posed_for: tuple = (),
+    sent_for: tuple = (),
 ) -> str | None:
     """**Welfare-critical** (the b3a-1 review's Ruling 1). Why an answer sent with the
     time `text` -- a page's *confirm*, or a departure's *amend* -- is not the answer to
     the question this service posed, or `None` when it is: the question pending, for
     this `mark`, this session, and the instant `text` is read as by the parser
     `marks.page_departure` and `marks.page_return` read it with (`now` for a return,
-    which may be typed `now`).
+    which may be typed `now`) -- **and for what the question was posed for**
+    (`posed_for`, against the answer's `sent_for`; fix round 1 of Task 7): a departure's
+    warning names one animal and was asked about one open, so its animal, deployment and
+    setup must be the answer's too. A return's question is bound by its session alone,
+    which fixes all three.
 
     **PI, 2026-09-20:** a far mark is *"a warning ... that the experimenter must click
     through to confirm"*. A console learns of the warning only from the `Question` on a
@@ -130,8 +147,16 @@ def _unasked(
         except argparse.ArgumentTypeError as bad:
             return str(bad)
     if question is not None and (question.mark, question.session_id) == (mark, session_id):
-        if question.at == at:
+        if question.at == at and posed_for == sent_for:
             return None
+        if question.at == at:
+            return (
+                f"the warning shown was for session {session_id}'s {mark} of "
+                f"{', '.join(map(repr, posed_for))}, and this {mark} is of "
+                f"{', '.join(map(repr, sent_for))}; an answer is taken only for what it "
+                f"was asked about, so it is refused and nothing was recorded. Send it "
+                f"without an answer, and answer the warning shown for it"
+            )
         return (
             f"the warning shown was for session {session_id}'s {mark} at "
             f"{_local(question.at)}, and this {mark} is "
@@ -192,6 +217,10 @@ class Service:
         #: A departure, or a stranded session's return, a console owes an answer on:
         #: kept until it is answered or another replaces it (`_unasked`).
         self.question: _link.Question | None = None
+        #: What `question` was posed for, set and cleared with it: a departure's open --
+        #: its animal, deployment and setup (`_open`) -- or `()` for a stranded return,
+        #: which its session binds (fix round 1 of Task 7).
+        self._posed_for: tuple = ()
         #: The service's own refusals while no session is open, capped as a session's.
         self.refusals: list = []
         self.refusals_dropped = 0
@@ -242,11 +271,11 @@ class Service:
             )
         )
 
-    def shutdown(self) -> None:
-        """The process is stopping (Ctrl-C at `wlx taskd`'s terminal): a session still
-        open is recorded as ended without its return, and its clock closed. The next
-        start finds it stranded (`stranded.find`), which is what makes it safe to stop
-        rather than wait."""
+    def shutdown(self, why: str = "wlx taskd stopped with the session open") -> None:
+        """The process is stopping -- Ctrl-C at `wlx taskd`'s terminal, or a fault out of
+        its loop (`run`) -- so a session still open is recorded as ended without its
+        return, saying `why`, and its clock closed. The next start finds it stranded
+        (`stranded.find`), which is what makes it safe to stop rather than wait."""
         session, self.session = self.session, None
         if session is None:
             return
@@ -254,7 +283,7 @@ class Service:
             session.welfare.left_cage_wall_at is not None
             and session.welfare.returned_wall_at is None
         ):
-            session.return_not_recorded("wlx taskd stopped with the session open", how="wlx taskd")
+            session.return_not_recorded(why, how="wlx taskd")
         if session.opened_wall_at is not None and session.ended_wall_at is None:
             session.end(how="wlx taskd")
 
@@ -295,11 +324,16 @@ class Service:
 
     def _animals(self) -> tuple[str, ...]:
         """The animals a session may be opened for: folders under `--subjects` holding a
-        bounded config."""
+        bounded config, **named as an open accepts** (`_folder_name`; fix round 1 of Task
+        7), so the idle frame never offers an animal every open would refuse."""
         if not self.subjects.is_dir():
             return ()
         return tuple(
-            sorted(p.name for p in self.subjects.iterdir() if (p / "bounds.py").is_file())
+            sorted(
+                p.name
+                for p in self.subjects.iterdir()
+                if _folder_name(p.name) and (p / "bounds.py").is_file()
+            )
         )
 
     def _tasks(self) -> tuple[str, ...]:
@@ -317,7 +351,7 @@ class Service:
         written. Raises `SystemExit`, `ValueError` or `Exceeded` with the sentence a
         refusal says."""
         for what, name in (("session id", command.session_id), ("animal", command.animal)):
-            if not _NAME.fullmatch(name) or ".." in name:
+            if not _folder_name(name):
                 raise ValueError(
                     f"a {what} is one folder name -- letters, digits, '_', '.' and '-', "
                     f"starting with a letter or digit -- and {name!r} is not one"
@@ -405,8 +439,14 @@ class Service:
                 f"Record it with End session, naming its session",
             )
             return
+        # What a departure's question is posed for, beside its session and instant (fix
+        # round 1 of Task 7): the animal its warning names, the deployment and the setup.
+        asked_about = (command.animal, command.deployment, command.view)
         if command.answer is not None:
-            unasked = _unasked(self.question, "departure", command.session_id, command.departure)
+            unasked = _unasked(
+                self.question, "departure", command.session_id, command.departure,
+                posed_for=self._posed_for, sent_for=asked_about,
+            )
             if unasked is not None:
                 self._refuse("open", command.by, unasked)
                 return
@@ -439,6 +479,7 @@ class Service:
                 said=owed.warning,
                 answers=owed.answers,
             )
+            self._posed_for = asked_about
             self._refuse(
                 "open",
                 command.by,
@@ -450,7 +491,7 @@ class Service:
             self._refuse("open", command.by, str(refused))
             return
         # Marked: whatever was asked is answered, or moot now a session is open.
-        self.question = None
+        self.question, self._posed_for = None, ()
         _marks.record_departure(session, decision)
         session.open(how="wlx taskd")
         if session.spec.deployment is Deployment.RIG_FIXED:
@@ -559,6 +600,21 @@ class Service:
                 return
         bounds = None
         if found.left_at is not None:
+            # **Before any path is built** (fix round 1 of Task 7): the subject is the
+            # record's, and `wlx run --subject` takes any text, so `../outside` or an
+            # absolute path would make a `bounds.py` outside `--subjects` the code that
+            # runs next. An open's own rule, `_folder_name`, applies to it.
+            if not _folder_name(found.subject):
+                self._refuse(
+                    "end",
+                    command.by,
+                    f"session {found.session_id}'s record names no animal folder: its "
+                    f"animal is {found.subject!r}, which is not one folder name under "
+                    f"--subjects, so no bounded config is loaded for it and no return can "
+                    f"be checked. Repair the record by hand -- the departure row's "
+                    f"subject is the animal's folder name -- then restart wlx taskd",
+                )
+                return
             bounds_path = self.subjects / found.subject / "bounds.py"
             if not bounds_path.is_file():
                 self._refuse(
@@ -596,6 +652,7 @@ class Service:
                 mark="return", session_id=found.session_id, at=owed.at,
                 said=owed.warning, answers=owed.answers,
             )
+            self._posed_for = ()
             self._refuse(
                 "end", command.by,
                 f"{owed.warning}. Send it again answering confirm, or with the time typed again",
@@ -605,7 +662,7 @@ class Service:
             self._refuse("end", command.by, _sentence(refused))
             return
         if self.question is not None and self.question.session_id == found.session_id:
-            self.question = None
+            self.question, self._posed_for = None, ()
         self.stranded.remove(found)
 
 
@@ -665,4 +722,21 @@ def run(args) -> int:
                 file=sys.stderr,
             )
             return 130
+        except BaseException as fault:
+            # **Any other way out says why too** (fix round 1 of Task 7): a fault with a
+            # session open is recorded as the reason its return was not, then goes on to
+            # the caller unchanged. A kill (SIGTERM, SIGKILL) writes nothing, and the
+            # missing row is the signal, as for `wlx run`.
+            if service.session is not None:
+                service.shutdown(
+                    f"wlx taskd stopped on a fault with the session open: "
+                    f"{type(fault).__name__}: {fault}"
+                )
+                print(
+                    f"taskd: stopped by {type(fault).__name__} -- the session was open, "
+                    f"and the return to the cage was not recorded; the next start finds "
+                    f"it stranded",
+                    file=sys.stderr,
+                )
+            raise
     return 0

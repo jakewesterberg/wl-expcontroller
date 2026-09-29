@@ -143,6 +143,17 @@ def test_with_no_session_open_the_service_publishes_idle_frames_offering_animals
     assert (frame.stranded, frame.question, frame.refusals) == ((), None, ())
 
 
+def test_only_an_animal_whose_folder_name_an_open_accepts_is_offered(tmp_path):
+    """Fix round 1 of Task 7: the idle frame offered any folder holding a bounded
+    config, so it could offer an animal every open refuses."""
+    folders = _folders(tmp_path, animals=("B", "REFERENCE"))
+    for name in ("Monkey A", "a..b"):
+        (folders[0] / name).mkdir()
+        shutil.copy(folders[0] / "B" / "bounds.py", folders[0] / name / "bounds.py")
+
+    assert _step(_made(folders)).animals == ("B", "REFERENCE")
+
+
 def test_with_no_session_a_run_command_or_a_mark_is_refused_and_said(tmp_path):
     link = Simulated()
     link.marks.append(4)
@@ -330,6 +341,31 @@ def test_a_confirm_or_an_amend_nobody_was_asked_for_is_refused_and_nothing_is_wr
     assert "answers the warning" in _refused(frame)[-1]
     assert "nothing was recorded" in _refused(frame)[-1]
     assert list(service.root.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "over",
+    [{"animal": "B"}, {"deployment": "rig_chaired"}, {"view": "stereoscope"}],
+    ids=["another animal", "another deployment", "another setup"],
+)
+def test_a_confirm_for_another_animal_deployment_or_setup_than_the_one_asked_is_refused(
+    tmp_path, over
+):
+    """Fix round 1 of Task 7: the warning names an animal, and is asked about one open.
+    A confirm sent with the same id and time for another animal, deployment or setup is
+    a confirm of an open no warning was shown for, and is refused with nothing marked."""
+    service = _service(tmp_path, animals=("B", "REFERENCE"))
+    far = typed(3 * 3600)
+    _step(service, _open(departure=far))
+
+    frame = _step(service, _open(departure=far, answer="confirm", **over))
+
+    assert isinstance(frame, Idle)
+    assert "the warning shown was for" in _refused(frame)[-1]
+    assert list(service.root.iterdir()) == []
+    assert frame.question is not None, "still owed"
+    assert _step(service, _open(departure=far, answer="confirm")).phase == "between_runs"
+    assert service.session.spec.subject == "REFERENCE"
 
 
 def test_a_confirm_for_another_time_or_session_than_the_one_asked_about_is_refused(tmp_path):
@@ -648,6 +684,50 @@ def test_a_stranded_animal_whose_bounds_file_is_gone_is_refused_saying_so(tmp_pa
     assert service.stranded != []
 
 
+@pytest.mark.parametrize("where", ["relative", "absolute"])
+def test_a_stranded_record_whose_animal_is_no_folder_name_runs_nothing_outside_subjects(
+    tmp_path, where
+):
+    """Fix round 1 of Task 7 (Critical): a stranded record's subject becomes a path, and
+    the bounded config at that path is code. `wlx run --subject` takes any text, so a
+    record may name `../outside` or an absolute path; nothing outside `--subjects` may
+    run for it. Refused before any path is built, and the animal stays stranded."""
+    folders = _folders(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = tmp_path / "ran.txt"
+    (outside / "bounds.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n"
+    )
+    subject = "../outside" if where == "relative" else str(outside)
+    directory = folders[2] / "2027-01-13_01" / "xcon"
+    directory.mkdir(parents=True)
+    welfare_note(directory, kind="departure", subject=subject, was=WALL - 3600,
+                 now=WALL - 3600, reason="", by="jake", how="t", recorded_at=WALL - 3600)
+    service = _made(folders)
+
+    refused = _step(service, _end(session_id="2027-01-13_01"))
+
+    assert not marker.exists(), "a file outside --subjects ran"
+    assert "names no animal folder" in _refused(refused)[-1]
+    assert [s.session_id for s in service.stranded] == ["2027-01-13_01"]
+    assert _kinds(folders[2], "2027-01-13_01") == ["departure"]
+
+
+def test_a_welfare_record_this_host_cannot_read_is_stranded_not_a_crash(tmp_path):
+    """Fix round 1 of Task 7: `welfare_notes.jsonl` that is not a readable file -- here a
+    folder -- crashed the service at start. It is stranded and unreadable, failing closed
+    as a torn line does."""
+    folders = _folders(tmp_path)
+    (folders[2] / "2027-01-13_01" / "xcon" / "welfare_notes.jsonl").mkdir(parents=True)
+    service = _made(folders)
+
+    assert _step(service).stranded == (Stranded("2027-01-13_01", "", None),)
+    refused = _step(service, _end(session_id="2027-01-13_01"))
+    assert "cannot be read" in _refused(refused)[-1]
+    assert _step(service, _open()).phase == "idle"
+
+
 @pytest.mark.parametrize(
     ("text", "said"),
     [("BOUNDS = not_defined_anywhere\n", "NameError"), ("x = 1\n", "must define BOUNDS")],
@@ -721,4 +801,30 @@ def test_wlx_taskd_serves_until_interrupted_and_says_what_it_left_open(tmp_path,
 
     assert main(_taskd_args(folders, "--allocation", ALLOCATION)) == 130
     assert _kinds(folders[2])[-2:] == ["return not recorded", "session ended"]
+    assert "the return to the cage was not recorded" in capsys.readouterr().err
+
+
+def test_wlx_taskd_stopped_by_a_fault_records_why_the_return_was_not_and_raises_it(
+    tmp_path, monkeypatch, capsys
+):
+    """Fix round 1 of Task 7: only Ctrl-C recorded the open session's return as not
+    recorded. A fault out of the loop now records why too, then goes on to the caller."""
+    folders = _folders(tmp_path)
+    passes = []
+
+    def step(self):
+        if not passes:
+            passes.append(1)
+            # This service reads this host's clock, not `WALL`.
+            self._open(_open(departure=time.strftime("%Y-%m-%dT%H:%M:%S")))
+            return
+        raise RuntimeError("the card stopped answering")
+
+    monkeypatch.setattr(Service, "step", step)
+
+    with pytest.raises(RuntimeError, match="the card stopped answering"):
+        main(_taskd_args(folders, "--allocation", ALLOCATION))
+    rows = _rows(folders[2])
+    assert [row["kind"] for row in rows][-2:] == ["return not recorded", "session ended"]
+    assert "RuntimeError: the card stopped answering" in rows[-2]["reason"]
     assert "the return to the cage was not recorded" in capsys.readouterr().err

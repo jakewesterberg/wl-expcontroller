@@ -79,8 +79,8 @@ token-to-fluid conversion, stimulation bounds and gating, and the bounded-config
 
 **In code, that is `wl_xcon/bounds.py`, `wl_xcon/welfare.py`, `wl_xcon/marks.py` and
 `wl_xcon/stranded.py`, two functions in `wl_xcon/preflight.py` (`out_of_cage`, `gate`),
-four in `wl_xcon/service.py` (`Service._open`, `Service._end`, `Service._close_stranded`,
-`_unasked`), two functions in `wl_xcon/cli.py` plus one line inside a third — and, since
+five in `wl_xcon/service.py` (`Service._open`, `Service._end`, `Service._close_stranded`,
+`_unasked`, `_folder_name`), two functions in `wl_xcon/cli.py` plus one line inside a third — and, since
 P4d-2b b2a, five functions in `wl_xcon/taskd.py` plus two parts of a sixth
 (`Session._command`'s `held` pass-through and one `except` line), and one function in
 `wl_xcon/link.py`.** The
@@ -98,7 +98,7 @@ so the parsing and the confirmation are part of the limit. **The two `cli` funct
 which answer a person gave, and the name and reason an amendment carries — and **the
 line is `main`'s `_marks.depart(session, departure)`**, which marks the departure as
 `marks` decided it, `confirmed=` included, which `welfare._refuse_unconfirmed` trusts
-its caller on. A change to any of these, or to the two `preflight` functions, the four
+its caller on. A change to any of these, or to the two `preflight` functions, the five
 `service` functions, the `taskd` and `link` functions and the two parts of
 `Session._command` below, is a change requiring review; a change elsewhere is not.
 
@@ -115,10 +115,14 @@ without `left_cage`'s refusals, which were applied when it was taken; a mistake 
 these leaves an animal out of its cage with nothing saying so, or records its return
 against the wrong instant. **And `service._unasked`** (the b3a-1 review's Ruling 1): a
 page's *confirm*, or a departure's *amend*, is taken only as the answer to the question
-the service posed — for that mark, that session and the instant it asked about — since
-the PI's rule for a far mark is a warning the experimenter clicks through, and nothing on
-the wire tells a click-through from a confirm sent blind; a mistake in it lets a far mark
-be taken that no person was shown.
+the service posed — for that mark, that session and the instant it asked about, and for a
+departure the animal, deployment and setup of the open it was asked about — since the
+PI's rule for a far mark is a warning the experimenter clicks through, and nothing on the
+wire tells a click-through from a confirm sent blind; a mistake in it lets a far mark be
+taken that no person was shown. **And `service._folder_name`** (fix round 1): one folder
+name, the rule for a session id and an animal from the wire and for a stranded record's
+animal, whose `bounds.py` is code the service runs — a mistake in it runs a file from
+outside `--subjects` on the return path.
 
 **The three `taskd` functions are `Session._ends`, `Session._hold` and
 `Session._manual_reward`** (P4d-2b b2a, 2026-09-28; the third since the PI's 2026-09-28
