@@ -6244,6 +6244,6 @@ Write `.superpowers/b3a1/welfare-summary.md` (git-ignored; not committed) for th
 
 Report, for the controller to write (do not edit either file):
 - the passed count (Step 5), the lanes' results (Step 3) with any survivor found and how it was closed, and Step 4's output;
-- **backlog items to file**: `wlx run --deployment rig-fixed` with no `--allocation` raises `KeyError` after the departure is on record (Plan decision 12); the collector is not managed during runs, for any session (decision 17); `wlx run` takes no pre-flight acknowledgement (decision 13); b3a-2 — the page's open, start, pre-flight and End-session forms and dialogs, and `serve`'s endpoints for the four commands — with End session shown as two steps (decision 6);
+- **backlog items to file** (the `wlx run` allocation defect of Plan decision 12 is already XC-153, filed 2026-09-29 when this plan was reviewed): the collector is not managed during runs, for any session (decision 17); `wlx run` takes no pre-flight acknowledgement (decision 13); b3a-2 — the page's open, start, pre-flight and End-session forms and dialogs, and `serve`'s endpoints for the four commands — with End session shown as two steps (decision 6);
 - that XC-016 stays open until b3a-2 lands, and XC-018 still waits on it;
 - **the branch merges only after the PI approves Step 6's items**, by fast-forward, once CI's push run is read shard by shard.
