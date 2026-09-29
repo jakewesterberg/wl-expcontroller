@@ -194,6 +194,48 @@ credential lifecycle.
 > arriving *from* wl.works does not make wl.works an actor; the box authorises, and the
 > box records who asked.
 
+## Signing in from a rig's page: what b2b needs (new, 2026-09-29)
+
+**The design moved after the section above was written.** P4d-2b spec §5.0 and §5.7 (PI,
+2026-09-27): people signed in to wl.works may send every control to a rig from its page,
+reward size included (still capped by the rig's own approved ceiling), and **the browser
+holds the wl.works access token and presents it with each command; the rig verifies it.**
+The PI chose this over the rig holding its own sign-in session, knowing that a deactivated
+account keeps working until its token expires. **For signed-in, attributed writes this
+supersedes the line in `HANDOVER-wl-expcontroller.md` in wl-works** that reward, stimulation
+and parameter changes need a person at the console. The rig PC keeps every control.
+
+Read from wl-works' source on 2026-09-29, four things stand between a rig and that flow.
+Each is yours to accept, amend or refuse:
+
+1. **A registered client per rig, or one for the fleet** (as above, unchanged). Anonymous
+   registration sits behind the loopback gate (the comment on the `mcp()` configuration in
+   `src/lib/auth.ts`), so a rig cannot introduce itself; its client has to be seeded, as
+   Zulip's is (`scripts/seed-zulip-client.ts`).
+2. **A sign-in that returns to the rig's page.** `isAllowedAuthorizeRedirect`
+   (`src/lib/loopback-redirect.ts`) delivers an authorization code only to a loopback
+   address or to the one configured Zulip URL. A rig's page is reached by its registered name
+   on the lab network, so each rig's callback URL would need to join the configured list.
+3. **Tokens meant for a rig.** The `mcp()` plugin binds every issued token's audience to the
+   MCP resource (`mcpResourceUrl()`; the plugin's own documentation, `@better-auth/mcp`'s
+   `index.d.mts`: "Issued tokens are audience-bound to it"). A rig that accepted those tokens
+   would accept every agent token minted for the MCP API, so it will not. It needs tokens
+   whose audience is that rig (an RFC 8707 `resource` per rig), or an equivalent you prefer.
+4. **The browser exchanging the code for a token.** Because the browser holds the token, the
+   rig's page, on the rig's own origin, calls `/api/auth/oauth2/token` itself, as a public
+   client with PKCE. **UNVERIFIED here:** whether that endpoint answers a cross-origin request
+   from a rig's origin. If it does not, those origins would need allowing.
+
+The rig verifies each token as an RS256 JWT against `/api/auth/jwks`, fetched while it can
+reach wl.works and cached, so a token already issued keeps verifying through a short outage.
+
+**And a route, which is infrastructure and the PI's:** the lab network has no route to
+wl.works' WireGuard side today. The PI's permission for rigs to connect (2026-09-27) is a
+permission, not a route.
+
+**Nothing here makes wl.works load-bearing for a session.** A rig that cannot reach wl.works
+still runs, and its own PC keeps every control; only remote, attributed control waits.
+
 ## wl-works runs an NTP server, and lab hosts synchronize to it (new, 2026-09-20)
 
 **The ask: run an NTP server on wl-works at `ntp.wl.works`, reachable from the lab
@@ -256,6 +298,11 @@ and that is item 5 below.
 5. Whether wl-works can run an NTP server at `ntp.wl.works` reachable from the lab
    network on UDP 123, and open the one-port routing exception that requires (new,
    2026-09-20 — see above). **The hostname is settled by the PI; the route is not.**
+6. Whether signed-in members may send controls to a rig from its page, and, if so, the four
+   changes that needs: a client per rig, the rig's callback URL allowed, tokens whose
+   audience is the rig, and the rig's page exchanging a code for a token (new, 2026-09-29 —
+   see "Signing in from a rig's page"). **The permission for rigs to connect is the PI's and
+   is given; the route is not built.**
 
 Nothing here is blocked on an answer: the controller's v1 works with no ELN integration at
 all, writing everything to the session directory as it would anyway. This buys the ELN

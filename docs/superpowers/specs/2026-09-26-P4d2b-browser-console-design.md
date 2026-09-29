@@ -491,6 +491,9 @@ Welfare-critical by CLAUDE.md, given to the PI as numbered items in plain terms:
   2026-09-28); wl-exptasks owns the final numbering.
 - With b2b, not before: tell wl-works that its handover's "a person at the console" line
   is superseded for signed-in writes (§5.0), and ask it to register each rig's client.
+  **Asked 2026-09-29**, with the three further changes b2b turned out to need there
+  (`docs/pending-wl-works-amendments.md`, "Signing in from a rig's page"; backlog XC-102,
+  XC-147 to XC-149). The PI chose to build b3 while wl-works answers.
 
 ### 5.7 b2b, remote sign-in: decided so far (PI, 2026-09-27)
 
