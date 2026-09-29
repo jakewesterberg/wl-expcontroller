@@ -1,14 +1,17 @@
 # Where this build actually is
 
-**Last updated 2026-09-28**, at the commit this file was committed in. Check
+**Last updated 2026-09-29**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
-> **This file describes `main`, plus one branch that is not on it yet.** The newest entry,
-> "What moved on 2026-09-28, P4d-2b slice b2a", describes `p4d2b-b2a-controls`, which waits
-> for the PI's approval of its welfare items (`docs/next-session.md` §1) and has not merged;
-> `main`'s copy of this file does not have that entry. The entries below it are on `main`:
-> P4d-2b slice b1 fast-forwarded onto `main` on 2026-09-27 (`207b170..7b01992`). Run
+> **Naming.** The repository is `wl-xcon` since 2026-09-28 and the Python package `wl_xcon`
+> since 2026-09-29 (XC-053). **Entries dated before 2026-09-29 keep the names they were
+> written with**, `wl-expcontroller` and `wl_expcontroller/…` paths included, as the PI
+> ruled for dated documents; read `wl_expcontroller/taskd.py` there as `wl_xcon/taskd.py`.
+>
+> **This file describes `main`, plus branch `xc053-package-rename` until it merges.** The
+> newest entry, "What moved on 2026-09-29", describes that branch, which the PI approved to
+> merge by fast-forward once CI reads green. b2a is on `main` (2026-09-28). Run
 > `git branch --show-current` before believing a line about a branch.
 >
 > **Earlier, 2026-09-20:** `p4d1-console-link` was reviewed, approved by the
@@ -329,9 +332,65 @@ figure was one low. In order:
 
 ---
 
+## What moved on 2026-09-29: the package is `wl_xcon`
+
+**Resume here (state at 2026-09-29):** the package rename (XC-053) is built on
+`xc053-package-rename`, and the PI approved it to merge by fast-forward once CI reads green
+(asked in the UI, since it touches the welfare-critical files: "Merge when green").
+**Everything open is in `docs/backlog.md`** (next free ID XC-143). Next, in order:
+1. **XC-109:** the local folder `~/GitHub/wl-expcontroller` → `~/GitHub/wl-xcon`. Move this
+   project's Claude memory folder with it (keyed on the path) and run `git worktree repair`.
+   The one extra worktree, `.claude/worktrees/p4d1-console-link` on branch
+   `harness-name-failures`, is 210 commits behind `main` with nothing ahead of it, so it can be
+   removed rather than repaired. **The session doing this must not be running inside the
+   folder it moves**: start it from `~/GitHub`.
+2. **Direct view part 2:** XC-003, with XC-036 to XC-038 fixed first.
+3. **b2b:** remote sign-in through wl-works (XC-015), and a stop that jumps the command queue
+   (XC-121).
+
+XC-142 (the sibling renames, `wl-exptasks` and `wl-expviz`, still in our code and documents)
+and XC-140 (`scheduler.record`'s CI timeout) are taken when convenient.
+
+- **How the rename was proved to be only a rename.** Every file in the package, the tests,
+  the tools and the tasks equals its predecessor at `main` with the one name substituted,
+  **byte for byte**: `git show HEAD:<old> | sed 's/wl_expcontroller/wl_xcon/g' | cmp -
+  <new>` over all 42 package files and every test, tool and task file, run before the commit.
+  The only other code edit is the window title in `tools/spike_display.py`. In the
+  welfare-critical files that leaves import lines and two path mentions in `link.py`'s
+  comments. **No neighbouring repository imports the package**: `git grep` found neither name
+  in any of the sixteen `wl-*` checkouts beside this one, so nothing outside this repository
+  breaks.
+- **A trap for every other checkout and machine: reinstall.** An editable install made before
+  the rename still maps `wl_expcontroller` to a directory that is gone, and the `wlx` script
+  still imports `wl_expcontroller.cli`, so `wlx` fails with `ModuleNotFoundError` until
+  `pip uninstall wl-expcontroller && pip install -e '.[dev,contract,console]'`. The
+  distribution is now `wl-xcon`. The `wlx` command keeps its name (PI, 2026-09-28).
+- **What was renamed, and what kept its old name.** Current documents were renamed: README,
+  CLAUDE.md, `wl.yaml` (whose status block still described b2a as unmerged), `architecture.md`,
+  the ADRs, the specs, the pending amendments, the roadmap and M0-REVIEW. **Dated documents
+  kept their names and gained a naming note** (the PI's rule of 2026-09-28): the five plans
+  that name the package, one measurement, two research notes, `next-session.md`, the v12
+  mockup, and this file's dated entries (the note is at the top). Also kept on purpose: the
+  handover files other repositories hold as `HANDOVER-wl-expcontroller.md`, a PI quote in the
+  P4d-2b spec, and ADR-0004's list of the repositories its 2026-09-05 pass touched.
+- **The backlog:** XC-053 closed; XC-142 filed; XC-109 now waits on this reaching `main`.
+  Six items still said they waited on b2a's merge, which happened on 2026-09-28, and now name
+  only what is left.
+- **CI at session start, read job by job.** The push gate was sharded six ways by the previous
+  session (`5b38c7c`, closing XC-141), and **its first two runs swept nothing**: `5b38c7c`
+  changed `ci.yml` and docs, and all six shards of run `36531664506` read `0 module(s) --
+  .github/workflows/ci.yml changed; --changed-only does not escalate on it`; `561254b` is
+  docs-only, the same. pytest read `1508 passed` on 3.11, 3.12 and 3.13 in both. So the
+  sharded push gate's first real selection is this branch's first push, which diffs against
+  `origin/main` and selects all 25 modules (the dry run split them 3 to 6 modules a shard,
+  balanced by function count).
+
+---
+
 ## What moved on 2026-09-28, P4d-2b slice b2a: controls from the box
 
-**Resume here (state at 2026-09-28 ~23:15 UTC):** b2a is on `main`. On 2026-09-28 the PI
+**Resume here (state at 2026-09-28 ~23:15 UTC; superseded by the 2026-09-29 entry above):**
+b2a is on `main`. On 2026-09-28 the PI
 approved its four welfare items ("Approve all four") and the mark check's measured cost
 ("Ship, verify on rig": V12 is XC-139). It was fast-forwarded once CI and the full sweep on
 the rebased branch read green; "How it merged" below has both. **Everything open is in
