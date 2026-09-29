@@ -109,9 +109,9 @@ def welfare_note(
 ) -> None:
     """One person's act on a welfare input, written where it can be found later.
 
-    **A module function rather than a `SessionRecord` method, because it is written
-    before the record exists.** The departure time is confirmed or amended in
-    `wlx run` *before* `Session.run` opens the record: the mark has to be settled
+    **A module function rather than a `SessionRecord` method, because a note needs
+    only the folder, not an open record.** The departure time is confirmed or amended
+    in `wlx run` before `Session.run` starts anything: the mark has to be settled
     before `welfare.preflight`, which is what lets the session refuse rather than
     start and stop. Writing it at the moment it happened also means it survives
     everything that can refuse the session afterwards -- a blocking finding in the

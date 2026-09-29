@@ -319,7 +319,7 @@ class Session:
     #: `RUN_START` and `RUN_END`, looked up once as the session is built (P4d-2b spec
     #: §6.3), `None` each where the allocation has none.
     _run_codes: tuple = field(init=False, default=(None, None), repr=False)
-    #: `""` until `run()` opens the record, then `running`; `await_return` moves it
+    #: `""` until a run starts, then `running`; `await_return` moves it
     #: to `awaiting_return` and `closed` (P4d-2a). Published as `Telemetry.phase`.
     phase: str = field(init=False, default="")
     #: The kind of `stopped_because`: `completed`, `operator`, `limit` or `fault`.
@@ -523,9 +523,9 @@ class Session:
         beside `departure` and `returned` because that file already holds the
         session's clock marks, not because this row bounds anything the way they do.
 
-        **Needs no open record**, exactly as `_note` documents: `welfare_note`
-        creates `self.directory` itself, so this can run, and does for `wlx run`,
-        before `SessionRecord.open()` and before the departure is even asked about.
+        **It is where the session's record opens** (P4d-2b spec §6.3), and it can run,
+        as it does for `wlx run`, before the departure is even asked about:
+        `welfare_note` creates `self.directory` itself, so the notes need no record.
 
         **A second call raises.** A session's own clock has one start; calling this
         twice would leave two `session opened` rows on record for one session and
@@ -1649,6 +1649,11 @@ class Session:
         """
         if self.opened_wall_at is None:
             self.open()
+        if self._record is None:
+            raise RuntimeError(
+                "session.run() called after session.end(): the session's record is "
+                "closed with it, and a run would have nowhere to write"
+            )
         implied = run is None
         if implied:
             run = RunSpec.of(self.spec)
@@ -1996,7 +2001,7 @@ class Session:
             return
         if self._scheduler is None:
             raise RuntimeError(
-                "await_return before run() opened the record: there is no session "
+                "await_return before run() started a run: there is no session "
                 "whose clock could be published"
             )
         try:

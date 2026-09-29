@@ -404,6 +404,92 @@ def test_the_config_holds_what_is_fixed_and_is_written_as_the_session_opens(tmp_
     assert not {"layers", "resolved"} & set(config)
 
 
+def test_a_control_names_the_run_it_was_made_in(tmp_path):
+    """Plan decision 4: rows in `controls.jsonl` name their run, as trial rows do."""
+    link = _Scripted(script={1: [Resume(by="sam")]})
+    session = _session(
+        _spec(tmp_path, trials=2, deployment=Deployment.RIG_CHAIRED), link=link
+    )
+    link.queue(Pause(by="jake"))
+    session.run(_run_spec(trials=2))
+    link.script = {2: [Resume(by="sam")]}
+    link.queue(Pause(by="jake"))
+    session.run(_run_spec(trials=2))
+
+    rows = _controls_rows(session)
+
+    assert [(row["kind"], row["run"]) for row in rows] == [
+        ("pause", 0), ("resume", 0), ("pause", 1), ("resume", 1),
+    ]
+
+
+def test_the_session_task_is_the_run_in_progress_or_the_last_one(tmp_path):
+    """Spec §6.3: the spec's own task before any run, then the run's."""
+    other = _run_spec(trials=1)
+    other.task = "tasks/fixation_detection.py"
+    described = _session(_spec(tmp_path, trials=1))
+    assert described.task == "tasks/fixation_detection.py", "the spec's, before it starts"
+    described.run()
+    assert described.task == "tasks/fixation_detection.py"
+
+    taskless = _session(_spec(tmp_path / "b", trials=1, task="", deployment=Deployment.RIG_CHAIRED))
+    assert taskless.task is None, "a spec that names no task, before any run"
+    taskless.run(other)
+    assert taskless.task == other.task
+
+
+def test_a_spec_that_names_no_task_describes_no_run(tmp_path):
+    session = _session(_spec(tmp_path, task=""))
+
+    with pytest.raises(ValueError, match="names no task, so it describes no run"):
+        session.run()
+    with pytest.raises(ValueError, match="pass a RunSpec"):
+        RunSpec.of(session.spec)
+
+
+def test_a_setting_offered_before_any_run_of_a_taskless_session_is_refused(tmp_path):
+    """`_params()` is `{}` then, so the write is refused as undeclared rather than
+    raising out of a service that has not started a run."""
+    session = _session(_spec(tmp_path, task=""))
+
+    with pytest.raises(Exceeded, match="not a parameter this task declares"):
+        session.set("fix_hold", 0.5, by="console")
+
+
+def test_a_refused_run_leaves_the_last_runs_state_as_it_was(tmp_path):
+    """`run()`'s docstring: what belongs to a run starts afresh only once the task and
+    the marks pass."""
+    bad = tmp_path / "bad.py"
+    bad.write_text(
+        "from wl_xcon.task import After, On, Outcome, State, Trial\n"
+        "t = Trial(start='a', states=[State('a', go=[On(After(1.0), Outcome.CORRECT)]),"
+        " State('orphan', go=[On(After(1.0), Outcome.CORRECT)])])\n"
+    )
+    session = _session(_spec(tmp_path, deployment=Deployment.RIG_CHAIRED))
+    session.run(_run_spec(trials=2, fix_hold=0.4))
+    values, rows = dict(session.spec.values), _runs(session)
+    refused = RunSpec(task=str(bad), trials=3, seed=9, values={**VALUES, "fix_hold": 0.9})
+
+    with pytest.raises(SystemExit):
+        session.run(refused)
+
+    assert session.run_index == 0
+    assert session.spec.values == values and session.task == "tasks/fixation_detection.py"
+    assert _runs(session) == rows, "no new start row"
+
+
+def test_a_run_after_the_session_ended_is_refused_before_anything_resets(tmp_path):
+    session = _session(_spec(tmp_path, trials=1, deployment=Deployment.RIG_CHAIRED))
+    session.run()
+    session.end()
+
+    with pytest.raises(RuntimeError, match="after session.end"):
+        session.run(_run_spec(trials=1))
+
+    assert session.run_index == 0
+    assert len(_runs(session)) == 2
+
+
 def test_the_m1_gate_one_thousand_deterministic_trials_with_full_outputs(tmp_path):
     """Roadmap M1, asserted rather than described.
 
