@@ -7,7 +7,8 @@
   are recorded in §5.7. **Amended 2026-09-28**, when the PI approved b2a's plan with one
   change — a manual reward during a pause (§5.0) — in §4.0, §5.0–§5.7. Slices b3–b6 get
   their own sections as each is designed. **§6, slice b3a** (sessions from the page), was
-  designed and approved in conversation on 2026-09-29, section by section.
+  designed and approved in conversation on 2026-09-29, section by section. **Amended
+  2026-09-29:** the console's manual reward works whenever the console is up (§6.0).
 - **Date:** 2026-09-26
 - **Parent:** S9a §6–§9; ADR-0008; `architecture.md`'s `console` and `labhost` rows
 - **Depends on:** P4d-2a (`2026-09-26-P4d2a-return-to-cage-design.md`, as amended in its
@@ -188,7 +189,9 @@ builds its part; S9a is amended to match when that slice lands.
   - **b4 — simulation** with mouse gaze.
   - **b5 — training tools and manual reward** (welfare-critical). *Amended 2026-09-28:*
     a manual reward **during a pause** moved to b2a, at the PI's request when he approved
-    b2a's plan (§5.0, §5.1); a manual reward at any other time stays here.
+    b2a's plan (§5.0, §5.1); a manual reward at any other time stays here. *Amended
+    2026-09-29:* the manual reward at any other time is ruled in §6.0 and built in its own
+    slices; b5 keeps the training tools.
   - **b6 — end of session:** the code package and the wl-nas transfer.
   
   Overlays, behavior plots, online analysis, the parameter log and RHX status come later,
@@ -315,7 +318,8 @@ registers the rigs and the rigs gain their route to it (§5.7), which b2b cannot
   able to give manual rewards during pause"). Asked how much one press gives, he chose
   **"Same as a correct trial"**: one press delivers the task's current reward size, and
   nothing new is set. The engineering calls that follow from it (§5.1–§5.3) were stated to
-  him the same day. Any-time manual reward stays in b5 (§4.0).
+  him the same day. Any-time manual reward stays in b5 (§4.0). *Amended 2026-09-29:* it
+  is ruled in §6.0.
 
 ### 5.1 What the rig does
 
@@ -559,6 +563,24 @@ plans. b3a was designed in three sections, each approved as written below.
 - **One always-on rig service** ("One always-on rig service"), over a launcher with one
   process per session or the page's server starting each run: all of one animal's welfare
   state lives in one process, which is the shape S9a §7 already drew.
+- **The console's manual reward works whenever the console is up.** Asked whether a person
+  may reward by hand between runs, the PI answered yes, "and during task performance.
+  supplemental manual rewards are common. effectively, whenever the console is up, the
+  manual reward should work." Two details were then asked in plain terms:
+  - **During a trial, the reward reaches the animal the moment it is pressed** ("The
+    moment it's pressed"), not at the trial's end. It takes a per-frame path like the
+    mark's signal (§5.1), and its delay is measured on the rig before it is trusted.
+  - **With no session open, the button flushes the line** ("Yes, for flushing the line"):
+    the valve opens, and the record says the fluid went to no animal and counts toward
+    nobody's daily total.
+  - Wherever a session is open (running, paused, between runs, or awaiting the return),
+    one press is one delivery of the session's `reward_correct` at its current value,
+    through the path a task's reward takes, charged, recorded and strobed as §5.1's paused
+    reward is.
+  - **Where each is built:** between runs, with b3a-2; during a trial, and with no session
+    open, each in its own slice (the first needs the per-frame path and its measurement,
+    the second a size with no task to take it from). All three are welfare-critical and
+    go to the PI for review before merge.
 
 ### 6.1 The rig service
 
