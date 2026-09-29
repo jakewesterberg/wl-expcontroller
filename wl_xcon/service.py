@@ -8,10 +8,15 @@ the shape S9a §7 drew; nothing carries from one session to the next.
 
 Its commands are the link's -- `OpenSession`, `CheckRun`, `StartRun` and `EndSession`
 beside b2a's -- over the socket `wlx run --link` binds. **They are read once per
-housekeeping pass while no run is in progress**, never per frame (the b3a-1 plan,
-decision 18). **Runs are not taken yet**: until the service starts them (decision 18's
-other half, with its reading at each trial boundary), a `CheckRun` or `StartRun` reaches
-the open session and is refused there, as any command for a run is between runs.
+housekeeping pass while no run is in progress, and at each trial boundary during one**,
+never per frame (the b3a-1 plan, decision 18). A run sees the link through `_Routed`:
+**an `EndSession` during a run stops it**, and the session ends once the run has
+returned; any other of the service's own commands during a run is refused, never kept
+for later. **Every run is checked before it starts** (`_start`): its pre-flight taken
+again, and S9a §10's rule asked of it -- fail blocks, an unknown proceeds only on a named
+acknowledgement written into `runs.jsonl`. **A run's fault is contained** (decision 14):
+published, written into its end row, said on stderr, and the session left open between
+runs with its animal still out, so the return can be taken.
 
 **Crash safety is a refusal, not a recovery** (spec §6.1). On start the service finds
 every session under `--root` with a departure and no return (`stranded.find`), and while
@@ -33,10 +38,12 @@ amendment, the head's fixation and release and the return are each taken while a
 is routed, on the thread running `serve`, one command at a time -- which is what lets
 `taskd.Session.returned_to_cage` run without the lock it once had.
 
-**Welfare-critical: `Service._open`, `Service._end`, `Service._close_stranded`,
-`_unasked` and `_folder_name`** (`docs/design/architecture.md`): the page's route into
-the two marks, the stranded rule, which answers are taken, and the rule that keeps a name
-from any wire or record from becoming a path out of `--subjects`. The rest is ordinary.
+**Welfare-critical: `Service._open`, `Service._end` (with `Service._unended`, its
+refusals before anything is stopped or marked), `Service._close_stranded`,
+`Service._start`, `_unasked` and `_folder_name`** (`docs/design/architecture.md`): the
+page's route into the two marks, the stranded rule, which answers are taken, the gate a
+run passes before it starts, and the rule that keeps a name from any wire or record from
+becoming a path out of `--subjects` or `--tasks`. The rest is ordinary.
 
 **The simulators, today**: the card, the pump and the animal are `wlx run`'s, because no
 hardware port exists (docs/CHECKPOINT.md: nothing has touched hardware); a rig's own
@@ -52,11 +59,13 @@ import secrets
 import sys
 import threading
 import time
+import traceback
 from collections.abc import Callable
 from pathlib import Path
 
 from wl_xcon import link as _link
 from wl_xcon import marks as _marks
+from wl_xcon import preflight as _preflight
 from wl_xcon import stranded as _stranded
 from wl_xcon.bounds import Exceeded
 from wl_xcon.cli import _load_allocation, _load_bounds, _load_rig, _load_subject_settings
@@ -64,7 +73,7 @@ from wl_xcon.codes import Allocation
 from wl_xcon.dio import Simulated as SimulatedCard
 from wl_xcon.geometry import Rig
 from wl_xcon.record import XCON_DIRNAME
-from wl_xcon.taskd import Session, SessionSpec
+from wl_xcon.taskd import RunSpec, Session, SessionSpec
 from wl_xcon.welfare import Deployment, SessionClock
 from wl_xcon.welfare import Simulated as SimulatedPump
 
@@ -174,6 +183,63 @@ def _unasked(
     )
 
 
+#: The service's own commands: taken between runs, never handed to a run.
+_SERVICE_COMMANDS = (_link.OpenSession, _link.CheckRun, _link.StartRun, _link.EndSession)
+
+
+class _Routed:
+    """The link a service session drains through (the b3a-1 plan, decision 18): the
+    service's own link, with the service's commands taken out of what a run sees.
+
+    **An `EndSession` during a run stops it** -- a `Stop` in its place, at the boundary
+    that drained it -- and is kept for the service to finish once the run has returned
+    (`Service.step`), since `Service._end` is for a session between runs or awaiting
+    its return. One `_end` would refuse before anything is marked (`Service._unended`)
+    is refused here instead, before anything is stopped. Any other service command
+    during a run is refused on the session's feed: a run is in progress. **Everything
+    else is the real link's**: `mark_signal`, `publish` and `idle` are the link's own
+    bound methods, so the per-frame mark check is the call V12 measured, with nothing
+    added."""
+
+    def __init__(self, link, service: "Service") -> None:
+        self._link = link
+        self._service = service
+        self.mark_signal = link.mark_signal
+        self.publish = link.publish
+        self.idle = link.idle
+
+    @property
+    def refused(self):
+        return self._link.refused
+
+    @property
+    def refused_dropped(self) -> int:
+        return self._link.refused_dropped
+
+    def drain(self) -> list:
+        """At a trial boundary, or a paused run's housekeeping pass: the commands a run
+        takes, with the service's own taken out."""
+        service, kept = self._service, []
+        for command in self._link.drain():
+            if isinstance(command, _link.EndSession) and service._ending is None:
+                why = service._unended(command)
+                if why is not None:
+                    service.session.refuse(command.KIND, command.by, why)
+                    continue
+                service._ending = command
+                kept.append(_link.Stop(by=command.by))
+            elif isinstance(command, _SERVICE_COMMANDS):
+                service.session.refuse(
+                    command.KIND,
+                    command.by,
+                    "a run is in progress, so this is refused rather than kept for later; "
+                    "send it again once the run has ended",
+                )
+            else:
+                kept.append(command)
+        return kept
+
+
 class Service:
     """`wlx taskd`'s state and loop: the link, the open session if any, the stranded
     sessions, and the question and refusals an idle frame carries."""
@@ -225,9 +291,9 @@ class Service:
         #: The service's own refusals while no session is open, capped as a session's.
         self.refusals: list = []
         self.refusals_dropped = 0
-        #: The service's runs (the b3a-1 plan, decision 18), which nothing sets yet:
-        #: a run accepted this pass and not started, `(RunSpec, rows, by)`; and an
-        #: `EndSession` that arrived during a run, finished once the run returns.
+        #: The service's runs (the b3a-1 plan, decision 18): a run `_start` accepted
+        #: this pass and not started, `(RunSpec, rows, by)`; and an `EndSession` that
+        #: arrived during a run (`_Routed`), finished once the run returns (`step`).
         self._starting = None
         self._ending = None
 
@@ -245,12 +311,22 @@ class Service:
 
     def step(self) -> None:
         """One housekeeping pass: wait for a console (up to `HOUSEKEEPING_S`), stamp a
-        mark, take every command waiting, and publish one frame."""
+        mark, take every command waiting, publish one frame -- and then run a run
+        accepted in this pass, finishing an `EndSession` that arrived during it."""
         mark = self.link.idle(HOUSEKEEPING_S)
         if mark:
             self._mark(mark)
         for command in self.link.drain():
             self._route(command)
+        self.publish()
+        if self._starting is None:
+            return
+        run, rows, by = self._starting
+        self._starting = None
+        self._run(run, rows, by)
+        if self._ending is not None:
+            ending, self._ending = self._ending, None
+            self._end(ending)
         self.publish()
 
     def publish(self) -> None:
@@ -295,6 +371,10 @@ class Service:
             self._open(command)
         elif isinstance(command, _link.EndSession):
             self._end(command)
+        elif isinstance(command, _link.CheckRun):
+            self._check(command)
+        elif isinstance(command, _link.StartRun):
+            self._start(command)
         elif self.session is not None:
             self.session.receive(command)
         else:
@@ -338,12 +418,12 @@ class Service:
         )
 
     def _tasks(self) -> tuple[str, ...]:
-        """The task files a run may use: `*.py` under `--tasks`, not `_`-prefixed."""
+        """The task files a run may use: `*.py` under `--tasks`, **named as a run
+        accepts** (`_folder_name`, which also leaves out a `_`-prefixed module), so a
+        frame never offers a task every run would refuse (`_task`)."""
         if not self.tasks.is_dir():
             return ()
-        return tuple(
-            sorted(p.name for p in self.tasks.glob("*.py") if not p.name.startswith("_"))
-        )
+        return tuple(sorted(p.name for p in self.tasks.glob("*.py") if _folder_name(p.name)))
 
     # --- opening --------------------------------------------------------------------
 
@@ -406,7 +486,7 @@ class Service:
             ),
             card=self._card(),
             pump=self._pump(),
-            link=self.link,
+            link=_Routed(self.link, self),
             service=True,
             wall_clock=self.wall_clock,
         )
@@ -500,35 +580,157 @@ class Service:
         session.offered_tasks = self._tasks()
         self.session = session
 
+    # --- runs -----------------------------------------------------------------------
+
+    def _between_runs(self, kind: str, by: str) -> Session | None:
+        """The open session, when a run may be checked or started; otherwise refused,
+        saying why."""
+        if self.session is None:
+            self._refuse(kind, by, "no session is open, so no run starts; open a session first")
+            return None
+        if self.session.phase != "between_runs":
+            self._refuse(
+                kind, by,
+                "the session has ended and waits for its animal's return, so no run starts",
+            )
+            return None
+        if self._starting is not None:
+            self._refuse(kind, by, "a run is already starting, so this is refused")
+            return None
+        return self.session
+
+    def _task(self, name: str, kind: str, by: str) -> Path | None:
+        """A task file under `--tasks`, named by one file name ending `.py`; refused
+        otherwise. **The name is held to `_folder_name` before any path is built**
+        (carried from Task 7): it arrives over the wire, and the file it names is code
+        the pre-flight and the run load, so a parent reference or an absolute path would
+        run a file from outside `--tasks`."""
+        if not (_folder_name(name) and name.endswith(".py")):
+            self._refuse(
+                kind, by,
+                f"{name!r} is not a task file under {self.tasks}: a task is named by one "
+                f"file name ending .py -- letters, digits, '_', '.' and '-', starting with "
+                f"a letter or digit -- so nothing was loaded",
+            )
+            return None
+        path = self.tasks / name
+        if not path.is_file():
+            self._refuse(
+                kind, by, f"{name!r} is not a task file under {self.tasks}, so nothing was loaded"
+            )
+            return None
+        return path
+
+    def _preflight(self, session: Session, task: Path, values: dict) -> _link.Preflight:
+        """Spec §6.2's items, taken now, in order -- the out-of-cage item always among
+        them, since `preflight.gate` refuses a pre-flight without it."""
+        item, trial = _preflight.task(task, self.allocation, session.spec.geometry)
+        settings = Path(session.spec.subject_settings) if session.spec.subject_settings else None
+        return _link.Preflight(
+            task=task.name,
+            items=(
+                item,
+                _preflight.values(trial, values),
+                *_preflight.files(
+                    Path(session.spec.bounds_config), session.spec.subject, settings, self.rig
+                ),
+                _preflight.out_of_cage(session),
+                *_preflight.unmeasured(session.pump),
+            ),
+        )
+
+    def _check(self, command: _link.CheckRun) -> None:
+        """Take a run's pre-flight and put it on the frame, starting nothing."""
+        session = self._between_runs("check", command.by)
+        if session is None:
+            return
+        task = self._task(command.task, "check", command.by)
+        if task is not None:
+            session.preflight = self._preflight(session, task, command.values)
+
+    def _start(self, command: _link.StartRun) -> None:
+        """**Welfare-critical.** Accept a run (spec §6.2): the pre-flight **taken now**,
+        never trusted from an earlier check, and S9a §10's rule asked of it with the
+        items this person acknowledged by name (`preflight.gate`); only then is the run
+        kept to start once this pass has published, with a seed drawn for it and the
+        pre-flight as its start row records it -- who acknowledged each unknown
+        (`preflight.rows`). Every run is unplanned until b3b.
+
+        **A run past the out-of-cage limit is refused here, before `RUN_START`**
+        (carried from Task 3): `Session.run` refuses none -- `welfare.preflight` checks no
+        ceiling -- so it would strobe the start and write its row before `_ends` stopped
+        it. The pre-flight's out-of-cage item fails once `welfare.must_stop` fires, and
+        a fail blocks whatever is acknowledged."""
+        session = self._between_runs("start", command.by)
+        if session is None:
+            return
+        task = self._task(command.task, "start", command.by)
+        if task is None:
+            return
+        checked = self._preflight(session, task, command.values)
+        session.preflight = checked
+        why = _preflight.gate(checked, command.acknowledged)
+        if why is not None:
+            self._refuse("start", command.by, why)
+            return
+        self._starting = (
+            RunSpec(
+                task=str(task),
+                trials=command.trials,
+                seed=self._seed(),
+                values=dict(command.values),
+            ),
+            _preflight.rows(checked, command.by, command.acknowledged),
+            command.by,
+        )
+
+    def _run(self, run: RunSpec, rows: list, by: str) -> None:
+        """The run, to its end. **Its two backstop refusals** (`Session.run`'s blocking
+        finding and `welfare.preflight`), raised before it starts, are refusals here.
+        **Anything else is a fault, and contained** (the b3a-1 plan, decision 14): one
+        raised once the run started -- `Exceeded` from a delivery `welfare` would not
+        make among them -- `run()` has published and written into the run's end row;
+        the session is back between runs with the animal still out, and the traceback
+        goes to this process's stderr; the service goes on, so the return can be taken.
+        Ctrl-C is not caught: `wlx taskd` ends on it."""
+        session = self.session
+        before = session.run_index
+        try:
+            session.run(run, preflight_rows=rows, by=by)
+        except (SystemExit, Exception) as ended:  # noqa: BLE001 -- see the docstring
+            refused = isinstance(ended, (SystemExit, Exceeded)) and session.run_index == before
+            if refused:
+                session.refuse("start", by, _sentence(ended))
+            else:
+                traceback.print_exc(file=sys.stderr)
+
     # --- ending ---------------------------------------------------------------------
 
     def _end(self, command: _link.EndSession) -> None:
-        """**Welfare-critical.** End the open session (P4d-2b spec §6.2): a confirm
-        taken only for the question posed (`_unasked`), before anything is marked; then
-        its runs end and its head is released (`Session.end_runs`, the b3a-1 plan,
-        decision 6), then its return is taken through `marks`, the terminal's rules --
-        or, given no return, it waits for one. With none open, the stranded session it
-        names."""
+        """**Welfare-critical.** End the open session (P4d-2b spec §6.2): refused before
+        anything is marked when it names another session or answers a question nobody
+        was asked (`_unended`); a run accepted in this pass does not start; then its
+        runs end and its head is released (`Session.end_runs`, the b3a-1 plan, decision
+        6), then its return is taken through `marks`, the terminal's rules -- or, given
+        no return, it waits for one. With none open, the stranded session it names.
+
+        **Never during a run**: one sent then stops the run (`_Routed`) and is finished
+        here once the run has returned (`step`), so the session is between runs or
+        awaiting its return whenever this runs."""
         if self.session is None:
             self._close_stranded(command)
             return
         session = self.session
-        if command.session_id not in (None, session.spec.session_id):
-            self._refuse(
-                "end",
-                command.by,
-                f"the session open is {session.spec.session_id}, not "
-                f"{command.session_id}; nothing was ended",
-            )
+        unended = self._unended(command)
+        if unended is not None:
+            self._refuse("end", command.by, unended)
             return
-        if command.confirm is not False:
-            unasked = _unasked(
-                session.question, "return", session.spec.session_id, command.returned,
-                session.wall_now,
+        if self._starting is not None:
+            self._starting = None
+            self._refuse(
+                "start", command.by,
+                "the session was ended in the same pass, so the run does not start",
             )
-            if unasked is not None:
-                self._refuse("end", command.by, unasked)
-                return
         if session.phase == "between_runs":
             session.end_runs(command.by)
         if command.returned is None:
@@ -563,6 +765,25 @@ class Service:
         # cycle would wait for an automatic one that could land in the next run.
         del session
         gc.collect()
+
+    def _unended(self, command: _link.EndSession) -> str | None:
+        """**Welfare-critical, as `_end`'s first step.** Why an `EndSession` ends nothing
+        of the open session, or `None`: it names another session, or it confirms a
+        return nobody was asked about (`_unasked`). Asked by `_end`, before anything is
+        marked, and by `_Routed` during a run, before anything is stopped -- one rule
+        for both, so an End that would be refused never stops this animal's run."""
+        session = self.session
+        if command.session_id not in (None, session.spec.session_id):
+            return (
+                f"the session open is {session.spec.session_id}, not "
+                f"{command.session_id}; nothing was ended"
+            )
+        if command.confirm is not False:
+            return _unasked(
+                session.question, "return", session.spec.session_id, command.returned,
+                session.wall_now,
+            )
+        return None
 
     def _close_stranded(self, command: _link.EndSession) -> None:
         """**Welfare-critical.** A stranded session's return (spec §6.1), checked against

@@ -79,8 +79,9 @@ token-to-fluid conversion, stimulation bounds and gating, and the bounded-config
 
 **In code, that is `wl_xcon/bounds.py`, `wl_xcon/welfare.py`, `wl_xcon/marks.py` and
 `wl_xcon/stranded.py`, two functions in `wl_xcon/preflight.py` (`out_of_cage`, `gate`),
-five in `wl_xcon/service.py` (`Service._open`, `Service._end`, `Service._close_stranded`,
-`_unasked`, `_folder_name`), two functions in `wl_xcon/cli.py` plus one line inside a third — and, since
+seven in `wl_xcon/service.py` (`Service._open`, `Service._end` with `Service._unended`,
+`Service._close_stranded`, `Service._start`, `_unasked`, `_folder_name`), two functions in
+`wl_xcon/cli.py` plus one line inside a third — and, since
 P4d-2b b2a, five functions in `wl_xcon/taskd.py` plus two parts of a sixth
 (`Session._command`'s `held` pass-through and one `except` line), and one function in
 `wl_xcon/link.py`.** The
@@ -98,7 +99,7 @@ so the parsing and the confirmation are part of the limit. **The two `cli` funct
 which answer a person gave, and the name and reason an amendment carries — and **the
 line is `main`'s `_marks.depart(session, departure)`**, which marks the departure as
 `marks` decided it, `confirmed=` included, which `welfare._refuse_unconfirmed` trusts
-its caller on. A change to any of these, or to the two `preflight` functions, the five
+its caller on. A change to any of these, or to the two `preflight` functions, the seven
 `service` functions, the `taskd` and `link` functions and the two parts of
 `Session._command` below, is a change requiring review; a change elsewhere is not.
 
@@ -107,11 +108,13 @@ a new run once the out-of-cage limit is reached between runs, and the second is 
 §10's rule — fail blocks, an unknown proceeds only on a named acknowledgement written
 into `runs.jsonl` — and a mistake in it lets a run start that should not.
 
-**`stranded.py`, `Welfare.restore_departure`, and `service.Service._open`, `_end` and
-`_close_stranded`** (P4d-2b b3a): the rule that no session opens while an animal's return
-is missing from the record, how such a session is found and its return taken, and the
-page's route into the two marks. `restore_departure` reads back a recorded departure
-without `left_cage`'s refusals, which were applied when it was taken; a mistake in any of
+**`stranded.py`, `Welfare.restore_departure`, and `service.Service._open`, `_end` (with
+`_unended`, its refusals before anything is marked, which a run in progress asks too, so an
+End that would be refused never stops a run) and `_close_stranded`** (P4d-2b b3a): the rule
+that no session opens while an animal's return is missing from the record, how such a
+session is found and its return taken, and the page's route into the two marks.
+`restore_departure` reads back a recorded departure without `left_cage`'s refusals, which
+were applied when it was taken; a mistake in any of
 these leaves an animal out of its cage with nothing saying so, or records its return
 against the wrong instant. **And `service._unasked`** (the b3a-1 review's Ruling 1): a
 page's *confirm*, or a departure's *amend*, is taken only as the answer to the question
@@ -120,9 +123,14 @@ departure the animal, deployment and setup of the open it was asked about — si
 PI's rule for a far mark is a warning the experimenter clicks through, and nothing on the
 wire tells a click-through from a confirm sent blind; a mistake in it lets a far mark be
 taken that no person was shown. **And `service._folder_name`** (fix round 1): one folder
-name, the rule for a session id and an animal from the wire and for a stranded record's
-animal, whose `bounds.py` is code the service runs — a mistake in it runs a file from
-outside `--subjects` on the return path.
+name, the rule for a session id, an animal and a run's task from the wire and for a
+stranded record's animal, whose `bounds.py` is code the service runs — a mistake in it runs
+a file from outside `--subjects` on the return path, or from outside `--tasks` as a run
+is checked. **And `service.Service._start`** (P4d-2b b3a), which asks S9a §10's
+gate of a pre-flight taken as a run is started, never an earlier one, with the out-of-cage
+item always among its items — so a run past the limit is refused before `RUN_START`, since
+`Session.run` refuses none — and writes who acknowledged each unknown into the run's start
+row; a mistake in it starts a run that should not start.
 
 **The three `taskd` functions are `Session._ends`, `Session._hold` and
 `Session._manual_reward`** (P4d-2b b2a, 2026-09-28; the third since the PI's 2026-09-28

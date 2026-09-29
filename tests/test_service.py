@@ -21,12 +21,17 @@ from _rig import RIG
 from _sessions import WALL, typed
 from _zmq_release import _every_zmq_context_released  # noqa: F401
 from wl_xcon.cli import _load_allocation, main
+from wl_xcon.bounds import Exceeded
 from wl_xcon.link import (
+    CheckRun,
     EndSession,
     Idle,
     OpenSession,
     Pause,
+    SetParameter,
     Simulated,
+    StartRun,
+    Stop,
     Stranded,
     Telemetry,
 )
@@ -605,8 +610,8 @@ def test_every_mark_is_taken_on_the_thread_that_serves(tmp_path, monkeypatch):
 
 def test_a_service_given_no_seed_draws_each_one_fresh_as_the_record_can_hold_it():
     """Plan decision 15: a run's seed is the service's to draw, and is written into its
-    start row so the run can be replayed -- a whole number from 0 below 2**31. The runs
-    that read it are the service's (decision 18), not yet built."""
+    start row so the run can be replayed -- a whole number from 0 below 2**31. Each run
+    the service starts draws one (`Service._start`; the test below reads it back)."""
     drawn = [_fresh_seed() for _ in range(64)]
 
     assert all(type(seed) is int and 0 <= seed < 2**31 for seed in drawn)
@@ -758,6 +763,469 @@ def test_a_service_stopped_with_a_session_open_leaves_it_stranded_for_the_next(t
 
     assert _kinds(folders[2])[-2:] == ["return not recorded", "session ended"]
     assert [s.session_id for s in _made(folders).stranded] == ["2027-01-14_01"]
+
+
+# --- runs -----------------------------------------------------------------------
+
+VALUES = {
+    "fix_timeout": 4.0, "fix_hold": 0.3, "response_window": 0.6, "target_hold": 0.2,
+    "fix_window": 2.0, "target_window": 3.0, "target_position": 10.0,
+}
+UNKNOWN = ("pump calibration", "eye tracker")
+
+
+def _start(**over) -> StartRun:
+    fields = dict(by=BY, task=TASK, values=dict(VALUES), trials=3, acknowledged=UNKNOWN)
+    fields.update(over)
+    return StartRun(**fields)
+
+
+def _runs(root, session_id="2027-01-14_01") -> list[dict]:
+    path = root / session_id / "xcon" / "runs.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+class _Script(Simulated):
+    """A link whose `n`th drain also hands over `script[n]`: the service's own drains
+    and a run's, at its boundaries, counted alike."""
+
+    def __init__(self, script: dict) -> None:
+        super().__init__()
+        self.script, self.drains = script, 0
+
+    def drain(self):
+        self.drains += 1
+        for command in self.script.get(self.drains, ()):
+            self.queue(command)
+        return super().drain()
+
+
+def test_a_check_shows_the_runs_preflight_and_starts_nothing(tmp_path):
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, CheckRun(by=BY, task=TASK, values=dict(VALUES)))
+
+    assert (frame.phase, frame.run_index) == ("between_runs", None)
+    assert frame.preflight.task == TASK
+    assert [(i.name, i.result) for i in frame.preflight.items] == [
+        ("task checks", "pass"), ("starting values", "pass"), ("bounded config", "pass"),
+        ("out of cage", "pass"), ("pump calibration", "unknown"), ("eye tracker", "unknown"),
+    ]
+
+
+def test_a_run_whose_unknowns_nobody_acknowledged_does_not_start(tmp_path):
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start(acknowledged=("pump calibration",)))
+
+    assert frame.run_index is None and _runs(service.root) == []
+    assert "nobody has acknowledged: eye tracker" in _refused(frame)[-1]
+    assert frame.preflight is not None, "the pre-flight stays on the frame to acknowledge"
+
+
+def test_an_acknowledged_run_starts_records_who_acknowledged_what_and_ends_between_runs(tmp_path):
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start())
+
+    assert (frame.phase, frame.run_index, frame.stop_kind) == ("between_runs", 0, "completed")
+    start, end = _runs(service.root)
+    assert {r["name"]: r["acknowledged_by"] for r in start["preflight"]} == {
+        "task checks": None, "starting values": None, "bounded config": None,
+        "out of cage": None, "pump calibration": BY, "eye tracker": BY,
+    }
+    assert (start["unplanned"], start["by"], start["seed"], start["trials"]) == (True, BY, 7, 3)
+    assert end["stop_kind"] == "completed"
+    codes = service.session.card.codes
+    assert codes[:2] == [4128, 4135] and 4136 in codes and 4129 not in codes
+
+
+@pytest.mark.parametrize(
+    ("over", "item"),
+    [
+        ({"values": {**VALUES, "fix_hold": 99.0}}, "starting values"),
+        ({"values": {**VALUES, "no_such": 1.0}}, "starting values"),
+        ({"task": "empty.py"}, "task checks"),
+    ],
+)
+def test_a_run_with_a_failing_item_does_not_start_even_acknowledged(tmp_path, over, item):
+    service = _service(tmp_path)
+    (service.tasks / "empty.py").write_text("x = 1\n")
+    _step(service, _open())
+
+    frame = _step(service, _start(**over))
+
+    assert frame.run_index is None
+    assert f"pre-flight failed, so the run does not start: {item}" in _refused(frame)[-1]
+
+
+@pytest.mark.parametrize("task", ["missing.py", "../fixation_detection.py", "notes.txt"])
+def test_a_task_that_is_not_a_file_under_the_tasks_folder_is_refused_by_name(tmp_path, task):
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start(task=task))
+
+    assert frame.run_index is None and "is not a task file under" in _refused(frame)[-1]
+
+
+@pytest.mark.parametrize("name", ["../outside.py", "ABSOLUTE", "a..b.py", "_hidden.py", "two words.py"])
+def test_a_task_named_by_no_one_file_name_loads_nothing_and_runs_nothing(tmp_path, name):
+    """Carried from Task 7: a run's task arrives over the wire and becomes a path, and the
+    file there is code the service loads. So it is one folder name (`_folder_name`), the
+    rule a session id and an animal are held to, refused before any path is built -- a
+    parent reference, an absolute path, and names `_NAME` or the `..` rule refuse -- and
+    said on the feed. Each file is planted where its name would reach, so a refusal that
+    did not happen would run it. None is offered, either."""
+    service = _service(tmp_path)
+    marker = tmp_path / "ran.txt"
+    planted = f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n"
+    (tmp_path / "outside.py").write_text(planted)
+    for inside in ("a..b.py", "_hidden.py", "two words.py"):
+        (service.tasks / inside).write_text(planted)
+    if name == "ABSOLUTE":
+        name = str(tmp_path / "outside.py")
+    _step(service, _open())
+
+    checked = _step(service, CheckRun(by=BY, task=name, values={}))
+    started = _step(service, _start(task=name))
+
+    assert not marker.exists(), "a task file was loaded"
+    for frame, kind in ((checked, "check"), (started, "start")):
+        refusal = frame.refusals[-1]
+        assert (refusal.name, refusal.by) == (kind, BY)
+        assert refusal.why.startswith(f"{name!r} is not a task file under {service.tasks}")
+        assert refusal.why.endswith("so nothing was loaded")
+    assert (started.preflight, started.run_index) == (None, None)
+    assert _runs(service.root) == [] and service.session.card.codes == [4128]
+    assert started.offered_tasks == (TASK,)
+
+
+def test_the_out_of_cage_limit_reached_between_runs_refuses_a_new_run_and_says_so(tmp_path):
+    """Spec §6.1: "reached between runs, it refuses a new run, and the page asks for the
+    return"."""
+    wall = _Wall()
+    service = _service(tmp_path, bounds=TEN_MINUTES, wall=wall)
+    _step(service, _open(departure=typed(300)))
+    _step(service, _start(trials=2))
+    wall.at = WALL + 400
+
+    frame = _step(service, _start(trials=2))
+
+    assert frame.run_index == 0, "no second run"
+    assert "out of cage: out_of_cage" in _refused(frame)[-1]
+    assert "ceiling" in frame.duration_warning
+    assert [i.result for i in frame.preflight.items if i.name == "out of cage"] == ["fail"]
+
+
+def test_a_run_past_the_out_of_cage_limit_is_refused_before_run_start_is_strobed(tmp_path):
+    """Carried from Task 3: `Session.run` does not refuse a run past the limit --
+    `welfare.preflight` checks no ceiling -- so it would strobe `RUN_START` and write its
+    start row before `_ends` stopped it at the first boundary. The service's pre-flight
+    refuses it first: the out-of-cage item fails once `must_stop` fires, and the gate
+    blocks on it, acknowledged or not."""
+    wall = _Wall()
+    service = _service(tmp_path, bounds=TEN_MINUTES, wall=wall)
+    _step(service, _open(departure=typed(300)))
+    wall.at = WALL + 400
+
+    frame = _step(service, _start(acknowledged=(*UNKNOWN, "out of cage")))
+
+    why = _refused(frame)[-1]
+    assert why.startswith("pre-flight failed, so the run does not start: out of cage: out_of_cage")
+    assert "no run starts past the limit" in why
+    assert service.session.card.codes == [4128], "no RUN_START"
+    assert _runs(service.root) == [] and frame.run_index is None
+
+
+def test_the_out_of_cage_limit_ends_a_run_in_progress_and_the_session_waits_for_its_return(tmp_path):
+    service = None
+
+    def wall() -> float:
+        # Follows the frames while a run is in progress, as a rig's wall does.
+        return WALL + (service.session.now() if service is not None and service.session else 0.0)
+
+    service = _service(tmp_path, bounds=TEN_MINUTES, wall=wall)
+    _step(service, _open(departure=typed(300)))
+
+    frame = _step(service, _start(trials=100_000))
+
+    assert (frame.phase, frame.stop_kind) == ("between_runs", "limit")
+    assert isinstance(_step(service, _end()), Idle)
+
+
+def test_end_during_a_run_stops_it_at_its_boundary_then_ends_the_session(tmp_path):
+    link = _Script({3: [_end()]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+
+    frame = _step(service, _start(trials=1000))
+
+    assert isinstance(frame, Idle)
+    _, end = _runs(service.root)
+    assert (end["stop_kind"], end["stopped_because"]) == ("operator", f"stopped by {BY}")
+    assert end["trials"] < 1000
+    assert _kinds(service.root)[-2:] == ["returned", "session ended"]
+
+
+def test_end_during_a_run_releases_the_head_only_once_the_run_has_ended(tmp_path):
+    """Carried from Task 7: `_end` is for a session between runs or awaiting its return,
+    so an End during a run stops it -- a `Stop` in its place -- and is finished once the
+    run has returned: the head's release after `RUN_END`, never mid-run. Given no return
+    time, the session then waits for one."""
+    link = _Script({3: [_end(returned=None)]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+
+    frame = _step(service, _start(trials=1000))
+
+    assert (frame.phase, frame.stop_kind) == ("awaiting_return", "operator")
+    codes = service.session.card.codes
+    assert codes.index(4136) < codes.index(4129), "RUN_END, then the head's release"
+    assert _runs(service.root)[-1]["stopped_because"] == f"stopped by {BY}"
+    assert isinstance(_step(service, _end()), Idle)
+
+
+def test_end_while_a_run_is_paused_stops_it_there_then_ends_the_session(tmp_path):
+    """The paused loop drains through the same link (`Session._hold`), so an End sent
+    while paused stops the run as one sent between trials does."""
+    link = _Script({3: [Pause(by=BY)], 4: [_end()]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+
+    frame = _step(service, _start(trials=1000))
+
+    assert isinstance(frame, Idle)
+    _, end = _runs(service.root)
+    assert (end["stop_kind"], end["stopped_because"], end["trials"]) == (
+        "operator", f"stopped by {BY}", 0,
+    )
+    assert _kinds(service.root)[-2:] == ["returned", "session ended"]
+
+
+def test_during_a_run_an_end_that_would_be_refused_is_refused_and_stops_nothing(tmp_path):
+    """An End `_end` refuses before anything is marked -- one naming another session, or
+    a confirm nobody was asked for (`_unasked`) -- is refused during a run before anything
+    is stopped, so a stale page cannot stop this animal's run by sending another's."""
+    link = _Script({3: [_end(session_id="2027-01-13_01"), _end(confirm=True)]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+
+    frame = _step(service, _start(trials=3))
+
+    assert (frame.phase, frame.stop_kind) == ("between_runs", "completed")
+    assert [r.name for r in frame.refusals] == ["end", "end"]
+    assert "the session open is 2027-01-14_01, not 2027-01-13_01" in _refused(frame)[0]
+    assert "answers the warning" in _refused(frame)[1]
+    assert _kinds(service.root) == ["departure", "session opened"]
+    assert isinstance(_step(service, _end()), Idle), "an End it would take is still taken"
+
+
+def test_a_stop_during_a_run_is_the_runs_and_ends_only_the_run(tmp_path):
+    """Spec §6.1: "Stop ends the run, not the session." `_Routed` hands a run every
+    command that is not the service's own."""
+    link = _Script({3: [Stop(by=BY)]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+
+    frame = _step(service, _start(trials=1000))
+
+    assert (frame.phase, frame.stop_kind, frame.stopped_because) == (
+        "between_runs", "operator", f"stopped by {BY}",
+    )
+    assert _kinds(service.root) == ["departure", "session opened"]
+
+
+def test_during_a_run_the_services_own_commands_are_refused_not_queued(tmp_path):
+    """Review Focus 4: a second start sent while a run is in progress -- a double click --
+    is refused, never started after the first."""
+    link = _Script({4: [_start(), _open(session_id="2027-01-14_02"),
+                        CheckRun(by=BY, task=TASK, values={})]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+
+    frame = _step(service, _start())
+
+    assert frame.run_index == 0 and len(_runs(service.root)) == 2
+    in_progress = [r.name for r in frame.refusals if "a run is in progress" in r.why]
+    assert in_progress == ["start", "open", "check"]
+    assert frame.preflight is None, "the check took no pre-flight"
+    assert [p.name for p in service.root.iterdir()] == ["2027-01-14_01"]
+
+
+def test_two_starts_in_one_pass_start_one_run(tmp_path):
+    """Review Focus 4, in one pass."""
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start(), _start())
+
+    assert frame.run_index == 0 and len(_runs(service.root)) == 2
+    assert "a run is already starting" in _refused(frame)[-1]
+
+
+def test_an_end_in_the_same_pass_as_a_start_ends_the_session_and_starts_nothing(tmp_path):
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start(), _end())
+
+    assert isinstance(frame, Idle) and _runs(service.root) == []
+    closed = service.link.published[-2]
+    assert closed.phase == "closed"
+    assert (closed.refusals[-1].name, closed.refusals[-1].why) == (
+        "start", "the session was ended in the same pass, so the run does not start",
+    )
+
+
+def test_a_run_checks_for_marks_through_the_links_own_method(tmp_path):
+    """Plan decision 18: `_Routed` hands a run the real link's `mark_signal`, so the
+    per-frame check is the call V12 measured with nothing wrapped around it -- and a mark
+    sent during a run is stamped and strobed inside it."""
+
+    class _MarkInRun(_Script):
+        def drain(self):
+            if self.drains == 2:  # the run's first boundary
+                self.marks.append(1)
+            return super().drain()
+
+    service = _service(tmp_path, link=_MarkInRun({}))
+    _step(service, _open())
+    routed = service.session.link
+
+    assert routed.mark_signal == service.link.mark_signal
+    assert routed.mark_signal.__self__ is service.link
+    _step(service, _start())
+    codes = service.session.card.codes
+    assert codes.index(4135) < codes.index(4133) < codes.index(4136)
+
+
+def test_a_run_that_faults_leaves_the_session_open_for_its_return(tmp_path, monkeypatch, capsys):
+    """The b3a-1 plan, decision 14: published, recorded, said on stderr -- and the animal,
+    still out, can have its return taken."""
+    from wl_xcon import taskd
+
+    real, calls = taskd.run_trial, [0]
+
+    def faults_once(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise RuntimeError("the display went away")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", faults_once)
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    faulted = _step(service, _start())
+
+    assert (faulted.phase, faulted.stop_kind) == ("between_runs", "fault")
+    assert "the display went away" in capsys.readouterr().err
+    _, end = _runs(service.root)
+    assert end["stop_kind"] == "fault" and "the display went away" in end["stopped_because"]
+    assert not [r for r in faulted.refusals if r.name == "start"], "a fault, not a refusal"
+    again = _step(service, _start())
+    assert (again.run_index, again.stop_kind) == (1, "completed")
+    assert isinstance(_step(service, _end()), Idle)
+    assert _kinds(service.root)[-2:] == ["returned", "session ended"]
+
+
+def test_a_welfare_refusal_during_a_run_is_that_runs_fault_not_a_refused_start(
+    tmp_path, monkeypatch, capsys
+):
+    """`Exceeded` is what `welfare` raises in a run (a delivery it will not make) as well
+    as what `Session.run` refuses a start with. Raised once the run has started, it is
+    the run's fault -- published, in its end row, and on stderr -- never a start
+    refusal on the feed."""
+    from wl_xcon import taskd
+
+    real, calls = taskd.run_trial, [0]
+
+    def refuses_once(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise Exceeded("the pump would not give it")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", refuses_once)
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start())
+
+    assert (frame.phase, frame.stop_kind) == ("between_runs", "fault")
+    assert "the pump would not give it" in capsys.readouterr().err
+    assert not [r for r in frame.refusals if r.name == "start"]
+    assert _runs(service.root)[-1]["stop_kind"] == "fault"
+
+
+def test_a_run_its_session_refuses_as_it_starts_is_a_refusal_and_runs_nothing(
+    tmp_path, monkeypatch, capsys
+):
+    """`Session.run`'s own refusals -- a blocking finding, `welfare.preflight` -- stand
+    behind the pre-flight. Reached, each is a refusal on the feed, not a fault: nothing
+    is strobed or written, and the session waits between runs."""
+    from wl_xcon import taskd
+
+    def blocked(path):
+        raise SystemExit("task refused, session not started:\n  E1: a finding")
+
+    monkeypatch.setattr(taskd, "_load_trial", blocked)
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start())
+
+    assert (frame.phase, frame.run_index) == ("between_runs", None)
+    assert (frame.refusals[-1].name, frame.refusals[-1].why) == (
+        "start", "task refused, session not started:\n  E1: a finding",
+    )
+    assert service.session.card.codes == [4128] and _runs(service.root) == []
+    assert capsys.readouterr().err == ""
+
+
+def test_a_reward_size_changed_in_one_run_is_where_the_next_run_starts(tmp_path):
+    """Question 1 (PI), as recommended: the bounded config is the session's, so a size a
+    person set in run 0 is run 1's, and each start row says which."""
+    link = _Script({3: [SetParameter(name="reward_correct", value=0.1, by=BY)]})
+    service = _service(tmp_path, link=link)
+    _step(service, _open())
+    _step(service, _start(trials=3))
+
+    _step(service, _start(trials=1))
+
+    first, _, second, _ = _runs(service.root)
+    assert (first["bounded"]["reward_correct"], second["bounded"]["reward_correct"]) == (0.05, 0.1)
+
+
+def test_each_run_draws_its_own_seed_and_records_it(tmp_path):
+    seeds = iter([11, 12])
+    service = _made(_folders(tmp_path), seed=lambda: next(seeds))
+    _step(service, _open())
+
+    _step(service, _start(trials=1))
+    _step(service, _start(trials=1))
+
+    assert [row["seed"] for row in _runs(service.root) if row["event"] == "start"] == [11, 12]
+
+
+def test_a_service_given_no_seed_records_a_fresh_one_in_each_runs_start_row(tmp_path):
+    """Carried from Task 7: `_fresh_seed` has its caller -- the service's own runs."""
+    subjects, tasks, root = _folders(tmp_path)
+    service = Service(
+        rig=RIG, rig_path=RIG_FILE, subjects=subjects, tasks=tasks,
+        allocation=_load_allocation(Path(ALLOCATION)), allocation_path=ALLOCATION,
+        root=root, link=Simulated(), wall_clock=_Wall(),
+    )
+    _step(service, _open())
+
+    _step(service, _start(trials=1))
+
+    (seed,) = [row["seed"] for row in _runs(root) if row["event"] == "start"]
+    assert type(seed) is int and 0 <= seed < 2**31
 
 
 # --- wlx taskd -----------------------------------------------------------------
