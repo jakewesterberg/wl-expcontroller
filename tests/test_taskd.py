@@ -4143,7 +4143,8 @@ def test_each_phase_of_a_service_session_refuses_a_command_in_its_own_words(tmp_
         assert "no run is in progress" in why and "start a run first" in why
         assert "ended" not in why and "return" not in why
     assert "the session has ended and is waiting for the animal's return" in awaiting
-    assert "recorded from the page" in awaiting
+    assert "recorded by an EndSession sent over the link" in awaiting
+    assert "End session button waits on b3a-2" in awaiting
     assert "the session has ended" in closed
 
 
