@@ -1480,6 +1480,30 @@ def test_an_amendment_names_which_mark_it_changed():
     assert welfare.notes[0][:2] == ("mark amended", "return")
 
 
+# --- a stranded session's departure, read back (P4d-2b b3a) ------------------
+
+
+def test_a_restored_departure_is_one_a_return_can_close_even_past_the_ceiling():
+    """P4d-2b spec §6.1: an animal out of its cage is never forgotten because a process
+    died. `left_cage` would refuse a departure past the ceiling; the restored one is read
+    back, not decided, so its return can still be taken under every return rule."""
+    welfare = _chaired_welfare()
+    welfare.restore_departure(WALL_NOW - 50_000.0)  # past the 43,200 s ceiling
+
+    welfare.returned_to_cage(WALL_NOW - 60.0, wall_now=WALL_NOW)
+
+    assert welfare.out_of_cage_seconds(WALL_NOW) == 50_000.0 - 60.0
+
+
+def test_a_restored_departure_is_refused_where_a_departure_cannot_be():
+    with pytest.raises(Exceeded, match="is at home, so no departure can be restored"):
+        _home_welfare().restore_departure(WALL_NOW)
+    held = _chaired_welfare()
+    held.restore_departure(WALL_NOW)
+    with pytest.raises(Exceeded, match="already holds a departure"):
+        held.restore_departure(WALL_NOW)
+
+
 # --- an animal must be out of its cage to be in the chair -------------------
 #
 # **The restraint record is a cross-check on the duration, not only a record.**
@@ -1763,6 +1787,9 @@ ENTRY_POINTS = {
         INSTANT,
         lambda v: _welfare().left_cage(at=WALL_NOW, wall_now=v),
     ),
+    # A stranded session's departure, read back from its record to take its return
+    # (P4d-2b b3a): an instant like the marks it restores.
+    "Welfare.restore_departure.at": (INSTANT, lambda v: _welfare().restore_departure(v)),
     # The confirmation band (PI, 2026-09-20) reads the same two wall-clock instants
     # `left_cage` does, and computes the same interval from them, so it gets the
     # same three checks rather than trusting that its caller already made them: on

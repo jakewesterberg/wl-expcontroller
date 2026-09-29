@@ -583,6 +583,36 @@ class Welfare:
         )
         self.left_cage_wall_at = at
 
+    def restore_departure(self, at: float) -> None:
+        """The departure of a session whose process stopped before its return was
+        recorded, read back from that session's own `departure` row, so that its return
+        can be taken under `returned_to_cage`'s rules (P4d-2b spec §6.1: an animal out of
+        its cage is never forgotten because a process died).
+
+        **Not `left_cage`, deliberately.** That refuses a departure at or past the
+        ceiling, and a far one nobody confirmed: rules about *taking* a mark, which was
+        taken -- and refused or confirmed -- when the row was written. A stranded animal
+        is the one likeliest to be past its ceiling by now, and refusing its departure
+        would leave its return impossible to record. Nothing about the mark is decided
+        here; the instant is read back (`stranded.restore`).
+
+        Refused: a cage-side session, which never left; a departure already held, since
+        an interval is opened once; and an instant that is not a real number.
+        """
+        if self.deployment is Deployment.CAGE_SIDE:
+            raise Exceeded(
+                f"this session declares subject {self.bounds.subject!r} is at home, so "
+                f"no departure can be restored for it"
+            )
+        if self.left_cage_wall_at is not None:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r} already holds a departure, at "
+                f"{self.left_cage_wall_at}, so a recorded one cannot be restored beside it; "
+                f"an interval is opened once"
+            )
+        _finite("the recorded departure of a stranded session", at)
+        self.left_cage_wall_at = at
+
     def _far_from_now(self, what: str, at: float, wall_now: float) -> str | None:
         """The one copy of "is this mark far enough from now to need a person".
 
@@ -657,12 +687,13 @@ class Welfare:
         """Turn "a person should see this" into "a person did", or refuse.
 
         **The confirmation is enforced on the marks rather than only in `wlx run`**,
-        which is CLAUDE.md's rule and not caution: both marks are taken at `wlx
-        run`'s terminal today, as the stand-in until the wl-works ELN takes them (P4d-2a
-        spec §10), and a rule that lived only in its first caller would not follow the
-        mark to the next one -- a guardrail its caller had to remember is how `bounds`'
-        fluid check went a week called by nothing. A caller can lie to `confirmed`; it
-        cannot forget it.
+        which is CLAUDE.md's rule and not caution: both marks are taken today at `wlx
+        run`'s terminal and on `wlx taskd`'s page, each through `marks.py`, as the
+        stand-ins until the wl-works ELN takes them (P4d-2b spec §6.0, amending P4d-2a
+        spec §10), and a rule that lived only in its first caller would not have
+        followed the mark to the second -- a guardrail its caller had to remember is how
+        `bounds`' fluid check went a week called by nothing. A caller can lie to
+        `confirmed`; it cannot forget it.
         """
         if sentence is None or confirmed:
             return
@@ -1170,12 +1201,11 @@ class Rig:
     this `Rig` (`self.rig`), and this `Rig` holds `wall_clock`, a bound method whose
     `__self__` is that same `Session`. `Session` -> `rig` -> `wall_clock` -> `Session`
     is a cycle no refcount alone collects; only Python's cyclic collector frees a
-    finished session's chain. This is left as it is here -- a session is one process's
-    worth of objects today, so there is nothing yet that holds many of them. **Whoever
-    holds sessions across runs must deal with it**: P4d-2b slice b3's box service,
-    which keeps sessions live between them, either breaks this cycle when a session
-    ends or manages GC around trials rather than during one (CLAUDE.md, hot-path
-    discipline) so a cyclic collection never lands inside the frame loop.
+    finished session's chain. **`wlx taskd` holds many sessions a day** (P4d-2b b3a), so
+    it collects once as each session closes -- between sessions, never during a run
+    (`service.Service._end`). `wlx run` holds one per process, freed at exit. Managing
+    the collector during a run, CLAUDE.md's hot-path rule, is open for both
+    (docs/backlog.md, XC-047).
     """
 
     card: Card

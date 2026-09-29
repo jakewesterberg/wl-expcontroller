@@ -585,7 +585,7 @@ made by the PI and conditional on the reporting above.
 
 **"Is this refusal earned?" should be a lookup, not a reading.** §5.2c earns the
 `_finite`/`_magnitude` refusals as a class — two messages every numeric entry point reaches
-— but `welfare.py` has **twenty-nine** `raise` sites and `bounds.py` **five**, and a
+— but `welfare.py` has **thirty-one** `raise` sites and `bounds.py` **five**, and a
 reviewer sitting at `returned_to_cage`'s five would not find them there. Every one is below,
 with the failure it was written against and where the argument lives.
 
@@ -616,6 +616,8 @@ wl_xcon/` lands on the `raise`. Interpolated values are elided.
 | `states an … ceiling while this session declares the animal is at home` | The declaration and the config disagreeing is a limit switched off by a flag | S13 §4.0 |
 | `is at home, so it cannot also be recorded as leaving its cage` | The same disagreement, reached from the mark instead of the config | S13 §4.0 |
 | `is already recorded as out of its cage at` | Two clocks, shorter wins — **and the re-arm**: out at 0, home at 43,000, out again at 43,100 reported a fresh clock for an animal out twenty-two hours | §5.2 item 4 |
+| `is at home, so no departure can be restored for it` | A stranded session's departure read back into a cage-side session: the declaration and the mark disagreeing, reached from a restart (P4d-2b b3a) | S13 §4.0; P4d-2b spec §6.1 |
+| `already holds a departure, at …, so a recorded one cannot be restored beside it` | Two departures on one interval, the shorter winning — `left_cage`'s re-arm refusal, for the departure a restart reads back | §5.2 item 4; P4d-2b spec §6.1 |
 | `cannot have left its cage … seconds in the future` | A mark nothing could have taken. It caught a negative "how long ago" until 2026-09-20 and catches a clock time later than the wall clock since — **and it is the guard that makes "a bare time is today, never yesterday" safe**: `23:59` mistyped in the morning is refused rather than rolled back into a departure twenty-three hours old | §5.2 item 4 |
 | `is recorded as out of its cage … ago, against a ceiling of` | A session starting at or past its own limit, and the gross data-entry error — a date typed a day early, a departure in the wrong half of the day. It *also* caught a wall clock handed to a session-relative parameter until the mark became a clock time (PI, 2026-09-20); that catch is gone and its loss is accounted for in §5.2 item 4 | §5.2 item 4 |
 | `It was not confirmed by anyone, so it is refused rather than taken` | **A clock time cannot be refused for being implausible, so a person has to look at it** (PI, 2026-09-20). `08:45` typed for `18:45` is nine hours and sits inside a twelve-hour ceiling; no other refusal here will ever catch it. It is on the *marks* rather than only in `wlx run`'s prompt because `Session.left_cage`/`returned_to_cage` are console actions, and a guardrail written now and wired later is how `bounds`' fluid check went a week called by nothing (CLAUDE.md). A caller can lie to `confirmed`; it cannot forget it | §5.2 item 4 |
@@ -640,8 +642,8 @@ wl_xcon/` lands on the `raise`. Interpolated values are elided.
 | `was amended with no reason given, so it is refused rather than recorded blank` | **A blank reason looks like an answer.** The PI asked for a reason on 2026-09-20 precisely so that a departure time somebody changed can be explained months later; a row recording the change and not the cause answers nothing it would be read for, and is worse than the absence of a row because it appears to | §5.2 item 4 |
 | `was amended by nobody, so it is refused` | **An anonymous change to the clock that bounds a session.** `--as WHO` is required for a console write because a forgeable or invented actor is worse than none, and this moves the one quantity `must_stop` reads. It is in `welfare` rather than in `cli` so that the console action P4d-2 adds cannot reach the record around it | §5.2 item 4 |
 
-**Thirty-four refusals. Two rows are the §5.2c guards** — `is not a real number` and
-`cannot be negative`, which every numeric entry point reaches — **and thirty-two are
+**Thirty-six refusals. Two rows are the §5.2c guards** — `is not a real number` and
+`cannot be negative`, which every numeric entry point reaches — **and thirty-four are
 structural.** (This said "nine of them are the two guards"; that figure counted neither rows
 nor `raise` sites and could not be reproduced from either, so it is replaced with two that
 `tests/test_welfare.py` checks.) Every message is kept verbatim in the code — they are what an

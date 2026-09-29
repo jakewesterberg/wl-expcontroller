@@ -498,13 +498,15 @@ class Session:
         """One mark row in `welfare_notes.jsonl` (P4d-2a spec §3).
 
         Written by the mark methods themselves, so every caller leaves the same row
-        and none can reach the mark around it. Since P4d-2a spec §10 the one caller
-        in production is `wlx run` (its terminal prompts, and the process itself for
-        `session opened`/`session ended`/`return not recorded`); no console or
-        browser marks either end of the interval, and the wl-works ELN's marks will
-        reach this box through the lab-host protocol, not `link.py`. `was` and `now`
-        are both the mark's instant: nothing was amended, so there is one value to
-        record.
+        and none can reach the mark around it. **Two callers in production since P4d-2b
+        spec §6.0** (amending P4d-2a spec §10, where `wlx run` was the one), each the
+        wl-works ELN's stand-in until it records both ends of the interval: `wlx run`
+        (its terminal prompts, and the process itself for `session opened`/`session
+        ended`/`return not recorded`) and `wlx taskd` (its page's `OpenSession` and
+        `EndSession`, through `marks.py`, and the service itself for the same three
+        rows). The wl-works ELN's marks will reach this box through the lab-host
+        protocol, not `link.py`. `was` and `now` are both the mark's instant: nothing
+        was amended, so there is one value to record.
 
         **Called only after `welfare` has accepted the mark, never before**, so a mark
         that never happened cannot be logged as having happened. That ordering has a
@@ -646,12 +648,13 @@ class Session:
     def left_cage(
         self, at: float, confirmed: bool = False, by: str = "", how: str = "terminal"
     ) -> None:
-        """The terminal's action that starts the clock bounding this session.
+        """The action that starts the clock bounding this session.
 
-        **Not a console's** (residual fix round, correcting a stale docstring): the
-        PI ruled the wl-works ELN owns the interval, not a console, so this is called
-        only from `wlx run`'s own terminal (`cli.main`), which is the stand-in until
-        the ELN exists (P4d-2a spec §10).
+        **Two callers, both through `marks.depart`** (P4d-2b spec §6.0, amending P4d-2a
+        spec §10): `wlx run`'s own terminal (`cli.main`) and `wlx taskd`'s page
+        (`service.Service._open`), the wl-works ELN's two stand-ins until it owns the
+        interval. The page's departure is decided by the terminal's own rules
+        (`marks.page_departure`), never by a console.
 
         **`at` is a wall-clock instant, in POSIX seconds** (PI, 2026-09-20): a clock
         time is what an operator reads. This hands `welfare.left_cage` the wall
@@ -690,9 +693,10 @@ class Session:
     def return_needs_confirmation(self, at: float) -> str | None:
         """What a person must be shown before `returned_to_cage(at)`, or `None`.
 
-        `wlx run`'s terminal return prompt is this method's one caller (P4d-2a spec
-        §10, Task 8) -- not a console: the PI ruled the wl-works ELN owns the
-        interval. `wall_now()` is this object's seam onto the wall, for the reason
+        Asked through `marks.take_return` by `wlx run`'s terminal return prompt and by
+        `wlx taskd`'s page (`EndSession`), the wl-works ELN's two stand-ins (P4d-2b spec
+        §6.0, amending P4d-2a spec §10, where the terminal was the one). `wall_now()` is
+        this object's seam onto the wall, for the reason
         `departure_needs_confirmation` gives.
         """
         return self.welfare.return_needs_confirmation(at, wall_now=self.wall_now())
@@ -700,8 +704,10 @@ class Session:
     def amend_mark(
         self, what: str, original: float, amended: float, reason: str, by: str
     ) -> None:
-        """The terminal's action that goes with the confirmations above, called from
-        `wlx run` or `cli._settle_departure` -- not a console (see `left_cage`).
+        """The action that goes with the confirmations above, called through
+        `marks.decide_departure` from `wlx run`'s terminal (`cli._settle_departure`) and
+        from `wlx taskd`'s page (`marks.page_departure`) -- the two stand-ins `left_cage`
+        names.
 
         Records the amendment and refuses a blank reason or actor; the caller then
         takes the amended value with `left_cage` or `returned_to_cage`, which apply
@@ -728,11 +734,16 @@ class Session:
 
         **No lock around this any more** (P4d-2a spec §10, Task 8). It ran under
         `_mark_lock` while a console could offer the return from the trial loop's own
-        thread and race the terminal for it; the PI ruled the wl-works ELN owns the
-        return, not a console, so `link.py` carries no such command any more and
-        `cli._settle_return` -- the terminal, and only the terminal -- is this
-        method's one caller in production, one attempt at a time. `_mark_lock` is
-        removed along with it rather than kept for a race that can no longer happen.
+        thread and race the terminal for it. **What makes the lock unneeded is one
+        caller per process, on one thread, one attempt at a time**, and that still
+        holds now the page takes the return again (P4d-2b spec §6.0): in `wlx run`,
+        the terminal (`cli._settle_return`, on the main thread; `await_return`, on the
+        other, never calls this); in `wlx taskd`, the service's loop
+        (`service.Service._end`, one command at a time, on the thread that serves --
+        the b3a-1 review's Ruling 2). Both go through `marks.take_return`, and they are
+        never in one process, so neither can race the other. `_mark_lock` stays
+        removed; a change that takes the return from a second thread in either process
+        brings the race, and the lock, back.
         """
         wall_now = self.wall_now()
         # Asked before the mark, deliberately, so there is an answer to decide
@@ -754,8 +765,9 @@ class Session:
         self._note("return not recorded", self.wall_now(), "", how, reason=why)
 
     def head_fixed(self, at: float) -> None:
-        """The action `wlx run` takes, S8 §5.2 requires, before a `RIG_FIXED` session
-        starts -- not a console's: called from `cli.main` itself, never asked for.
+        """The action S8 §5.2 requires before a `RIG_FIXED` session starts, taken by the
+        process and never asked for -- not a console's: by `wlx run` from `cli.main`
+        itself, and by `wlx taskd` as it opens a session (`service.Service._open`).
 
         Event-coded at both ends, because restraint has no hardware line: the codes
         *are* its durable record, and an offline reader recovers chair time from the
@@ -1441,10 +1453,11 @@ class Session:
         §10, Task 8). A parameter staged after the last trial could never be
         applied, and a stop has nothing left to stop -- both are refused with the
         reason rather than silently kept. **The return used to be the one
-        exception** -- a console's `ReturnedToCage` was accepted in any phase -- but
-        the PI ruled the wl-works ELN owns the return, not a console, so `link.py`
-        has no such command any more and this method has nothing left to route in
-        the post-loop phase but a refusal.
+        exception** -- a console's `ReturnedToCage` was accepted in any phase -- until
+        the PI ruled the wl-works ELN owns the return (P4d-2a spec §10). The page takes
+        it again since P4d-2b spec §6.0, as `EndSession`, which `wlx taskd` takes itself
+        (`service.Service._end`) and never routes here, so this method still has nothing
+        left to route in the post-loop phase but a refusal.
 
         **`held` is true only for a command `_hold` drained** (P4d-2b b2a, amended
         2026-09-28): the session held paused at this boundary. Only a manual reward
@@ -1463,6 +1476,11 @@ class Session:
                 "no run is in progress, so a command for a run is not applied; start a "
                 "run first"
                 if self.phase == "between_runs"
+                # Task 3's review, carried to Task 7: once closed, the return is recorded,
+                # and the sentence below, about waiting for it, is not true of it.
+                else "the session has ended and its animal's return to its cage is "
+                "recorded, so a command sent now is not applied"
+                if self.phase == "closed"
                 else "the session has ended and is waiting for the animal's return to its "
                 "cage, which is recorded from the page (End session); a command sent now "
                 "is not applied"
@@ -1682,7 +1700,20 @@ class Session:
     def close(self, how: str) -> None:
         """The animal is home: the session's own clock ended, and its one `closed` frame
         (`await_return` does the same for `wlx run`'s). Refused until the return is
-        recorded."""
+        recorded.
+
+        **And refused unless this is a service session awaiting its return** (Task 3's
+        review, carried to Task 7): a chaired session has no head to stop a return being
+        taken between runs, and closing it then went from `between_runs` to `closed`
+        with no `end` row saying its runs had ended. `end_runs` comes first, always; a
+        `wlx run` session is closed by `await_return`, never here."""
+        if not self.service or self.phase != "awaiting_return":
+            kind = "a service session" if self.service else "a wlx run session"
+            raise RuntimeError(
+                f"close() is for a service session awaiting its animal's return, after "
+                f"end_runs(), and this one is {kind}, {self.phase or 'not open'}; nothing "
+                f"was closed"
+            )
         if self.welfare.returned_wall_at is None:
             raise RuntimeError(
                 "close() before the return is recorded: the animal is not home"
@@ -2083,11 +2114,12 @@ class Session:
         **Draining the link is for post-loop refusals now, never for the return
         itself** (P4d-2a spec §10, Task 8). It used to be where the return could
         arrive too, drained here and routed by `_command` to `returned_to_cage`; the
-        PI ruled the wl-works ELN owns the return, not a console, so `link.py` carries
-        no such command any more. What still arrives here is a late `SetParameter` or
-        `Stop`, and `_command` still refuses both with the session's one sentence for
-        the post-loop phase (see its own docstring) and puts the refusal on the wire
-        for whoever is watching.
+        PI ruled the wl-works ELN owns the return, not a console, so `link.py` carried
+        no such command until P4d-2b b3a's `EndSession`, which is `wlx taskd`'s and is
+        refused here like any other command after the loop. What still arrives here is
+        a late `SetParameter` or `Stop`, and `_command` still refuses both with the
+        session's one sentence for the post-loop phase (see its own docstring) and puts
+        the refusal on the wire for whoever is watching.
 
         **It ends when the return is recorded, by the terminal alone, from another
         thread** (`cli._close_interval` runs this method on a background thread while

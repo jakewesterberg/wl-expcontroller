@@ -60,6 +60,8 @@ RETURNS: dict[str, str] = {
     "cli": "None",
     "marks": "None",
     "preflight": "None",
+    "service": "None",
+    "stranded": "None",
     "taskd": "None",
     "photometry": "None",
     "eye": "None",

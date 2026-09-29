@@ -4214,3 +4214,40 @@ def test_closing_needs_the_return_then_ends_the_session_with_one_closed_frame(tm
         for line in (session.directory / "welfare_notes.jsonl").read_text().splitlines()
     ]
     assert kinds[-2:] == ["returned", "session ended"]
+
+
+def test_closing_is_refused_unless_a_service_session_is_awaiting_its_return(tmp_path):
+    """Task 3's review, carried to Task 7: `close()` asked only whether the return was
+    recorded, so a chaired service session that took one between runs went from
+    `between_runs` to `closed` with no `end` row saying its runs had ended. It is refused
+    unless the session is a service session awaiting its return; `wlx run`'s own close is
+    `await_return`'s, never this."""
+    chaired = _service_session(tmp_path / "chaired", deployment=Deployment.RIG_CHAIRED)
+    chaired.returned_to_cage(chaired.wall_now(), by="jake", how="the page")
+
+    with pytest.raises(RuntimeError, match="awaiting its animal's return"):
+        chaired.close(how="wlx taskd")
+    assert (chaired.phase, chaired.ended_wall_at) == ("between_runs", None)
+
+    run = _session(_spec(tmp_path / "run", trials=1))
+    run.run()
+    run.phase = "awaiting_return"  # what `await_return` sets, without its heartbeat loop
+    run.returned_to_cage(run.wall_now(), by="jake", how="terminal")
+    with pytest.raises(RuntimeError, match="a service session"):
+        run.close(how="wlx taskd")
+    assert run.ended_wall_at is None
+
+
+def test_a_closed_service_session_says_its_return_is_recorded_not_awaited(tmp_path):
+    """Task 3's review, carried to Task 7: the `closed` phase answered a late command
+    with "is waiting for the animal's return" after the return was recorded."""
+    session = _service_session(tmp_path, deployment=Deployment.RIG_CHAIRED)
+    session.end_runs("jake")
+    session.returned_to_cage(session.wall_now(), by="jake", how="the page")
+    session.close(how="wlx taskd")
+
+    session.receive(Stop(by="jake"))
+
+    closed = session.refusals[-1][2]
+    assert "the session has ended" in closed and "return to its cage is recorded" in closed
+    assert "waiting" not in closed

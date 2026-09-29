@@ -1410,6 +1410,48 @@ def main(argv: list[str] | None = None) -> int:
         "not a measurement",
     )
 
+    service_parser = sub.add_parser(
+        "taskd",
+        help="run the rig service: one animal's session at a time, opened, run and "
+        "ended from a console (P4d-2b spec §6)",
+    )
+    service_parser.add_argument(
+        "--rig", type=Path, required=True, metavar="PATH",
+        help="the rig's display settings: a Python file defining RIG, as tasks/rig.py does",
+    )
+    service_parser.add_argument(
+        "--subjects", type=Path, required=True, metavar="DIR",
+        help="one folder per animal, named for it, holding bounds.py (defining BOUNDS, "
+        "whose subject must be the folder's name) and, for the stereoscope, "
+        "settings.py (defining SETTINGS)",
+    )
+    service_parser.add_argument(
+        "--tasks", type=Path, required=True, metavar="DIR",
+        help="the folder of task files a run may use",
+    )
+    service_parser.add_argument(
+        "--allocation", type=Path, default=None,
+        help="the event-code allocation. It must carry HEAD_FIXED, HEAD_RELEASED, "
+        "PARAM_CHANGED, RUN_START and RUN_END, which every session here strobes, so the "
+        "provisional one used when this is omitted is refused",
+    )
+    service_parser.add_argument(
+        "--root", type=Path, required=True,
+        help="where session folders go, and where a session left without its animal's "
+        "return is looked for at start",
+    )
+    service_parser.add_argument(
+        "--link", required=True, metavar="PUB,REP[,MARK]",
+        help="the endpoints this service binds, as `wlx run --link` takes them; `wlx "
+        "serve --link` takes the same value. Loopback only unless --link-allow-remote",
+    )
+    service_parser.add_argument(
+        "--link-allow-remote", action="store_true",
+        help="permit --link to bind an endpoint other hosts can reach; see `wlx run "
+        "--link-allow-remote` for what that exposes, which here includes opening and "
+        "ending sessions",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "serve":
@@ -1418,6 +1460,12 @@ def main(argv: list[str] | None = None) -> int:
         from wl_xcon import serve as _serve
 
         return _serve.run(args)
+
+    if args.command == "taskd":
+        # Imported here, as `serve` is: no other subcommand loads the service.
+        from wl_xcon import service as _service
+
+        return _service.run(args)
 
     if args.command == "run":
         from wl_xcon.dio import Simulated as SimulatedCard
