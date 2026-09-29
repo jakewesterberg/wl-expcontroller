@@ -6,7 +6,7 @@
 >
 > **Branch from `main` as `p4d2b-b3a1-session-service`.** b3a-2 (the page: forms, dialogs, the page's endpoints in `serve.py`) is a later plan and builds on this branch's commands and frames.
 >
-> **Welfare-critical code changes, listed in Plan decision 20 and Task 10 Step 4.** The branch merges only after the PI approves Task 10's numbered summary (P4d-2b spec §6.4; CLAUDE.md). Nothing merges before the Question below is answered, since Task 8 Step 3b depends on the answer.
+> **Welfare-critical code changes, listed in Plan decision 20 and Task 10 Step 4.** The branch merges only after the PI approves Task 10's numbered summary (P4d-2b spec §6.4; CLAUDE.md). The Question below was answered on 2026-09-29 (keep the size where it was left), so Task 8 Step 3b adds nothing.
 >
 > **Every commit** ends with the session's attribution lines, as the repository's history does.
 
@@ -20,7 +20,9 @@
 
 ## Questions for the PI
 
-Asked by the controller before Task 8 starts, in the question UI, in these words:
+**Answered 2026-09-29, in the question UI: "Where it was left"** — the recommendation. The next run keeps the reward size a person set, for the rest of that animal's session; Task 8 Step 3b adds no reset. The PI approved this plan the same day ("Approve, build it").
+
+Asked in these words:
 
 1. **When a person changes the reward size during a run, where does the next run in the same session start?** The reward size lives in the animal's bounds file and can be changed from the page during a run (b2a), always under its approved ceiling. When that run ends and another starts for the same animal, the size could either stay where the person left it, or go back to the number in the bounds file. **Recommendation: keep it where the person left it for the rest of the session.** The bounds belong to the session, which is one animal's (spec §6.1); someone who lowered it would not have it quietly raised again; and each run's row in `runs.jsonl` records the size it started with. The plan builds the recommendation (it is what the code does if nothing resets it); if the answer is "back to the file", Task 8 Step 3b adds the reset, with its test.
 
