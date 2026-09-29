@@ -348,11 +348,9 @@ merging by fast-forward, **all built, reviewed and on `main`** (`14658e5`):
 
 **Everything open is in `docs/backlog.md`** (next free ID XC-146). Next, in order:
 1. **XC-109:** the local folder `~/GitHub/wl-expcontroller` → `~/GitHub/wl-xcon`. Move this
-   project's Claude memory folder with it (keyed on the path) and run `git worktree repair`.
-   Two worktrees live under the folder: `.claude/worktrees/direct-view-part2` (remove it once
-   its branch is merged) and `.claude/worktrees/p4d1-console-link` on `harness-name-failures`,
-   210 commits behind `main` with nothing ahead of it (remove it). **The session doing this must
-   not be running inside the folder it moves**: start it from `~/GitHub`. Then reinstall the
+   project's Claude memory folder with it (keyed on the path). Its worktrees were removed on
+   2026-09-29, both clean and merged, so there is nothing to repair. **The session doing this
+   must not be running inside the folder it moves**: start it from `~/GitHub`. Then reinstall the
    package from the new folder (`pip install -e '.[dev,contract,console]'`): an editable install
    records the old absolute path, and `wlx` breaks until it is redone.
 2. **b2b:** remote sign-in through wl-works (XC-015), and a stop that jumps the command queue
