@@ -346,14 +346,12 @@ merging by fast-forward, **all built, reviewed and on `main`** (`14658e5`):
 3. **Direct view part 2 (XC-003)**, `3f8c880`..the tip of `direct-view-part2`, the PI's approved
    plan `docs/superpowers/plans/2026-09-29-direct-view-part2.md`.
 
-**Everything open is in `docs/backlog.md`** (next free ID XC-146). Next, in order:
-1. **XC-109:** the local folder `~/GitHub/wl-expcontroller` → `~/GitHub/wl-xcon`. Move this
-   project's Claude memory folder with it (keyed on the path). Its worktrees were removed on
-   2026-09-29, both clean and merged, so there is nothing to repair. **The session doing this
-   must not be running inside the folder it moves**: start it from `~/GitHub`. Then reinstall the
-   package from the new folder (`pip install -e '.[dev,contract,console]'`): an editable install
-   records the old absolute path, and `wlx` breaks until it is redone.
-2. **b2b:** remote sign-in through wl-works (XC-015), and a stop that jumps the command queue
+**The local folder is `~/GitHub/wl-xcon`** since 2026-09-29 (XC-109, done by the PI in a
+terminal between sessions): this project's Claude memory moved with it, the package was
+reinstalled from it (`wlx check` against the stand-in rig reads `no findings`), and the suite
+reads `1557 passed` there. **Everything open is in `docs/backlog.md`** (next free ID XC-147).
+Next:
+1. **b2b:** remote sign-in through wl-works (XC-015), and a stop that jumps the command queue
    (XC-121).
 
 XC-142 (the sibling renames, `wl-exptasks` and `wl-expviz`, still in our code and documents),
