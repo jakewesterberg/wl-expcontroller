@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-146.**
+**Next free ID: XC-147.**
 
 ## Brainstorms queued for the PI
 
@@ -34,6 +34,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-011** P4c: the Parquet behavioural table (S10 §6 item 2's column-by-column schema) and the session summary, derived at close and contract-tested against wl-preproc. — 2026-08-31, [next-session §2](next-session.md#2-p4c--the-derived-parquet-table) — waits on: nothing
 - **XC-012** Write the task's event-code table into the session directory, so nothing downstream must re-derive it from the task. — 2026-09-19, [CHECKPOINT, "The console design"](CHECKPOINT.md#the-console-design-brainstormed-and-settled) — waits on: nothing
 - **XC-013** Demo mode: run a task with keyboard and mouse gaze (roadmap M1; P4d-2b slice b4). — 2026-08-31, [roadmap M1](roadmap.md#m1--simulated-skeleton) — waits on: nothing
+- **XC-146** An automatic simulated subject an operator sets up in behavioral terms (accuracy, median RT and its spread, fixation-break and no-response rates) at session start, on the command line and later the page, that performs any task through the same path as demo mode, with the census reporting the achieved figures beside the requested ones; `simulate.Subject` already plays sessions headless, with its rates fixed in code. — 2026-09-29, PI request, [XC-013's roadmap M1](roadmap.md#m1--simulated-skeleton) — waits on: nothing
 - **XC-014** Operator documentation, how to run a session for a tech or student, with the D4 acceptance test (a stranger runs a session). — 2026-08-31, [roadmap M1](roadmap.md#m1--simulated-skeleton) — waits on: nothing
 - **XC-015** P4d-2b b2b: the controls for people signed in to wl-works, reward size included, with the `Verified`/`Local` actor split (P4d-3). — 2026-09-27, [CHECKPOINT, 2026-09-27 afternoon](CHECKPOINT.md#what-moved-on-2026-09-27-afternoon-b1-merged-b2-designed-the-camera-ci) — waits on: XC-102; a route from the rigs to wl-works
 - **XC-016** P4d-2b b3: sessions from the page (new, load, end), the task-library pull, and preflight under S9a §10's rule (P4d-5), on a box service that holds a session across runs. — 2026-09-26, [P4d-2b spec §4.0](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#40-rulings-held-from-the-mockup-rounds) — waits on: nothing

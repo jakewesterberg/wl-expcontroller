@@ -9,12 +9,10 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > written with**, `wl-expcontroller` and `wl_expcontroller/…` paths included, as the PI
 > ruled for dated documents; read `wl_expcontroller/taskd.py` there as `wl_xcon/taskd.py`.
 >
-> **This file describes `main`, plus branch `direct-view-part2` until it merges.** The newest
-> entry, "What moved on 2026-09-29", describes three pieces of work stacked in that order on one
-> line of history: the package rename (`xc053-package-rename`), check 8 failing closed
-> (`check8-fail-closed`) and direct view part 2 (`direct-view-part2`, whose tip carries all
-> three). Each merges by fast-forward. Run `git branch --show-current` and `git log --oneline
-> main..HEAD` before believing a line about a branch.
+> **This file describes `main`.** The newest entry, "What moved on 2026-09-29", describes three
+> pieces of work that reached `main` that day by fast-forward: the package rename, check 8
+> failing closed and direct view part 2. Run `git branch --show-current` before believing a
+> line about a branch.
 >
 > **Earlier, 2026-09-20:** `p4d1-console-link` was reviewed, approved by the
 > PI and **fast-forwarded onto `main`**, which moved `300d7d1` → `08adfa2`
@@ -339,7 +337,7 @@ figure was one low. In order:
 ## What moved on 2026-09-29: the package is `wl_xcon`, check 8 fails closed, and direct view part 2
 
 **Resume here (state at 2026-09-29):** three pieces, stacked on one line of history and each
-merging by fast-forward, **all built and reviewed**; the first is merged:
+merging by fast-forward, **all built, reviewed and on `main`** (`14658e5`):
 1. **The package rename (XC-053)**, `e5779ba`..`6032946`: **on `main`**, fast-forwarded
    2026-09-29 once its CI read green, as the PI approved (asked in the UI, since it touches the
    welfare-critical files: "Merge when green").
@@ -349,15 +347,15 @@ merging by fast-forward, **all built and reviewed**; the first is merged:
    plan `docs/superpowers/plans/2026-09-29-direct-view-part2.md`.
 
 **Everything open is in `docs/backlog.md`** (next free ID XC-146). Next, in order:
-1. **Merge what is on the branch**, if the entry below does not say it merged: read each
-   branch's CI shard by shard (not the badge) and fast-forward `main`.
-2. **XC-109:** the local folder `~/GitHub/wl-expcontroller` → `~/GitHub/wl-xcon`. Move this
+1. **XC-109:** the local folder `~/GitHub/wl-expcontroller` → `~/GitHub/wl-xcon`. Move this
    project's Claude memory folder with it (keyed on the path) and run `git worktree repair`.
    Two worktrees live under the folder: `.claude/worktrees/direct-view-part2` (remove it once
    its branch is merged) and `.claude/worktrees/p4d1-console-link` on `harness-name-failures`,
    210 commits behind `main` with nothing ahead of it (remove it). **The session doing this must
-   not be running inside the folder it moves**: start it from `~/GitHub`.
-3. **b2b:** remote sign-in through wl-works (XC-015), and a stop that jumps the command queue
+   not be running inside the folder it moves**: start it from `~/GitHub`. Then reinstall the
+   package from the new folder (`pip install -e '.[dev,contract,console]'`): an editable install
+   records the old absolute path, and `wlx` breaks until it is redone.
+2. **b2b:** remote sign-in through wl-works (XC-015), and a stop that jumps the command queue
    (XC-121).
 
 XC-142 (the sibling renames, `wl-exptasks` and `wl-expviz`, still in our code and documents),
@@ -414,6 +412,14 @@ XC-145 (a missing settings path is a traceback) are taken when convenient.
   of the half-IPD range; the "try `--view stereoscope`" pointer appears only for a task written
   for either setup.
 - **Tests: 1557 passed**, `WLX_REQUIRE_PREPROC=1`, at the branch tip.
+- **On `main` since 2026-09-29 (`6032946..14658e5`, a fast-forward, carrying check 8's commits
+  too)**, after the branch's push run `36554427030` read green shard by shard: pytest `1557
+  passed` on 3.11, 3.12 and 3.13; the gate selected the 11 modules the branch changed or whose
+  test files it changed (`calibration`, `check`, `cli`, `gaze`, `geometry`, `link`, `record`,
+  `serve`, `task`, `taskd`, `web`) and caught **332, 0 survived**, every line a plain `N failed`
+  except `serve.__init__`'s errors beside its real failures, every baseline and restore at
+  `1557 passed`. The 2026-09-29 nightly started at 09:57 UTC, before the rename reached `main`,
+  so it describes `561254b`.
 
 ### Check 8 fails closed
 
