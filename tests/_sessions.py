@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from pathlib import Path
 
 from _rig import DIRECT
 from wl_xcon.bounds import Bounds, Ceiling, Floor
@@ -64,3 +65,27 @@ def typed(seconds_before: float) -> str:
     return datetime.fromtimestamp(WALL - seconds_before).astimezone().isoformat(
         timespec="seconds"
     )
+
+
+def whole_point_task(folder: Path) -> Path:
+    """A task `check()` itself raises on, written into `folder` as `whole_point.py`: the
+    reference task with its target window placed at a whole-point parameter (a legal
+    form) and a fixation break its target could overlap. `check`'s overlap test
+    unpacks the window's place as a pair and raises `TypeError` (XC-156, filed on main,
+    not fixed here): what a pre-flight must turn into a fail rather than pass on."""
+    text = Path("tasks/fixation_detection.py").read_text()
+    for old, new in (
+        ('            "target",\n            at=(P("target_position"), 0.0),',
+         '            "target",\n            at=P("target_point"),'),
+        ('        Param("target_position", unit="deg", low=-16.0, high=16.0),',
+         '        Param("target_position", unit="deg", low=-16.0, high=16.0),\n'
+         '        Param("target_point", unit="deg", choices=((10.0, 0.0), (-10.0, 0.0))),'),
+        ('                On(SaccadeTo("target"), "verify", do=[Mark(4098)]),',
+         '                On(SaccadeTo("target"), "verify", do=[Mark(4098)]),\n'
+         '                On(Exited("fix"), Outcome.FIXATION_BREAK),'),
+    ):
+        assert text.count(old) == 1, old
+        text = text.replace(old, new)
+    path = Path(folder) / "whole_point.py"
+    path.write_text(text)
+    return path

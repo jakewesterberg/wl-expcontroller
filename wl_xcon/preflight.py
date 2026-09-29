@@ -53,8 +53,10 @@ def _said(refused: SystemExit, path: Path) -> str:
 
 
 def task(path: Path, allocation, geometry) -> tuple[PreflightItem, Trial | None]:
-    """The task's load-time checks in the session's setup: **fail** if it will not load
-    or any finding blocks. Returns the loaded `Trial` too, for `values`."""
+    """The task's load-time checks in the session's setup: **fail** if it will not load,
+    if its checks do not finish, or if any finding blocks. Returns the loaded `Trial`
+    too, for `values`. **Nothing a task file does raises out of here**: the service
+    takes a pre-flight on every check and start, and a raise there would end it."""
     try:
         trial = _load_trial(path)
     except SystemExit as refused:
@@ -66,7 +68,21 @@ def task(path: Path, allocation, geometry) -> tuple[PreflightItem, Trial | None]
             ),
             None,
         )
-    blocking = [f for f in check(trial, allocation, geometry=geometry) if f.blocking]
+    try:
+        blocking = [f for f in check(trial, allocation, geometry=geometry) if f.blocking]
+    except Exception as broken:  # noqa: BLE001 -- the checks run on code; their fault is this item's
+        # Fix round 1 of Task 8: `check` can raise on a task shape it does not expect
+        # (XC-156), and a pre-flight that raised took `wlx taskd` down with the animal
+        # out. A check that did not finish has not passed, so it fails.
+        return (
+            PreflightItem(
+                TASK_CHECKS,
+                FAIL,
+                f"{path.name}'s load-time checks did not finish: "
+                f"{type(broken).__name__}: {broken}",
+            ),
+            trial,
+        )
     if blocking:
         return (
             PreflightItem(

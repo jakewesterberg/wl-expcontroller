@@ -110,9 +110,9 @@ into `runs.jsonl` — and a mistake in it lets a run start that should not.
 
 **`stranded.py`, `Welfare.restore_departure`, and `service.Service._open`, `_end` (with
 `_unended`, its refusals before anything is marked, which a run in progress asks too, so an
-End that would be refused never stops a run) and `_close_stranded`** (P4d-2b b3a): the rule
-that no session opens while an animal's return is missing from the record, how such a
-session is found and its return taken, and the page's route into the two marks.
+End refused before anything is marked never stops a run) and `_close_stranded`** (P4d-2b
+b3a): the rule that no session opens while an animal's return is missing from the record,
+how such a session is found and its return taken, and the page's route into the two marks.
 `restore_departure` reads back a recorded departure without `left_cage`'s refusals, which
 were applied when it was taken; a mistake in any of
 these leaves an animal out of its cage with nothing saying so, or records its return

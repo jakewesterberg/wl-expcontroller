@@ -47,6 +47,18 @@ def test_a_task_file_that_does_not_load_fails_rather_than_raising(tmp_path, text
     assert item.result == "fail" and said in item.said and trial is None
 
 
+def test_a_task_whose_checks_raise_on_it_fails_rather_than_raising(tmp_path):
+    """Fix round 1 of Task 8: a task file is code, and `check()` is run on it -- and can
+    raise on a shape it does not expect (XC-156). Its fault is this item's, as a failed
+    load is, and never the caller's: the service reached this on every check and start,
+    and nothing above it contained the exception."""
+    item, trial = preflight.task(_sessions.whole_point_task(tmp_path), ALLOCATION, DIRECT)
+
+    assert (item.name, item.result) == ("task checks", "fail")
+    assert item.said.startswith("whole_point.py's load-time checks did not finish: TypeError: ")
+    assert trial is not None, "it loaded; its checks did not finish"
+
+
 @pytest.mark.parametrize(
     ("given", "result", "said"),
     [

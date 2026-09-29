@@ -18,7 +18,7 @@ import pytest
 
 from _rig import PATH as RIG_FILE
 from _rig import RIG
-from _sessions import WALL, typed
+from _sessions import WALL, typed, whole_point_task
 from _zmq_release import _every_zmq_context_released  # noqa: F401
 from wl_xcon.cli import _load_allocation, main
 from wl_xcon.bounds import Exceeded
@@ -834,6 +834,28 @@ def test_a_check_shows_the_runs_preflight_and_starts_nothing(tmp_path):
         ("task checks", "pass"), ("starting values", "pass"), ("bounded config", "pass"),
         ("out of cage", "pass"), ("pump calibration", "unknown"), ("eye tracker", "unknown"),
     ]
+    assert _runs(service.root) == [] and service.session.card.codes == [4128], "nothing ran"
+
+
+def test_a_task_the_checks_raise_on_fails_its_preflight_and_the_service_goes_on(tmp_path):
+    """Fix round 1 of Task 8: `check()` raising on an offered task (XC-156) went out of
+    `step` uncaught, and `wlx taskd` ended with the animal out of its cage. It is the
+    task checks item's fail now: shown by a check, refused on a start, and the next
+    command served."""
+    service = _service(tmp_path)
+    whole_point_task(service.tasks)
+    _step(service, _open())
+
+    checked = _step(service, CheckRun(by=BY, task="whole_point.py", values={}))
+    started = _step(service, _start(task="whole_point.py"))
+    ended = _step(service, _end())
+
+    assert "whole_point.py" in checked.offered_tasks
+    items = {i.name: i for i in checked.preflight.items}
+    assert items["task checks"].result == "fail" and "TypeError" in items["task checks"].said
+    assert started.run_index is None and _runs(service.root) == []
+    assert "pre-flight failed, so the run does not start: task checks: " in _refused(started)[-1]
+    assert isinstance(ended, Idle) and _kinds(service.root)[-2:] == ["returned", "session ended"]
 
 
 def test_a_run_whose_unknowns_nobody_acknowledged_does_not_start(tmp_path):
@@ -1254,6 +1276,32 @@ def test_a_run_its_session_refuses_as_it_starts_is_a_refusal_and_runs_nothing(
     )
     assert service.session.card.codes == [4128] and _runs(service.root) == []
     assert capsys.readouterr().err == ""
+
+
+def test_a_run_that_fails_before_it_starts_says_why_on_the_feed_and_on_stderr(
+    tmp_path, monkeypatch, capsys
+):
+    """Fix round 1 of Task 8: anything else raised before a run starts -- here its task,
+    edited to fail at import between the pre-flight and the run -- is said on the feed as
+    a start refusal, so a page shows why no run started, and on stderr, since it is not
+    one of the refusals `Session.run` means to make. Nothing is strobed or written."""
+    from wl_xcon import taskd
+
+    def broken(path):
+        raise RuntimeError("the task file changed under the run")
+
+    monkeypatch.setattr(taskd, "_load_trial", broken)
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start())
+
+    assert (frame.phase, frame.run_index) == ("between_runs", None)
+    assert (frame.refusals[-1].name, frame.refusals[-1].why) == (
+        "start", "the run did not start: RuntimeError: the task file changed under the run",
+    )
+    assert "RuntimeError: the task file changed under the run" in capsys.readouterr().err
+    assert service.session.card.codes == [4128] and _runs(service.root) == []
 
 
 def test_a_reward_size_changed_in_one_run_is_where_the_next_run_starts(tmp_path):

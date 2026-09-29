@@ -692,17 +692,24 @@ class Service:
         make among them -- `run()` has published and written into the run's end row;
         the session is back between runs with the animal still out, and the traceback
         goes to this process's stderr; the service goes on, so the return can be taken.
-        Ctrl-C is not caught: `wlx taskd` ends on it."""
+        **One raised before the run started** (fix round 1 of Task 8) -- a task edited to
+        fail between its pre-flight and its run -- goes to stderr too, and is a start
+        refusal on the feed, so a page shows why no run started. Ctrl-C is not caught:
+        `wlx taskd` ends on it."""
         session = self.session
         before = session.run_index
         try:
             session.run(run, preflight_rows=rows, by=by)
         except (SystemExit, Exception) as ended:  # noqa: BLE001 -- see the docstring
-            refused = isinstance(ended, (SystemExit, Exceeded)) and session.run_index == before
-            if refused:
+            if session.run_index != before:
+                traceback.print_exc(file=sys.stderr)
+            elif isinstance(ended, (SystemExit, Exceeded)):
                 session.refuse("start", by, _sentence(ended))
             else:
                 traceback.print_exc(file=sys.stderr)
+                session.refuse(
+                    "start", by, f"the run did not start: {type(ended).__name__}: {ended}"
+                )
 
     # --- ending ---------------------------------------------------------------------
 
@@ -771,7 +778,10 @@ class Service:
         of the open session, or `None`: it names another session, or it confirms a
         return nobody was asked about (`_unasked`). Asked by `_end`, before anything is
         marked, and by `_Routed` during a run, before anything is stopped -- one rule
-        for both, so an End that would be refused never stops this animal's run."""
+        for both, so an End refused before anything is marked never stops this animal's
+        run. An End whose return time `_end` refuses later -- one it cannot read, or a
+        far one sent unconfirmed, which poses a question -- has stopped the run by then,
+        as between runs it has ended them."""
         session = self.session
         if command.session_id not in (None, session.spec.session_id):
             return (
