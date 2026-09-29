@@ -18,11 +18,13 @@ import pytest
 
 from _rig import PATH as RIG_FILE
 from _rig import RIG
-from _sessions import WALL, typed, whole_point_task
+from _sessions import WALL, malformed_task, typed, whole_point_task
 from _zmq_release import _every_zmq_context_released  # noqa: F401
+from wl_xcon import preflight
 from wl_xcon.cli import _load_allocation, main
 from wl_xcon.bounds import Exceeded
 from wl_xcon.link import (
+    REFUSAL_HISTORY,
     CheckRun,
     EndSession,
     Idle,
@@ -858,6 +860,87 @@ def test_a_task_the_checks_raise_on_fails_its_preflight_and_the_service_goes_on(
     assert items["task checks"].result == "fail" and "TypeError" in items["task checks"].said
     assert started.run_index is None and _runs(service.root) == []
     assert "pre-flight failed, so the run does not start: task checks: " in _refused(started)[-1]
+    assert isinstance(ended, Idle) and _kinds(service.root)[-2:] == ["returned", "session ended"]
+
+
+def test_a_task_whose_declarations_are_malformed_fails_its_preflight_and_the_service_goes_on(
+    tmp_path,
+):
+    """The b3a-1 final review, Important 1: a bound typed as text passes `check()`, and
+    the starting values' comparison with it raised out of `step` -- `wlx taskd` recorded
+    "return not recorded" and ended, mid-session, on an ordinary check. It is the
+    starting values item's fail now, and the session stays open between runs."""
+    service = _service(tmp_path)
+    malformed_task(service.tasks)
+    _step(service, _open())
+
+    checked = _step(service, CheckRun(by=BY, task="malformed.py", values={"fix_hold": 0.3}))
+    started = _step(service, _start(task="malformed.py", values={"fix_hold": 0.3}))
+    codes = list(service.session.card.codes)
+    ended = _step(service, _end())
+
+    items = {i.name: i for i in checked.preflight.items}
+    assert items["task checks"].result == "pass", "check() does not compare a bound"
+    assert items["starting values"].result == "fail"
+    assert "'fix_hold' could not be checked against its declaration: TypeError" in (
+        items["starting values"].said
+    )
+    assert (started.phase, started.run_index) == ("between_runs", None)
+    assert _runs(service.root) == [] and codes == [4128], "nothing ran"
+    assert "pre-flight failed, so the run does not start: starting values: " in (
+        _refused(started)[-1]
+    )
+    assert isinstance(ended, Idle) and _kinds(service.root)[-2:] == ["returned", "session ended"]
+
+
+#: What a check of the reference task shows, item by item, when nothing raises.
+CHECKED = {
+    "task checks": "pass", "starting values": "pass", "bounded config": "pass",
+    "out of cage": "pass", "pump calibration": "unknown", "eye tracker": "unknown",
+}
+
+
+@pytest.mark.parametrize(
+    ("builder", "names"),
+    [
+        ("task", ("task checks",)),
+        ("values", ("starting values",)),
+        ("files", ("bounded config",)),
+        ("out_of_cage", ("out of cage",)),
+        ("unmeasured", ("pump calibration", "eye tracker")),
+    ],
+)
+def test_an_item_whose_check_raises_fails_by_its_name_and_the_service_goes_on(
+    tmp_path, monkeypatch, builder, names
+):
+    """The b3a-1 final review's ruling: whatever raises while one item is built -- today's
+    items or one a later change adds -- is that item's fail, under its own name, so a
+    check or a start never ends `wlx taskd` through its pre-flight. The out-of-cage item
+    keeps its name when its own check raises, so the gate sees it and blocks on the
+    fail, never on its absence. The other items still show."""
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("broken on purpose")
+
+    monkeypatch.setattr(preflight, builder, broken)
+
+    checked = _step(service, CheckRun(by=BY, task=TASK, values=dict(VALUES)))
+    started = _step(service, _start())
+    ended = _step(service, _end())
+
+    shown = {i.name: i for i in checked.preflight.items}
+    assert list(shown) == list(CHECKED), "every item shows, in its place"
+    for name in names:
+        assert shown[name].result == "fail"
+        assert "RuntimeError: broken on purpose" in shown[name].said
+    for name, result in CHECKED.items():
+        if name not in names and not (builder == "task" and name == "starting values"):
+            assert shown[name].result == result, name
+    assert (started.phase, started.run_index) == ("between_runs", None)
+    assert f"pre-flight failed, so the run does not start: {names[0]}: " in _refused(started)[-1]
+    assert _runs(service.root) == []
     assert isinstance(ended, Idle) and _kinds(service.root)[-2:] == ["returned", "session ended"]
 
 

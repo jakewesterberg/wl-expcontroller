@@ -183,6 +183,28 @@ def _unasked(
     )
 
 
+def _unfinished(names: tuple[str, ...], broken: BaseException) -> tuple:
+    """A fail for each of `names`, the pre-flight items whose check raised `broken`."""
+    return tuple(
+        _link.PreflightItem(
+            name,
+            _preflight.FAIL,
+            f"this item's check did not finish: {type(broken).__name__}: {broken}",
+        )
+        for name in names
+    )
+
+
+def _contained(names: tuple[str, ...], build: Callable[[], object]) -> tuple:
+    """The items `build` returns -- one, or a list -- or, if it raises, a fail for each
+    of `names` (`Service._preflight`)."""
+    try:
+        built = build()
+    except Exception as broken:  # noqa: BLE001 -- `Service._preflight`'s docstring
+        return _unfinished(names, broken)
+    return tuple(built) if isinstance(built, list) else (built,)
+
+
 #: The service's own commands: taken between runs, never handed to a run.
 _SERVICE_COMMANDS = (_link.OpenSession, _link.CheckRun, _link.StartRun, _link.EndSession)
 
@@ -623,19 +645,41 @@ class Service:
 
     def _preflight(self, session: Session, task: Path, values: dict) -> _link.Preflight:
         """Spec §6.2's items, taken now, in order -- the out-of-cage item always among
-        them, since `preflight.gate` refuses a pre-flight without it."""
-        item, trial = _preflight.task(task, self.allocation, session.spec.geometry)
+        them, since `preflight.gate` refuses a pre-flight without it.
+
+        **Whatever raises while one item is checked is that item's fail** (the b3a-1
+        final review's ruling), under the item's own name, and the other items are
+        still taken: a check or a start never ends the service through its pre-flight,
+        whatever item a later change adds. The out-of-cage item keeps its name when its
+        own check raises, so the gate blocks on its fail, never on its absence."""
         settings = Path(session.spec.subject_settings) if session.spec.subject_settings else None
+        try:
+            item, trial = _preflight.task(task, self.allocation, session.spec.geometry)
+            checked = (item,)
+        except Exception as broken:  # noqa: BLE001 -- see the docstring
+            checked, trial = _unfinished((_preflight.TASK_CHECKS,), broken), None
         return _link.Preflight(
             task=task.name,
             items=(
-                item,
-                _preflight.values(trial, values),
-                *_preflight.files(
-                    Path(session.spec.bounds_config), session.spec.subject, settings, self.rig
+                *checked,
+                *_contained(
+                    (_preflight.STARTING_VALUES,), lambda: _preflight.values(trial, values)
                 ),
-                _preflight.out_of_cage(session),
-                *_preflight.unmeasured(session.pump),
+                *_contained(
+                    (_preflight.BOUNDED_CONFIG,)
+                    + (() if settings is None else (_preflight.SUBJECT_SETTINGS,)),
+                    lambda: _preflight.files(
+                        Path(session.spec.bounds_config), session.spec.subject, settings,
+                        self.rig,
+                    ),
+                ),
+                *_contained(
+                    (_preflight.OUT_OF_CAGE_MARK,), lambda: _preflight.out_of_cage(session)
+                ),
+                *_contained(
+                    (_preflight.PUMP_CALIBRATION, _preflight.EYE_TRACKER),
+                    lambda: _preflight.unmeasured(session.pump),
+                ),
             ),
         )
 

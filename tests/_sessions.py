@@ -89,3 +89,17 @@ def whole_point_task(folder: Path) -> Path:
     path = Path(folder) / "whole_point.py"
     path.write_text(text)
     return path
+
+
+def malformed_task(folder: Path) -> Path:
+    """A task whose declaration `values` could not compare against, written into `folder`
+    as `malformed.py`: the reference task with `fix_hold`'s lower bound typed as text.
+    `Param` does not check its fields and `check()` never compares a bound, so it loads
+    and passes its checks -- and a starting value held against that bound raised
+    `TypeError` out of the pre-flight (the b3a-1 final review, Important 1)."""
+    text = Path("tasks/fixation_detection.py").read_text()
+    old = 'Param("fix_hold", unit="s", low=0.05, high=2.0),'
+    assert text.count(old) == 1, old
+    path = Path(folder) / "malformed.py"
+    path.write_text(text.replace(old, 'Param("fix_hold", unit="s", low="0.05", high=2.0),'))
+    return path

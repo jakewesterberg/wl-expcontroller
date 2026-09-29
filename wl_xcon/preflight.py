@@ -55,8 +55,10 @@ def _said(refused: SystemExit, path: Path) -> str:
 def task(path: Path, allocation, geometry) -> tuple[PreflightItem, Trial | None]:
     """The task's load-time checks in the session's setup: **fail** if it will not load,
     if its checks do not finish, or if any finding blocks. Returns the loaded `Trial`
-    too, for `values`. **Nothing a task file does raises out of here**: the service
-    takes a pre-flight on every check and start, and a raise there would end it."""
+    too, for `values`. **Nothing a task file does raises out of here**, nor out of
+    `values`; and the service contains whatever any item's check raises
+    (`Service._preflight`), since it takes a pre-flight on every check and start and a
+    raise there would end it."""
     try:
         trial = _load_trial(path)
     except SystemExit as refused:
@@ -103,33 +105,52 @@ def task(path: Path, allocation, geometry) -> tuple[PreflightItem, Trial | None]
 
 def values(trial: Trial | None, given: dict) -> PreflightItem:
     """A run's starting values against the task's own declarations: **fail** for a name
-    it does not declare, a word where it takes a number, a number outside its range, or
-    a choice it does not offer. Starting values are the task's own (spec §6.2); they
-    arrive from a console, so they are checked as `Session.set` checks a live one,
-    non-finite numbers included."""
+    it does not declare, a word where it takes a number, a number outside its range, a
+    choice it does not offer, or a declaration it cannot be compared with. Starting
+    values are the task's own (spec §6.2); they arrive from a console, so they are
+    checked as `Session.set` checks a live one, non-finite numbers included. **Nothing a
+    task's declarations hold raises out of here.**"""
     if trial is None:
         return PreflightItem(
             STARTING_VALUES, FAIL, "the task did not load, so its values cannot be checked"
         )
-    declared = {param.name: param for param in trial.params}
+    try:
+        declared = {param.name: param for param in trial.params}
+    except Exception as broken:  # noqa: BLE001 -- a task's declarations are code's output
+        return PreflightItem(
+            STARTING_VALUES,
+            FAIL,
+            f"the task's parameter declarations could not be read: "
+            f"{type(broken).__name__}: {broken}",
+        )
     wrong = []
     for name, value in given.items():
         param = declared.get(name)
-        if param is None:
-            wrong.append(f"{name!r} is not a parameter this task declares")
-        elif param.choices:
-            if value not in param.choices:
-                wrong.append(f"{name!r} may only be one of {param.choices}")
-        elif isinstance(value, bool) or not isinstance(value, (int, float)):
-            wrong.append(f"{name!r} takes a number ({param.unit}), and {value!r} is not one")
-        elif not math.isfinite(value):
-            wrong.append(f"{name!r} is {value!r}, which is not a real number")
-        elif (param.low is not None and value < param.low) or (
-            param.high is not None and value > param.high
-        ):
+        # **Fails closed per value** (the b3a-1 final review, Important 1): `Param` checks
+        # none of its fields, so a bound typed as text or `choices` that are not a
+        # collection pass `check()` and raise here -- and a raise out of a pre-flight
+        # ended `wlx taskd` with the animal out. It fails this value and names it.
+        try:
+            if param is None:
+                wrong.append(f"{name!r} is not a parameter this task declares")
+            elif param.choices:
+                if value not in param.choices:
+                    wrong.append(f"{name!r} may only be one of {param.choices}")
+            elif isinstance(value, bool) or not isinstance(value, (int, float)):
+                wrong.append(f"{name!r} takes a number ({param.unit}), and {value!r} is not one")
+            elif not math.isfinite(value):
+                wrong.append(f"{name!r} is {value!r}, which is not a real number")
+            elif (param.low is not None and value < param.low) or (
+                param.high is not None and value > param.high
+            ):
+                wrong.append(
+                    f"{name!r} is declared over [{param.low}, {param.high}] {param.unit} and "
+                    f"{value} is outside it"
+                )
+        except Exception as broken:  # noqa: BLE001 -- see above
             wrong.append(
-                f"{name!r} is declared over [{param.low}, {param.high}] {param.unit} and "
-                f"{value} is outside it"
+                f"{name!r} could not be checked against its declaration: "
+                f"{type(broken).__name__}: {broken}"
             )
     if wrong:
         return PreflightItem(STARTING_VALUES, FAIL, "; ".join(wrong))
