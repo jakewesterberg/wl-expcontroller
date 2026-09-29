@@ -1530,7 +1530,13 @@ class _Rig:
 
     def __enter__(self) -> "_Rig":
         self.thread.start()
-        self.seen(lambda frame: True)  # the subscription is live
+        try:
+            self.seen(lambda frame: True)  # the subscription is live
+        except BaseException:
+            # `with` does not call `__exit__` when `__enter__` raises: stop the service here,
+            # or its thread keeps its ports until the process ends.
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, *exc_info) -> None:
@@ -1675,3 +1681,41 @@ def test_e2e_the_departure_and_the_return_meet_the_terminals_rules_over_the_wire
     kinds = _kinds(rig.folders[2])
     assert kinds == ["departure", "departure confirmed", "session opened", "returned",
                      "return confirmed", "session ended"]
+
+
+def test_e2e_a_departure_past_the_ceiling_is_refused_by_welfares_sentence_and_marks_nothing(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5, through the service over the wire: no question, no session folder."""
+    with _Rig(tmp_path, monkeypatch, zmq_cleanup, bounds=TEN_MINUTES) as rig:
+        rig.send(_open(departure=_now(900)))
+        refused = rig.seen(lambda f: isinstance(f, Idle) and any("at or outside the limit" in r.why for r in f.refusals))
+
+    assert refused.question is None
+    assert list(rig.folders[2].iterdir()) == []
+
+
+def test_e2e_an_amendment_with_no_reason_or_no_sender_is_refused_and_marks_nothing(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5. The amendment's actor is the command's `by`, which the wire's `_actor`
+    refuses when blank before the service sees it, so a blank name is refused there (the
+    link's sentence) and a blank reason by `welfare.amend_mark` (the service's)."""
+    with _Rig(tmp_path, monkeypatch, zmq_cleanup) as rig:
+        far = _now(9 * 3600)
+        amend = dict(departure=far, answer="amend", amend_to=_now(600))
+        rig.send(_open(departure=far))
+        rig.seen(lambda f: isinstance(f, Idle) and f.question is not None)
+        rig.send(_open(amend_reason="", **amend))
+        no_reason = rig.seen(lambda f: isinstance(f, Idle) and any("no reason" in r.why for r in f.refusals))
+        rig.send(_open(by="  ", amend_reason="typed 09:30 for 17:30", **amend))
+        no_sender = rig.seen(lambda f: isinstance(f, Idle) and any("must say who sent it" in r.why for r in f.refusals))
+        assert no_reason.question is not None and no_sender.question is not None
+        assert list(rig.folders[2].iterdir()) == []
+        rig.send(_open(amend_reason="typed 09:30 for 17:30", **amend))
+        rig.seen(_between)
+        rig.send(_end())
+        rig.seen(lambda f: isinstance(f, Idle))
+
+    assert _kinds(rig.folders[2]) == ["departure", "departure amended", "session opened",
+                                      "returned", "session ended"]
