@@ -1213,11 +1213,12 @@ _TASK_SETS = [
 E2E_TRIAL_BUDGET = 20_000
 
 
-def _trial_budget(monkeypatch, allowed: int) -> None:
+def _trial_budget(monkeypatch, allowed: int, pace_s: float = 0.0) -> None:
     """Fail the session a test starts once it has run `allowed` trials: `taskd`'s
     `run_trial` raises past that, so the session faults, publishes that it did, and
     `wlx run` ends -- `tests/test_cli.py`'s budget, for the tests here that run a
-    session. The session's own clocks stay under test."""
+    session. The session's own clocks stay under test. `pace_s` sleeps before each
+    trial (`CONTROL_TRIAL_PACE_S` says why)."""
     from wl_expcontroller import taskd
 
     real, left = taskd.run_trial, [allowed]
@@ -1229,6 +1230,8 @@ def _trial_budget(monkeypatch, allowed: int) -> None:
                 "this session has run more trials than its budget "
                 "(tests/test_serve.py, Ruling 10): nothing ended it"
             )
+        if pace_s:
+            time.sleep(pace_s)
         return real(*args, **kwargs)
 
     monkeypatch.setattr(taskd, "run_trial", run_trial)
@@ -2966,7 +2969,26 @@ MARKERS = {34, 35, 36, 37, 38}
 #: -- `taskd.Session._command` neutered -- held each of these tests past 50 s, its 20 s
 #: frame wait and then its 30 s join, and the suite past the mutation harness's 300 s:
 #: a timeout, which no test noticed.
-CONTROL_TRIAL_BUDGET = 1_000
+#:
+#: **400, with each trial paced** (after `main`'s run `36497082927`, 2026-09-29). There,
+#: the mark end to end failed once in a restore run, on unmutated code, with "wlx run
+#: had ended": the budget ran out before the console showed what the test waited for.
+#: The simulator runs trials unpaced, a few hundred frames a second, and `wlx serve`'s
+#: telemetry thread handles every frame in turn. So a runner slow enough leaves the
+#: console's latest frame behind a session producing at nearly the rate the thread can
+#: take, and it may not catch up before the budget ends the session. Scratch probes
+#: on copies of the tree, 2026-09-29, two runs each of the thirteen end to end tests:
+#: - unpaced, with every frame the console takes delayed 20 ms, failed 3 and then 1;
+#: - paced at 5 ms, under the same delay, failed none.
+#: Each sleep also releases the GIL to the threads a test's commands pass through. The
+#: budget comes down with the pacing so that a broken command path still fails these
+#: tests in a few seconds. With `taskd.Session._command` mutated, the harness's run
+#: took 171 s paced and 155 s unpaced locally, against its 300 s limit.
+CONTROL_TRIAL_BUDGET = 400
+
+#: How long each trial of these sessions sleeps before it runs (see
+#: `CONTROL_TRIAL_BUDGET`). Housekeeping for the simulator, not a trial duration.
+CONTROL_TRIAL_PACE_S = 0.005
 
 #: How long `_Session.frame` still waits once `wlx run` has ended, for the last frame
 #: it published to reach the console.
@@ -3007,7 +3029,7 @@ class _Session:
                  session_id="2027-01-14_21", cleanup=None):
         from wl_expcontroller import dio
 
-        _trial_budget(monkeypatch, CONTROL_TRIAL_BUDGET)
+        _trial_budget(monkeypatch, CONTROL_TRIAL_BUDGET, pace_s=CONTROL_TRIAL_PACE_S)
         self.cards: list = []
         cards = self.cards
 

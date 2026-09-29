@@ -442,6 +442,16 @@ The brainstorms XC-001 and XC-002 are taken when convenient. wl-works' rename co
     - `serve.__init__` reads `130 failed ... 34 errors`, a real catch with errors beside it.
 - **The ledger's open items moved to the backlog** before the plan's workspace was deleted:
   XC-113 to XC-121 and XC-123 to XC-140, each checked against the code.
+- **After the merge, `main`'s own run on `74410f9` (`36497082927`):**
+  - pytest was `1508 passed` on 3.11, 3.12 and 3.13.
+  - Its unsharded push gate re-swept the eight modules b2a changed and hit GitHub's
+    360-minute job limit. It was cancelled at 200 caught, 0 survived (XC-141).
+  - In one of its restore runs, the mark end to end failed on unmutated code: "wlx run
+    had ended". The simulated sessions ran unpaced and `wlx serve`'s telemetry thread
+    takes every frame, so a slow runner left the console behind until the trial budget
+    ran out.
+  - The commit that adds this bullet paces those sessions at 5 ms a trial with a budget of 400. The
+    probes and the mutation cost are in `CONTROL_TRIAL_BUDGET`'s comment.
 
 ---
 
