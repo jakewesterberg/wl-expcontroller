@@ -443,7 +443,9 @@ The brainstorms XC-001 and XC-002 are taken when convenient. wl-works' rename co
     - NOT MUTABLE: `welfare.emit` and `run.display`, both protocol stubs;
     - `serve.__init__` reads `130 failed ... 34 errors`, a real catch with errors beside it.
 - **The ledger's open items moved to the backlog** before the plan's workspace was deleted:
-  XC-113 to XC-121 and XC-123 to XC-140, each checked against the code.
+  XC-113 to XC-121 and XC-123 to XC-140, each checked against the code. The ledger, the
+  reviews and the browser report are archived (git-ignored, local to this machine) in
+  `.superpowers/archive/b2a/ledger-archive/`.
 - **After the merge, `main`'s own run on `74410f9` (`36497082927`):**
   - pytest was `1508 passed` on 3.11, 3.12 and 3.13.
   - Its unsharded push gate re-swept the eight modules b2a changed and hit GitHub's
@@ -473,8 +475,8 @@ The brainstorms XC-001 and XC-002 are taken when convenient. wl-works' rename co
   run on the rig's own settings until the sensor housings are measured at build** (spec §9 item 1;
   `tasks/rig.py`'s NOT YET MEASURED). **Part 2 is next after b2a merges** (`wlx run --view`, the
   geometry into `taskd`'s and `wlx check`'s load-time checks, the session record, a telemetry
-  field). Its plan inherits the final review's carries, archived in the session scratchpad's
-  `direct-view-1/ledger-archive/progress.md` ("CARRY to direct view part 2"): `Stimulus(at=P(...))`
+  field). Its plan inherits the final review's carries, archived (git-ignored, local to this machine) in
+  `.superpowers/archive/direct-view-1/ledger-archive/progress.md` ("CARRY to direct view part 2"): `Stimulus(at=P(...))`
   crashes check 8 (TypeError) and must be fixed before `taskd` gets a geometry; `Update(at/disparity)`
   escapes check 8; choices-only position params read as 0; a missing geometry must fail loudly.
 - **b2a** (`p4d2b-b2a-controls`, worktree `.claude/worktrees/p4d2b-b2a`): Tasks 1–12 complete and
