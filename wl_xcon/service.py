@@ -390,7 +390,16 @@ class Service:
 
     def _route(self, command) -> None:
         if isinstance(command, _link.OpenSession):
+            idle = self.session is None
             self._open(command)
+            if idle and self.session is not None:
+                # **The idle feed starts afresh with each session** (the b3a-1 final
+                # review, Minor 7): its refusals were about the time before this one --
+                # "send it again answering confirm" among them -- and shown again once
+                # the session closed, they would read as pending. While it is open,
+                # refusals go to its own feed (`_refuse`).
+                self.refusals.clear()
+                self.refusals_dropped = 0
         elif isinstance(command, _link.EndSession):
             self._end(command)
         elif isinstance(command, _link.CheckRun):

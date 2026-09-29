@@ -289,6 +289,22 @@ def test_an_answered_question_is_gone_from_the_idle_frame_after_its_session(tmp_
     assert isinstance(idle, Idle) and idle.question is None
 
 
+def test_the_idle_frames_refusals_start_fresh_with_each_session(tmp_path):
+    """The b3a-1 final review, Minor 7: a refusal from before a session -- "send it again
+    answering confirm" among them -- still showed on the idle frame after that session
+    closed, reading as something pending. Each session's opening starts the idle feed
+    afresh; while it is open, refusals go to its own feed."""
+    service = _service(tmp_path)
+    before = _step(service, *[Pause(by=BY)] * REFUSAL_HISTORY, _open(answer="confirm"))
+    assert before.refusals_dropped == 1 and "none is owed" in _refused(before)[-1]
+
+    _step(service, _open())
+    after = _step(service, _end())
+
+    assert isinstance(after, Idle)
+    assert (after.refusals, after.refusals_dropped) == ((), 0)
+
+
 def test_a_far_departure_amended_on_the_page_is_marked_at_the_corrected_time(tmp_path):
     """Asked first: an amendment answers the warning (Ruling 1 of the b3a-1 review)."""
     service = _service(tmp_path)
