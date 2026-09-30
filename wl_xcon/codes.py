@@ -61,7 +61,15 @@ class Allocation:
 #: `Marker` values transcribed from `wl-preproc/wl_preproc/contracts/events.py`,
 #: which is frozen and carries an explicit warning that renumbering silently
 #: relabels every prior recording. Mirrored rather than imported so the rig carries
-#: no pipeline dependency; the round-trip tests keep the mirror honest.
+#: no pipeline dependency; the round-trip tests keep the mirror honest
+#: (`tests/test_event_encoding.py` reads each value here against theirs).
+#:
+#: **`TRIAL_START` and `TRIAL_END` frame every trial, and the framework strobes them**
+#: (XC-155): `taskd.Session.run` puts `TRIAL_START` and the trial's `TRIAL_NUMBER`
+#: escape before the trial's first frame, and `TRIAL_END` after its outcome marker.
+#: wl-preproc opens a trial at the one and closes it at the other
+#: (`events/assemble.py`), so a stream without them holds no trials at all. Public,
+#: unlike the five outcome markers, since `taskd` strobes them by name.
 #:
 #: **`NO_FIXATION` maps to `TRIAL_ABORT`, and that loses information on purpose.**
 #: There is no dedicated marker for it, and asking for one would put a task-level
@@ -69,6 +77,8 @@ class Allocation:
 #: an abort happened is carried by a `TaskEvent` strobed just before the marker --
 #: identity and timing in the stream, the specific meaning in our own range. Any
 #: analysis distinguishing abort kinds reads the pair, not the marker alone.
+TRIAL_START = 32
+TRIAL_END = 33
 _TRIAL_CORRECT = 34
 _TRIAL_ERROR = 35
 _TRIAL_ABORT = 36

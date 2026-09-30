@@ -16,11 +16,18 @@ from __future__ import annotations
 WORD_MASK = 0xFFFF
 
 
+#: The two escapes whose payload is one uint32, by `wl-preproc`'s names. `taskd`
+#: strobes each trial's number behind `TRIAL_NUMBER` (XC-155). `CONDITION` is framed
+#: here and emitted by nothing yet: it waits on the conditions the day's plan brings
+#: (XC-150), and on who numbers them, decided then.
+TRIAL_NUMBER = 0x8001
+CONDITION = 0x8003
+
 #: Payload word counts, mirroring `wl-preproc`'s `PAYLOAD_WORD_COUNTS`. Mirrored
 #: rather than imported so the rig carries no pipeline dependency; the round-trip
 #: tests are what keep the mirror honest, and a drift fails there rather than in a
 #: recording.
-_UINT32_ESCAPES = (0x8001, 0x8003)  # TRIAL_NUMBER, CONDITION
+_UINT32_ESCAPES = (TRIAL_NUMBER, CONDITION)
 
 #: Their range allocation: 32768+ introduces a multi-word payload. Any word at or
 #: above this is structural, never a plain code.

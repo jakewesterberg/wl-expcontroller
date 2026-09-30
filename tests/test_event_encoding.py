@@ -10,7 +10,7 @@ import os
 import pytest
 
 #: CI sets this. A skip is the right behaviour on a laptop without the sibling
-#: checkout and the **wrong** behaviour in CI, where these nine tests are the only
+#: checkout and the **wrong** behaviour in CI, where these tests are the only
 #: thing proving we emit wl-preproc's protocol rather than our idea of it -- and
 #: where they were silently skipping into a green build, because `actions/checkout`
 #: fetches this repository alone. A contract test that is allowed to not run is not
@@ -32,6 +32,7 @@ except ImportError as exc:  # pragma: no cover - exercised by the CI job
         allow_module_level=True,
     )
 
+from wl_xcon import codes, encode  # noqa: E402
 from wl_xcon.encode import words_for, words_for_code  # noqa: E402
 
 
@@ -74,17 +75,47 @@ def test_emitting_an_escape_value_as_a_simple_code_is_refused():
         words_for_code(wl_preproc_events.Escape.TRIAL_NUMBER)
 
 
+@pytest.mark.parametrize("escape", ["TRIAL_NUMBER", "CONDITION"])
 @pytest.mark.parametrize("value", [0, 1, 4242, 65535, 65536, 4294967295])
-def test_our_payload_framing_matches_theirs_exactly(value):
-    """Their `encode_payload` as an oracle, across the uint32 range.
+def test_our_payload_framing_matches_theirs_exactly(escape, value):
+    """Their `encode_payload` as an oracle, across the uint32 range, for both escapes
+    `words_for` frames.
 
     Stronger than the round trip: it catches a drift that happens to survive
     decoding -- a checksum convention that is self-consistent but not theirs, or a
     word order that reads back the same because both halves were swapped.
+
+    **`CONDITION` too, although nothing emits it yet** (it waits on the conditions the
+    day's plan brings, XC-150): `words_for` has framed it since it was written, and no
+    test read that framing against theirs until XC-155.
     """
-    Escape = wl_preproc_events.Escape
+    their = wl_preproc_events.Escape[escape]
     payload = [(value >> 16) & 0xFFFF, value & 0xFFFF]
 
-    assert words_for(Escape.TRIAL_NUMBER, value) == wl_preproc_events.encode_payload(
-        Escape.TRIAL_NUMBER, payload
-    )
+    assert words_for(their, value) == wl_preproc_events.encode_payload(their, payload)
+
+
+def test_the_escapes_the_rig_names_are_theirs():
+    """`encode.TRIAL_NUMBER` is the escape `taskd` strobes each trial's number behind
+    (XC-155), so a wrong value there is a stream wl-preproc reads as another escape, or
+    as none at all."""
+    Escape = wl_preproc_events.Escape
+
+    assert (encode.TRIAL_NUMBER, encode.CONDITION) == (Escape.TRIAL_NUMBER, Escape.CONDITION)
+
+
+def test_every_marker_codes_mirrors_is_theirs():
+    """`codes.py` mirrors `Marker` values and says the round-trip tests keep the mirror
+    honest. `TRIAL_START` and `TRIAL_END` frame every trial since XC-155; the five
+    outcome markers were mirrored before any test read them against theirs."""
+    mirrored = {
+        "TRIAL_START": codes.TRIAL_START,
+        "TRIAL_END": codes.TRIAL_END,
+        "TRIAL_CORRECT": codes._TRIAL_CORRECT,
+        "TRIAL_ERROR": codes._TRIAL_ERROR,
+        "TRIAL_ABORT": codes._TRIAL_ABORT,
+        "TRIAL_FIXATION_BREAK": codes._TRIAL_FIXATION_BREAK,
+        "TRIAL_NO_RESPONSE": codes._TRIAL_NO_RESPONSE,
+    }
+
+    assert mirrored == {name: int(wl_preproc_events.Marker[name]) for name in mirrored}
