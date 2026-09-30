@@ -4709,6 +4709,23 @@ def test_a_number_past_16_bits_is_strobed_whole_high_word_first(tmp_path):
     assert [row["trial_number"] for row in _trial_rows(session)] == [65_536]
 
 
+def test_a_number_past_uint32_faults_the_session_before_its_trial_opens(tmp_path):
+    """The escape's words are computed before `TRIAL_START`, so `words_for`, the one call
+    at a trial's opening that can raise, raises ahead of the stream: a number the escape
+    cannot carry faults the session with nothing of that trial strobed, never a
+    `TRIAL_START` left with no number after it. (Set on the counter directly, as above.)"""
+    task = tmp_path / "one_state.py"
+    task.write_text(ONE_STATE_TASK)
+    session = _session(_spec(tmp_path, trials=1, task=str(task), values={}))
+    session._trial_number = 0xFFFFFFFF
+
+    with pytest.raises(ValueError, match="out of uint32 range"):
+        session.run()
+
+    assert session.card.codes == [4128, RUN_START]
+    assert session.stop_kind == "fault"
+
+
 @_contract
 def test_a_sessions_stream_assembles_in_wl_preproc_into_its_trials_numbered_across_runs(tmp_path):
     """XC-155 spec §4, the path and not the piece: a `wlx taskd` session's two runs on
