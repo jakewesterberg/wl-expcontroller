@@ -83,9 +83,11 @@ tools/                   the mutation harness and the gate that selects for it
 CLAUDE.md                working conventions for AI-assisted development
 ```
 
-Two files are **welfare-critical and require human review before merge**:
-`wl_xcon/bounds.py` and `wl_xcon/welfare.py`. They are kept small so
-that a person can actually read them before signing one off.
+**Welfare-critical code requires human review before merge**: four whole files,
+`wl_xcon/bounds.py`, `wl_xcon/welfare.py`, `wl_xcon/marks.py` and `wl_xcon/stranded.py`,
+and named functions in `cli.py`, `taskd.py`, `link.py`, `preflight.py` and `service.py`.
+`docs/design/architecture.md` lists them and says why. They are kept small so that a person
+can actually read them before signing one off.
 
 Start with `docs/superpowers/specs/2026-08-31-controller-architecture-design.md` for the
 reasoning, and `docs/design/architecture.md` for the summary.
