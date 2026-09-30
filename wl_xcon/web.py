@@ -91,6 +91,8 @@ FRAGMENT_IDS = (
     "presence",
     "strip",
     "banners",
+    "task-sel",
+    "pf-pill",
     "controls",
     "rt-trials",
     "rt-work",
@@ -99,6 +101,8 @@ FRAGMENT_IDS = (
     "rt-health",
     "rt-changes",
     "params",
+    "pf-sum",
+    "preflight",
     "setup",
     "end",
 )
@@ -117,13 +121,26 @@ NO_MARK_ENDPOINT = (
     "this console was started without the session's mark endpoint: give wlx serve "
     "--link PUB,REP,MARK, as wlx run was given it"
 )
-#: Why *give reward* is greyed while trials run: the rig gives a manual reward only
-#: while the session is paused (PI, 2026-09-28; `taskd.Session._manual_reward`).
+#: Why *give reward* is greyed while a run's trials run: during a run the rig gives a
+#: manual reward only while it is paused (PI, 2026-09-28); outside a run, in a `wlx
+#: taskd` session, it gives one between runs and while the return is awaited (PI,
+#: 2026-09-29, spec §6.0; `taskd.Session._manual_reward`).
 REWARD_ONLY_PAUSED = "a manual reward is given only while the session is paused: pause first"
 #: How long after the last click on a parameter's arrows the change is sent, in
 #: milliseconds: the mockup's debounce (spec §5.2), housekeeping and not a
 #: measurement. The page's script reads it from `<body>`.
 DEBOUNCE_MS = 600
+#: What the page says beside *start run* and atop every pre-flight (P4d-2b spec §6.2:
+#: "Every run is unplanned until b3b brings the day's plan, and the page says so each
+#: time, with the warning that an unplanned run lowers the session's timing tier").
+UNPLANNED = (
+    "unplanned run: no day's plan reaches this rig yet (b3b), and an unplanned run lowers "
+    "the session's timing tier"
+)
+#: The trials a run is offered with: `wlx run --trials`'s default (`cli`), since until the
+#: day's plan (b3b) a run from the page is `wlx run`'s flat run of N trials (the b3a-2
+#: plan, decision 6). A starting figure the person changes, not a rule or a measurement.
+RUN_TRIALS = 1000
 
 _NONE = '<span class="nm">no session</span>'
 _UNKNOWN_DAY = "unknown: the day's prior total was not supplied"
@@ -422,28 +439,145 @@ def _banners(frame: Telemetry | None, view: View) -> str:
     return "".join(out)
 
 
+# --- the run's task and its pre-flight (P4d-2b b3a-2) ------------------------------
+
+
+def _options(names, none: str) -> str:
+    """A select's options, one per name, or one empty option saying why there is none.
+    A frame re-renders them; the page's script keeps the option a person chose (the
+    b3a-2 plan, decision 11)."""
+    if not names:
+        return f'<option value="">{_e(none)}</option>'
+    return "".join(f'<option value="{_e(name)}">{_e(name)}</option>' for name in names)
+
+
+def _pf_state(frame: Telemetry | Idle | None) -> tuple[str, str]:
+    """The pre-flight pill's tone and words (the mockup's `drawPreflight`), from the
+    frame's pre-flight: a fail counts first, then the unknowns a person acknowledges --
+    an item that is neither pass nor unknown counts as a fail, as `preflight.gate`
+    counts it -- and outside a `wlx taskd` session between runs, why there is none."""
+    if frame is None or isinstance(frame, Idle):
+        return "neutral", "no session"
+    if not frame.service:
+        return "neutral", "pre-flight · wlx run takes none"
+    if frame.phase == "running":
+        return "neutral", "pre-flight · taken as the run started"
+    if frame.phase != "between_runs":
+        return "neutral", "pre-flight · the session has ended"
+    if frame.preflight is None:
+        return "neutral", "pre-flight · not taken"
+    items = frame.preflight.items
+    fails = sum(1 for item in items if item.result not in ("pass", "unknown"))
+    unknown = sum(1 for item in items if item.result == "unknown")
+    if fails:
+        return "crit", f"pre-flight · {fails} fail"
+    if unknown:
+        return "warn", f"pre-flight · {unknown} to acknowledge"
+    return "ok", "pre-flight ✓"
+
+
+def _pf_sum(frame: Telemetry | Idle | None) -> str:
+    """The Setup tab's pre-flight pill (the mockup's `pf-sum`)."""
+    tone, said = _pf_state(frame)
+    return f'<span class="pill {tone}">{_e(said)}</span>'
+
+
+def _pf_pill(frame: Telemetry | Idle | None, view: View) -> str:
+    """The control bar's pre-flight pill (the mockup's `pf-pill`): between runs, a button
+    that takes the pre-flight for the task chosen and opens the Setup tab at its panel
+    (the b3a-2 plan, decision 7); otherwise the words alone."""
+    if isinstance(frame, Telemetry) and frame.service and frame.phase == "between_runs":
+        tone, said = _pf_state(frame)
+        off = _off(view) or ' title="take the pre-flight for the task chosen"'
+        return (
+            f'<button type="button" class="pill {tone}" data-cmd="check"{off}>'
+            f"{_e(said)}</button>"
+        )
+    return _pf_sum(frame)
+
+
+#: A result's dot (the mockup's `.st`): an unknown is what nothing measured, which the
+#: mockup draws as the hollow *untested* ring; anything but pass or unknown is a fail.
+_DOTS = {"pass": "pass", "unknown": "untested"}
+
+
+def _pf_row(item, view: View) -> str:
+    """One pre-flight item: its dot, name and sentence, and -- for an unknown -- the box
+    that acknowledges it, carrying its exact name and never ticked here (decision 9)."""
+    acknowledge = (
+        f'<label class="chk"><input type="checkbox" data-ack="{_e(item.name)}" '
+        f'aria-label="acknowledge {_e(item.name)}"{_off(view)}> acknowledge</label>'
+        if item.result == "unknown"
+        else "<span></span>"
+    )
+    return (
+        f'<div class="row"><span class="st {_DOTS.get(item.result, "fail")}" '
+        f'title="{_e(item.result)}"></span><span>{_e(item.name)}</span>'
+        f'<span class="val">{_e(item.said)}</span>{acknowledge}</div>'
+    )
+
+
+def _preflight_pane(frame: Telemetry | Idle | None, view: View) -> str:
+    """The Setup tab's pre-flight (the mockup's `pf-panel`, drawn from `wlx taskd`'s items
+    rather than the mockup's list: spec §6.2): one row per item, under a line naming the
+    task, S9a §10's rule and the unplanned warning. The mockup's *must* tag is left out,
+    since every fail blocks (the b3a-2 plan, decision 6)."""
+    if frame is None or isinstance(frame, Idle):
+        return _NONE
+    if not frame.service:
+        return '<span class="nm">wlx run takes no pre-flight (XC-159)</span>'
+    if frame.phase == "running":
+        return (
+            '<span class="nm">a run is in progress: its pre-flight was taken as it '
+            "started, and its start row in runs.jsonl holds it</span>"
+        )
+    if frame.phase != "between_runs":
+        return '<span class="nm">the session has ended: no run starts in it</span>'
+    if frame.preflight is None:
+        return (
+            '<span class="nm">not taken: choose a task, or press the pre-flight '
+            "pill</span>"
+        )
+    task = _e(frame.preflight.task)
+    rows = "".join(_pf_row(item, view) for item in frame.preflight.items)
+    return (
+        f'<div class="sub">for {task} · a fail blocks the run; each unknown starts it only '
+        f"on your acknowledgement, by name, written into runs.jsonl · {_e(UNPLANNED)}</div>"
+        f'<div class="pf" data-task="{task}">{rows}</div>'
+    )
+
+
 # --- the controls (P4d-2b b2a) ------------------------------------------------------
 
 
+def _hand_reward_now(frame: Telemetry) -> bool:
+    """Whether the rig gives a manual reward now (`taskd.Session._manual_reward`): a run
+    held paused (PI, 2026-09-28), or a `wlx taskd` session between runs or awaiting its
+    animal's return (PI, 2026-09-29, spec §6.0). During a trial it waits on XC-157, and
+    after a `wlx run` session's run on XC-184."""
+    return frame.paused_at is not None or (
+        frame.service and frame.phase in ("between_runs", "awaiting_return")
+    )
+
+
 def _reward_button(frame: Telemetry, view: View) -> str:
-    """The manual reward's button (PI, 2026-09-28): live only while the session is
-    paused, since the rig gives a manual reward only then
-    (`taskd.Session._manual_reward`); greyed with `REWARD_ONLY_PAUSED` while trials
-    run, and with the §2 sentence away from the box. **One button and no key**: a
-    click is one command, and the script holds the button until that command's
+    """The manual reward's button (PI, 2026-09-28 and 2026-09-29): live whenever the rig
+    gives one (`_hand_reward_now`), and greyed with `REWARD_ONLY_PAUSED` while a run's
+    trials run, and with the §2 sentence away from the box. **One button and no key**:
+    a click is one command, and the script holds the button until that command's
     answer."""
-    paused = frame.paused_at is not None
-    off = _off(view) or ("" if paused else f' disabled title="{_e(REWARD_ONLY_PAUSED)}"')
+    live = _hand_reward_now(frame)
+    off = _off(view) or ("" if live else f' disabled title="{_e(REWARD_ONLY_PAUSED)}"')
     return f'<button type="button" class="btn" data-cmd="reward"{off}>give reward</button>'
 
 
 def _reward_answer(frame: Telemetry) -> str:
-    """While paused, what became of the last press (PI, 2026-09-28), from the frames
-    the paused loop publishes: the session's fluid total, the newest reward given
-    with its size, and the newest press refused with the rig's sentence -- *last*,
-    since a refusal carries no time, as on a parameter card. Nothing while trials
-    run, when the button is greyed."""
-    if frame.paused_at is None:
+    """Beside a live *give reward*, what became of the last press (PI, 2026-09-28), from
+    the frames the rig publishes: the session's fluid total, the newest reward given with
+    its size and where, and the newest press refused with the rig's sentence -- *last*,
+    since a refusal carries no time, as on a parameter card. Nothing while the button is
+    greyed."""
+    if not _hand_reward_now(frame):
         return ""
     said = [f"fluid session {frame.fluid_session_ml:.2f} mL"]
     given = [control for control in frame.controls if control.kind == "reward"]
@@ -455,31 +589,76 @@ def _reward_answer(frame: Telemetry) -> str:
     return f'<span class="nm">{" · ".join(said)}</span>'
 
 
+def _mark_button(view: View) -> str:
+    """*mark (M)*: greyed on its own when this console has no mark endpoint."""
+    off = _off(view) or ("" if view.can_mark else f' disabled title="{_e(NO_MARK_ENDPOINT)}"')
+    return f'<button type="button" class="btn" data-cmd="mark"{off}>mark (M)</button>'
+
+
+def _start_button(frame: Telemetry, view: View) -> str:
+    """*start run* (the mockup's `a-start`), carrying the task of the pre-flight the frame
+    shows: the page's script sends that task, and only while it is the one chosen (the
+    b3a-2 plan, decision 8). Greyed, with the reason, until a pre-flight is shown with no
+    item failing (spec §6.2); `Service._start` takes the pre-flight again and refuses a
+    start it would block anyway."""
+    preflight = frame.preflight
+    if preflight is None:
+        why = "take the pre-flight first: choose a task, or press the pre-flight pill"
+    else:
+        failing = [i.name for i in preflight.items if i.result not in ("pass", "unknown")]
+        why = f"pre-flight: {', '.join(failing)} failing" if failing else None
+    task = "" if preflight is None else preflight.task
+    off = _off(view) or ("" if why is None else f' disabled title="{_e(why)}"')
+    return (
+        f'<button type="button" class="btn go" data-cmd="start" data-task="{_e(task)}"'
+        f"{off}>start run</button>"
+    )
+
+
+def _outside_a_run(frame: Telemetry, view: View) -> str:
+    """A `wlx taskd` session between runs or awaiting its animal's return (spec §6.0,
+    §6.2): *start run* between runs, with the unplanned warning beside it, and *give
+    reward* and *mark* in both, since the rig gives a hand reward and stamps a mark
+    outside a run (the b3a-2 plan, decision 13). Pause and stop have no run to act on."""
+    # Concatenated, not an f-string: an apostrophe inside a replacement field of a
+    # single-quoted f-string is a syntax error before Python 3.12, and 3.11 is supported.
+    lead = (
+        _start_button(frame, view) + '<span class="nm">' + _e(UNPLANNED) + "</span>"
+        if frame.phase == "between_runs"
+        else '<span class="nm">'
+        + _e("session ended · waiting for the animal's return")
+        + "</span>"
+    )
+    note = "" if view.can_write else f'<span class="nm">{CONTROLS_AT_THE_BOX}</span>'
+    return lead + _reward_button(frame, view) + _mark_button(view) + _reward_answer(frame) + note
+
+
 def _controls(frame: Telemetry | None, view: View) -> str:
-    """Pause or resume, mark, give reward, and stop (spec §5.2), while a session runs.
+    """Pause or resume, mark, give reward, and stop (spec §5.2), while a run runs; and,
+    since P4d-2b b3a-2, *start run*, *give reward* and *mark* outside a run in a `wlx
+    taskd` session (`_outside_a_run`).
 
     **Pause or resume by the session's state**, never a toggle: the page sends what
     the button says, and the click handler's `toggleAllowed` stops a double click
     from sending it twice, as `rewardAllowed` does for a reward (R2, 2026-09-28).
-    **Stop** opens the page's confirm step. **Mark** is greyed on its own when this
-    console has no mark endpoint, and **give reward** while trials run
-    (`_reward_button`). **Everywhere but the box**, every control is greyed with the
-    §2 sentence, which is also said beside them."""
+    **Stop run** (the mockup's `a-stop`; b2a's *stop…*) opens the page's confirm step.
+    **Mark** is greyed on its own when this console has no mark endpoint, and **give
+    reward** while trials run (`_reward_button`). **Everywhere but the box**, every
+    control is greyed with the §2 sentence, which is also said beside them."""
     if frame is None:
         return '<span class="nm">controls · no session</span>'
-    if frame.phase == "between_runs":
-        return '<span class="nm">controls · no run in progress</span>'
+    if frame.service and frame.phase in ("between_runs", "awaiting_return"):
+        return _outside_a_run(frame, view)
     if frame.stop_kind is not None:
         return '<span class="nm">controls · the session has ended</span>'
     off = _off(view)
-    mark_off = off or ("" if view.can_mark else f' disabled title="{_e(NO_MARK_ENDPOINT)}"')
     cmd, label = ("resume", "resume (P)") if frame.paused_at is not None else ("pause", "pause (P)")
     note = "" if view.can_write else f'<span class="nm">{CONTROLS_AT_THE_BOX}</span>'
     return (
         f'<button type="button" class="btn" data-cmd="{cmd}"{off}>{label}</button>'
-        f'<button type="button" class="btn" data-cmd="mark"{mark_off}>mark (M)</button>'
+        f"{_mark_button(view)}"
         f"{_reward_button(frame, view)}"
-        f'<button type="button" class="btn danger" data-cmd="stop"{off}>stop…</button>'
+        f'<button type="button" class="btn danger" data-cmd="stop"{off}>stop run</button>'
         f"{_reward_answer(frame)}{note}"
     )
 
@@ -879,6 +1058,7 @@ def _idle(frame: Idle, view: View) -> dict[str, str]:
     panes["controls"] = '<span class="nm">controls · no session open</span>'
     panes["rt-health"] = _health_pane(frame, view)
     panes["rt-changes"] = _idle_refusals(frame)
+    panes["task-sel"] = _options(frame.offered_tasks, "no task offered")
     return panes
 
 
@@ -894,6 +1074,8 @@ def fragments(frame: Telemetry | Idle | None, view: View) -> dict[str, str]:
         "presence": _presence(view),
         "strip": _strip(frame, view),
         "banners": _banners(frame, view),
+        "task-sel": _options(() if frame is None else frame.offered_tasks, "no task offered"),
+        "pf-pill": _pf_pill(frame, view),
         "controls": _controls(frame, view),
         "rt-trials": _trials(frame),
         "rt-work": _work(frame),
@@ -902,6 +1084,8 @@ def fragments(frame: Telemetry | Idle | None, view: View) -> dict[str, str]:
         "rt-health": _health_pane(frame, view),
         "rt-changes": _changes(frame),
         "params": _params(frame, view),
+        "pf-sum": _pf_sum(frame),
+        "preflight": _preflight_pane(frame, view),
         "setup": _setup(frame),
         "end": _end(frame),
     }
@@ -1143,6 +1327,19 @@ h3 { margin: 0; font-family: var(--cond); font-weight: 600; font-size: 11.5px; l
 .arrows button + button { border-top: 1px solid var(--rule); }
 .param .rfs { font-size: 11.5px; color: var(--crit); }
 .ev.ctl .kind { color: var(--accent); }
+.controlbar .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
+.tsel { display: inline-flex; align-items: center; gap: 6px; }
+.tsel .k { font-family: var(--cond); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.tsel select { font-family: var(--mono); font-size: 13.5px; padding: 4px 6px; }
+.tsel .field { width: 5em; border-radius: 3px; }
+button.pill { border: 0; cursor: pointer; }
+.btn.go { background: var(--ok); border-color: var(--ok); color: var(--bg); }
+.pf { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 20px; }
+.pf .row { display: grid; grid-template-columns: 12px minmax(0, 10em) minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; padding: 3px 0; border-bottom: 1px solid var(--rule); min-height: 30px; }
+.pf .val { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.st { width: 10px; height: 10px; border-radius: 50%; }
+.st.pass { background: var(--ok); } .st.warn { background: var(--warn); } .st.fail { background: var(--crit); } .st.untested { box-shadow: inset 0 0 0 1.5px var(--muted); }
+.chk { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 body.stale .strip, body.stale .panels { filter: grayscale(1); opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 """
@@ -1553,6 +1750,10 @@ def page(
   <div class="banner" id="stream" role="status" hidden></div>
   <div class="banners" id="banners">{p['banners']}</div>
   <section class="controlbar glass" aria-label="controls">
+    <label class="tsel" for="task-sel"><span class="k">Task</span><select id="task-sel" aria-label="task"{off}>{p['task-sel']}</select></label>
+    <label class="tsel" for="run-trials"><span class="k">Trials</span><input class="field mono" id="run-trials" value="{RUN_TRIALS}" inputmode="numeric" autocomplete="off" aria-label="trials"{off}></label>
+    <span id="pf-pill">{p['pf-pill']}</span>
+    <span class="sep" aria-hidden="true"></span>
     <div class="ctlrow" id="controls">{p['controls']}</div>
     <span class="spacer"></span>
     <span class="who">name <b id="who">not given yet</b> <button class="btn small" id="rename" type="button"{off}>change</button></span>
@@ -1587,7 +1788,10 @@ def page(
           </div>
         </div>
         <div class="tabpanel" id="tp-task"><section class="panel glass"><div class="top"><h2>Task parameters</h2><span class="sub">staged until the next trial</span></div><div class="params" id="params">{p['params']}</div></section></div>
-        <div class="tabpanel" id="tp-setup"><section class="panel glass"><div class="top"><h2>Setup</h2><span class="sub">read-only</span></div><div id="setup">{p['setup']}</div></section></div>
+        <div class="tabpanel" id="tp-setup">
+          <section class="panel glass" id="pf-panel"><div class="top"><h2>Pre-flight</h2><span id="pf-sum">{p['pf-sum']}</span></div><div id="preflight">{p['preflight']}</div></section>
+          <section class="panel glass"><div class="top"><h2>Session</h2></div><div id="setup">{p['setup']}</div></section>
+        </div>
         <div class="tabpanel" id="tp-end"><section class="panel glass"><div class="top"><h2>End of session</h2><span class="sub">read-only</span></div><div id="end">{p['end']}</div></section></div>
       </div>
     </div>

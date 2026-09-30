@@ -14,6 +14,7 @@ import html
 import re
 import time
 import tomllib
+from dataclasses import replace
 from importlib import resources
 from pathlib import Path
 
@@ -21,7 +22,7 @@ import pytest
 
 from _frames import frame, idle, view
 from wl_xcon.cli import _local
-from wl_xcon.link import Control, ParamRow, Question, Refused, ScheduledStop, Staged, Stranded
+from wl_xcon.link import Control, ParamRow, Preflight, PreflightItem, Question, Refused, ScheduledStop, Staged, Stranded
 from wl_xcon.web import (
     _SCRIPT,
     CONTROLS_AT_THE_BOX,
@@ -31,6 +32,8 @@ from wl_xcon.web import (
     LEGEND,
     NO_MARK_ENDPOINT,
     REWARD_ONLY_PAUSED,
+    RUN_TRIALS,
+    UNPLANNED,
     font_bytes,
     fragments,
     page,
@@ -739,7 +742,7 @@ def test_the_controls_offer_pause_mark_and_stop_while_running():
 
     assert '<button type="button" class="btn" data-cmd="pause">pause (P)</button>' in controls
     assert '<button type="button" class="btn" data-cmd="mark">mark (M)</button>' in controls
-    assert '<button type="button" class="btn danger" data-cmd="stop">stop…</button>' in controls
+    assert '<button type="button" class="btn danger" data-cmd="stop">stop run</button>' in controls
     # Every control but the manual reward, which waits for a pause (Task 13).
     assert controls.count(" disabled") == 1
     assert 'data-cmd="reward" disabled' in controls
@@ -1234,7 +1237,7 @@ def test_the_page_escapes_control_characters_and_markup_in_an_idle_frames_text()
         assert raw not in joined
 
 
-def test_the_page_between_runs_says_which_run_ended_and_offers_no_run_controls():
+def test_the_page_between_runs_says_which_run_ended_and_offers_start_run_not_pause_or_stop():
     panes = fragments(
         frame(phase="between_runs", service=True, run_index=1, stop_kind="operator", stopped_because="stopped by jake"),
         view(),
@@ -1242,7 +1245,8 @@ def test_the_page_between_runs_says_which_run_ended_and_offers_no_run_controls()
 
     assert 'data-state="between-runs"' in panes["state"] and "run 1 ended" in panes["state"]
     assert "Run 1 ended" in panes["banners"]
-    assert "controls · no run in progress" in panes["controls"]
+    assert 'data-cmd="start"' in panes["controls"]
+    assert 'data-cmd="pause"' not in panes["controls"] and 'data-cmd="stop"' not in panes["controls"]
     assert '<span class="k">Run</span><span class="v">1</span>' in panes["head-id"]
 
 
@@ -1264,3 +1268,193 @@ def test_the_page_shows_the_question_a_return_owes():
     )
 
     assert "the return is far · answer confirm or re-type" in panes["banners"]
+
+
+# --- P4d-2b b3a-2: sessions from the page ---------------------------------------------
+
+
+def _between(**over):
+    """A `wlx taskd` session between runs, its first run ended, one task offered."""
+    fields = dict(
+        phase="between_runs", service=True, run_index=0, stop_kind="completed",
+        stopped_because="every block is finished", offered_tasks=("fixation_detection.py",),
+    )
+    fields.update(over)
+    return frame(**fields)
+
+
+#: A pre-flight as `wlx taskd` takes one (`preflight.py`'s item names), two items passing
+#: and the two nothing measures yet unknown.
+PREFLIGHT = Preflight(
+    "fixation_detection.py",
+    (
+        PreflightItem("task checks", "pass", "fixation_detection.py passes its load-time checks"),
+        PreflightItem("out of cage", "pass", "the departure is marked and the limit is not reached"),
+        PreflightItem("pump calibration", "unknown", "no pump calibration has been measured (V10)"),
+        PreflightItem("eye tracker", "unknown", "nothing reports the eye tracker's health yet"),
+    ),
+)
+FAILING = replace(
+    PREFLIGHT,
+    items=(PREFLIGHT.items[0], PreflightItem("out of cage", "fail", "past <the> limit"))
+    + PREFLIGHT.items[2:],
+)
+
+
+def test_the_task_chooser_offers_what_wlx_taskd_offers_and_says_when_there_is_nothing():
+    only = '<option value="fixation_detection.py">fixation_detection.py</option>'
+
+    assert fragments(_between(), view())["task-sel"] == only
+    assert fragments(idle(), view())["task-sel"] == only
+    assert fragments(frame(), view())["task-sel"] == '<option value="">no task offered</option>'
+    assert fragments(None, view())["task-sel"] == '<option value="">no task offered</option>'
+
+
+@pytest.mark.parametrize(
+    ("preflight", "tone", "said"),
+    [
+        (None, "neutral", "pre-flight · not taken"),
+        (PREFLIGHT, "warn", "pre-flight · 2 to acknowledge"),
+        (FAILING, "crit", "pre-flight · 1 fail"),
+        (replace(PREFLIGHT, items=PREFLIGHT.items[:2]), "ok", "pre-flight ✓"),
+    ],
+    ids=["not-taken", "unknowns", "a-fail", "all-pass"],
+)
+def test_between_runs_the_preflight_pill_is_a_button_that_says_what_the_rig_found(
+    preflight, tone, said
+):
+    """The mockup's `pf-pill` and `pf-sum` (the b3a-2 plan, decisions 6 and 7): its words
+    from the frame's pre-flight, and, between runs, a button that takes the pre-flight."""
+    parts = fragments(_between(preflight=preflight), view())
+
+    assert parts["pf-pill"] == (
+        f'<button type="button" class="pill {tone}" data-cmd="check" '
+        f'title="take the pre-flight for the task chosen">{said}</button>'
+    )
+    assert parts["pf-sum"] == f'<span class="pill {tone}">{said}</span>'
+
+
+@pytest.mark.parametrize(
+    ("shown", "said"),
+    [
+        (None, "no session"),
+        (idle(), "no session"),
+        (frame(), "pre-flight · wlx run takes none"),
+        (frame(service=True), "pre-flight · taken as the run started"),
+        (_between(phase="awaiting_return"), "pre-flight · the session has ended"),
+    ],
+    ids=["no-frame", "idle", "wlx-run", "a-run-going", "ended"],
+)
+def test_outside_between_runs_the_preflight_pill_only_says_why_there_is_none(shown, said):
+    assert fragments(shown, view())["pf-pill"] == f'<span class="pill neutral">{said}</span>'
+
+
+def test_the_preflight_panel_shows_each_item_its_result_and_the_unplanned_warning():
+    shown = fragments(_between(preflight=FAILING), view())["preflight"]
+
+    assert '<span class="st fail" title="fail"></span><span>out of cage</span>' in shown
+    assert '<span class="st pass" title="pass"></span><span>task checks</span>' in shown
+    assert '<span class="st untested" title="unknown"></span><span>eye tracker</span>' in shown
+    assert "past &lt;the&gt; limit" in shown
+    assert html.escape(UNPLANNED) in shown
+    assert 'data-task="fixation_detection.py"' in shown
+    assert "not taken" in fragments(_between(), view())["preflight"]
+
+
+def test_each_unknown_item_has_an_unticked_acknowledgement_carrying_its_exact_name():
+    """Review Focus 4 (the b3a-2 plan, decision 9): one box per unknown item, its exact
+    name on it for the start to send, never rendered ticked -- a tick is the person's,
+    for the run about to start -- and greyed away from the box."""
+    shown = fragments(_between(preflight=PREFLIGHT), view())["preflight"]
+    lan = fragments(_between(preflight=PREFLIGHT), view(can_write=False))["preflight"]
+
+    for name in ("pump calibration", "eye tracker"):
+        assert (
+            f'<label class="chk"><input type="checkbox" data-ack="{name}" '
+            f'aria-label="acknowledge {name}"> acknowledge</label>'
+        ) in shown
+    assert shown.count("data-ack=") == 2, "only an unknown is acknowledged"
+    assert "checked" not in shown
+    boxes = re.findall(r"<input[^>]*data-ack[^>]*>", lan)
+    assert boxes and all(" disabled" in box for box in boxes)
+
+
+def test_between_runs_start_run_carries_the_shown_preflights_task_and_waits_for_one_with_no_fail():
+    """The b3a-2 plan, decision 8, and spec §6.2: "the start refused while any item
+    fails" -- greyed with its reason in the page, and refused by the rig anyway."""
+    none = fragments(_between(), view())["controls"]
+    ready = fragments(_between(preflight=PREFLIGHT), view())["controls"]
+    failing = fragments(_between(preflight=FAILING), view())["controls"]
+
+    assert (
+        '<button type="button" class="btn go" data-cmd="start" data-task="" disabled '
+        'title="take the pre-flight first: choose a task, or press the pre-flight pill">'
+        "start run</button>"
+    ) in none
+    assert (
+        '<button type="button" class="btn go" data-cmd="start" '
+        'data-task="fixation_detection.py">start run</button>'
+    ) in ready
+    assert 'disabled title="pre-flight: out of cage failing">start run</button>' in failing
+    assert html.escape(UNPLANNED) in ready
+    assert 'data-cmd="pause"' not in ready and 'data-cmd="stop"' not in ready
+
+
+@pytest.mark.parametrize("phase", ["between_runs", "awaiting_return"])
+def test_outside_a_run_the_hand_reward_and_mark_are_live_with_what_the_last_press_did(phase):
+    """PI, 2026-09-29 (spec §6.0): *give reward* works between runs and while the return
+    is awaited in a `wlx taskd` session, and says beside itself what the rig did."""
+    controls = fragments(
+        _between(
+            phase=phase,
+            fluid_session_ml=0.4,
+            controls=(
+                Control("reward", "jake (box, unverified)", 1_700_000_035.0,
+                        "0.15 mL of reward_correct, given between runs"),
+            ),
+        ),
+        view(),
+    )["controls"]
+
+    assert '<button type="button" class="btn" data-cmd="reward">give reward</button>' in controls
+    assert '<button type="button" class="btn" data-cmd="mark">mark (M)</button>' in controls
+    assert "fluid session 0.40 mL" in controls
+    assert "0.15 mL of reward_correct, given between runs" in controls
+
+
+def test_while_the_return_is_awaited_there_is_no_run_to_start():
+    controls = fragments(_between(phase="awaiting_return"), view())["controls"]
+
+    assert "session ended · waiting for the animal&#x27;s return" in controls
+    assert 'data-cmd="start"' not in controls
+
+
+def test_a_wlx_run_session_after_its_run_offers_no_hand_reward():
+    """XC-184: its return is taken at its terminal, and the rig refuses a press then."""
+    assert "give reward" not in fragments(frame(**STATES["awaiting return"]), view())["controls"]
+
+
+def test_away_from_the_box_the_run_controls_are_greyed_with_the_sentence():
+    parts = fragments(_between(preflight=PREFLIGHT), view(on_box=False, can_write=False))
+    written = parts["controls"] + parts["pf-pill"] + parts["preflight"]
+
+    buttons = re.findall(r"<button[^>]*data-cmd[^>]*>", written)
+    assert buttons and all(" disabled" in tag for tag in buttons)
+    assert CONTROLS_AT_THE_BOX in parts["controls"]
+
+
+def test_the_control_bar_offers_the_task_the_trials_and_the_preflight_as_the_mockup_draws_them():
+    """The mockup's toolbar (`task-sel`, `pf-pill`), with the run's trial count beside the
+    task (the b3a-2 plan, decision 6): the select's options are a fragment, the count is
+    static, and it starts at `wlx run --trials`'s default."""
+    document = page(fragments(_between(), view()), stale_after_s=30.0, nonce="n0nce", can_write=True)
+
+    assert '<label class="tsel" for="task-sel"><span class="k">Task</span><select id="task-sel" aria-label="task">' in document
+    assert (
+        f'<input class="field mono" id="run-trials" value="{RUN_TRIALS}" inputmode="numeric" '
+        f'autocomplete="off" aria-label="trials">'
+    ) in document
+    assert RUN_TRIALS == 1000
+    assert document.index('id="task-sel"') < document.index('id="pf-pill"') < document.index('id="controls"')
+    assert "<h2>Pre-flight</h2>" in document and "<h2>Session</h2>" in document
+    assert document.index('id="pf-panel"') < document.index('id="setup"')
