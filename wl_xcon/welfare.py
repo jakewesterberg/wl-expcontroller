@@ -678,11 +678,12 @@ class Welfare:
     def return_needs_confirmation(self, at: float, wall_now: float) -> str | None:
         """The same question on the closing mark (PI, 2026-09-20, ruling 4).
 
-        **The same thirty minutes and the same amendment path**, because a return
-        typed hours ago moves the same interval and in the direction that makes a
-        session look shorter than it was. There is no ceiling clause here: a return
-        is not refused for being long ago -- `must_stop` reports the interval it
-        produces -- so the band has one edge rather than two.
+        **The same thirty minutes**, because a return typed hours ago moves the same
+        interval and in the direction that makes a session look shorter than it was;
+        a far one is confirmed or typed again, since a return has no amendment. There
+        is no ceiling clause here: a return is not refused for being long ago --
+        `must_stop` reports the interval it produces -- so the band has one edge
+        rather than two.
         """
         if self.deployment is Deployment.CAGE_SIDE:
             return None

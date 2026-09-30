@@ -1664,3 +1664,32 @@ def test_away_from_the_box_every_session_form_is_greyed():
         "amend-to", "amend-why", "amend-yes",
     ):
         assert re.search(r'id="' + control + r'"[^>]* disabled', lan), control
+
+
+def test_away_from_the_box_every_session_button_in_a_fragment_is_greyed():
+    """The fragments' own write buttons, as the static forms' are above: *end session*
+    and *record return…* in the Summary, a stranded animal's *end session…*, *new
+    session* in the banner and the Session panel, and the warning's answers -- each
+    disabled on a page that may not write (fix round 1 of Task 5's review)."""
+    lan = view(on_box=False, can_write=False)
+    frames = (
+        _between(),
+        _between(
+            phase="awaiting_return",
+            question=Question("return", "2027-01-14_01", 1.0, "far", ("confirm", "re-type")),
+        ),
+        idle(),
+        idle(stranded=(Stranded("2027-01-13_01", "B", 1_700_000_000.0),)),
+    )
+    written = "".join(
+        parts["end-actions"] + parts["banners"] + parts["setup"]
+        for parts in (fragments(shown, lan) for shown in frames)
+    )
+
+    buttons = re.findall(r"<button[^>]*data-(?:cmd|return|answer)[^>]*>", written)
+    for needle in (
+        'data-cmd="end"', 'data-return="2027-01-14_01"', 'data-return="2027-01-13_01"',
+        'data-cmd="new"', 'data-answer="re-type"',
+    ):
+        assert any(needle in tag for tag in buttons), needle
+    assert all(" disabled" in tag for tag in buttons)

@@ -4180,7 +4180,7 @@ def test_each_phase_of_a_service_session_refuses_a_command_in_its_own_words(tmp_
         assert "ended" not in why and "return" not in why
     assert "the session has ended and is waiting for the animal's return" in awaiting
     assert "recorded by an EndSession sent over the link" in awaiting
-    assert "(the page's End session)" in awaiting
+    assert "(the page's record return…)" in awaiting
     assert "the session has ended" in closed
 
 
