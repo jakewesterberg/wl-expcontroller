@@ -78,10 +78,9 @@ fluid and session-duration accounting (a fluid **floor**, an out-of-cage **ceili
 token-to-fluid conversion, stimulation bounds and gating, and the bounded-config loader.
 
 **In code, that is `wl_xcon/bounds.py`, `wl_xcon/welfare.py`, `wl_xcon/marks.py` and
-`wl_xcon/stranded.py`, three functions in `wl_xcon/preflight.py` (`out_of_cage`, `gate`,
-`unmeasured`), eight in `wl_xcon/service.py` (`Service._open`, `Service._end` with
-`Service._unended`, `_Routed.drain`, `Service._close_stranded`, `Service._start`, `_unasked`,
-`_folder_name`), two functions in
+`wl_xcon/stranded.py`, two functions in `wl_xcon/preflight.py` (`out_of_cage`, `gate`),
+seven in `wl_xcon/service.py` (`Service._open`, `Service._end` with `Service._unended`,
+`Service._close_stranded`, `Service._start`, `_unasked`, `_folder_name`), two functions in
 `wl_xcon/cli.py` plus one line inside a third — and, since
 P4d-2b b2a, five functions in `wl_xcon/taskd.py` plus two parts of a sixth
 (`Session._command`'s `held` pass-through and one `except` line), and one function in
@@ -100,26 +99,19 @@ so the parsing and the confirmation are part of the limit. **The two `cli` funct
 which answer a person gave, and the name and reason an amendment carries — and **the
 line is `main`'s `_marks.depart(session, departure)`**, which marks the departure as
 `marks` decided it, `confirmed=` included, which `welfare._refuse_unconfirmed` trusts
-its caller on. A change to any of these, or to the three `preflight` functions, the eight
+its caller on. A change to any of these, or to the two `preflight` functions, the seven
 `service` functions, the `taskd` and `link` functions and the two parts of
 `Session._command` below, is a change requiring review; a change elsewhere is not.
 
 **`preflight.out_of_cage` and `preflight.gate`** (P4d-2b b3a): the first is what refuses
 a new run once the out-of-cage limit is reached between runs, and the second is S9a
 §10's rule — fail blocks, an unknown proceeds only on a named acknowledgement written
-into `runs.jsonl` — and a mistake in it lets a run start that should not. **And
-`preflight.unmeasured`** (the b3a-1 final review's ruling): the pump calibration is an
-acknowledgeable unknown only while the pump is the simulator or absent, and a fail for any
-other — S9a §10's dated dependency held in code, since the calibration is what a reward's
-volume rests on; a mistake in it lets a run on a real pump start on a calibration nobody
-measured.
+into `runs.jsonl` — and a mistake in it lets a run start that should not.
 
 **`stranded.py`, `Welfare.restore_departure`, and `service.Service._open`, `_end` (with
 `_unended`, its refusals before anything is marked, which a run in progress asks too, so an
-End refused before anything is marked never stops a run), `_Routed.drain` and
-`_close_stranded`** (P4d-2b b3a; `_Routed.drain` since the b3a-1 final review's ruling,
-because it decides whether an End sent during a run stops it, which is how long the animal
-stays in the chair): the rule that no session opens while an animal's return is missing from the record,
+End refused before anything is marked never stops a run) and `_close_stranded`** (P4d-2b
+b3a): the rule that no session opens while an animal's return is missing from the record,
 how such a session is found and its return taken, and the page's route into the two marks.
 `restore_departure` reads back a recorded departure without `left_cage`'s refusals, which
 were applied when it was taken; a mistake in any of

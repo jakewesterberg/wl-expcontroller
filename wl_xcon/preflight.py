@@ -10,13 +10,13 @@ checks in the session's setup, its starting values, the animal's bounded config 
 the stereoscope, its settings, the out-of-cage mark and limit, and the two things
 nothing measures yet.
 
-**Welfare-critical: `out_of_cage`, `gate` and `unmeasured`**
-(`docs/design/architecture.md`). The first is what refuses a new run once the out-of-cage
-limit is reached between runs (spec §6.1); the second is what lets an unknown through; the
-third is what lets the pump calibration be one only while no real pump is behind it (the
-b3a-1 final review's ruling). The other items are ordinary: each is an item a person reads,
-and a wrong one fails or passes a run that `taskd` still checks itself -- `Session.run`
-refuses a blocking finding and a missing mark on its own.
+**Welfare-critical: `out_of_cage` and `gate`** (`docs/design/architecture.md`). The first
+is what refuses a new run once the out-of-cage limit is reached between runs (spec §6.1);
+the second is what lets an unknown through. The other items are ordinary: each is an
+item a person reads, and a wrong one fails or passes a run that `taskd` still checks
+itself -- `Session.run` refuses a blocking finding and a missing mark on its own.
+`unmeasured`'s pump rule is off the list by the PI's ruling (2026-09-30), with
+`service._Routed.drain`: both were proposed for it at the b3a-1 review and taken back off.
 
 **No pre-flight ends the service**: nothing a task file or its declarations do raises out
 of `task` or `values`, and `service.Service._preflight` turns whatever any item's check
@@ -273,9 +273,8 @@ def out_of_cage(session) -> PreflightItem:
 
 
 def unmeasured(pump: object) -> list[PreflightItem]:
-    """**Welfare-critical** (the b3a-1 final review's ruling). The two items spec §6.2
-    names as **unknown until measured**. Each says what it waits for, so the next reader
-    can find it rather than believe it (CLAUDE.md).
+    """The two items spec §6.2 names as **unknown until measured**. Each says what it
+    waits for, so the next reader can find it rather than believe it (CLAUDE.md).
 
     **The pump calibration is acknowledgeable only while the pump is one no valve is
     behind** (S9a §10's dated dependency, V10): `welfare.Simulated` or `welfare.Absent`.

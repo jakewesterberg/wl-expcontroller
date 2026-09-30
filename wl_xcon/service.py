@@ -39,12 +39,11 @@ is routed, on the thread running `serve`, one command at a time -- which is what
 `taskd.Session.returned_to_cage` run without the lock it once had.
 
 **Welfare-critical: `Service._open`, `Service._end` (with `Service._unended`, its
-refusals before anything is stopped or marked), `_Routed.drain`, `Service._close_stranded`,
+refusals before anything is stopped or marked), `Service._close_stranded`,
 `Service._start`, `_unasked` and `_folder_name`** (`docs/design/architecture.md`): the
-page's route into the two marks, whether an End sent during a run stops it, the stranded
-rule, which answers are taken, the gate a run passes before it starts, and the rule that
-keeps a name from any wire or record from becoming a path out of `--subjects` or
-`--tasks`. The rest is ordinary.
+page's route into the two marks, the stranded rule, which answers are taken, the gate a
+run passes before it starts, and the rule that keeps a name from any wire or record from
+becoming a path out of `--subjects` or `--tasks`. The rest is ordinary.
 
 **The simulators, today**: the card, the pump and the animal are `wlx run`'s, because no
 hardware port exists (docs/CHECKPOINT.md: nothing has touched hardware); a rig's own
@@ -240,10 +239,8 @@ class _Routed:
         return self._link.refused_dropped
 
     def drain(self) -> list:
-        """**Welfare-critical** (the b3a-1 final review's ruling): whether an End sent
-        during a run stops it, which is how long the animal stays in the chair. At a
-        trial boundary, or a paused run's housekeeping pass: the commands a run takes,
-        with the service's own taken out."""
+        """At a trial boundary, or a paused run's housekeeping pass: the commands a run
+        takes, with the service's own taken out."""
         service, kept = self._service, []
         for command in self._link.drain():
             if isinstance(command, _link.EndSession) and service._ending is None:
