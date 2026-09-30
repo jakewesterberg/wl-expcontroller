@@ -1458,3 +1458,38 @@ def test_the_control_bar_offers_the_task_the_trials_and_the_preflight_as_the_moc
     assert document.index('id="task-sel"') < document.index('id="pf-pill"') < document.index('id="controls"')
     assert "<h2>Pre-flight</h2>" in document and "<h2>Session</h2>" in document
     assert document.index('id="pf-panel"') < document.index('id="setup"')
+
+
+def test_a_run_going_in_a_wlx_taskd_session_gives_no_hand_reward_until_xc_157():
+    """XC-157: during a trial the rig refuses a manual reward, so the page greys the
+    button with the reason -- a `wlx taskd` session's being a service is not enough."""
+    controls = fragments(frame(service=True, phase="running", paused_at=None), view())["controls"]
+
+    assert re.search(r'data-cmd="reward" disabled title="[^"]+"', controls)
+    assert html.escape(REWARD_ONLY_PAUSED) in controls
+
+
+HOSTILE = 'x"><b>'
+
+
+def test_a_hostile_name_reaches_no_attribute_unescaped():
+    """Every place a rig-supplied name becomes an attribute value or a label: the
+    acknowledgement's `data-ack`, `data-task` on the panel and on *start run*, the
+    option's value and label, and *start run*'s `title`."""
+    preflight = Preflight(
+        HOSTILE,
+        (
+            PreflightItem(HOSTILE, "unknown", "s"),
+            PreflightItem(HOSTILE + "2", "fail", "s"),
+        ),
+    )
+    shown = fragments(_between(preflight=preflight, offered_tasks=(HOSTILE,)), view())
+    escaped = html.escape(HOSTILE)
+    for name in ("preflight", "controls", "task-sel"):
+        assert '"><b>' not in shown[name], name
+    assert f'data-ack="{escaped}"' in shown["preflight"]
+    assert f'<div class="pf" data-task="{escaped}">' in shown["preflight"]
+    assert f'data-task="{escaped}"' in shown["controls"]
+    assert f'title="pre-flight: {html.escape(HOSTILE + "2")} failing"' in shown["controls"]
+    assert f'<option value="{escaped}">{escaped}</option>' == shown["task-sel"]
+    assert fragments(idle(offered_tasks=(HOSTILE,)), view())["task-sel"] == shown["task-sel"]
