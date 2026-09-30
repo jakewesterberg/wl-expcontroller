@@ -1483,6 +1483,14 @@ _LOGO = (
 #: or when held. A mark sends its signal at once with `pressed_at` -- the browser's
 #: clock, and the only `Date.now()` here -- then opens the note box: Enter attaches
 #: the note, Esc leaves the mark bare, and a second mark leaves the first bare.
+#:
+#: **Sessions from the page (P4d-2b b3a-2).** Choosing a task, or pressing the pre-flight
+#: pill, takes the pre-flight (`check`); *start run* sends the task of the pre-flight
+#: shown, the trial count and the unknown items ticked, then clears the ticks; *new
+#: session* sends the dialog's fields as typed; *end session* sends the return typed, or
+#: none for later; a warning's *confirm* or *amend* re-sends the open or the return this
+#: page sent, with its answer, and a warning this page did not raise is not answered.
+#: A swap keeps a select's chosen option and the ticks. It still renders nothing itself.
 _SCRIPT = """
 (function () {
   "use strict";
@@ -1512,6 +1520,16 @@ _SCRIPT = """
   // leaving the button live again before a double click's second click lands.
   var REWARD_HOLD_MS = 1000;
   var lastRewardAt = -Infinity;
+  // P4d-2b b3a-2 (spec §6.2). The last open and the last return this page sent, kept so
+  // an answer to the warning they raise re-sends the same typed time with it -- the rig
+  // takes an answer only for the time it asked about (`service._unasked`); the unknown
+  // pre-flight items ticked, by name, for the run about to start, cleared whenever a
+  // pre-flight is asked for or a run started, so no tick outlives the run it was for;
+  // and the session the return form is for.
+  var lastOpen = null;
+  var lastEnd = null;
+  var acked = {};
+  var returnFor = null;
   function el(id) { return document.getElementById(id); }
   function say(text, tone) {
     var banner = el("stream");
@@ -1543,14 +1561,29 @@ _SCRIPT = """
   function swap(id, html) {
     if (id === "params" && busy()) { heldParams = html; return; }
     var node = el(id);
+    var chosen = node && node.tagName === "SELECT" ? node.value : null;
     if (node) { node.innerHTML = html; }
+    if (chosen !== null) { choose(node, chosen); }
     if (id === "controls") { holdReward(); }
+    if (id === "preflight") { restoreAcks(); }
   }
   function release() {
     if (heldParams !== null && !busy()) {
       el("params").innerHTML = heldParams;
       heldParams = null;
     }
+  }
+  function choose(select, value) {
+    // A frame re-renders a select's options; the option a person chose stays chosen
+    // while it is still offered (the b3a-2 plan, decision 11).
+    Array.prototype.forEach.call(select.options, function (option) {
+      if (option.value === value) { select.value = value; }
+    });
+  }
+  function restoreAcks() {
+    Array.prototype.forEach.call(document.querySelectorAll("input[data-ack]"), function (box) {
+      box.checked = acked[box.getAttribute("data-ack")] === true;
+    });
   }
   function onFrame(event) {
     var payload = JSON.parse(event.data);
@@ -1704,10 +1737,107 @@ _SCRIPT = """
       if (held) { held.removeAttribute("data-held"); held.disabled = false; }
     });
   }
+  // P4d-2b b3a-2 (spec §6.2): a run, a session and the two marks, from the page. Every
+  // field is a static element no frame replaces; each form sends one command through
+  // `post`, the one `fetch`, which adds who sent it.
+  function chosenTask() { return el("task-sel").value; }
+  function takePreflight(showPanel) {
+    var task = chosenTask();
+    acked = {};
+    if (!task) { tell("not sent: no task is offered to check", "crit"); return; }
+    post({ kind: "check", task: task, values: {} });
+    if (showPanel) { el("t-setup").checked = true; }
+  }
+  function startRun() {
+    var button = el("controls").querySelector('[data-cmd="start"]');
+    var task = button ? button.getAttribute("data-task") : "";
+    var trials = Number(el("run-trials").value.trim());
+    if (!task || task !== chosenTask()) {
+      tell("not sent: the pre-flight shown is not for the task chosen; take its pre-flight first (the pre-flight pill)", "crit");
+      return;
+    }
+    if (!Number.isInteger(trials) || trials < 1) {
+      tell("not sent: a run's trials are a whole number from 1", "crit");
+      return;
+    }
+    var acknowledged = [];
+    Array.prototype.forEach.call(document.querySelectorAll("input[data-ack]"), function (box) {
+      if (box.checked) { acknowledged.push(box.getAttribute("data-ack")); }
+    });
+    acked = {};
+    restoreAcks();
+    post({ kind: "start", task: task, values: {}, trials: trials, acknowledged: acknowledged });
+  }
+  function openNew() {
+    el("dn-msg").textContent = "";
+    el("dlg-new").hidden = false;
+    el("dn-subject").focus();
+  }
+  function openSession() {
+    var given = el("dn-given").value.trim();
+    var today = given === "" ? null : Number(given);
+    if (today !== null && !isFinite(today)) {
+      el("dn-msg").textContent = "not sent: the fluid given today is mL, or blank when it is not known";
+      return;
+    }
+    var request = {
+      kind: "open",
+      session_id: el("dn-id").value.trim(),
+      animal: el("dn-subject").value,
+      deployment: el("dn-deployment").value,
+      view: el("dn-view").value,
+      departure: el("dn-left").value.trim(),
+      delivered_today: today,
+      answer: null,
+      amend_to: null,
+      amend_reason: ""
+    };
+    lastOpen = Object.assign({}, request);
+    post(request, function (answer) {
+      el("dn-msg").textContent = answer.said;
+      if (answer.status === "sent") { el("dlg-new").hidden = true; }
+    });
+  }
+  function askEnd() {
+    el("end-return").value = "";
+    el("end-confirm").hidden = false;
+    el("end-return").focus();
+  }
+  function openReturn(session) {
+    returnFor = session;
+    el("ret-session").textContent = session;
+    el("ret-at").value = "";
+    el("return-form").hidden = false;
+    el("t-end").checked = true;
+    el("ret-at").focus();
+  }
+  function answerWarning(button) {
+    var given = button.getAttribute("data-answer");
+    var which = button.getAttribute("data-mark");
+    var session = button.getAttribute("data-session");
+    if (given === "re-type") { openReturn(session); return; }
+    var sent = which === "departure" ? lastOpen : lastEnd;
+    if (!sent || sent.session_id !== session) {
+      tell("not sent: this page did not send the " + which + " this warning is about, so it cannot answer it; send the time again, then answer the warning it raises", "crit");
+      return;
+    }
+    if (given === "amend") {
+      el("amend-to").value = "";
+      el("amend-why").value = "";
+      el("amend-form").hidden = false;
+      el("amend-to").focus();
+    } else if (given === "confirm") {
+      post(which === "departure" ? Object.assign({}, sent, { answer: "confirm" }) : Object.assign({}, sent, { confirm: true }));
+    }
+  }
   function command(cmd) {
     if (cmd === "stop") { el("stop-confirm").hidden = false; }
     else if (cmd === "mark") { mark(); }
     else if (cmd === "reward") { reward(); }
+    else if (cmd === "new") { openNew(); }
+    else if (cmd === "check") { takePreflight(true); }
+    else if (cmd === "start") { startRun(); }
+    else if (cmd === "end") { askEnd(); }
     else { post({ kind: cmd }); }
   }
   function rewardAllowed(detail) {
@@ -1729,6 +1859,10 @@ _SCRIPT = """
   }
   document.addEventListener("click", function (e) {
     if (!e.target.closest) { return; }
+    var answering = e.target.closest("[data-answer]");
+    if (answering && !answering.disabled) { answerWarning(answering); return; }
+    var returning = e.target.closest("[data-return]");
+    if (returning && !returning.disabled) { openReturn(returning.getAttribute("data-return")); return; }
     var button = e.target.closest("[data-cmd]");
     if (button && !button.disabled) {
       var cmd = button.getAttribute("data-cmd");
@@ -1744,7 +1878,10 @@ _SCRIPT = """
     }
   });
   document.addEventListener("change", function (e) {
-    if (e.target.matches && e.target.matches("input[data-param]")) { schedule(e.target); }
+    if (!e.target.matches) { return; }
+    if (e.target.matches("input[data-param]")) { schedule(e.target); }
+    else if (e.target.matches("input[data-ack]")) { acked[e.target.getAttribute("data-ack")] = e.target.checked; }
+    else if (e.target.id === "task-sel") { takePreflight(false); }
   });
   document.addEventListener("focusout", function () { setTimeout(release, 0); });
   document.addEventListener("keydown", function (e) {
@@ -1774,6 +1911,36 @@ _SCRIPT = """
     else { request.ml = Number(raw); }
     post(request);
   });
+  el("dn-ok").addEventListener("click", openSession);
+  el("dn-cancel").addEventListener("click", function () { el("dlg-new").hidden = true; });
+  el("dlg-new").addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { el("dlg-new").hidden = true; }
+  });
+  el("end-yes").addEventListener("click", function () {
+    var button = el("end-actions").querySelector('[data-cmd="end"]');
+    var returned = el("end-return").value.trim();
+    el("end-confirm").hidden = true;
+    if (!button) { tell("not sent: no session is open to end", "crit"); return; }
+    var request = { kind: "end", session_id: button.getAttribute("data-session"), returned: returned === "" ? null : returned, confirm: false };
+    if (returned !== "") { lastEnd = Object.assign({}, request); }
+    post(request);
+  });
+  el("end-no").addEventListener("click", function () { el("end-confirm").hidden = true; });
+  el("ret-yes").addEventListener("click", function () {
+    var returned = el("ret-at").value.trim();
+    if (!returned) { tell("not sent: give the time the animal went back into its home cage, or now", "crit"); return; }
+    var request = { kind: "end", session_id: returnFor, returned: returned, confirm: false };
+    el("return-form").hidden = true;
+    lastEnd = Object.assign({}, request);
+    post(request);
+  });
+  el("ret-no").addEventListener("click", function () { el("return-form").hidden = true; });
+  el("amend-yes").addEventListener("click", function () {
+    el("amend-form").hidden = true;
+    if (!lastOpen) { tell("not sent: this page sent no departure to amend", "crit"); return; }
+    post(Object.assign({}, lastOpen, { answer: "amend", amend_to: el("amend-to").value.trim(), amend_reason: el("amend-why").value.trim() }));
+  });
+  el("amend-no").addEventListener("click", function () { el("amend-form").hidden = true; });
   setInterval(check, 1000);
   el("close").addEventListener("click", function () {
     closed = true;

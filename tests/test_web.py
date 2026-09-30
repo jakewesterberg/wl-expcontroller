@@ -1693,3 +1693,152 @@ def test_away_from_the_box_every_session_button_in_a_fragment_is_greyed():
     ):
         assert any(needle in tag for tag in buttons), needle
     assert all(" disabled" in tag for tag in buttons)
+
+
+def _function(name: str) -> str:
+    """The body of the page script's function `name`, from its opening line to its own
+    closing brace at two spaces' indent."""
+    return re.search(rf"function {name}\((.*?)\) \{{(.*?)\n  \}}", _SCRIPT, re.S).group(2)
+
+
+def _listener(element: str) -> str:
+    """The body of the page script's click listener on `element`."""
+    return re.search(
+        rf'el\("{element}"\)\.addEventListener\("click", function \(\) \{{(.*?)\n  \}}\);',
+        _SCRIPT,
+        re.S,
+    ).group(1)
+
+
+def test_a_frame_keeps_the_option_chosen_in_a_select():
+    """Review Focus 1: a frame re-renders the task and subject selects' options; the
+    option a person chose stays chosen while it is still offered."""
+    swap = _function("swap")
+
+    assert 'var chosen = node && node.tagName === "SELECT" ? node.value : null;' in swap
+    assert swap.index("var chosen") < swap.index("node.innerHTML = html;") < swap.index(
+        "choose(node, chosen);"
+    )
+    assert 'if (id === "preflight") { restoreAcks(); }' in swap
+    assert "if (option.value === value) { select.value = value; }" in _function("choose")
+
+
+def test_no_acknowledgement_outlives_the_run_or_the_task_it_was_ticked_for():
+    """Review Focus 4 (the b3a-2 plan, decision 9): the ticks are the person's, kept
+    across a re-render, sent with the start, and cleared by a start or a new pre-flight."""
+    take, start = _function("takePreflight"), _function("startRun")
+
+    assert "acked = {};" in take and "acked = {};" in start
+    assert start.index("acked = {};") < start.index("post(")
+    assert 'if (box.checked) { acknowledged.push(box.getAttribute("data-ack")); }' in start
+    assert (
+        'else if (e.target.matches("input[data-ack]")) '
+        '{ acked[e.target.getAttribute("data-ack")] = e.target.checked; }'
+    ) in _SCRIPT
+    assert "box.checked = acked[box.getAttribute(\"data-ack\")] === true;" in _function("restoreAcks")
+
+
+def test_start_sends_the_task_whose_preflight_is_shown_and_only_while_it_is_chosen():
+    """The b3a-2 plan, decision 8; the page's values are none, the task's own (decision 1)."""
+    start = _function("startRun")
+
+    assert "var button = el(\"controls\").querySelector('[data-cmd=\"start\"]');" in start
+    assert 'var task = button ? button.getAttribute("data-task") : "";' in start
+    assert "if (!task || task !== chosenTask()) {" in start
+    assert "if (!Number.isInteger(trials) || trials < 1) {" in start
+    assert (
+        'post({ kind: "start", task: task, values: {}, trials: trials, acknowledged: acknowledged });'
+    ) in start
+    assert 'post({ kind: "check", task: task, values: {} });' in _function("takePreflight")
+    assert 'else if (e.target.id === "task-sel") { takePreflight(false); }' in _SCRIPT
+
+
+def test_a_new_session_is_sent_with_every_field_the_dialog_asks_as_typed():
+    body = _function("openSession")
+
+    for field in (
+        'session_id: el("dn-id").value.trim(),',
+        'animal: el("dn-subject").value,',
+        'deployment: el("dn-deployment").value,',
+        'view: el("dn-view").value,',
+        'departure: el("dn-left").value.trim(),',
+        "delivered_today: today,",
+        "answer: null,",
+        "amend_to: null,",
+        'amend_reason: ""',
+    ):
+        assert field in body, field
+    assert 'var today = given === "" ? null : Number(given);' in body
+    assert "lastOpen = Object.assign({}, request);" in body
+    assert body.index("lastOpen = Object.assign({}, request);") < body.index("post(")
+
+
+def test_an_answer_re_sends_the_time_as_typed_and_only_for_a_warning_this_page_raised():
+    """The b3a-2 plan, decision 10: *confirm* re-sends the open or the return this page
+    sent, with its answer; *amend…* the open with the corrected time and the reason; a
+    warning whose session this page did not send is not answered."""
+    body = _function("answerWarning")
+
+    assert 'if (given === "re-type") { openReturn(session); return; }' in body
+    assert 'var sent = which === "departure" ? lastOpen : lastEnd;' in body
+    assert "if (!sent || sent.session_id !== session) {" in body
+    assert body.index("if (!sent || sent.session_id !== session) {") < body.index("post(")
+    assert 'Object.assign({}, sent, { answer: "confirm" })' in body
+    assert "Object.assign({}, sent, { confirm: true })" in body
+    assert (
+        'post(Object.assign({}, lastOpen, { answer: "amend", amend_to: '
+        'el("amend-to").value.trim(), amend_reason: el("amend-why").value.trim() }));'
+    ) in _listener("amend-yes")
+
+
+def test_end_session_sends_the_return_as_typed_or_later_and_a_return_needs_a_time():
+    """The b3a-2 plan, decision 12: step one's return may be left blank for later; the
+    return form's may not."""
+    end, ret = _listener("end-yes"), _listener("ret-yes")
+
+    assert 'returned: returned === "" ? null : returned, confirm: false' in end
+    assert 'if (returned !== "") { lastEnd = Object.assign({}, request); }' in end
+    assert (
+        'if (!returned) { tell("not sent: give the time the animal went back into its home '
+        'cage, or now", "crit"); return; }'
+    ) in ret
+    assert "lastEnd = Object.assign({}, request);" in ret
+
+
+def test_the_session_forms_are_opened_from_the_buttons_the_panes_render():
+    command = re.search(r"function command\(cmd\) \{(.*?)\n  \}", _SCRIPT, re.S).group(1)
+
+    for line in (
+        'else if (cmd === "new") { openNew(); }',
+        'else if (cmd === "check") { takePreflight(true); }',
+        'else if (cmd === "start") { startRun(); }',
+        'else if (cmd === "end") { askEnd(); }',
+    ):
+        assert line in command, line
+    handler = re.search(
+        r'document\.addEventListener\("click", function \(e\) \{(.*?)\n  \}\);', _SCRIPT, re.S
+    ).group(1)
+    assert 'var answering = e.target.closest("[data-answer]");' in handler
+    assert 'openReturn(returning.getAttribute("data-return"))' in handler
+    assert handler.index("[data-answer]") < handler.index("[data-cmd]")
+
+
+def test_end_session_opens_its_confirmation_and_posts_nothing_until_end_yes():
+    """One click on *end session* once posted `{kind: "end"}` and ended the session with
+    no confirmation. Now only the confirmation's *end-yes* (or the return form's *ret-yes*)
+    posts an end; every function a button opens a form with posts nothing."""
+    command = re.search(r"function command\(cmd\) \{(.*?)\n  \}", _SCRIPT, re.S).group(1)
+
+    assert 'else if (cmd === "end") { askEnd(); }' in command
+    assert 'else { post({ kind: cmd }); }' in command
+    assert command.index('cmd === "end"') < command.index("post({ kind: cmd })")
+    for opener in ("askEnd", "openNew", "openReturn"):
+        assert "post(" not in _function(opener), opener
+    assert 'el("end-confirm").hidden = false;' in _function("askEnd")
+    assert 'el("dlg-new").hidden = false;' in _function("openNew")
+    assert 'el("return-form").hidden = false;' in _function("openReturn")
+    assert "returnFor = session;" in _function("openReturn")
+    assert 'kind: "end"' not in re.sub(
+        r'el\("(end-yes|ret-yes)"\)\.addEventListener\("click".*?\n  \}\);', "", _SCRIPT, flags=re.S
+    )
+
