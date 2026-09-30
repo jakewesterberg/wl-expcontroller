@@ -139,13 +139,15 @@ class Param:
     live: bool = True
     #: **The value a run starts with when nobody gives one** (P4d-2b spec §6.2:
     #: "Starting values are the task's own"; S8 §3.4's *task* layer, under what a console
-    #: or `wlx run --set` gives): a number, which `preflight.values` holds
-    #: to `[low, high]`. Only a number: a starting appearance is not carried until
-    #: something records and publishes one, so `__post_init__` refuses any other.
-    #: `None`, the default, leaves it to whoever starts the run -- and a `wlx taskd` run
-    #: whose trials use a number nobody gave is refused by its pre-flight
-    #: (`preflight.values`), not faulted at its first trial. Checked there, not at load:
-    #: `wlx run` checks it no more than it checks `--set` (XC-159).
+    #: or `wlx run --set` gives): a number inside the parameter's own declared range.
+    #: `__post_init__` refuses any other as the task is built: a starting appearance is
+    #: not carried until something records and publishes one, and a start outside
+    #: `[low, high]` would run under `wlx run`, which takes no pre-flight (XC-159; the
+    #: b3a-2 final review, m2). A bound that is not a real number is left to
+    #: `preflight.values`, which holds the merged values to `[low, high]` again and fails
+    #: closed on a bound it cannot compare. `None`, the default, leaves it to whoever
+    #: starts the run -- and a `wlx taskd` run whose trials use a number nobody gave is
+    #: refused by its pre-flight (`preflight.values`), not faulted at its first trial.
     start: object = None
 
     def __post_init__(self) -> None:
@@ -160,6 +162,33 @@ class Param:
                 f"{start!r} is not a finite one; a starting appearance is not carried "
                 f"until something records and publishes one"
             )
+        if start is None:
+            return
+        low, high = _real(self.low), _real(self.high)
+        side = (
+            "below" if low is not None and start < low
+            else "above" if high is not None and start > high
+            else None
+        )
+        if side is not None:
+            declared = (
+                f"[{low!r}, {high!r}]" if low is not None and high is not None
+                else f"at least {low!r}" if low is not None
+                else f"at most {high!r}"
+            )
+            raise ValueError(
+                f"parameter {self.name!r}: its starting value {start!r} is {side} the "
+                f"range it declares, {declared}; a run would start outside it"
+            )
+
+
+def _real(bound: object) -> float | None:
+    """A declared bound a start is held to: a finite real number that is not a `bool`,
+    or `None` -- for no bound, and for one `Param` cannot compare, which the pre-flight
+    fails closed on instead (`preflight.values`)."""
+    if isinstance(bound, bool) or not isinstance(bound, (int, float)):
+        return None
+    return bound if math.isfinite(bound) else None
 
 
 @dataclass(frozen=True, slots=True)

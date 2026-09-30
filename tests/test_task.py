@@ -125,3 +125,33 @@ def test_a_parameter_refuses_a_start_that_is_not_a_finite_number(bad):
 def test_a_parameter_keeps_an_int_or_float_start():
     assert Param("n", unit="s", start=3).start == 3
     assert Param("n", unit="s", start=0.3).start == 0.3
+
+
+@pytest.mark.parametrize(
+    "start, said",
+    [(50.0, "50.0 is above"), (0.01, "0.01 is below")],
+)
+def test_a_parameter_refuses_a_start_outside_its_own_declared_range(start, said):
+    """The b3a-2 final review, m2: a start outside `[low, high]` passed every load-time
+    check, so `wlx run`, which takes no pre-flight (XC-159), would run it. Refused as the
+    task is built, naming the parameter, its start and its range."""
+    with pytest.raises(ValueError, match=rf"'fix_window'.*{said}.*\[0\.5, 5\.0\]"):
+        Param("fix_window", unit="deg", low=0.5, high=5.0, start=start)
+
+
+def test_a_start_on_its_range_edge_or_with_no_range_or_one_edge_is_kept():
+    assert Param("fix_window", unit="deg", low=0.5, high=5.0, start=0.5).start == 0.5
+    assert Param("fix_window", unit="deg", low=0.5, high=5.0, start=5.0).start == 5.0
+    assert Param("n", unit="s", start=1e9).start == 1e9, "no range declared: kept as before"
+    assert Param("n", unit="s", low=0.0, start=1e9).start == 1e9
+    with pytest.raises(ValueError, match="'n'.*-1.0 is below the range it declares, at least 0.0"):
+        Param("n", unit="s", low=0.0, start=-1.0)
+    with pytest.raises(ValueError, match="'n'.*2.0 is above the range it declares, at most 1.0"):
+        Param("n", unit="s", high=1.0, start=2.0)
+
+
+def test_a_start_beside_a_bound_that_is_not_a_number_is_left_to_the_preflight():
+    """`Param` checks no other field, so a bound typed as text still loads, and the
+    pre-flight fails it closed (`tests/_sessions.malformed_task`); this check compares a
+    start only with a bound that is a real number, and raises nothing else."""
+    assert Param("fix_hold", unit="s", low="0.05", high=2.0, start=0.3).start == 0.3

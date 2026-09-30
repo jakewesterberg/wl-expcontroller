@@ -372,12 +372,28 @@ def test_a_number_the_task_uses_that_nothing_gives_a_value_fails_naming_it():
     assert preflight.values(trial, {"fix_hold": 0.3, "fix_window": 2.0}).result == "pass"
 
 
+def _unchecked(trial, name: str, start: float):
+    """`trial` with `name`'s start set past `Param`'s own refusal (the b3a-2 final review,
+    m2), which a task file cannot do: what the pre-flight's second line is for."""
+    params = []
+    for param in trial.params:
+        if param.name == name:
+            param = dataclasses.replace(param, start=None)
+            object.__setattr__(param, "start", start)
+        params.append(param)
+    return dataclasses.replace(trial, params=params)
+
+
 def test_a_tasks_own_start_outside_its_range_fails_as_a_sent_value_does():
-    item = preflight.values(_starting(fix_hold=99.0), {})
+    """`Param` refuses such a start as the task is built (m2), so a task file cannot
+    declare one; the pre-flight still holds every merged value to its range."""
+    with pytest.raises(ValueError, match="'fix_hold'.*99.0 is above"):
+        _starting(fix_hold=99.0)
+    item = preflight.values(_unchecked(_load_trial(TASK), "fix_hold", 99.0), {})
 
     assert item.result == "fail"
     assert "'fix_hold' is declared over [0.05, 2.0] s and 99.0 is outside it" in item.said
-    assert preflight.values(_starting(fix_hold=99.0), {"fix_hold": 0.3}).result == "pass", (
+    assert preflight.values(_unchecked(_load_trial(TASK), "fix_hold", 99.0), {"fix_hold": 0.3}).result == "pass", (
         "what was sent is what the run starts with"
     )
 
