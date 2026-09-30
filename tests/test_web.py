@@ -27,6 +27,7 @@ from wl_xcon.web import (
     _SCRIPT,
     CONTROLS_AT_THE_BOX,
     DEBOUNCE_MS,
+    END_CONFIRM,
     FONTS,
     FRAGMENT_IDS,
     LEGEND,
@@ -1493,3 +1494,173 @@ def test_a_hostile_name_reaches_no_attribute_unescaped():
     assert f'title="pre-flight: {html.escape(HOSTILE + "2")} failing"' in shown["controls"]
     assert f'<option value="{escaped}">{escaped}</option>' == shown["task-sel"]
     assert fragments(idle(offered_tasks=(HOSTILE,)), view())["task-sel"] == shown["task-sel"]
+
+
+def test_the_summary_ends_a_wlx_taskd_session_in_two_steps():
+    """The b3a-2 plan, decision 12 (b3a-1 decision 6): *end session* while the session is
+    open -- during a run too, which it stops first -- then *record return…*, the second
+    step, while the return is awaited. A `wlx run` session's return is its terminal's."""
+    open_ = (
+        '<span class="pill neutral">open</span><button type="button" class="btn small '
+        'danger" data-cmd="end" data-session="2027-01-14_01">end session</button>'
+    )
+    for phase in ("between_runs", "running"):
+        assert fragments(_between(phase=phase), view())["end-actions"] == open_
+    assert fragments(_between(phase="awaiting_return"), view())["end-actions"] == (
+        '<span class="pill warn">ended · awaiting the return</span><button type="button" '
+        'class="btn small danger" data-return="2027-01-14_01">record return…</button>'
+    )
+    assert fragments(_between(phase="closed"), view())["end-actions"] == (
+        '<span class="pill ok">ended</span>'
+    )
+    assert "<button" not in fragments(frame(**STATES["awaiting return"]), view())["end-actions"]
+    assert fragments(idle(), view())["end-actions"] == '<span class="pill neutral">none</span>'
+
+
+def test_the_warning_is_answered_with_its_own_answers_naming_its_mark_and_session():
+    """Spec §6.2: a far departure is confirmed or amended, a far return confirmed or
+    typed again -- buttons for the frame's own answers, which the page's script sends
+    only as the answer to this question (the b3a-2 plan, decision 10)."""
+    departure = fragments(
+        idle(question=Question("departure", "2027-01-14_01", 1.0, "far", ("confirm", "amend"))),
+        view(),
+    )["banners"]
+    returning = fragments(
+        _between(
+            phase="awaiting_return",
+            question=Question("return", "2027-01-14_01", 1.0, "far", ("confirm", "re-type")),
+        ),
+        view(),
+    )["banners"]
+    lan = fragments(
+        idle(question=Question("departure", "2027-01-14_01", 1.0, "far", ("confirm", "amend"))),
+        view(can_write=False),
+    )["banners"]
+
+    assert (
+        '<button type="button" class="btn small" data-answer="confirm" data-mark="departure" '
+        'data-session="2027-01-14_01">confirm</button>'
+    ) in departure
+    assert (
+        '<button type="button" class="btn small" data-answer="amend" data-mark="departure" '
+        'data-session="2027-01-14_01">amend…</button>'
+    ) in departure
+    assert (
+        'data-answer="re-type" data-mark="return" data-session="2027-01-14_01">re-type</button>'
+    ) in returning
+    answers = re.findall(r"<button[^>]*data-answer[^>]*>", lan)
+    assert answers and all(" disabled" in tag for tag in answers)
+
+
+def test_a_stranded_animals_return_is_recorded_from_its_banner_naming_its_session():
+    """XC-176: `Service._open`'s refusal says "Record it with End session, naming its
+    session", and this is where. A record that cannot be read is repaired by hand first,
+    so it has no button."""
+    banners = fragments(
+        idle(stranded=(Stranded("2027-01-13_01", "B", 1_700_000_000.0), Stranded("2027-01-13_02", "", None))),
+        view(),
+    )["banners"]
+
+    assert (
+        '<button type="button" class="btn small danger" data-return="2027-01-13_01">'
+        "end session…</button>"
+    ) in banners
+    assert 'data-return="2027-01-13_02"' not in banners
+    assert "Idle" not in banners, "nothing opens while an animal is stranded"
+
+
+def test_the_idle_page_offers_a_new_session_and_says_which_animals_and_tasks_there_are():
+    """Spec §6.1: "the page shows *no session open* beside the form that opens one"; the
+    mockup's Session panel has *new session* too. Greyed while an animal is stranded."""
+    parts = fragments(idle(), view())
+    stranded = fragments(idle(stranded=(Stranded("2027-01-13_01", "B", 1_700_000_000.0),)), view())
+    button = '<button type="button" class="btn small primary" data-cmd="new">new session</button>'
+
+    assert button in parts["banners"] and "no session open" in parts["banners"]
+    assert button in parts["setup"]
+    assert "<dt>animals</dt><dd>A, B</dd>" in parts["setup"]
+    assert "<dt>tasks offered</dt><dd>fixation_detection.py</dd>" in parts["setup"]
+    assert parts["dn-subject"] == '<option value="A">A</option><option value="B">B</option>'
+    assert re.search(r'data-cmd="new" disabled title="[^"]+">new session</button>', stranded["setup"])
+    assert fragments(frame(), view())["dn-subject"] == '<option value="">no animal offered</option>'
+
+
+def test_every_string_the_session_panes_show_is_escaped():
+    parts = fragments(
+        _between(
+            session_id=EVIL,
+            offered_tasks=(EVIL,),
+            preflight=Preflight(EVIL, (PreflightItem(EVIL, "unknown", EVIL),)),
+            question=Question(EVIL, EVIL, 1.0, EVIL, (EVIL,)),
+        ),
+        view(),
+    )
+    idle_parts = fragments(
+        idle(animals=(EVIL,), offered_tasks=(EVIL,), stranded=(Stranded(EVIL, EVIL, 1.0),)),
+        view(),
+    )
+
+    text = "".join(parts.values()) + "".join(idle_parts.values())
+    assert "<script" not in text
+    assert EVIL not in text
+
+
+#: What a person types or chooses on the page's forms. Each is static, outside every
+#: fragment, so no frame -- one a second while idle and between runs -- replaces it.
+_TYPED = (
+    "run-trials", "amend-to", "amend-why", "end-return", "ret-at",
+    "dn-deployment", "dn-view", "dn-left", "dn-id", "dn-given",
+)
+
+
+def test_nothing_a_person_types_into_is_inside_a_fragment():
+    """Review Focus 1 (the b3a-2 plan, decision 11)."""
+    for parts in (fragments(_between(preflight=PREFLIGHT), view()), fragments(idle(), view())):
+        document = page(parts, stale_after_s=30.0, nonce="n0nce", can_write=True)
+        for name in _TYPED:
+            assert document.count(f'id="{name}"') == 1, name
+            assert not any(f'id="{name}"' in pane for pane in parts.values()), name
+
+
+def test_the_new_session_dialog_asks_what_an_open_needs_and_offers_no_now_for_the_departure():
+    """Spec §6.2's fields, in the mockup's `dlg-new` (the b3a-2 plan, decision 6): no rig
+    and no "saved to" (`wlx taskd`'s are fixed), the id typed, and the departure empty --
+    the terminal's parser has no `now` for it."""
+    document = page(fragments(idle(), view()), stale_after_s=30.0, nonce="n0nce", can_write=True)
+
+    assert re.search(r'<div class="scrim" id="dlg-new"[^>]*hidden>', document)
+    for field, label in (
+        ("dn-subject", "subject"), ("dn-deployment", "deployment"), ("dn-view", "setup"),
+        ("dn-left", "←cage at"), ("dn-id", "id"), ("dn-given", "given today, mL"),
+    ):
+        assert f'<label class="sub" for="{field}">{label}</label>' in document, field
+    assert '<option value="rig_fixed">head-fixed</option><option value="rig_chaired">chaired</option>' in document
+    assert '<option value="direct">direct view</option><option value="stereoscope">stereoscope</option>' in document
+    left = re.search(r'<input[^>]*id="dn-left"[^>]*>', document).group(0)
+    assert " value=" not in left and "now" not in left
+    assert '<button class="btn primary" id="dn-ok" type="button">open session</button>' in document
+    assert "<title>xcon console</title>" in document and "expcontroller" not in document
+
+
+def test_end_session_asks_first_and_takes_the_return_now_or_later():
+    document = page(fragments(_between(), view()), stale_after_s=30.0, nonce="n0nce", can_write=True)
+
+    assert "<h2>Summary</h2>" in document
+    assert re.search(r'<div class="inline crit" id="end-confirm"[^>]*hidden>', document)
+    assert html.escape(END_CONFIRM) in document
+    assert END_CONFIRM.startswith("end the session?")
+    assert "the head's release is recorded then" in END_CONFIRM
+    assert "leave it blank" in END_CONFIRM
+    assert re.search(r'<div class="inline info" id="return-form"[^>]*hidden>', document)
+    assert re.search(r'<div class="inline info" id="amend-form"[^>]*hidden>', document)
+
+
+def test_away_from_the_box_every_session_form_is_greyed():
+    lan = page(fragments(_between(preflight=PREFLIGHT), view(can_write=False)), stale_after_s=30.0, nonce="n0nce")
+
+    for control in (
+        "task-sel", "run-trials", "dn-subject", "dn-deployment", "dn-view", "dn-left",
+        "dn-id", "dn-given", "dn-ok", "end-return", "end-yes", "ret-at", "ret-yes",
+        "amend-to", "amend-why", "amend-yes",
+    ):
+        assert re.search(r'id="' + control + r'"[^>]* disabled', lan), control

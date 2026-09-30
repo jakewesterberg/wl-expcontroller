@@ -504,8 +504,7 @@ def test_end_without_a_return_waits_for_it_and_refuses_a_run(tmp_path):
     assert waiting.stopped_because == f"session ended by {BY}, before any run"
     refused = _step(service, Pause(by=BY))
     assert (
-        "recorded by an EndSession sent over the link (the page's End session button "
-        "waits on b3a-2)"
+        "recorded by an EndSession sent over the link (the page's End session)"
     ) in _refused(refused)[-1]
     assert isinstance(_step(service, _end()), Idle)
 

@@ -40,7 +40,7 @@ from importlib import resources
 
 from wl_xcon import health as _health
 from wl_xcon.cli import _clock, _moment, _setup_words
-from wl_xcon.link import RECENT_OUTCOMES, Idle, Telemetry
+from wl_xcon.link import RECENT_OUTCOMES, Idle, Question, Telemetry
 from wl_xcon.task import Family, Outcome
 
 
@@ -104,7 +104,9 @@ FRAGMENT_IDS = (
     "pf-sum",
     "preflight",
     "setup",
+    "end-actions",
     "end",
+    "dn-subject",
 )
 
 #: The ticks' legend: one entry per `Family`, then the two strings that are none.
@@ -141,6 +143,16 @@ UNPLANNED = (
 #: day's plan (b3b) a run from the page is `wlx run`'s flat run of N trials (the b3a-2
 #: plan, decision 6). A starting figure the person changes, not a rule or a measurement.
 RUN_TRIALS = 1000
+#: What *end session* asks before it is sent (the mockup's `end-confirm`, P4d-2b spec
+#: §6.2): what ending does here, the head's release now and the return now or later (the
+#: b3a-1 plan, decision 6) -- not the mockup's "the in-session clock stops, and the code
+#: it used is packaged", which predates it and slice b6.
+END_CONFIRM = (
+    "end the session? no further run starts in it; a run in progress stops at its next "
+    "trial boundary, and the head's release is recorded then. give the time the animal "
+    "went back into its home cage now, or leave it blank and record it once the animal "
+    "is home"
+)
 
 _NONE = '<span class="nm">no session</span>'
 _UNKNOWN_DAY = "unknown: the day's prior total was not supplied"
@@ -427,7 +439,7 @@ def _banners(frame: Telemetry | None, view: View) -> str:
         tone = "crit" if frame.stop_kind == "limit" else "warn"
         out.append(_banner(tone, "Warning", _e(frame.duration_warning)))
     if frame.question is not None:
-        out.append(_question_banner(frame.question))
+        out.append(_question_banner(frame.question, view))
     if frame.stopped_because:
         tone = "crit" if frame.stop_kind in ("fault", "limit") else "info"
         tag = (
@@ -991,43 +1003,106 @@ def _end(frame: Telemetry | None) -> str:
     )
 
 
-def _question_banner(question) -> str:
-    """The answer a console owes on a far mark (P4d-2b spec §6.2). The buttons that give
-    it are b3a-2's; this says what is owed."""
+def _question_banner(question: Question, view: View) -> str:
+    """The answer a console owes on a far mark (P4d-2b spec §6.2), with a button for each
+    of the frame's own answers, naming its mark and session: the page's script re-sends
+    the time as typed with the one pressed, and only for a question this page raised
+    (the b3a-2 plan, decision 10). Greyed away from the box."""
+    buttons = "".join(
+        f'<button type="button" class="btn small" data-answer="{_e(answer)}" '
+        f'data-mark="{_e(question.mark)}" data-session="{_e(question.session_id)}"'
+        f'{_off(view)}>{_e(answer)}{"…" if answer == "amend" else ""}</button>'
+        for answer in question.answers
+    )
     return _banner(
         "warn",
         "Confirm",
         f"{_e(question.said)} · answer "
         f"{' or '.join(_e(answer) for answer in question.answers)} "
-        f"(session {_e(question.session_id)})",
+        f"(session {_e(question.session_id)}) {buttons}",
     )
 
 
+def _new_session_button(view: View, why: str | None = None) -> str:
+    """*new session* (the mockup's `a-new`): opens the page's *New session* dialog."""
+    off = _off(view) or ("" if why is None else f' disabled title="{_e(why)}"')
+    return f'<button type="button" class="btn small primary" data-cmd="new"{off}>new session</button>'
+
+
 def _idle_banners(frame: Idle, view: View) -> str:
-    """A refused frame, then every stranded animal, then a question owed -- where a
-    person looks first. The form that opens a session is b3a-2's. A stranded departure
-    is given as this host's local date, minute and zone, as the terminal gives it
-    (`cli._moment`): an animal out since days ago must not read as since this morning
-    (the b3a-1 final review, Minor 1)."""
+    """A refused frame, then every stranded animal -- each with *end session…*, which
+    takes its return naming its session (XC-176) -- then a question owed, then, with no
+    animal stranded, *no session open* beside *new session* (spec §6.1). A stranded
+    departure is given as this host's local date, minute and zone, as the terminal gives
+    it (`cli._moment`): an animal out since days ago must not read as since this morning
+    (the b3a-1 final review, Minor 1). A record that cannot be read has no button: it is
+    repaired by hand first."""
     out = []
     if view.rejected:
         out.append(_banner("crit", "Refused", _e(view.rejected)))
     for found in frame.stranded:
-        text = (
-            f"session {_e(found.session_id)}: its welfare record cannot be read, so its "
-            f"animal's return cannot be checked; no session opens until the file is "
-            f"repaired and the return recorded"
-            if found.left_at is None
-            else f"{_e(found.subject)} left its cage at {_e(_moment(found.left_at))} in "
-            f"session {_e(found.session_id)}, and its return is not recorded; no session "
-            f"opens until it is"
-        )
+        if found.left_at is None:
+            text = (
+                f"session {_e(found.session_id)}: its welfare record cannot be read, so its "
+                f"animal's return cannot be checked; no session opens until the file is "
+                f"repaired and the return recorded"
+            )
+        else:
+            text = (
+                f"{_e(found.subject)} left its cage at {_e(_moment(found.left_at))} in "
+                f"session {_e(found.session_id)}, and its return is not recorded; no "
+                f"session opens until it is "
+                f'<button type="button" class="btn small danger" '
+                f'data-return="{_e(found.session_id)}"{_off(view)}>end session…</button>'
+            )
         out.append(_banner("crit", "Stranded", text))
     if frame.question is not None:
-        out.append(_question_banner(frame.question))
-    if not out:
-        out.append(_banner("info", "Idle", "no session open"))
+        out.append(_question_banner(frame.question, view))
+    if not frame.stranded:
+        out.append(_banner("info", "Idle", f"no session open {_new_session_button(view)}"))
     return "".join(out)
+
+
+def _idle_setup(frame: Idle, view: View) -> str:
+    """The Session panel with no session open (the mockup's Setup tab): *new session*,
+    greyed while an animal is stranded, and what `wlx taskd` offers a session."""
+    why = (
+        "an animal's return is not recorded: end its session from its Stranded banner first"
+        if frame.stranded
+        else None
+    )
+    rows = (
+        ("animals", ", ".join(frame.animals) or "none: no folder under --subjects holds a bounds.py"),
+        ("tasks offered", ", ".join(frame.offered_tasks) or "none: no task file under --tasks"),
+    )
+    return (
+        f'<div class="selrow">{_new_session_button(view, why)}</div><dl class="dl">'
+        + "".join(f"<dt>{name}</dt><dd>{_e(value)}</dd>" for name, value in rows)
+        + "</dl>"
+    )
+
+
+def _end_actions(frame: Telemetry | Idle | None, view: View) -> str:
+    """The Summary's pill and *end session* (the mockup's `end-pill`, `a-end`) while a
+    `wlx taskd` session is open -- during a run too, which it stops first -- and, once it
+    has ended, *record return…*, the second step (the b3a-2 plan, decision 12). A `wlx
+    run` session's return is taken at its terminal, so its pill stands alone."""
+    if frame is None or isinstance(frame, Idle):
+        return '<span class="pill neutral">none</span>'
+    session = _e(frame.session_id)
+    if not frame.service:
+        return f'<span class="pill neutral">{"open" if frame.stop_kind is None else "ended"}</span>'
+    if frame.phase in ("between_runs", "running"):
+        return (
+            '<span class="pill neutral">open</span><button type="button" class="btn small '
+            f'danger" data-cmd="end" data-session="{session}"{_off(view)}>end session</button>'
+        )
+    if frame.phase == "awaiting_return":
+        return (
+            '<span class="pill warn">ended · awaiting the return</span><button type="button" '
+            f'class="btn small danger" data-return="{session}"{_off(view)}>record return…</button>'
+        )
+    return '<span class="pill ok">ended</span>'
 
 
 def _idle_refusals(frame: Idle) -> str:
@@ -1047,10 +1122,11 @@ def _idle_refusals(frame: Idle) -> str:
 
 
 def _idle(frame: Idle, view: View) -> dict[str, str]:
-    """The page while `wlx taskd` has no session open (P4d-2b spec §6.1: "the page
-    shows *no session open*"): every pane as before any frame, except the pill, the
-    header, the banners, the controls, *wl-works sees* (`/health` as it would be sent
-    for this frame, stranded animals included) and the refusals."""
+    """The page while `wlx taskd` has no session open (P4d-2b spec §6.1: "the page shows
+    *no session open* beside the form that opens one"): every pane as before any frame,
+    except the pill, the header, the banners, the controls, *wl-works sees* (`/health`
+    as it would be sent for this frame, stranded animals included), the refusals, the
+    tasks offered, the Session panel and the dialog's animals."""
     panes = fragments(None, view)
     panes["state"] = '<span class="pill neutral" data-state="idle">no session open</span>'
     panes["head-id"] = '<span class="nm">no session open</span>'
@@ -1059,6 +1135,8 @@ def _idle(frame: Idle, view: View) -> dict[str, str]:
     panes["rt-health"] = _health_pane(frame, view)
     panes["rt-changes"] = _idle_refusals(frame)
     panes["task-sel"] = _options(frame.offered_tasks, "no task offered")
+    panes["setup"] = _idle_setup(frame, view)
+    panes["dn-subject"] = _options(frame.animals, "no animal offered")
     return panes
 
 
@@ -1087,7 +1165,9 @@ def fragments(frame: Telemetry | Idle | None, view: View) -> dict[str, str]:
         "pf-sum": _pf_sum(frame),
         "preflight": _preflight_pane(frame, view),
         "setup": _setup(frame),
+        "end-actions": _end_actions(frame, view),
         "end": _end(frame),
+        "dn-subject": _options((), "no animal offered"),
     }
 
 
@@ -1340,6 +1420,11 @@ button.pill { border: 0; cursor: pointer; }
 .st { width: 10px; height: 10px; border-radius: 50%; }
 .st.pass { background: var(--ok); } .st.warn { background: var(--warn); } .st.fail { background: var(--crit); } .st.untested { box-shadow: inset 0 0 0 1.5px var(--muted); }
 .chk { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.dialog .grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; }
+.dialog .end { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.dialog .field, .dialog select { width: 100%; border-radius: 3px; font: inherit; }
+#amend-to, #end-return, #ret-at { width: 13em; }
+#amend-why { width: min(28em, 50vw); }
 body.stale .strip, body.stale .panels { filter: grayscale(1); opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 """
@@ -1725,6 +1810,10 @@ def page(
     `can_write` is `View.can_write` for the browser this page is for: `False`
     disables those static controls here and tells the script (`data-can-write`); the
     fragments grey their own. Close and reconnect, and the tab radios, are b1's.
+    **The session forms (P4d-2b b3a-2)**: the *New session* dialog, the end
+    confirmation, the return and the amendment are static too, and so is the run's
+    trial count; only the task and subject selects' options are fragments (the b3a-2
+    plan, decision 11).
     """
     p = {key: parts[key] for key in FRAGMENT_IDS}
     off = "" if can_write else f' disabled title="{_e(CONTROLS_AT_THE_BOX)}"'
@@ -1749,6 +1838,7 @@ def page(
   <div class="strip glass" role="region" aria-label="animal" id="strip">{p['strip']}</div>
   <div class="banner" id="stream" role="status" hidden></div>
   <div class="banners" id="banners">{p['banners']}</div>
+  <div class="inline info" id="amend-form" role="dialog" aria-label="amend the departure" hidden><span>amend the departure · the corrected time</span><input id="amend-to" autocomplete="off" placeholder="HH:MM, or 2027-01-13T22:40" aria-label="the corrected departure"{off}><span>why</span><input id="amend-why" maxlength="500" autocomplete="off" aria-label="why it is amended"{off}><span class="nm">your name is recorded with it</span><button class="btn small primary" id="amend-yes" type="button"{off}>send amendment</button><button class="btn small" id="amend-no" type="button">cancel</button></div>
   <section class="controlbar glass" aria-label="controls">
     <label class="tsel" for="task-sel"><span class="k">Task</span><select id="task-sel" aria-label="task"{off}>{p['task-sel']}</select></label>
     <label class="tsel" for="run-trials"><span class="k">Trials</span><input class="field mono" id="run-trials" value="{RUN_TRIALS}" inputmode="numeric" autocomplete="off" aria-label="trials"{off}></label>
@@ -1792,7 +1882,10 @@ def page(
           <section class="panel glass" id="pf-panel"><div class="top"><h2>Pre-flight</h2><span id="pf-sum">{p['pf-sum']}</span></div><div id="preflight">{p['preflight']}</div></section>
           <section class="panel glass"><div class="top"><h2>Session</h2></div><div id="setup">{p['setup']}</div></section>
         </div>
-        <div class="tabpanel" id="tp-end"><section class="panel glass"><div class="top"><h2>End of session</h2><span class="sub">read-only</span></div><div id="end">{p['end']}</div></section></div>
+        <div class="tabpanel" id="tp-end"><section class="panel glass"><div class="top"><h2>Summary</h2><div class="selrow" id="end-actions">{p['end-actions']}</div></div>
+          <div class="inline crit" id="end-confirm" role="alertdialog" aria-label="confirm end session" hidden><span>{_e(END_CONFIRM)}</span><span>→cage at</span><input id="end-return" autocomplete="off" placeholder="now, HH:MM, or blank for later" aria-label="the return to the home cage"{off}><button class="btn small danger" id="end-yes" type="button"{off}>end session</button><button class="btn small" id="end-no" type="button">cancel</button></div>
+          <div class="inline info" id="return-form" role="dialog" aria-label="the return to the home cage" hidden><span>the return to the home cage · session <b class="mono" id="ret-session"></b> · →cage at</span><input id="ret-at" autocomplete="off" placeholder="now, HH:MM, or 2027-01-13T22:40" aria-label="the return to the home cage"{off}><button class="btn small primary" id="ret-yes" type="button"{off}>record return</button><button class="btn small" id="ret-no" type="button">cancel</button></div>
+          <div id="end">{p['end']}</div></section></div>
       </div>
     </div>
     <aside class="aside" aria-label="always shown">
@@ -1803,6 +1896,21 @@ def page(
         <section class="panel glass"><h2>Display</h2><span class="nm">display · not measured</span></section>
       </div>
     </aside>
+  </div>
+</div>
+<div class="scrim" id="dlg-new" hidden>
+  <div class="dialog glass" role="dialog" aria-modal="true" aria-labelledby="dn-h">
+    <h2 id="dn-h">New session</h2>
+    <div class="grid">
+      <label class="sub" for="dn-subject">subject</label><select id="dn-subject"{off}>{p['dn-subject']}</select>
+      <label class="sub" for="dn-deployment">deployment</label><select id="dn-deployment"{off}><option value="rig_fixed">head-fixed</option><option value="rig_chaired">chaired</option></select>
+      <label class="sub" for="dn-view">setup</label><select id="dn-view"{off}><option value="direct">direct view</option><option value="stereoscope">stereoscope</option></select>
+      <label class="sub" for="dn-left">←cage at</label><input class="field mono" id="dn-left" autocomplete="off" placeholder="HH:MM, or 2027-01-13T22:40"{off}>
+      <label class="sub" for="dn-id">id</label><input class="field mono" id="dn-id" autocomplete="off" placeholder="as wlx run --session-id takes it"{off}>
+      <label class="sub" for="dn-given">given today, mL</label><input class="field mono" id="dn-given" inputmode="decimal" autocomplete="off" placeholder="blank when not known"{off}>
+    </div>
+    <div id="dn-msg" class="sub" role="status"></div>
+    <div class="end"><button class="btn" id="dn-cancel" type="button">cancel</button><button class="btn primary" id="dn-ok" type="button"{off}>open session</button></div>
   </div>
 </div>
 <div class="scrim" id="gone" role="dialog" aria-modal="true" aria-labelledby="gone-h" hidden>

@@ -638,11 +638,16 @@ class Welfare:
         _finite(f"the time since the {what} this subject is marked with", seconds_ago)
         if seconds_ago <= CONFIRM_MARK_WITHIN:
             return None
+        # **What a person may answer, in the words the terminal and the page take**
+        # (the b3a-2 plan, decision 16): a departure is confirmed or amended with a
+        # reason; a return has no amendment (P4d-2a spec §3; P4d-2b spec §6.2), so a
+        # corrected time is typed again. Words only: the rule above is the same for both.
+        other = "amend it with a reason" if what == "departure" else "type it again"
         return (
             f"the {what} given for subject {self.bounds.subject!r} is "
             f"{seconds_ago:.0f} s before the clock this session is reading, which is "
             f"further back than the {CONFIRM_MARK_WITHIN:.0f} s a session takes "
-            f"on trust (PI, 2026-09-20). Confirm it, or amend it with a reason -- an "
+            f"on trust (PI, 2026-09-20). Confirm it, or {other} -- an "
             f"hour typed in the wrong half of the day sits inside every limit there "
             f"is and nothing else will catch it"
         )

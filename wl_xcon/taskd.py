@@ -1531,7 +1531,7 @@ class Session:
                 if self.phase == "closed"
                 else "the session has ended and is waiting for the animal's return to its "
                 "cage, which is recorded by an EndSession sent over the link (the page's "
-                "End session button waits on b3a-2); a command sent now is not applied"
+                "End session); a command sent now is not applied"
                 if self.service
                 else "the session has ended and is waiting for the animal's return to its "
                 "cage, which is marked at wlx run's terminal; a command sent now is not "

@@ -1421,7 +1421,7 @@ def test_a_return_far_from_now_needs_a_persons_confirmation_too():
     )
 
     assert sentence is not None
-    assert "Confirm it, or amend it" in sentence
+    assert "Confirm it, or type it again" in sentence
 
 
 def test_a_far_return_nobody_confirmed_is_refused():
@@ -2550,3 +2550,46 @@ def test_the_session_clock_is_anchored_once_and_never_steps_with_the_host(
     clocks.run(awake=5.0, asleep=0.0, counting=())
     clocks.host = WALL_NOW + 7_200.0
     assert clock.now() == WALL_NOW + 10.0, "nor forward"
+
+
+# --- P4d-2b b3a-2: a far mark's words offer what the terminal and the page take ------
+
+
+def test_a_far_returns_sentence_offers_a_confirmation_or_the_time_typed_again():
+    """A return has no amendment (P4d-2a spec §3; P4d-2b spec §6.2): the terminal and the
+    page take a confirmation or the time typed again, so the sentence offers those and
+    never an amendment the rig would refuse (the b3a-2 plan, decision 16). Words only:
+    the same thirty minutes, a string and never an exception, and nothing marked."""
+    welfare = _welfare()
+    welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW)
+
+    sentence = welfare.return_needs_confirmation(
+        at=WALL_NOW + 100.0, wall_now=WALL_NOW + 7_300.0
+    )
+
+    assert sentence == (
+        "the return given for subject 'A' is 7200 s before the clock this session is "
+        "reading, which is further back than the 1800 s a session takes on trust (PI, "
+        "2026-09-20). Confirm it, or type it again -- an hour typed in the wrong half of "
+        "the day sits inside every limit there is and nothing else will catch it"
+    )
+    assert "amend" not in sentence
+    assert welfare.returned_wall_at is None, "asking marks nothing"
+    assert welfare.return_needs_confirmation(
+        at=WALL_NOW + 5_500.0, wall_now=WALL_NOW + 7_300.0
+    ) is None, "1,800 s is still the band's edge"
+
+
+def test_a_far_departures_sentence_is_unchanged_confirm_or_amend_with_a_reason():
+    """The departure's words are the PI's two options (2026-09-20), byte for byte as they
+    were before the return's changed (the b3a-2 plan, decision 16)."""
+    welfare = _welfare()
+
+    sentence = welfare.departure_needs_confirmation(at=WALL_NOW - 7_200.0, wall_now=WALL_NOW)
+
+    assert sentence == (
+        "the departure given for subject 'A' is 7200 s before the clock this session is "
+        "reading, which is further back than the 1800 s a session takes on trust (PI, "
+        "2026-09-20). Confirm it, or amend it with a reason -- an hour typed in the wrong "
+        "half of the day sits inside every limit there is and nothing else will catch it"
+    )
