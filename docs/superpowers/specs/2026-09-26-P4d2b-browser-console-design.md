@@ -676,7 +676,8 @@ Writes only from the rig PC's own browser (§2's four checks), until b2b.
 - **Telemetry, schema 10:** `phase` gains `idle` and `between_runs`; each frame carries the run
   index (`None` when no run has started); the run about to start carries its pre-flight
   results; the out-of-cage and fluid cells stay live between runs. Unknown stays `None`,
-  never `0` (S9a §9).
+  never `0` (S9a §9). **Schema 11** (b3a-2's final review, §6.7): the idle frame also
+  carries the last closed session's summary until the next session opens.
 
 ### 6.4 Human review before b3a merges
 
@@ -740,8 +741,10 @@ left open; the welfare ones are in its summary for the PI.
 - **Starting values are the task's own, declared on each parameter** (plan decision 1):
   `Param.start`, under what a run is given, both layers in its `runs.jsonl` start row (S8
   §3.4), for `wlx taskd`'s runs and `wlx run`'s alike, which takes a task's own value where
-  `--set` gives none. A `start` is a finite number or nothing: `Param` refuses any other as
-  the task is built, so a task declaring one fails to load and its pre-flight fails it.
+  `--set` gives none. A `start` is a finite number (never a `bool`) inside the parameter's
+  own declared range, or nothing: `Param` refuses any other as the task is built (the
+  range since the final review, m2, since `wlx run` takes no pre-flight), so a task
+  declaring one fails to load and its pre-flight fails it.
   `fixation_detection` declares the values the mockup shows (the other reference tasks
   declare none yet, XC-183). A `wlx taskd` run of a task that uses a number with no value,
   or a parameter it never declares, is refused by its pre-flight, naming each (decision 2).
@@ -762,6 +765,21 @@ left open; the welfare ones are in its summary for the PI.
   id typed, deployment, setup and fluid given today added, no rig or save folder, an
   acknowledgement box per unknown item, the run's trial count (1000, `wlx run`'s default),
   *end session* then *record return…*, and a stranded animal's *end session…* on its banner.
+
+And by the branch's final review, which drove the page in a browser (2026-09-30):
+- **The closed session's summary is shown until the next session opens** (I2): `wlx
+  taskd`'s idle frame carries the closed session's last frame (`Idle.closed`, telemetry
+  **schema 11**), and the End tab renders it, supplement owed first, as it renders any
+  closed frame; unknown stays `None`.
+- ***New session* starts empty** (I1): the subject starts on "choose the animal", and the
+  departure, id and fluid given today are cleared once the page shows the session it sent
+  open; a refused or unanswered open keeps them for a retry.
+- **A refused open, check, start or end shows in the control bar** (I3), the newest with
+  its sentence, wherever the person is; while *New session* is open, the script's own
+  messages show in it.
+- **Choosing a task takes the pre-flight only between runs** (m1).
+- **A starting value outside its declared range is refused as the task loads** (m2),
+  above.
 
 ## 7. Not in this slice
 

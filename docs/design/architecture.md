@@ -67,7 +67,7 @@ are detected at the display surface.
 | Component | Runs on | Language | Job | Simulator |
 |---|---|---|---|---|
 | `taskd` | Task PC (Linux) | Python | Trial execution, display, gaze logic, DIO, session record; since P4d-2b b3a also `wlx taskd`, the rig service that holds one animal's session across runs, opened, run and ended from a console (`service.py`) | Full headless run against replayed/synthetic inputs |
-| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and records the actor** — anybody attached has full access, with visibility rather than a lock (S9a §8); `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008). **The link exists** (`wl_xcon/link.py`, P4d-1, 2026-09-19): `taskd` holds a `Link` port, drained and published once per trial boundary and never per frame, whose live implementation (`ZmqLink`) binds a ZMQ PUB socket for `Telemetry`, a REP socket for its commands — `SetParameter` and `Stop`, and since P4d-2b b2a `Pause`, `Resume`, `Mark` (a mark's note), `ScheduleStop`, `CancelScheduledStop` and `ManualReward` (a manual reward: while paused and, in a `wlx taskd` session, between runs and while the return is awaited), and since P4d-2b b3a `OpenSession`, `CheckRun`, `StartRun` and `EndSession`, which `wlx taskd` acts on and a `wlx run` session refuses — which the page's forms send since b3a-2, through `POST /commands`, built by the wire's own rules (`link._command_from`) — each checked where it is decoded — and, given a third endpoint, a PULL socket for an operator's mark signal, which the trial loop checks once per frame (ADR-0003's transport, untouched: a third socket on the same link). `ZmqConsole` is the other end. Reached today by `wlx run --link PUB,REP` or `wlx taskd --link PUB,REP` and a terminal client, `wlx console --sub PUB --req REP --as WHO`. **The browser console exists, read-only** (P4d-2b slice b1, 2026-09-26): `wlx serve --link PUB,REP --http HOST:PORT --health-token-file PATH` is its own process — a stdlib `ThreadingHTTPServer`, one `ZmqConsole` on a telemetry thread, server-sent events to each browser from a bounded queue, and every pane rendered in Python (`web.py`) so the page's script only swaps fragments. The wl-works fonts are bundled and served by the box, so the page never reaches the internet (PI, 2026-09-26). Reads are open to the LAN. **Writes come from the box** (P4d-2b slice b2a, 2026-09-28): `POST /commands` is accepted only from a loopback peer, with a `Host` naming loopback, the page's own `Origin` and `Content-Type: application/json` (spec §2), and recorded as `NAME (box, unverified)`; every request is answered only when its `Host` names this console (`--allow-host` adds names). `wlx serve` owns each socket on one thread — a read-only telemetry thread, a command thread whose REQ socket waits for `taskd`'s acknowledgment (*sent*, *not delivered*, *busy*), and a mark thread that sends the signal ahead of every command. Writes from people signed in to wl-works are slice b2b | Runs against a fake `taskd` (`link.Simulated`), or a real one over loopback sockets |
+| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and records the actor** — anybody attached has full access, with visibility rather than a lock (S9a §8); `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008). **The link exists** (`wl_xcon/link.py`, P4d-1, 2026-09-19): `taskd` holds a `Link` port, drained and published once per trial boundary and never per frame, whose live implementation (`ZmqLink`) binds a ZMQ PUB socket for `Telemetry`, a REP socket for its commands — `SetParameter` and `Stop`, and since P4d-2b b2a `Pause`, `Resume`, `Mark` (a mark's note), `ScheduleStop`, `CancelScheduledStop` and `ManualReward` (a manual reward: while paused and, in a `wlx taskd` session, between runs and while the return is awaited), and since P4d-2b b3a `OpenSession`, `CheckRun`, `StartRun` and `EndSession`, which `wlx taskd` acts on and a `wlx run` session refuses — which the page's forms send since b3a-2, through `POST /commands`, built by the wire's own rules (`link._command_from`), and whose closed session's summary `wlx taskd`'s idle frame carries until the next session opens (telemetry schema 11) — each checked where it is decoded — and, given a third endpoint, a PULL socket for an operator's mark signal, which the trial loop checks once per frame (ADR-0003's transport, untouched: a third socket on the same link). `ZmqConsole` is the other end. Reached today by `wlx run --link PUB,REP` or `wlx taskd --link PUB,REP` and a terminal client, `wlx console --sub PUB --req REP --as WHO`. **The browser console exists** (P4d-2b slice b1, 2026-09-26, read-only then; the box's writes since b2a and its session forms since b3a-2, below): `wlx serve --link PUB,REP --http HOST:PORT --health-token-file PATH` is its own process — a stdlib `ThreadingHTTPServer`, one `ZmqConsole` on a telemetry thread, server-sent events to each browser from a bounded queue, and every pane rendered in Python (`web.py`) so the page's script only swaps fragments. The wl-works fonts are bundled and served by the box, so the page never reaches the internet (PI, 2026-09-26). Reads are open to the LAN. **Writes come from the box** (P4d-2b slice b2a, 2026-09-28): `POST /commands` is accepted only from a loopback peer, with a `Host` naming loopback, the page's own `Origin` and `Content-Type: application/json` (spec §2), and recorded as `NAME (box, unverified)`; every request is answered only when its `Host` names this console (`--allow-host` adds names). `wlx serve` owns each socket on one thread — a read-only telemetry thread, a command thread whose REQ socket waits for `taskd`'s acknowledgment (*sent*, *not delivered*, *busy*), and a mark thread that sends the signal ahead of every command. Writes from people signed in to wl-works are slice b2b | Runs against a fake `taskd` (`link.Simulated`), or a real one over loopback sockets |
 | `neurofeatd` | Acquisition PC | C++ | SpikeGLX `fetchLatest` on the filtered AP stream -> MUA features -> ZMQ PUB | Synthetic feature publisher |
 | `rhxfeatd` | Intan host | C++/Rust | RHX Spike Output socket -> features -> ZMQ PUB; bounded reader | Synthetic spike-raster publisher |
 | `labhost` | Task PC | Python | The pull-only endpoint wl-works polls — **a surface of `console` since 2026-09-19, not its own process** (S9a §7): same server, separate path, separate auth. Served as `GET /health` by `wlx serve` (`health.py`, P4d-2b b1): `HealthResponse` schema 1, contract-tested against wl-preproc's own model; a bearer token read from a file outside the repository, compared with `hmac.compare_digest`, one `401` for every credential failure — the rules of wl-preproc's `responder/handler.py`. Exactly one reading is featured, the most urgent (PI, 2026-09-26), because wl-works shows only the first | Contract tests |
@@ -145,9 +145,13 @@ the bounded config's `reward_correct` through `welfare.Rig.reward`, strobed
 `MANUAL_REWARD` first — during a run only while it is held paused, and since P4d-2b b3a-2
 (spec §6.0, PI 2026-09-29) in a `wlx taskd` session between runs and while its animal's
 return is awaited — and refused at any other time: during a trial (XC-157), with no
-session open (XC-158), after a `wlx run` session's run (XC-184). `Session._command` hands
-every reward to `_manual_reward` first, in every phase, with `held`, which only `_hold`
-sets — so a change to that pass-through is also a change to welfare-critical behavior. All
+session open (XC-158), after a `wlx run` session's run (XC-184). **Which phases outside a
+run give one is `taskd.OUTSIDE_A_RUN`**, a constant `_manual_reward` reads, so it is part
+of that function's rule: a change to it is a change requiring review (the b3a-2 final
+review, m3; the page's `web._hand_reward_now` repeats it, pinned equal by a test).
+`Session._command` hands every reward to `_manual_reward` first, in every phase, with
+`held`, which only `_hold` sets — so a change to that pass-through is also a change to
+welfare-critical behavior. All
 three call `welfare` unchanged, and none holds a clock or a limit of its own; they are on
 this list because a plausible mistake in any — the limit asked on one path and not the
 other, a paused session that forgot to ask, a reward given while trials run, given outside
@@ -156,23 +160,24 @@ late or rewards an animal when nobody meant it to, and passes every refusal `wel
 
 **The other two `taskd` functions are `Session.set`, whole, and `Session._schedule`; the
 line is `Session._command`'s `except (Exceeded, TypeError) as refused:`; and the `link`
-function is `link._setting`** (the P4d-2b b2a final review, 2026-09-28: `set`, the line and `link._setting` are what
-the PI's items 3 and 4 rest on, and `_schedule` is what item 2 rests on). `set` is the one write path for a setting from a console:
-its two type guards refuse a value that is not a number, for a welfare ceiling and for a
-numeric parameter alike (M8, item 4), and it sends a ceiling's name to `bounds.validate`,
-which is what keeps a reward size set from the page under its approved ceiling (item 3).
+function is `link._setting`** (the P4d-2b b2a final review, 2026-09-28: `set`, the line
+and `link._setting` are what the PI's items 3 and 4 rest on, and `_schedule` is what item
+2 rests on). `set` is the one write path for a setting from a console: its two type
+guards refuse a value that is not a number, for a welfare ceiling and for a numeric
+parameter alike (M8, item 4), and it sends a ceiling's name to `bounds.validate`, which
+is what keeps a reward size set from the page under its approved ceiling (item 3).
 `link._setting` is M8 where bytes become a command — in `_command_from` for the wire's
 `_decode_command`, and in `serve.parse_command` for a `POST /commands` body: a `set`'s
 value directly and, through `_command_from` since P4d-2b b3a-2, each starting value a
 page's `check` or `start` carries — refusing a value that is neither a finite number nor a
-bounded word before any session sees it. The `except` line
-turns what `set` raises into a refusal on the feed, and a ceiling's refusal into a row in
-the record, rather than the end of a session (item 4); like `main`'s `confirmed=` line, it
-is one line, and with the `held` pass-through above it is all of `_command` that is
-welfare-critical; the rest of that function is ordinary. `_schedule` fixes the target
-`_ends` compares against — a trial count from the trial about to run, an instant on the
-session's clock, or mL this session, refused when already reached — so a wrong target
-ends a session early or late while every check in `_ends` passes.
+bounded word before any session sees it. The `except` line turns what `set` raises into a
+refusal on the feed, and a ceiling's refusal into a row in the record, rather than the end
+of a session (item 4); like `main`'s `confirmed=` line, it is one line, and with the
+`held` pass-through above it is all of `_command` that is welfare-critical; the rest of
+that function is ordinary. `_schedule` fixes the target `_ends` compares against — a
+trial count from the trial about to run, an instant on the session's clock, or mL this
+session, refused when already reached — so a wrong target ends a session early or late
+while every check in `_ends` passes.
 
 The split between the two is what keeps each reviewable. `bounds.py` is **pure** — the
 ceilings, the daily *floor*, and the arithmetic of whether a number is past one or short of
