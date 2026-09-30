@@ -1956,7 +1956,7 @@ def test_schema_8_reads_the_pause_the_schedule_and_the_feed_from_the_session():
 
     telemetry = Telemetry.of(session, Tally(), _scheduler(), index=40)
 
-    assert telemetry.schema == SCHEMA == 10
+    assert telemetry.schema == SCHEMA == 11
     assert telemetry.paused_at == 1_700_000_100.0
     assert telemetry.scheduled_stop == ScheduledStop(
         kind="trials", target=48.0, by="jake (box, unverified)", said="after trial 48"
@@ -2019,15 +2019,15 @@ def test_a_frame_carries_the_setup_the_session_runs_in():
     assert decode(encode(stereo)).view == "stereoscope"
     assert decode(encode(stereo)).half_ipd_cm == 1.6
     assert decode(encode(_telemetry())).half_ipd_cm is None
-    assert SCHEMA == 10
+    assert SCHEMA == 11
 
 
-def test_a_schema_7_frame_is_refused_by_a_schema_10_reader():
-    """§3's schema rule: a reader built for 10 refuses 7 by name, before touching a
+def test_a_schema_7_frame_is_refused_by_a_schema_11_reader():
+    """§3's schema rule: a reader built for 11 refuses 7 by name, before touching a
     field (`SchemaMismatch`), and says which it reads."""
     old = encode(replace(_telemetry(), schema=7))
 
-    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 10"):
+    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 11"):
         decode(old)
 
 
@@ -2123,7 +2123,7 @@ def test_schema_10_survives_the_wire_with_its_absences_intact():
         assert decode(encode(original)) == original
     assert type(decode(encode(populated)).preflight.items[0]) is PreflightItem
     assert type(decode(encode(populated)).question) is Question
-    assert SCHEMA == 10
+    assert SCHEMA == 11
 
 
 def test_a_session_before_its_first_run_has_no_block_task_or_counts():
@@ -2159,15 +2159,49 @@ def test_an_idle_frame_is_its_own_shape_and_survives_the_wire():
     assert all(type(s) is Stranded for s in restored.stranded)
 
 
+def test_an_idle_frame_carries_the_last_closed_sessions_summary_across_the_wire():
+    """Schema 11 (the b3a-2 final review, I2; spec §6.2: "The session then closes and the
+    page shows its summary"): the idle frame carries the closed session's last frame
+    until the next session opens -- a whole `Telemetry`, so the page renders one shape
+    -- and an unknown day inside it stays `None`, never `0` (S9a §9)."""
+    closed = _telemetry(
+        phase="closed", stop_kind="operator", service=True, fluid_today_ml=None,
+        shortfall_ml=None, run_index=1,
+    )
+    idle = Idle(
+        schema=SCHEMA, phase="idle", wall_at=1_700_000_000.0, stranded=(), question=None,
+        refusals=(), refusals_dropped=0, animals=("A",), offered_tasks=(), closed=closed,
+    )
+
+    restored = decode(encode(idle))
+
+    assert restored == idle
+    assert type(restored.closed) is Telemetry and restored.closed.phase == "closed"
+    assert (restored.closed.fluid_today_ml, restored.closed.shortfall_ml) == (None, None)
+    assert decode(encode(replace(idle, closed=None))).closed is None
+    assert SCHEMA == 11
+
+
+def test_idle_of_carries_what_it_is_given_as_the_closed_summary():
+    closed = _telemetry(phase="closed", service=True)
+
+    idle = Idle.of(
+        wall_at=1.0, stranded=(), question=None, refusals=(), refusals_dropped=0,
+        link=Simulated(), animals=(), offered_tasks=(), closed=closed,
+    )
+
+    assert idle.closed is closed
+
+
 def test_an_idle_frame_of_another_schema_is_refused_by_name():
     old = encode(
         Idle(
-            schema=9, phase="idle", wall_at=1.0, stranded=(), question=None,
+            schema=10, phase="idle", wall_at=1.0, stranded=(), question=None,
             refusals=(), refusals_dropped=0, animals=(), offered_tasks=(),
         )
     )
 
-    with pytest.raises(SchemaMismatch, match="carried schema 9 and this console reads schema 10"):
+    with pytest.raises(SchemaMismatch, match="carried schema 10 and this console reads schema 11"):
         decode(old)
 
 

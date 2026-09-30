@@ -558,6 +558,44 @@ def test_a_closed_session_is_collected_as_it_closes(tmp_path):
             gc.enable()
 
 
+def test_the_idle_frame_carries_the_closed_sessions_summary_until_the_next_open(tmp_path):
+    """The b3a-2 final review, I2 (spec §6.2: "The session then closes and the page shows
+    its summary"): `_end` closes and drops the session in one pass, so the frames after it
+    are idle. They carry that session's last frame -- its supplement owed among it --
+    through a refused open, until a session opens; a session that closes without a
+    summary (Ctrl-C at the terminal) then leaves none behind it."""
+    service = _service(tmp_path, animals=("B", "REFERENCE"))
+    _step(service, _open(delivered_today=5.0))
+    _step(service, ManualReward(by=BY))
+
+    idle = _step(service, _end())
+
+    assert isinstance(idle, Idle)
+    closed = idle.closed
+    assert (closed.phase, closed.session_id, closed.subject) == ("closed", "2027-01-14_01", "REFERENCE")
+    assert closed.fluid_session_ml == pytest.approx(0.05)
+    assert closed.shortfall_ml == pytest.approx(max(0.0, closed.floor_ml - 5.05))
+    refused = _step(service, _open(session_id="../outside"))
+    assert isinstance(refused, Idle) and refused.closed == closed, "a refused open keeps it"
+
+    _step(service, _open(session_id="2027-01-14_02", animal="B", delivered_today=None))
+    service.shutdown()
+    after = _step(service)
+
+    assert isinstance(after, Idle) and after.closed is None, "cleared when the next opened"
+
+
+def test_an_unknown_day_stays_unknown_in_the_closed_summary(tmp_path):
+    """Unknown stays `None`, never `0` (S9a §9): a session opened with no fluid given
+    today has no day's total and no supplement figure, and its summary says so."""
+    service = _service(tmp_path)
+    _step(service, _open(delivered_today=None))
+
+    closed = _step(service, _end()).closed
+
+    assert (closed.fluid_today_ml, closed.shortfall_ml) == (None, None)
+
+
 def test_an_end_with_nothing_open_to_end_is_refused(tmp_path):
     """A double click on End session: the second finds no session, and never touches
     another."""

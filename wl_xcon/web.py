@@ -1121,13 +1121,29 @@ def _idle_refusals(frame: Idle) -> str:
     return "".join(rows) or '<span class="nm">nothing refused</span>'
 
 
+def _closed_actions(frame: Telemetry) -> str:
+    """The Summary's pill for the last closed session an idle frame carries: which
+    session and animal the summary below it is, until the next session opens."""
+    return (
+        '<span class="pill ok">closed</span><span class="nm">session '
+        f"{_e(frame.session_id)} · {_e(frame.subject)} · returned · shown until the next "
+        "session opens</span>"
+    )
+
+
 def _idle(frame: Idle, view: View) -> dict[str, str]:
     """The page while `wlx taskd` has no session open (P4d-2b spec §6.1: "the page shows
     *no session open* beside the form that opens one"): every pane as before any frame,
     except the pill, the header, the banners, the controls, *wl-works sees* (`/health`
     as it would be sent for this frame, stranded animals included), the refusals, the
-    tasks offered, the Session panel and the dialog's animals."""
+    tasks offered, the Session panel and the dialog's animals -- **and the End tab**,
+    which shows the last closed session's summary, supplement owed first, until the next
+    session opens (schema 11; spec §6.2: "The session then closes and the page shows its
+    summary"; the b3a-2 final review, I2), rendered by `_end` as any closed frame is."""
     panes = fragments(None, view)
+    if frame.closed is not None:
+        panes["end-actions"] = _closed_actions(frame.closed)
+        panes["end"] = _end(frame.closed)
     panes["state"] = '<span class="pill neutral" data-state="idle">no session open</span>'
     panes["head-id"] = '<span class="nm">no session open</span>'
     panes["banners"] = _idle_banners(frame, view)

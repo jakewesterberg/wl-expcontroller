@@ -219,16 +219,27 @@ class _Routed:
     its return. One `_end` would refuse before anything is marked (`Service._unended`)
     is refused here instead, before anything is stopped. Any other service command
     during a run is refused on the session's feed: a run is in progress. **Everything
-    else is the real link's**: `mark_signal`, `publish` and `idle` are the link's own
-    bound methods, so the per-frame mark check is the call V12 measured, with nothing
-    added."""
+    else is the real link's**: `mark_signal` and `idle` are the link's own bound
+    methods, so the per-frame mark check is the call V12 measured, with nothing added.
+    `publish`, once per trial boundary and never per frame, is the link's too, and also
+    keeps the frame a session closes with for the idle frames that follow
+    (`Service.closed`)."""
 
     def __init__(self, link, service: "Service") -> None:
         self._link = link
         self._service = service
         self.mark_signal = link.mark_signal
-        self.publish = link.publish
         self.idle = link.idle
+
+    def publish(self, frame) -> None:
+        """The real link's `publish`; and a `closed` frame -- the one `Session.close`
+        publishes as the return is recorded -- kept as the service's `closed`, since the
+        same pass drops the session and every frame after it is idle (the b3a-2 final
+        review, I2). Kept here rather than in `Service._end`, which is welfare-critical and
+        unchanged, and without a reference to the session, which `_end` collects."""
+        self._link.publish(frame)
+        if frame.phase == "closed":
+            self._service.closed = frame
 
     @property
     def refused(self):
@@ -313,6 +324,12 @@ class Service:
         #: The service's own refusals while no session is open, capped as a session's.
         self.refusals: list = []
         self.refusals_dropped = 0
+        #: **The last closed session's final frame** (the b3a-2 final review, I2; spec
+        #: §6.2: "The session then closes and the page shows its summary"), for the idle
+        #: frames until the next session opens (`Idle.closed`). Set as the session
+        #: publishes its `closed` frame (`_Routed.publish`), cleared as the next opens
+        #: (`_route`).
+        self.closed: _link.Telemetry | None = None
         #: The service's runs (the b3a-1 plan, decision 18): a run `_start` accepted
         #: this pass and not started, `(RunSpec, rows, by)`; and an `EndSession` that
         #: arrived during a run (`_Routed`), finished once the run returns (`step`).
@@ -367,6 +384,7 @@ class Service:
                 link=self.link,
                 animals=self._animals(),
                 offered_tasks=self._tasks(),
+                closed=self.closed,
             )
         )
 
@@ -397,9 +415,11 @@ class Service:
                 # review, Minor 7): its refusals were about the time before this one --
                 # "send it again answering confirm" among them -- and shown again once
                 # the session closed, they would read as pending. While it is open,
-                # refusals go to its own feed (`_refuse`).
+                # refusals go to its own feed (`_refuse`). **And the End tab's summary is
+                # replaced by this session's** (the b3a-2 final review, I2).
                 self.refusals.clear()
                 self.refusals_dropped = 0
+                self.closed = None
         elif isinstance(command, _link.EndSession):
             self._end(command)
         elif isinstance(command, _link.CheckRun):

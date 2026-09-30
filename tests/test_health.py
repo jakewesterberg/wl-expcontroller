@@ -61,6 +61,13 @@ CASES = {
     "no session": (None, None),
     "idle": (idle(), 1.0),
     "stranded": (idle(stranded=(Stranded("2027-01-13_01", "B", 1_699_990_000.0),)), 1.0),
+    # Schema 11 (the b3a-2 final review, I2): the page's End tab reads the closed
+    # session's summary from the idle frame; `/health` reads the frame as it did.
+    "idle after a session closed": (
+        idle(closed=frame(phase="closed", service=True, stop_kind="operator",
+                          stopped_because="stopped by jake")),
+        1.0,
+    ),
     "between runs": (
         frame(phase="between_runs", service=True, run_index=0, stop_kind="completed",
               stopped_because="every block is finished"),
@@ -132,6 +139,7 @@ EXPECTED = {
     "cage-side": "ok",
     "markup": "ok",
     "idle": "ok",
+    "idle after a session closed": "ok",
     "stranded": "degraded",
     "between runs": "ok",
     "before the first run": "ok",
@@ -682,6 +690,13 @@ def test_a_service_between_runs_that_goes_quiet_is_degraded():
     ):
         assert expects_frames(quiet)
         assert verdict(quiet, frame_age_s=45.0, stale_after_s=30.0, rejected=None) == "degraded"
+
+
+def test_an_idle_frame_carrying_a_closed_summary_reads_as_idle():
+    found, _ = CASES["idle after a session closed"]
+
+    assert _readings("idle after a session closed") == _readings("idle")
+    assert found.closed is not None
 
 
 def test_the_readings_say_no_session_is_open_and_which_animal_is_stranded():

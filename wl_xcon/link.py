@@ -2,7 +2,8 @@
 
 S9a §6-§10 designs the console; **§9, "The telemetry contract," is what this file
 implements.** This file holds the message (`Telemetry`, `Staged`, `Refused`), the
-idle frame `wlx taskd` publishes while no session is open (`Idle`, since schema 10),
+idle frame `wlx taskd` publishes while no session is open (`Idle`, since schema 10;
+carrying the last closed session's summary since schema 11),
 the commands a console sends back (`SetParameter`, `Stop`, and since b3a the service's
 `OpenSession`, `CheckRun`, `StartRun` and `EndSession`; `Command`), the port a session
 publishes and drains through (`Link`, `Absent`, `Simulated`), its wire encoding
@@ -117,7 +118,14 @@ from wl_xcon.welfare import DAILY_FLUID, OUT_OF_CAGE
 #: what it offers. **And a second shape, `Idle`**, published while no session is open
 #: (phase `idle`). Nothing else changed meaning. A reader of 9 refuses 10 and 10 refuses
 #: 9, by name, before any other field -- for both shapes (`SchemaMismatch`).
-SCHEMA = 10
+#:
+#: 11 (2026-09-30, the b3a-2 final review, I2): `Idle.closed`, the last closed session's
+#: final `Telemetry` -- its supplement owed among it -- carried until the next session
+#: opens, since `wlx taskd` closes a session and publishes idle frames in one pass and
+#: spec §6.2 has the page show the closed session's summary. `None` before any session
+#: has closed and once the next opens. Nothing else changed meaning. A reader of 10
+#: refuses 11 and 11 refuses 10, by name (`SchemaMismatch`).
+SCHEMA = 11
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -332,6 +340,13 @@ class Idle:
     animals: tuple
     #: The task files under `--tasks`.
     offered_tasks: tuple
+    #: **The last closed session's final frame** (schema 11; the b3a-2 final review, I2):
+    #: the `closed` `Telemetry` it published as its return was recorded, read, never
+    #: recomputed, so its supplement owed is that frame's -- and an unknown day stays
+    #: `None` in it. Kept until the next session opens; `None` before any has closed,
+    #: and after a session that ended without one (stopped at the terminal, or found
+    #: stranded). The page's End tab renders it as it renders any closed frame.
+    closed: Telemetry | None = None
 
     @classmethod
     def of(
@@ -345,9 +360,11 @@ class Idle:
         link,
         animals,
         offered_tasks,
+        closed: Telemetry | None = None,
     ) -> "Idle":
         """One idle frame: the service's refusals and the link's, capped at
-        `REFUSAL_HISTORY` and counted, as `Telemetry.of` caps a session's."""
+        `REFUSAL_HISTORY` and counted, as `Telemetry.of` caps a session's; and the last
+        closed session's summary, as given."""
         combined = tuple(refusals) + tuple(link.refused)
         kept = combined[-REFUSAL_HISTORY:]
         return cls(
@@ -360,6 +377,7 @@ class Idle:
             refusals_dropped=link.refused_dropped + refusals_dropped + len(combined) - len(kept),
             animals=tuple(animals),
             offered_tasks=tuple(offered_tasks),
+            closed=closed,
         )
 
 
@@ -774,11 +792,17 @@ def encode(telemetry: Telemetry | Idle) -> bytes:
                 "refusals_dropped": telemetry.refusals_dropped,
                 "animals": list(telemetry.animals),
                 "offered_tasks": list(telemetry.offered_tasks),
+                "closed": None if telemetry.closed is None else _telemetry_out(telemetry.closed),
             },
             use_bin_type=True,
         )
+    return msgpack.packb(_telemetry_out(telemetry), use_bin_type=True)
 
-    payload = {
+
+def _telemetry_out(telemetry: Telemetry) -> dict:
+    """A `Telemetry` as the plain mapping `encode` packs: the frame itself, or an idle
+    frame's closed summary (schema 11), written out by name for `_telemetry_from`."""
+    return {
         "schema": telemetry.schema,
         "session_id": telemetry.session_id,
         "subject": telemetry.subject,
@@ -847,7 +871,6 @@ def encode(telemetry: Telemetry | Idle) -> bytes:
         "question": _question_out(telemetry.question),
         "offered_tasks": list(telemetry.offered_tasks),
     }
-    return msgpack.packb(payload, use_bin_type=True)
 
 
 class FrameError(Exception):
@@ -956,6 +979,7 @@ def _idle_from(data: dict) -> Idle:
         refusals_dropped=data["refusals_dropped"],
         animals=tuple(data["animals"]),
         offered_tasks=tuple(data["offered_tasks"]),
+        closed=None if data["closed"] is None else _telemetry_from(data["closed"]),
     )
 
 

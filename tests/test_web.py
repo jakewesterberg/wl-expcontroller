@@ -1552,6 +1552,37 @@ def test_the_warning_is_answered_with_its_own_answers_naming_its_mark_and_sessio
     assert answers and all(" disabled" in tag for tag in answers)
 
 
+def test_the_end_tab_shows_the_closed_sessions_summary_from_an_idle_frame():
+    """The b3a-2 final review, I2 (spec §6.2; the v12 mockup's `closed` state; §4.0 puts
+    the supplement owed there): once the return is recorded the page is idle, and the End
+    tab shows the closed session's summary, rendered as any closed frame's is, naming its
+    session, until the next opens -- then *no session* again."""
+    closed = frame(
+        phase="closed", stop_kind="operator", stopped_because="stopped by jake",
+        service=True, shortfall_ml=112.5, fluid_session_ml=0.3,
+    )
+
+    panes = fragments(idle(closed=closed), view())
+
+    assert panes["end"] == fragments(closed, view())["end"], "one renderer for a closed frame"
+    assert "Supplement owed" in panes["end"] and "112.50" in panes["end"]
+    assert "2027-01-14_01" in panes["end-actions"] and "closed" in panes["end-actions"]
+    assert "<script" not in fragments(
+        idle(closed=replace(closed, session_id="<script>x", subject="<b>")), view()
+    )["end-actions"]
+    assert fragments(idle(), view())["end"] == fragments(None, view())["end"]
+    assert fragments(idle(), view())["end-actions"] == '<span class="pill neutral">none</span>'
+
+
+def test_the_closed_summary_keeps_an_unknown_day_unknown():
+    closed = frame(phase="closed", stop_kind="operator", service=True, shortfall_ml=None, fluid_today_ml=None)
+
+    end = fragments(idle(closed=closed), view())["end"]
+
+    assert "0.00</span><span class=\"unit\">mL" not in end
+    assert end == fragments(closed, view())["end"]
+
+
 def test_a_stranded_animals_return_is_recorded_from_its_banner_naming_its_session():
     """XC-176: `Service._open`'s refusal says "Record it with End session, naming its
     session", and this is where. A record that cannot be read is repaired by hand first,

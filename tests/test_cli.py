@@ -3435,6 +3435,15 @@ def test_the_terminal_console_says_no_session_is_open_and_what_is_stranded():
     assert "refused: open by jake: no session opens while <b>" in shown
 
 
+def test_the_terminal_console_reads_an_idle_frame_carrying_a_closed_summary():
+    """Schema 11 (the b3a-2 final review, I2): the idle frame may carry the last closed
+    session's summary for the page's End tab; the terminal reads the frame as before and
+    need not show it."""
+    closed = _telemetry(phase="closed", service=True, stop_kind="operator", stopped_because="done")
+
+    assert render(idle(closed=closed)) == render(idle())
+
+
 @pytest.mark.parametrize("unshowable", [1e20, float("nan")])
 def test_a_stranded_animals_departure_is_shown_as_this_hosts_time_or_said_unknown(unshowable):
     """The departure a person reads to find the stranded animal's return is the recorded

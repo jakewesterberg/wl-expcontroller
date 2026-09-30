@@ -4073,7 +4073,16 @@ def test_page_e2e_open_a_session_run_it_twice_and_end_it(tmp_path, monkeypatch, 
         taskd.seen(lambda f: _between(f) and f.run_index == 1 and f.stop_kind == "completed")
         assert taskd.post(_end_body())[0] == 200
         taskd.seen(lambda f: isinstance(f, Idle))
+        # The b3a-2 final review, I2: the closed session's summary until the next opens.
+        closed = taskd.page(lambda f: isinstance(f, Idle) and f.closed is not None)
+        assert taskd.post(_open_body(session_id="2027-01-14_02"))[0] == 200
+        taskd.seen(lambda f: _between(f) and f.session_id == "2027-01-14_02")
+        reopened = taskd.page(lambda f: _between(f) and f.session_id == "2027-01-14_02")
 
+    assert "Supplement owed" in closed["end"] and "stop reason" in closed["end"]
+    assert "closed" in closed["end-actions"] and "2027-01-14_01" in closed["end-actions"]
+    assert "2027-01-14_01" not in reopened["end-actions"], "gone once the next session opens"
+    assert 'data-session="2027-01-14_02"' in reopened["end-actions"]
     root = taskd.folders[2]
     runs = _record(root, "runs.jsonl")
     assert [(r["event"], r["run"]) for r in runs] == [("start", 0), ("end", 0), ("start", 1), ("end", 1)]
