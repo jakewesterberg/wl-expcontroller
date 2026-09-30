@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import sys
 import textwrap
 import threading
@@ -53,6 +54,29 @@ from wl_xcon.task import Outcome
 from wl_xcon.taskd import PAUSE_HOUSEKEEPING_S, RunSpec, Session, SessionSpec
 from wl_xcon.welfare import Deployment, Simulated as Pump
 from _rig import DIRECT, STEREOSCOPE
+
+#: wl-preproc's decoder and trial assembler, for the test that runs a session's stream
+#: through them (XC-155): the code that turns a recording into trials. A missing
+#: checkout skips that test locally and fails this module under `WLX_REQUIRE_PREPROC=1`,
+#: which CI sets -- the guard `tests/test_calibration.py` uses.
+_REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
+try:
+    from wl_preproc.contracts import events as their_events
+    from wl_preproc.events.assemble import assemble as their_assemble
+except ImportError as exc:  # pragma: no cover - exercised by the CI job
+    if _REQUIRED:
+        raise AssertionError(
+            f"WLX_REQUIRE_PREPROC=1 but wl-preproc is not importable ({exc}). A session's "
+            f"stream assembled into trials by wl-preproc's own code is the only check that "
+            f"a recording from this rig holds its trials; skipping it would report trials "
+            f"nobody assembled"
+        ) from exc
+    their_events = their_assemble = None
+
+_contract = pytest.mark.skipif(
+    their_assemble is None,
+    reason="wl-preproc checkout not beside this repo; the path through its assembler cannot run",
+)
 
 VALUES = {
     "fix_timeout": 4.0,
@@ -170,6 +194,10 @@ def _session(spec, link=None, left_cage_ago: float = 0.0) -> Session:
 
 
 RUN_START, RUN_END = 4135, 4136
+#: wl-preproc's `Marker.TRIAL_START` and `TRIAL_END`, and its `Escape.TRIAL_NUMBER`
+#: (XC-155), written here as numbers rather than read from `codes` or `encode`, so a
+#: wrong value there fails these tests rather than agreeing with them.
+TRIAL_START_CODE, TRIAL_END_CODE, TRIAL_NUMBER_ESCAPE = 32, 33, 0x8001
 
 
 def _runs(session: Session) -> list[dict]:
@@ -295,8 +323,8 @@ def test_a_run_is_strobed_where_it_starts_and_where_it_ends(tmp_path):
     session.run()
 
     codes = session.card.codes
-    assert codes[:2] == [4128, RUN_START], "after HEAD_FIXED, before the first trial"
-    assert codes[-2:] == [RUN_END, 4129], "after the last trial, before HEAD_RELEASED"
+    assert codes[:3] == [4128, RUN_START, TRIAL_START_CODE], "before the first trial opens"
+    assert codes[-3:] == [TRIAL_END_CODE, RUN_END, 4129], "after the last trial closes"
     assert codes.count(RUN_START) == codes.count(RUN_END) == 1
 
 
@@ -592,14 +620,24 @@ def test_a_session_strobes_the_codes_its_task_declares(tmp_path):
 
 def test_a_session_strobes_the_outcome_marker_the_allocation_gives(tmp_path):
     """`Marker` 34-38 are `wl-preproc`'s and the framework's to emit -- a task
-    declares an `Outcome`, never a marker. Without them a recording has no trial
-    boundaries at all, whatever else is in the stream."""
+    declares an `Outcome`, never a marker. Without them a recording's trials have no
+    outcomes, whatever else is in the stream. Each trial's is strobed just before its
+    `TRIAL_END` (XC-155), and is the one the allocation gives its recorded outcome.
+
+    **Read beside each `TRIAL_END`, not as every code below 256**, as it was until
+    XC-155: the stream now carries each trial's number as payload words, and trial
+    34's low word is 34, `TRIAL_CORRECT`'s value. Twenty trials put no payload word at
+    33, so each `TRIAL_END` found here is one."""
     session = _session(_spec(tmp_path, trials=20))
     census = session.run()
 
-    markers = [code for code in session.card.codes if code < 256]
-    assert len(markers) == sum(census.outcomes.values())
+    codes = session.card.codes
+    markers = [codes[i - 1] for i, code in enumerate(codes) if code == TRIAL_END_CODE]
+    assert len(markers) == sum(census.outcomes.values()) == 20
     assert set(markers) <= {34, 35, 36, 37, 38}
+    assert markers == [
+        session.allocation.outcomes[Outcome(row["outcome"])] for row in _trial_rows(session)
+    ]
 
 
 def test_a_session_never_stops_paying_an_animal_that_is_working(tmp_path):
@@ -4498,3 +4536,196 @@ def test_a_trial_that_faults_keeps_its_number_and_the_next_trial_never_reuses_it
     assert [(row["run"], row["trial_number"]) for row in _trial_rows(session)] == [
         (0, 1), (1, 3), (1, 4),
     ]
+
+
+# --- the trial markers (XC-155) -----------------------------------------------------
+
+#: A task with one state: `FIX_ON` on entering it, `CORRECT` 0.01 s later. No window, no
+#: reward and no parameter, so every code its session strobes is one these tests name.
+ONE_STATE_TASK = """
+from wl_xcon.task import After, Mark, On, Outcome, State, Trial
+
+trial = Trial(
+    start="only",
+    states=[State("only", enter=[Mark(4096)], go=[On(After(0.01), Outcome.CORRECT)])],
+)
+"""
+
+
+def _escapes(codes: list) -> list:
+    """Each `TRIAL_NUMBER` escape in a stream, as the four words from its escape word on.
+    Found by the escape word alone, which holds for these tests' streams: a payload word
+    is that value only for a trial numbered 0x8001 or more, and a checksum is only for
+    trial 0, which no session strobes."""
+    return [codes[i : i + 4] for i, code in enumerate(codes) if code == TRIAL_NUMBER_ESCAPE]
+
+
+def test_each_trial_is_opened_numbered_and_closed_in_the_stream(tmp_path):
+    """XC-155 spec §2.1, the whole stream of a `wlx run` session of two trials: after
+    `HEAD_FIXED` and `RUN_START`, each trial is `TRIAL_START`, its number's escape --
+    0x8001, the high word, the low word, and 0x8001 XOR both as the checksum -- then the
+    task's own `FIX_ON`, the outcome marker (34, correct) and `TRIAL_END`; then
+    `RUN_END` and `HEAD_RELEASED`."""
+    task = tmp_path / "one_state.py"
+    task.write_text(ONE_STATE_TASK)
+    session = _session(_spec(tmp_path, trials=2, task=str(task), values={}))
+
+    session.run()
+
+    assert session.card.codes == [
+        4128, RUN_START,
+        TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0001, 0x8000, 4096, 34, TRIAL_END_CODE,
+        TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0002, 0x8003, 4096, 34, TRIAL_END_CODE,
+        RUN_END, 4129,
+    ]
+    assert [row["trial_number"] for row in _trial_rows(session)] == [1, 2]
+
+
+def test_the_escapes_number_the_trials_across_runs_as_their_lines_do(tmp_path):
+    """Spec §2.2, in the stream: the escapes of a `wlx taskd` session's two runs carry
+    1 to 5, the numbers its lines carry, and a new session's first escape carries 1."""
+    session = _service_session(tmp_path / "a")
+    session.run(_run_spec(trials=3))
+    session.run(_run_spec(trials=2))
+    other = _service_session(tmp_path / "b")
+    other.run(_run_spec(trials=1))
+
+    assert _escapes(session.card.codes) == [
+        [TRIAL_NUMBER_ESCAPE, 0x0000, number, TRIAL_NUMBER_ESCAPE ^ number]
+        for number in range(1, 6)
+    ]
+    assert [row["trial_number"] for row in _trial_rows(session)] == [1, 2, 3, 4, 5]
+    assert _escapes(other.card.codes) == [[TRIAL_NUMBER_ESCAPE, 0x0000, 0x0001, 0x8000]]
+
+
+def test_nothing_is_strobed_inside_a_trial_numbers_escape(tmp_path):
+    """S2 §6 item 3: an escape is atomic -- "no other code may be emitted between them,
+    on any code path". wl-preproc reads the payload by position, so a word strobed
+    inside it fails the checksum and loses the trial. Here a mark arrives at every
+    check, each boundary's and every frame's, and a change is staged, so the loop
+    strobes something everywhere it can; each trial's escape still goes out whole,
+    straight after its `TRIAL_START`, with its boundary's mark before the trial opens
+    and its first frame's after `FIX_ON`."""
+    link = Simulated()
+    link.marks.extend([5] * 100_000)
+    link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
+    session = _session(_spec(tmp_path, trials=3), link=link)
+
+    session.run()
+
+    codes = session.card.codes
+    opened = [i for i, code in enumerate(codes) if code == TRIAL_START_CODE]
+    assert len(opened) == 3
+    for number, at in enumerate(opened, start=1):
+        assert codes[at - 1] == MARK_CODE, "the boundary's mark, before the trial opens"
+        assert codes[at : at + 5] == [
+            TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, number, TRIAL_NUMBER_ESCAPE ^ number,
+        ]
+        assert codes[at + 5 : at + 7] == [FIX_ON, MARK_CODE], "the first frame's, after"
+    assert 4130 in codes, "the staged change was strobed at a boundary"
+
+
+def test_a_trial_that_faults_is_opened_and_numbered_and_never_closed(tmp_path, monkeypatch):
+    """Spec §2.1: a trial that faults strobes no `TRIAL_END` -- the card may be what
+    failed -- and wl-preproc infers its end, as for any trial without one. Its opening
+    and its number went out whole before its first frame, and nothing after them."""
+    from wl_xcon import taskd
+
+    real, calls = taskd.run_trial, []
+
+    def faults_second(*args, **kwargs):
+        calls.append(None)
+        if len(calls) == 2:
+            raise RuntimeError("the display went away")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", faults_second)
+    session = _session(_spec(tmp_path, trials=3))
+
+    with pytest.raises(RuntimeError, match="the display went away"):
+        session.run()
+
+    codes = session.card.codes
+    assert codes[-5:] == [TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0002, 0x8003]
+    assert (codes.count(TRIAL_START_CODE), codes.count(TRIAL_END_CODE)) == (2, 1)
+
+
+def test_a_trial_that_reaches_no_outcome_is_still_closed(tmp_path, monkeypatch):
+    """A trial `run_trial` returns from without an outcome -- a hang, which `check()`
+    rules out for any task it passes -- strobes no outcome marker, and it still ended:
+    `TRIAL_END` closes it, and its line records `hang`. The second trial runs whole, so
+    the run's one trial is completed and the run ends."""
+    from wl_xcon import taskd
+
+    real, calls = taskd.run_trial, []
+
+    def hangs_first(*args, **kwargs):
+        calls.append(None)
+        if len(calls) == 1:
+            return real(*args, max_frames=1, **kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", hangs_first)
+    task = tmp_path / "one_state.py"
+    task.write_text(ONE_STATE_TASK)
+    session = _session(_spec(tmp_path, trials=1, task=str(task), values={}))
+
+    session.run()
+
+    assert session.card.codes == [
+        4128, RUN_START,
+        TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0001, 0x8000, 4096, TRIAL_END_CODE,
+        TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0002, 0x8003, 4096, 34, TRIAL_END_CODE,
+        RUN_END, 4129,
+    ]
+    assert [row["outcome"] for row in _trial_rows(session)] == ["hang", "correct"]
+
+
+def test_a_number_past_16_bits_is_strobed_whole_high_word_first(tmp_path):
+    """Spec §2.2, the ceiling: the escape carries a uint32, and the session strobes the
+    true number, never a truncated one -- a truncated number would name two trials in
+    one recording. Trial 65,536 is the first whose high word is not 0. (Set on the
+    counter directly: no test runs 65,535 trials to reach it.)"""
+    task = tmp_path / "one_state.py"
+    task.write_text(ONE_STATE_TASK)
+    session = _session(_spec(tmp_path, trials=1, task=str(task), values={}))
+    session._trial_number = 0xFFFF
+
+    session.run()
+
+    assert _escapes(session.card.codes) == [[TRIAL_NUMBER_ESCAPE, 0x0001, 0x0000, 0x8000]]
+    assert [row["trial_number"] for row in _trial_rows(session)] == [65_536]
+
+
+@_contract
+def test_a_sessions_stream_assembles_in_wl_preproc_into_its_trials_numbered_across_runs(tmp_path):
+    """XC-155 spec §4, the path and not the piece: a `wlx taskd` session's two runs on
+    the simulated card, decoded by wl-preproc's `decode_stream` and assembled by its
+    `assemble` -- the code that turns a recording into trials. One trial per trial run,
+    numbered 1 to 43 across both runs, each with a start and a recorded end, nothing
+    it could not decode; and every `trials.jsonl` line joins the assembled trial its
+    `trial_number` names, whose outcome is the line's own. **Forty-three trials**, so
+    trials 32 to 38 carry payload words equal to `TRIAL_START`, `TRIAL_END` and the
+    outcome markers, and must be read as numbers."""
+    session = _service_session(tmp_path)
+    session.run(_run_spec(trials=3))
+    session.run(_run_spec(trials=40, seed=5))
+    session.end_runs("jake")
+
+    stream = [(i * 0.001, word) for i, word in enumerate(session.card.codes)]
+    assembly = their_assemble(their_events.decode_stream(stream))
+    lines = _trial_rows(session)
+
+    assert assembly.errors == []
+    assert [trial.trial_id for trial in assembly.trials] == list(range(1, 44))
+    assert [(line["run"], line["index"]) for line in lines] == [
+        *[(0, index) for index in range(3)],
+        *[(1, index) for index in range(40)],
+    ]
+    by_number = {line["trial_number"]: line for line in lines}
+    assert sorted(by_number) == list(range(1, 44)), "one line for each number"
+    for trial in assembly.trials:
+        line = by_number[trial.trial_id]
+        marker = their_events.Marker(session.allocation.outcomes[Outcome(line["outcome"])])
+        assert trial.outcome == marker.name.removeprefix("TRIAL_").lower(), line
+        assert trial.end_s is not None and trial.start_s < trial.end_s, line

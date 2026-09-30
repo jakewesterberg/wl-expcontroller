@@ -1027,7 +1027,7 @@ def test_an_acknowledged_run_starts_records_who_acknowledged_what_and_ends_betwe
     assert (start["unplanned"], start["by"], start["seed"], start["trials"]) == (True, BY, 7, 3)
     assert end["stop_kind"] == "completed"
     codes = service.session.card.codes
-    assert codes[:2] == [4128, 4135] and 4136 in codes and 4129 not in codes
+    assert codes[:3] == [4128, 4135, 32] and codes[-2:] == [33, 4136] and 4129 not in codes
 
 
 @pytest.mark.parametrize(
@@ -1749,6 +1749,9 @@ def test_e2e_open_a_session_run_it_twice_and_end_it(tmp_path, monkeypatch, zmq_c
     codes = rig.cards[0].codes
     assert codes[0] == 4128 and codes[-1] == 4129
     assert codes.count(4135) == codes.count(4136) == 2
+    # Each of the six trials opened and closed in the stream (XC-155); numbered 1..6, so
+    # no payload word is 32 or 33.
+    assert codes.count(32) == codes.count(33) == 6
     assert _kinds(root) == ["departure", "session opened", "returned", "session ended"]
 
 

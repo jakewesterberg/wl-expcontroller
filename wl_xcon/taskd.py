@@ -48,8 +48,9 @@ from wl_xcon import link as _link
 from wl_xcon.bounds import Bounds, Exceeded, _finite
 from wl_xcon.check import check
 from wl_xcon.cli import _clock, _load_allocation, _load_trial, _shown
-from wl_xcon.codes import Allocation
+from wl_xcon.codes import TRIAL_END, TRIAL_START, Allocation
 from wl_xcon.dio import Absent as NoCard
+from wl_xcon.encode import TRIAL_NUMBER, words_for
 from wl_xcon.geometry import Geometry
 from wl_xcon.record import XCON_DIRNAME, SessionRecord, welfare_note
 from wl_xcon.scheduler import Block, Condition, Scheduler
@@ -2053,8 +2054,18 @@ class Session:
                 condition = scheduler.next_trial()
                 values = {**self.spec.values, **condition.values}
                 world = make_world(trial, values, index)
-                # The trial's number, taken as it starts (`_trial_number`).
+                # **The trial opens in the stream at the boundary, never in a frame**
+                # (XC-155; S1 §4's between-trial surface): `TRIAL_START`, then its number
+                # (`_trial_number`, taken as it starts) in the `TRIAL_NUMBER` escape's
+                # four words, from `encode.words_for`. **Unbroken** (S2 §6 item 3):
+                # wl-preproc reads the payload by position, so a word strobed inside it
+                # fails the checksum and loses the trial. The four go out here,
+                # consecutively, on the loop's one thread: after everything this
+                # boundary strobes, and before the trial's first frame.
                 self._trial_number += 1
+                self.card.emit(TRIAL_START)
+                for word in words_for(TRIAL_NUMBER, self._trial_number):
+                    self.card.emit(word)
                 result = run_trial(
                     trial,
                     world,
@@ -2073,6 +2084,12 @@ class Session:
                     # immediately before this, which is how eighteen outcomes share
                     # five markers without losing which one happened.
                     self.card.emit(self.allocation.outcomes[result.outcome])
+                # **The trial closes after its outcome marker** (XC-155): `TRIAL_END`, for
+                # every trial `run_trial` returned from -- one that reached no outcome (a
+                # hang) ended too. A trial that raised never gets here and strobes none:
+                # the card may be what failed, and wl-preproc infers its end
+                # (`schema/events.py::_trial_stop_time`).
+                self.card.emit(TRIAL_END)
                 tally.add(result)
                 scheduler.record(condition.name, result.outcome)
                 # One string for the record and for a console's recent outcomes, so
