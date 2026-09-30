@@ -109,9 +109,9 @@ jobs:
     #
     # **Sharded since 2026-09-29** (XC-141), the same `--shard K/12` split the
     # nightly uses, applied to whatever `--changed-only` selected. **Twelve ways and
-    # by function since 2026-09-30** (PI): `serve` alone held a shard for 2h42m in
-    # run 36737681413. A merge push diffs against the previous `main`, so a long
-    # branch's whole range is its changed set.
+    # by function since 2026-10-01** (the PI's call of 2026-09-30): `serve` alone
+    # held a shard for 2h42m in run 36737681413. A merge push diffs against the
+    # previous `main`, so a long branch's whole range is its changed set.
     # b2a's merge (run `36497082927`) selected eight modules and ran into the
     # 360-minute limit in one job, and was cancelled with 200 caught and none
     # survived, after the branch's sharded full sweep had already passed on the
