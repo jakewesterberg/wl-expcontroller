@@ -1486,9 +1486,18 @@ def test_wlx_taskd_refuses_an_allocation_without_the_codes_its_sessions_strobe(t
         main(_taskd_args(_folders(tmp_path)))
 
 
-def test_wlx_taskd_refuses_a_folder_that_is_not_one_and_a_remote_bind(tmp_path):
+def test_wlx_taskd_refuses_a_folder_that_is_not_one_and_a_remote_bind(tmp_path, monkeypatch):
     folders = _folders(tmp_path)
     missing = (folders[0], tmp_path / "no-tasks", folders[2])
+
+    def served(self, stop):
+        # Both refusals come before the service serves. Without this, a refusal that
+        # stopped refusing would serve until interrupted, and the test would hang
+        # rather than fail: the b3a-1 full sweep's `_binds_beyond_this_machine`
+        # timeout (2026-09-30).
+        raise AssertionError("wlx taskd served when it should have refused")
+
+    monkeypatch.setattr(Service, "serve", served)
 
     with pytest.raises(SystemExit, match="--tasks .* is not a folder"):
         main(_taskd_args(missing, "--allocation", ALLOCATION))

@@ -10,8 +10,8 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > ruled for dated documents; read `wl_expcontroller/taskd.py` there as `wl_xcon/taskd.py`.
 >
 > **This file describes `main`.** The newest entry, "What moved on 2026-09-30", describes P4d-2b
-> slice b3a-1, the session service `wlx taskd`, which the PI approved that day and which reaches
-> `main` by fast-forward once its push run reads green. The entry before it, 2026-09-29, covers
+> slice b3a-1, the session service `wlx taskd`, which the PI approved that day and which reached
+> `main` by fast-forward the same day (`35dadb6..e51e343`). The entry before it, 2026-09-29, covers
 > the package rename, check 8 failing closed and direct view part 2. Run
 > `git branch --show-current` before believing a line about a branch.
 >
@@ -337,16 +337,21 @@ figure was one low. In order:
 
 ## What moved on 2026-09-30, P4d-2b slice b3a-1: the session service
 
-**Resume here (state at 2026-09-30):** b3a-1 is built, reviewed and **approved by the PI**
-(2026-09-30, all ten welfare items, asked in the UI). It reaches `main` by fast-forward once its
-push run reads green shard by shard; if `main` does not have `wl_xcon/service.py`, that has not
-happened yet: read the run, then fast-forward `p4d2b-b3a1-session-service`.
+**Resume here (state at 2026-09-30):** b3a-1 is built, reviewed, **approved by the PI**
+(2026-09-30, all ten welfare items, asked in the UI) and **on `main`** (`35dadb6..e51e343`, a
+fast-forward), once CI read green shard by shard (below). **b3a-2 is planned and approved**:
+`docs/superpowers/plans/2026-09-30-p4d2b-b3a2-page-sessions.md` (8 tasks; the PI: "Approve,
+build it", "Task by task with reviews"), built subagent-driven on `p4d2b-b3a2-page-sessions` in
+the worktree `.claude/worktrees/b3a2`. **Its ledger is
+`.claude/worktrees/b3a2/.superpowers/sdd/2026-09-30-p4d2b-b3a2-page-sessions/progress.md`**
+(git-ignored): after a lost session, read it and `git log` on the branch, and resume at the first
+task without a `complete` line.
 
 Next:
-1. **Plan and build b3a-2 (XC-016)**: the page's forms for `wlx taskd`'s commands, and the hand
-   reward between runs. Carry into its plan: the page must show the pending pre-flight, the
-   offered animals and tasks, and a question until it is answered; XC-176's two sentences
-   become true when it lands.
+1. **Build b3a-2 (XC-016)** from its approved plan: the page's forms for `wlx taskd`'s commands,
+   a run from its task's own values (`Param.start`), the hand reward between runs and while the
+   return is awaited, and a far return's warning worded as the rig takes it (the last two
+   welfare-critical, to the PI as a numbered summary before merge).
 2. **b2b (XC-015)** once wl-works says its side is deployed, with XC-151 and XC-152.
 3. **The manual reward's other two slices**, the PI's rulings of 2026-09-29 (P4d-2b spec §6.0):
    during a trial, given the moment it is pressed through a per-frame path like the mark's and
@@ -410,6 +415,27 @@ Next:
   far faster, and the harness's 300 s limit held for every lane at this suite size.
   **A welfare summary is checked against the code by a reviewer before the PI sees it**: the two
   false statements above were found that way.
+- **CI, read shard by shard before the fast-forward.** The first push run (`36678563733`) failed
+  three `test_marks` cases on Linux at UTC -- the rig's platform: `9999-12-31T23:59` is a date
+  macOS cannot place and Linux can, so there it is refused as in the future rather than as not a
+  clock time; nothing is marked either way. `b168195` gave the calendar's last minute its own
+  tests, which accept either refusal. That push's gate then swept only `marks` (a push sweeps
+  what its own diff changed), so the whole branch was swept by the `workflow_dispatch` full
+  sweep, run `36682539013` on `b168195`: pytest `1862 passed` on 3.11-3.13; **29 modules, 544
+  caught, 0 survived**, every baseline and restore at `1862 passed`; NOT MUTABLE the two protocol
+  stubs. Five catches are timeouts, not a plain `N failed`: `simulate.signal` and
+  `scheduler.record` (known, XC-140); **`welfare.must_stop` and `welfare.out_of_cage_seconds`,
+  real catches run locally without the limit** (the limit's own tests fail, in 174 s and 186 s:
+  b3a-1's end-to-end tests wait out their frames under them, and CI's runners are slower;
+  XC-140 now names them); and **`link._binds_beyond_this_machine`, a test that hung**:
+  `test_wlx_taskd_refuses_a_folder_that_is_not_one_and_a_remote_bind`, with the refusal gone,
+  served until interrupted. It now fails at once if `wlx taskd` serves (the commit after the
+  fast-forward), and the whole suite under that mutant ends with it failing. `e51e343` (the
+  page's name, below) had its own push run, `36686499286`: `web` and `serve`, 102 caught, every
+  line a real `N failed` but `serve.__init__`'s known errors beside its failures.
+- **The console is called xcon** (`e51e343`, the PI, 2026-09-30): the page's tab and logo still
+  read "expcontroller", which XC-053's `wl_expcontroller` substitution never matched; a test now
+  says the old name appears nowhere on the page, and the v12 mockup shows the same.
 - **The backlog:** XC-159 to XC-182 filed (the deferred findings, one line each); XC-050 closed
   (Task 10 corrected `taskd.py`'s docstring); XC-016 narrowed to b3a-2; XC-017 now waits on XC-103
   alone; XC-047 reworded to what is still open.
