@@ -4,16 +4,17 @@ on:
   push:
   pull_request:
   schedule:
-    # The full sweep, nightly, sharded six ways across the `mutation-full` matrix
-    # below. Not decoration: the per-push gate (`mutation`, below) selects on
-    # changed files and never escalates on GLOBAL, which cannot see a test deleted
-    # from `test_a.py` that was the only thing covering a function in `b.py`.
-    # Nothing in a diff makes that visible, and this is what catches it.
+    # The full sweep, nightly, sharded twelve ways by function across the
+    # `mutation-full` matrix below. Not decoration: the per-push gate (`mutation`,
+    # below) selects on changed files and never escalates on GLOBAL, which cannot
+    # see a test deleted from `test_a.py` that was the only thing covering a
+    # function in `b.py`. Nothing in a diff makes that visible, and this is what
+    # catches it.
     - cron: "17 3 * * *"
   workflow_dispatch:
     # The "run the full sweep now" button: the same sharded full sweep the nightly
     # runs, on demand, for before a big merge -- see docs/CHECKPOINT.md's CI row for
-    # the alternative when six parallel Actions jobs are not available (a local
+    # the alternative when twelve parallel Actions jobs are not available (a local
     # sweep run as parallel lanes in separate `git archive` copies of the tree; the
     # harness mutates files in place, so separate copies are what let the lanes run
     # at once).
@@ -106,20 +107,22 @@ jobs:
     # `scheduler` and `findings` while CHECKPOINT described "a mutation gate over
     # every module".
     #
-    # **Sharded six ways since 2026-09-29** (XC-141), the same `--shard K/6` split the
-    # nightly uses, applied to whatever `--changed-only` selected. A merge push diffs
-    # against the previous `main`, so a long branch's whole range is its changed set.
+    # **Sharded since 2026-09-29** (XC-141), the same `--shard K/12` split the
+    # nightly uses, applied to whatever `--changed-only` selected. **Twelve ways and
+    # by function since 2026-09-30** (PI): `serve` alone held a shard for 2h42m in
+    # run 36737681413. A merge push diffs against the previous `main`, so a long
+    # branch's whole range is its changed set.
     # b2a's merge (run `36497082927`) selected eight modules and ran into the
     # 360-minute limit in one job, and was cancelled with 200 caught and none
     # survived, after the branch's sharded full sweep had already passed on the
     # same code. A small selection leaves most shards empty, and an empty shard
-    # passes at once (`mutation gate: 0 module(s)`).
+    # passes at once (`mutation gate: 0 module(s)`, or `shard K/12 is empty`).
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -135,7 +138,7 @@ jobs:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
       - run: pip install -e ".[dev,contract,console]"
-      - name: Mutation gate (changed modules only, shard ${{ matrix.shard }}/6)
+      - name: Mutation gate (changed modules only, function shard ${{ matrix.shard }}/12)
         # WLX_REQUIRE_PREPROC applies to every sweep now, not just the two that named
         # it: each sweep runs the whole suite as its baseline, and a baseline with the
         # contract tests skipped is a baseline that proves less than it appears to.
@@ -155,29 +158,33 @@ jobs:
               base="origin/main"
             fi
           fi
-          python tools/mutation_gate.py --changed-only --base "$base" --shard ${{ matrix.shard }}/6
+          python tools/mutation_gate.py --changed-only --base "$base" --shard ${{ matrix.shard }}/12
 
   mutation-full:
     # The full sweep -- every module in RETURNS, nothing left out by a diff -- split
-    # six ways so no single job approaches the six-hour default that made this job
+    # twelve ways so no single job approaches the six-hour default that made this job
     # necessary (see the `mutation` job's comment for the measurement and the
     # GitHub docs citation). Nightly (`schedule`), and on demand
     # (`workflow_dispatch`) before a big merge, so a branch does not have to wait
     # for 03:17 UTC to get the check `--changed-only` cannot give it -- including a
     # GLOBAL change, which the `mutation` job now explicitly does not cover.
     # `fail-fast: false` so one red shard does not cancel, and hide, the other
-    # five's results.
+    # eleven's results.
     #
-    # Each shard is `tools/mutation_gate.py --shard K/6`'s K-th of six groups,
-    # balanced by function count (`ast`-counted, not module count -- `serve.py`
-    # alone has 38 functions to `components.py`'s 1) and deterministic, so the same
-    # K always names the same modules regardless of which runner computes it.
+    # **Twelve ways and by function since 2026-09-30** (PI; six ways by whole module
+    # before): `serve` alone held a shard for 2h42m in run 36737681413. Each shard is
+    # `tools/mutation_gate.py --shard K/12`'s K-th of twelve contiguous chunks of
+    # every selected function (modules by name, then `mutate.py --all`'s own
+    # order), the chunks differing in size by at most one, so a module can be cut
+    # between two shards; each runs `mutate.py --all --only <its part>` per module
+    # it touches. Deterministic, so the same K always names the same functions
+    # regardless of which runner computes it.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -189,7 +196,7 @@ jobs:
           repository: jakewesterberg/wl-preproc
           path: wl-preproc
       - run: pip install -e ".[dev,contract,console]"
-      - name: Mutation gate (shard ${{ matrix.shard }}/6)
+      - name: Mutation gate (function shard ${{ matrix.shard }}/12)
         env:
           WLX_REQUIRE_PREPROC: "1"
-        run: python tools/mutation_gate.py --all --shard ${{ matrix.shard }}/6
+        run: python tools/mutation_gate.py --all --shard ${{ matrix.shard }}/12
