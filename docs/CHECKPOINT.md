@@ -338,11 +338,23 @@ figure was one low. In order:
 
 ## What moved on 2026-09-30, P4d-2b slice b3a-2: sessions from the page
 
-**Resume here (state at 2026-09-30):** b3a-2 is built, reviewed, **approved by the PI** (all
-nine welfare items, 2026-09-30, asked in the UI) and reaches `main` by fast-forward once its push
-run reads green shard by shard; if `main` has no `web.RUN_TRIALS`, that has not happened yet.
+**Resume here (state at 2026-09-30, evening):** b3a-2 is built, reviewed, **approved by the PI**
+(all nine welfare items, 2026-09-30, asked in the UI) and **on `main`** (`263cbfd..c191784`, a
+fast-forward) after its push run read green shard by shard (below). **Two builds are in flight,
+each in its own worktree:**
+- **XC-155, trial markers** (the PI chose it next): spec
+  `docs/superpowers/specs/2026-09-30-xc155-trial-markers-design.md` and plan
+  `docs/superpowers/plans/2026-09-30-xc155-trial-markers.md`, both approved, on branch
+  `xc155-trial-markers` in `.claude/worktrees/xc155`, subagent-driven; **its ledger is
+  `.claude/worktrees/xc155/.superpowers/sdd/2026-09-30-xc155-trial-markers/progress.md`**. It is
+  stacked on `c191784` and rebases onto `main` before it merges; its Task 4 files its backlog items
+  at the next free IDs. It tells wl-preproc the join field (`trial_number`) once on `main`.
+- **Function-level mutation sharding across 12 CI machines** (the PI, 2026-09-30, to cut the wait
+  after each push): branch `ci-function-shards` in `.claude/worktrees/cishard`. Whole-module
+  sharding left `serve` alone on one machine for 2h42m in b3a-2's run; splitting a module's
+  functions across machines is what halves it. Measure the first sharded run once merged.
 
-Next:
+Next, after those:
 1. **b2b (XC-015)** once wl-works says its side is deployed, with XC-151 and XC-152.
 2. **The manual reward's other two slices** (P4d-2b spec §6.0): during a trial at the press, per
    frame and measured on the rig first (XC-157); with no session open, a line flush (XC-158).
@@ -391,7 +403,23 @@ Next:
   protected surface is unchanged by AST but for `_manual_reward`, the pass-through's move and one
   sentence in `_command`, and `_far_from_now`'s words.
 - **The backlog:** XC-183 and XC-184 filed in the build; XC-185 to XC-195 at merge (the deferred
-  findings); XC-016 and XC-176 closed; XC-113 widened; XC-018 and XC-158 wait on nothing now.
+  findings); XC-016 and XC-176 closed; XC-113 widened; XC-018 and XC-158 wait on nothing now;
+  XC-196 after merge (animal folder names must be wl.works' `rigName`, which wl-preproc's
+  8-character subject column enforces by quarantine).
+- **CI, read shard by shard before the fast-forward** (push run `36737681413`, the branch's first
+  push, so the gate diffed against `main`): pytest `1991 passed` on 3.11-3.13; 11 modules, **395
+  caught, 0 survived**, every baseline and restore at `1991 passed`, the shards taking 2h26m to
+  3h33m. **14 catches were timeouts** on CI's slower runners (`link._telemetry_from`, `decode`,
+  `deliver`, `publish`, `receive`; `serve._send_frame`, `offer`, `start`; `service.step`;
+  `taskd._ends`, `_publish`, `publish`; `welfare.must_stop`, `out_of_cage_seconds`). **Each was run
+  again locally with no limit and each is a real catch**, a test about that function failing in
+  13 to 130 s, none a hang: the end-to-end tests notice through their own 10-20 s frame waits,
+  which pile up past CI's 300 s. XC-140's class, grown with the suite.
+- **What wl.works relies on from wl-xcon** (its message of 2026-09-30, its January canonical-NWB
+  spec): `/health`'s `session` reading, which it reads to attach its ELN session to ours; and
+  `RUN_START` 4135 / `RUN_END` 4136, which it has asked wl-preproc to count as blocks, since
+  wl-xcon emits no `BLOCK_START`/`BLOCK_END` (wl-xcon's run is their block). Renumbering those
+  codes, when wl-xtasks owns the final numbering, now reaches two repositories.
 
 ## What moved on 2026-09-30, P4d-2b slice b3a-1: the session service
 
