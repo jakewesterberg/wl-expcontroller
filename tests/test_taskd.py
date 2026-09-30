@@ -3863,6 +3863,7 @@ def test_after_the_loop_a_manual_reward_is_refused_and_nothing_is_given(tmp_path
     ((name, by, why),) = session.refusals
     assert (name, by) == ("reward", "jake")
     assert "the session has ended" in why
+    assert "XC-184" in why, "wlx run's session after its run: its own item"
     assert (session.welfare.commanded, session.welfare.deliveries) == given
     assert REWARD_CODE not in session.card.codes
 
@@ -4286,3 +4287,76 @@ def test_a_closed_service_session_says_its_return_is_recorded_not_awaited(tmp_pa
     closed = session.refusals[-1][2]
     assert "the session has ended" in closed and "return to its cage is recorded" in closed
     assert "waiting" not in closed
+
+
+# --- b3a-2: the hand reward between runs and while the return is awaited ------------
+
+
+def test_between_runs_a_hand_reward_is_one_correct_trial_reward_through_the_tasks_path(tmp_path):
+    """PI, 2026-09-29 (P4d-2b spec §6.0): "whenever the console is up, the manual reward
+    should work". Between runs, one press is one delivery of `reward_correct` at the
+    value it holds -- 0.15 mL here -- through `Rig.reward` and `Welfare.deliver`, the
+    path a task's reward takes, `MANUAL_REWARD` strobed before the valve, one `reward`
+    row at the instant it was commanded, and the feed saying where it was given."""
+    session = _service_session(tmp_path)
+    pump = _Watched(session.card)
+    session.welfare.pump = pump
+    commanded, deliveries = session.welfare.commanded, session.welfare.deliveries
+
+    session.receive(ManualReward(by="jake"))
+
+    assert session.welfare.commanded == pytest.approx(commanded + 0.15)
+    assert session.welfare.deliveries == deliveries + 1
+    assert (pump.delivered, pump.strobed_before) == ([0.15], [REWARD_CODE])
+    (row,) = _manual_rows(session)
+    assert (row["by"], row["ml"], row["entry"]) == ("jake", 0.15, "reward_correct")
+    assert row["at"] == session.welfare.last_delivery_wall_at
+    assert session.controls[-1][3] == "0.15 mL of reward_correct, given between runs"
+    assert [r for r in session.refusals if r[0] == "reward"] == []
+
+
+def test_after_a_run_and_while_the_return_is_awaited_a_hand_reward_is_given_and_said_so(tmp_path):
+    session = _service_session(tmp_path)
+    session.run(_run_spec(trials=1))
+    session.receive(ManualReward(by="jake"))
+    session.end_runs("jake")
+    session.receive(ManualReward(by="jake"))
+
+    assert [row["run"] for row in _manual_rows(session)] == [0, 0]
+    assert [said for kind, _, _, said in session.controls if kind == "reward"] == [
+        "0.15 mL of reward_correct, given between runs",
+        "0.15 mL of reward_correct, given while the animal's return is awaited",
+    ]
+    assert session.card.codes.count(REWARD_CODE) == 2
+
+
+def test_a_closed_session_refuses_a_hand_reward_and_gives_nothing(tmp_path):
+    session = _service_session(tmp_path)
+    session.end_runs("jake")
+    session.returned_to_cage(session.wall_now(), by="jake", how="the page")
+    session.close(how="wlx taskd")
+    given = session.welfare.deliveries
+
+    session.receive(ManualReward(by="jake"))
+
+    ((name, by, why),) = [r for r in session.refusals if r[0] == "reward"]
+    assert (name, by) == ("reward", "jake")
+    assert "the session has ended" in why and "no reward was given" in why
+    assert session.welfare.deliveries == given and REWARD_CODE not in session.card.codes
+
+
+def test_a_pump_that_fails_a_hand_reward_between_runs_is_not_caught(tmp_path):
+    """As `welfare.Rig` catches no pump fault for a task's reward: the reward is charged
+    before the valve, and the fault goes on to `wlx taskd`, which ends on it and leaves
+    the animal stranded for its next start (the b3a-2 plan, decision 4)."""
+    session = _service_session(tmp_path)
+
+    class _Broken(Pump):
+        def deliver(self, ml: float) -> None:
+            raise RuntimeError("solenoid did not answer")
+
+    session.welfare.pump = _Broken()
+
+    with pytest.raises(RuntimeError, match="solenoid did not answer"):
+        session.receive(ManualReward(by="jake"))
+    assert session.welfare.deliveries == 1, "charged before the valve"

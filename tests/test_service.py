@@ -28,6 +28,7 @@ from wl_xcon.link import (
     CheckRun,
     EndSession,
     Idle,
+    ManualReward,
     OpenSession,
     Pause,
     Refused,
@@ -1860,3 +1861,55 @@ def test_a_run_started_with_no_values_starts_from_the_tasks_own(tmp_path):
 
     assert (frame.phase, frame.run_index, frame.stop_kind) == ("between_runs", 0, "completed")
     assert _runs(service.root)[0]["resolved"]["fix_hold"] == 0.3
+
+
+def test_the_hand_reward_works_between_runs_and_while_the_return_is_awaited(tmp_path):
+    """PI, 2026-09-29 (P4d-2b spec §6.0), through the service: `tasks/twelve_hour_bounds.py`'s
+    `reward_correct`, 0.05 mL, once per press, on the frame's fluid total and feed."""
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    between = _step(service, ManualReward(by=BY))
+    _step(service, _end(returned=None))
+    awaiting = _step(service, ManualReward(by=BY))
+
+    assert between.fluid_session_ml == pytest.approx(0.05)
+    assert between.controls[-1].said == "0.05 mL of reward_correct, given between runs"
+    assert awaiting.phase == "awaiting_return"
+    assert awaiting.fluid_session_ml == pytest.approx(0.10)
+    assert awaiting.controls[-1].said == (
+        "0.05 mL of reward_correct, given while the animal's return is awaited"
+    )
+    assert service.session.card.codes.count(4134) == 2
+    assert [r for r in awaiting.refusals if r.name == "reward"] == []
+
+
+def test_with_no_session_open_a_hand_reward_is_refused_and_says_what_it_waits_for(tmp_path):
+    """XC-158 is the button with no session open, a line flush counted to no animal;
+    until it is built, a press is refused with its own sentence."""
+    service = _service(tmp_path)
+
+    frame = _step(service, ManualReward(by=BY))
+
+    assert frame.refusals == (
+        Refused(
+            "reward",
+            BY,
+            "no session is open, so no reward was given: a reward with no session open, "
+            "which flushes the line, waits on XC-158",
+        ),
+    )
+
+
+def test_during_a_run_a_hand_reward_is_still_given_only_while_paused(tmp_path):
+    """XC-157 is the reward during a trial, given the moment it is pressed; until it is
+    built, a press while trials run is refused as b2a refused it, and nothing is given.
+    This passes before the change too: it pins that the change did not widen it."""
+    link = _Script({2: [ManualReward(by=BY)]})
+    service = _service(tmp_path, link=link)
+
+    frame = _step(service, _open(), _start())
+
+    (refusal,) = [r for r in frame.refusals if r.name == "reward"]
+    assert "the session is not paused" in refusal.why and "no reward was given" in refusal.why
+    assert 4134 not in service.session.card.codes

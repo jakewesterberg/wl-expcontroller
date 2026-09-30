@@ -81,6 +81,11 @@ PAUSE_HOUSEKEEPING_S = 0.5
 #: and no other entry stands in (`Session._manual_reward`).
 MANUAL_REWARD_ENTRY = "reward_correct"
 
+#: The phases of a `wlx taskd` session in which no run is in progress and a manual
+#: reward is given (P4d-2b spec §6.0; `Session._manual_reward`): between runs, and after
+#: *End session* while the animal's return is awaited.
+OUTSIDE_A_RUN = ("between_runs", "awaiting_return")
+
 #: An allowance for accumulated floating-point error in a sum of deliveries
 #: (`welfare.commanded += ml`, once per reward), so an "after X mL" schedule ends at
 #: its amount rather than one reward past it (Task 7 fix round 1: "after 0.8 mL"
@@ -1325,69 +1330,100 @@ class Session:
                 return
 
     def _manual_reward(self, by: str, index: int, held: bool) -> None:
-        """**A manual reward, given while paused** (PI, 2026-09-28: "I want to be able to
-        give manual rewards during pause"). Asked how much one press gives: "Same as a
-        correct trial" -- one delivery of the bounded config's `MANUAL_REWARD_ENTRY`,
-        at the value it holds now, **through the path a task's reward takes**:
-        `welfare.Rig.reward`, then `Welfare.deliver`, which charges it before the valve
-        opens and counts it in `commanded`, `deliveries` and `last_delivery_wall_at`.
-        So it is on the fluid total, the time since the last reward, and a scheduled
-        stop after X mL, which `_hold` asks `_ends` about in this same pass.
-        `MANUAL_REWARD` is strobed first, as a task strobes `REWARD_COMMANDED` before
-        its `Reward`, and one `reward` row goes to the record, with the mL given, at
-        the instant the reward was commanded.
+        """**A manual reward** (PI, 2026-09-28: "I want to be able to give manual rewards
+        during pause"; 2026-09-29: "whenever the console is up, the manual reward should
+        work", P4d-2b spec §6.0). Asked how much one press gives: "Same as a correct
+        trial" -- one delivery of the bounded config's `MANUAL_REWARD_ENTRY`, at the value
+        it holds now, **through the path a task's reward takes**: `welfare.Rig.reward`,
+        then `Welfare.deliver`, which charges it before the valve opens and counts it in
+        `commanded`, `deliveries` and `last_delivery_wall_at`. So it is on the fluid
+        total and the time since the last reward. `MANUAL_REWARD` is strobed first, as a
+        task strobes `REWARD_COMMANDED` before its `Reward`, and one `reward` row goes to
+        the record, with the mL given, at the instant the reward was commanded, and a feed
+        row saying where it was given.
 
-        **Only while held** (`held`: drained by `_hold`). Refused, with a sentence and
-        nothing given, when the session is stopping -- a `Stop` ahead of it in the
-        drain -- or not paused -- trials running, or a `Resume` ahead of it -- or
-        paused in this same drain and not yet held; when a fluid scheduled stop is
-        already due -- welfare review round 1, 2026-09-28: two presses drained in the
-        same pass, the first reaching it, must not both be given, since there is
-        nothing here to stop a loopback peer other than the page from sending two --
-        checked the same way `_ends` checks it, and nothing strobed or delivered on
-        this refusal either; when the bounded config has no `MANUAL_REWARD_ENTRY`,
-        which **no other entry replaces**; and when the allocation has no
-        `MANUAL_REWARD` code, since the recording could not show it. A session that
-        has ended refuses it in `_command`, as every command.
+        **When, by phase** (the b3a-2 plan, decision 4):
 
-        **A pump fault is not caught**, as `welfare.Rig` catches none for a task's
-        reward: the session ends on it as a fault, with the reward charged.
+        - **During a run, only while held** (`held`: drained by `_hold`), as since b2a.
+          Refused, with a sentence and nothing given, when the session is stopping -- a
+          `Stop` ahead of it in the drain -- or not paused -- trials running, or a
+          `Resume` ahead of it -- or paused in this same drain and not yet held; and when
+          a fluid scheduled stop is already due (welfare review round 1, 2026-09-28: two
+          presses drained in the same pass, the first reaching it, must not both be
+          given, since nothing stops a loopback peer other than the page from sending
+          two), checked the same way `_ends` checks it, with nothing strobed or
+          delivered on this refusal either. A press during a trial, given the moment it
+          is pressed, is XC-157's.
+        - **Outside a run, in a `wlx taskd` session between runs or awaiting its animal's
+          return** (`OUTSIDE_A_RUN`, b3a-2): given, with no pause to hold, since no trial
+          runs and no task rewards. No scheduled stop is asked: one belongs to the run it
+          was set on (spec §6.1), and outside a run there is none to end.
+        - **Anywhere else, refused**: a `wlx run` session after its run, whose return is
+          taken at its terminal on another thread (XC-184), and a session that has
+          closed. With no session open, `service.Service._route` refuses it (XC-158).
+
+        Refused everywhere when the bounded config has no `MANUAL_REWARD_ENTRY`, which
+        **no other entry replaces**, and when the allocation has no `MANUAL_REWARD` code,
+        since the recording could not show it.
+
+        **A pump fault is not caught**, as `welfare.Rig` catches none for a task's reward:
+        during a run the session ends on it as a fault, with the reward charged; outside
+        one it goes on to `wlx taskd`, which ends on it, records the return as not
+        recorded, and leaves the animal stranded for its next start.
 
         Welfare-critical (`docs/design/architecture.md`): it delivers fluid."""
-        if self.stopped_because:
-            self._refuse(
-                "reward",
-                by,
-                f"the session is stopping ({self.stopped_because}); no reward was given",
+        if self.phase == "running":
+            if self.stopped_because:
+                self._refuse(
+                    "reward",
+                    by,
+                    f"the session is stopping ({self.stopped_because}); no reward was given",
+                )
+                return
+            if self.paused_at is None:
+                self._refuse(
+                    "reward",
+                    by,
+                    "the session is not paused, and a manual reward is given only while it "
+                    "is; no reward was given",
+                )
+                return
+            if not held:
+                self._refuse(
+                    "reward",
+                    by,
+                    "the session's pause has not begun holding yet, and a manual reward is "
+                    "given only while it is; no reward was given -- press again once the "
+                    "page shows the session paused",
+                )
+                return
+            if (
+                self.scheduled_stop is not None
+                and self.scheduled_stop[0] == "fluid"
+                and self.welfare.session_total()
+                >= self.scheduled_stop[1] - FLUID_TOLERANCE_ML
+            ):
+                self._refuse(
+                    "reward",
+                    by,
+                    f"the session has reached its scheduled stop {self.scheduled_stop[3]}, "
+                    f"so no reward is given; it ends at this pass",
+                )
+                return
+            where = f"given while paused before trial {index}"
+        elif self.service and self.phase in OUTSIDE_A_RUN:
+            where = (
+                "given between runs"
+                if self.phase == "between_runs"
+                else "given while the animal's return is awaited"
             )
-            return
-        if self.paused_at is None:
+        else:
             self._refuse(
                 "reward",
                 by,
-                "the session is not paused, and a manual reward is given only while it "
-                "is; no reward was given",
-            )
-            return
-        if not held:
-            self._refuse(
-                "reward",
-                by,
-                "the session's pause has not begun holding yet, and a manual reward is "
-                "given only while it is; no reward was given -- press again once the "
-                "page shows the session paused",
-            )
-            return
-        if (
-            self.scheduled_stop is not None
-            and self.scheduled_stop[0] == "fluid"
-            and self.welfare.session_total() >= self.scheduled_stop[1] - FLUID_TOLERANCE_ML
-        ):
-            self._refuse(
-                "reward",
-                by,
-                f"the session has reached its scheduled stop {self.scheduled_stop[3]}, "
-                f"so no reward is given; it ends at this pass",
+                "the session has ended, and outside a run a manual reward is given only in "
+                "a wlx taskd session, between runs or while its animal's return is awaited "
+                "-- one after a wlx run session's run waits on XC-184; no reward was given",
             )
             return
         if MANUAL_REWARD_ENTRY not in self.spec.bounds.ceilings:
@@ -1414,7 +1450,7 @@ class Session:
         self._control(
             "reward",
             by,
-            f"{ml:g} mL of {MANUAL_REWARD_ENTRY}, given while paused before trial {index}",
+            f"{ml:g} mL of {MANUAL_REWARD_ENTRY}, {where}",
             index,
             at=self.welfare.last_delivery_wall_at,
             ml=ml,
@@ -1452,21 +1488,28 @@ class Session:
         sends, as fast as it can send them. This list is driven by exactly the same
         peer and was the third one, unbounded.
 
-        **Nothing arriving here is accepted once the loop has ended** (P4d-2a spec
-        §10, Task 8). A parameter staged after the last trial could never be
-        applied, and a stop has nothing left to stop -- both are refused with the
-        reason rather than silently kept. **The return used to be the one
-        exception** -- a console's `ReturnedToCage` was accepted in any phase -- until
-        the PI ruled the wl-works ELN owns the return (P4d-2a spec §10). The page takes
-        it again since P4d-2b spec §6.0, as `EndSession`, which `wlx taskd` takes itself
-        (`service.Service._end`) and never routes here, so this method still has nothing
-        left to route in the post-loop phase but a refusal.
+        **Nothing arriving here is accepted once the loop has ended but a manual reward
+        in a `wlx taskd` session** (P4d-2a spec §10, Task 8; P4d-2b spec §6.0). A parameter
+        staged after the last trial could never be applied, and a stop has nothing left
+        to stop -- both are refused with the reason rather than silently kept. The page's
+        return is `EndSession`, which `wlx taskd` takes itself (`service.Service._end`) and
+        never routes here. A manual reward is handed to `_manual_reward` before anything
+        else, in every phase, and it gives one while the animal's return is awaited.
 
         **`held` is true only for a command `_hold` drained** (P4d-2b b2a, amended
         2026-09-28): the session held paused at this boundary. Only a manual reward
-        reads it (`_manual_reward`): the PI's manual reward is given while paused, and
-        never while a pause drained in this same pass has yet to hold.
+        reads it (`_manual_reward`): during a run the PI's manual reward is given while
+        paused, and never while a pause drained in this same pass has yet to hold.
         """
+        if isinstance(command, _link.ManualReward):
+            # **Welfare-critical, this pass-through** (`docs/design/architecture.md`):
+            # every reward goes to `_manual_reward`, which decides in every phase whether
+            # it is given -- held paused in a run, or a `wlx taskd` session between runs
+            # or awaiting its return -- with `held`, which only `_hold` sets. Ahead of
+            # the post-loop refusal below since P4d-2b b3a-2 (spec §6.0), which it
+            # followed until then.
+            self._manual_reward(command.by, index, held)
+            return
         if isinstance(command, _link.Mark) and self.service and self.phase != "running":
             # A mark's note, between runs or awaiting the return: joined to its stamp
             # (`stamp`), since a mark is never refused once pressed.
@@ -1515,9 +1558,6 @@ class Session:
             return
         if isinstance(command, _link.CancelScheduledStop):
             self._cancel(command.by, index)
-            return
-        if isinstance(command, _link.ManualReward):
-            self._manual_reward(command.by, index, held)
             return
         if not isinstance(command, _link.SetParameter):
             # A command this session has no branch for -- a newer console's -- is
@@ -1739,8 +1779,8 @@ class Session:
 
     def receive(self, command) -> None:
         """A console command that reached this session outside a run (`wlx taskd`, between
-        runs or awaiting the return): `_command` refuses it for its phase, or joins a
-        mark's note."""
+        runs or awaiting the return): `_command` gives a manual reward (P4d-2b spec
+        §6.0), joins a mark's note, or refuses it for its phase."""
         self._command(command, self._index)
 
     def publish(self) -> None:

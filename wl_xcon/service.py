@@ -408,6 +408,15 @@ class Service:
             self._start(command)
         elif self.session is not None:
             self.session.receive(command)
+        elif isinstance(command, _link.ManualReward):
+            # Spec §6.0: with no session open the button flushes the line, counted to no
+            # animal -- a slice of its own (XC-158). Until then, refused as a reward.
+            self._refuse(
+                "reward",
+                command.by,
+                "no session is open, so no reward was given: a reward with no session "
+                "open, which flushes the line, waits on XC-158",
+            )
         else:
             self._refuse(
                 command.name if isinstance(command, _link.SetParameter) else command.KIND,
