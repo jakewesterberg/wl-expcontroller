@@ -16,6 +16,13 @@ depend on anyone remembering to clear a cache.
 
     python3 tools/mutate.py wl_xcon/check.py _unbounded_waits
     python3 tools/mutate.py --all wl_xcon/check.py
+    python3 tools/mutate.py --all --only detect,_saccade wl_xcon/saccade.py
+
+`--only` narrows `--all` to the names given, in `--all`'s own order, with the same
+baseline before and restored suite after. It exists so `tools/mutation_gate.py
+--shard` can cut one module's functions across CI machines (PI, 2026-09-30), and
+it refuses a name `--all` would not list rather than skipping it: a target that was
+never run must not read as one that was.
 """
 
 from __future__ import annotations
@@ -368,6 +375,26 @@ def mutate(path: Path, function: str, args_returns: str) -> bool:
         _clear_pycache()
 
 
+def _only(targets: list[str], only: str, path: Path) -> list[str]:
+    """`targets` cut down to the names in `only` (comma-separated), in `targets`' order.
+
+    **A name `targets` does not hold is refused, never skipped.** This is how
+    `tools/mutation_gate.py --shard` splits one module across machines, and a name
+    it passes that is not there -- renamed since, or a typo -- would otherwise be a
+    target nobody ran in a log that reads as a finished sweep: the harness's
+    recurring failure. A list naming nothing is refused for the same reason.
+    """
+    wanted = [name.strip() for name in only.split(",") if name.strip()]
+    if not wanted:
+        raise SystemExit(f"--only named no functions (got {only!r})")
+    missing = [name for name in dict.fromkeys(wanted) if name not in targets]
+    if missing:
+        raise SystemExit(
+            f"--only names what --all does not list in {path}: {', '.join(missing)}"
+        )
+    return [name for name in targets if name in wanted]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", type=Path)
@@ -378,13 +405,26 @@ def main() -> int:
         default="[]",
         help="what the neutered body returns; see mutate() on why it matters",
     )
+    parser.add_argument(
+        "--only",
+        metavar="NAME[,NAME...]",
+        help=(
+            "with --all: mutate only these of its targets, in its order; a name "
+            "--all would not list is refused, never skipped"
+        ),
+    )
     args = parser.parse_args()
+
+    if args.only is not None and not args.all:
+        raise SystemExit("--only narrows --all's target list; give --all as well")
 
     path = ROOT / args.path
     if args.all:
         targets = _function_names(path.read_text())
         if not targets:
             raise SystemExit(f"--all found no module-level functions in {path}")
+        if args.only is not None:
+            targets = _only(targets, args.only, path)
     else:
         if not args.function:
             raise SystemExit("give a function name or --all")

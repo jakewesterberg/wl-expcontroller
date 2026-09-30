@@ -452,3 +452,141 @@ def test_a_collection_error_is_named_by_its_file():
 
 def test_nothing_is_appended_when_nothing_failed():
     assert mutate_tool._caught_by([]) == ""
+
+
+# ---------------------------------------------------------------------------
+# --only: one module's functions split across CI machines (PI, 2026-09-30).
+# `tools/mutation_gate.py --shard` hands each machine a contiguous run of
+# functions, so a module can be cut between two machines and each calls
+# `--all --only <its part>`. The danger is the harness's usual one -- a target
+# quietly not run and read as covered -- so a name it cannot find is refused.
+# ---------------------------------------------------------------------------
+
+#: `second` is defined twice, as the worlds in `run.py` define `satisfied`.
+_ONLY_SOURCE = (
+    "def first():\n"
+    "    return [1]\n"
+    "class A:\n"
+    "    def second(self):\n"
+    "        return [2]\n"
+    "class B:\n"
+    "    def second(self):\n"
+    "        return [3]\n"
+    "def third():\n"
+    "    return [4]\n"
+)
+
+
+def _stubbed_sweep(monkeypatch, tmp_path):
+    """`main()` with every suite run and every mutant recorded and nothing run.
+
+    Returns the module path and the call log. `_restore_any_interrupted_run` is
+    logged too, so a test can tell that a refusal came before *anything* touched
+    the tree, not merely before the baseline."""
+    target = tmp_path / "module.py"
+    target.write_text(_ONLY_SOURCE)
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        mutate_tool, "_restore_any_interrupted_run", lambda: calls.append(("heal",))
+    )
+
+    def suite():
+        calls.append(("suite",))
+        return True, "5 passed in 0.01s", []
+
+    def mutant(path, name, returns):
+        calls.append(("mutate", name))
+        return True, "1 failed, 4 passed in 0.01s"
+
+    monkeypatch.setattr(mutate_tool, "_run_suite", suite)
+    monkeypatch.setattr(mutate_tool, "mutate", mutant)
+    return target, calls
+
+
+def test_only_restricts_all_to_the_names_given_in_the_files_order(monkeypatch, tmp_path):
+    """Given out of order, run in `_function_names`' order -- the order `--all`
+    uses, so a function's line in a sharded log sits where a whole sweep puts it."""
+    target, calls = _stubbed_sweep(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "sys.argv", ["mutate.py", "--all", "--only", "third,first", str(target)]
+    )
+
+    assert mutate_tool.main() == 0
+
+    assert [c[1] for c in calls if c[0] == "mutate"] == ["first", "third"]
+
+
+def test_only_still_runs_one_baseline_before_and_one_restored_suite_after(
+    monkeypatch, tmp_path
+):
+    """A part of a module is still a sweep: green before it, green after it."""
+    target, calls = _stubbed_sweep(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "sys.argv", ["mutate.py", "--all", "--only", "first,third", str(target)]
+    )
+
+    mutate_tool.main()
+
+    assert calls == [
+        ("heal",),
+        ("suite",),
+        ("mutate", "first"),
+        ("mutate", "third"),
+        ("suite",),
+    ]
+
+
+def test_only_a_name_defined_twice_is_one_target(monkeypatch, tmp_path):
+    """Every definition of a name is neutered together, so `--only second` is one
+    mutant covering both classes, exactly as `--all` runs it."""
+    target, calls = _stubbed_sweep(monkeypatch, tmp_path)
+    monkeypatch.setattr("sys.argv", ["mutate.py", "--all", "--only", "second", str(target)])
+
+    assert mutate_tool.main() == 0
+
+    assert [c[1] for c in calls if c[0] == "mutate"] == ["second"]
+
+
+def test_only_refuses_a_name_that_is_not_there_before_any_suite_runs(
+    monkeypatch, tmp_path
+):
+    """Skipping it would be the harness's recurring failure: a target not run, and
+    a log that reads as though it had been. Refused by name, before the tree is
+    touched at all."""
+    target, calls = _stubbed_sweep(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "sys.argv", ["mutate.py", "--all", "--only", "first,renamed", str(target)]
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        mutate_tool.main()
+
+    assert "renamed" in str(raised.value)
+    assert calls == []
+
+
+def test_only_without_all_is_refused(monkeypatch, tmp_path):
+    """`--only` narrows `--all`'s list; beside a single named function it would be
+    silently ignored, so it is refused instead."""
+    target, calls = _stubbed_sweep(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "sys.argv", ["mutate.py", "--only", "third", str(target), "first"]
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        mutate_tool.main()
+
+    assert "--all" in str(raised.value)
+    assert calls == []
+
+
+def test_only_naming_nothing_is_refused(monkeypatch, tmp_path):
+    """`--only ""` would be a sweep of no functions that reports success."""
+    target, calls = _stubbed_sweep(monkeypatch, tmp_path)
+    monkeypatch.setattr("sys.argv", ["mutate.py", "--all", "--only", ",", str(target)])
+
+    with pytest.raises(SystemExit) as raised:
+        mutate_tool.main()
+
+    assert "--only" in str(raised.value)
+    assert calls == []

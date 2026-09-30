@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """Which modules this change needs mutated, and with what flag.
 
-The full sweep re-runs the whole suite once per function -- seventeen modules, about
-150 functions, twenty-five minutes -- and it grows with every module and every test.
-This selects the subset a change can actually have affected, so a push pays for what
-it touched. **The full sweep still runs nightly** (`.github/workflows/ci.yml`), and
+The full sweep re-runs the whole suite once per function -- twenty-nine modules and
+566 functions on 2026-09-30 -- and it grows with every module and every test. This
+selects the subset a change can actually have affected, so a push pays for what it
+touched. **The full sweep still runs nightly** (`.github/workflows/ci.yml`), and
 that is not decoration: see "What this can miss", below.
+
+**`--shard K/N` cuts by function, not by module (PI, 2026-09-30).** The selected
+modules' functions are one list -- modules by name, each module's functions in
+`mutate.py --all`'s own order -- cut into `N` contiguous chunks whose sizes differ by
+at most one. Shard `K` runs chunk `K` as one `mutate.py --all --only <its part>` per
+module it touches, so a module can be split between two machines. Until then a
+module was kept whole and the modules balanced by function count, which left
+`serve` (60 functions) alone on one machine for 2h42m of a push's gate (run
+36737681413, read 2026-09-30) however many machines there were. See `shard_plan`.
 
 **A new module cannot silently escape the gate.** Every file in `wl_xcon/`
 must appear in `RETURNS` or in `EXEMPT` with a reason, and this script fails if one
@@ -28,7 +37,8 @@ sees.
 from __future__ import annotations
 
 import argparse
-import ast
+import functools
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -171,67 +181,89 @@ def select(changed: list[str], *, changed_only: bool = False) -> tuple[list[str]
     return sorted(chosen), "changed modules and their own test files"
 
 
-def _function_count(module: str) -> int:
-    """Distinct function names in `wl_xcon/<module>.py`, ast-counted.
+@functools.cache
+def _load_mutate():
+    """`tools/mutate.py`, loaded by path: this directory is not a package.
 
-    The same rule `tools/mutate.py --all` uses to build its target list -- every
-    `def`, module-level or a method, each name counted once even when several
-    worlds implement it (see `mutate._function_names`) -- so a shard's "function
-    count" means the same function a sweep means. Read with `ast`, never a
-    pattern: CLAUDE.md's rule, "a tool that reasons about code asks the parser,"
-    and this file's own docstring names three regex mistakes `mutate.py` made
-    before it learned that.
+    The gate reads `_function_names` from it rather than keeping a copy. The names
+    a shard hands `mutate.py --only` must be names `mutate.py --all` lists, or
+    `--only` refuses them; one listing cannot disagree with itself, and a copy is a
+    test that can agree with itself while disagreeing with the tool.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "wlx_mutate_listing", Path(__file__).resolve().parent / "mutate.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def module_functions(module: str) -> list[str]:
+    """What `tools/mutate.py --all wl_xcon/<module>.py` would mutate, in its order.
+
+    `mutate._function_names` itself: every `def`, module-level or a method, read
+    with `ast` and never a pattern (CLAUDE.md: "a tool that reasons about code asks
+    the parser"), and **each name once** -- `mutate()` neuters every definition of
+    a name together, so `publish` in three classes is one target. That is what
+    keeps a shard boundary from splitting one name between two machines.
     """
     source = (ROOT / PACKAGE / f"{module}.py").read_text()
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return 0
-    names = {
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    return len(names)
+    return _load_mutate()._function_names(source)
 
 
-def shard_groups(
-    modules: list[str], n: int, counts: dict[str, int] | None = None
-) -> list[list[str]]:
-    """`modules` split into `n` deterministic groups, balanced by function count.
+def shard_targets(
+    modules: list[str], functions: dict[str, list[str]] | None = None
+) -> list[tuple[str, str]]:
+    """Every `(module, function)` a sweep of `modules` mutates, in one fixed order:
+    modules by name, and each module's functions as `module_functions` lists them.
 
-    Counted per module (`_function_count`), not by how many modules land in a
-    group: `serve.py` alone has 38 functions to `components.py`'s 1, so splitting
-    by module count would hand one shard many times another's work. `counts`, when
-    given, is used instead of reading `wl_xcon/*.py` -- which is what lets
-    a test prove the balancing without depending on the package's current shape.
-
-    Greedy, least-loaded first: process modules in a fixed order (function count
-    descending, then name, so two calls with the same inputs always agree) and drop
-    each one into whichever group currently holds the smallest total. That
-    guarantees **the largest group's total is at most the smallest group's total
-    plus the single largest module placed**: whichever module ends up being the
-    last one added to the eventual largest group was, at the moment it was placed,
-    going into the group with the least work of all `n` -- every group's total only
-    grows after that, so no group can finish lower than that group's total right
-    then, which is the largest group's final total less that one module.
-
-    `n` may exceed `len(modules)`. The extra groups are simply empty, and they are
-    the highest-numbered ones: every group index below `len(modules)` receives
-    exactly one module before any group receives a second, because each of those
-    first assignments finds every not-yet-touched group tied at zero and breaks the
-    tie toward the lowest index.
+    Sorted here rather than trusted from the caller, so the order -- and with it
+    every shard -- depends only on which modules were selected. `functions`, when
+    given, is used instead of reading `wl_xcon/*.py`, which is what lets a test
+    prove the chunking without depending on the package's current shape.
     """
-    if counts is None:
-        counts = {module: _function_count(module) for module in modules}
-    ordered = sorted(modules, key=lambda m: (-counts[m], m))
-    groups: list[list[str]] = [[] for _ in range(n)]
-    totals = [0] * n
-    for module in ordered:
-        target = min(range(n), key=lambda i: (totals[i], i))
-        groups[target].append(module)
-        totals[target] += counts[module]
-    return groups
+    if functions is None:
+        functions = {module: module_functions(module) for module in modules}
+    return [(module, name) for module in sorted(modules) for name in functions[module]]
+
+
+def _chunk(total: int, k: int, n: int) -> tuple[int, int]:
+    """`[start, end)` of the `k`-th (1-based) of `n` contiguous chunks of `total`.
+
+    Sizes differ by at most one, and the first `total % n` chunks take the extra
+    one each; with `n > total` the last `n - total` chunks are empty.
+    """
+    size, extra = divmod(total, n)
+    start = (k - 1) * size + min(k - 1, extra)
+    return start, start + size + (1 if k <= extra else 0)
+
+
+def shard_plan(
+    modules: list[str], k: int, n: int, functions: dict[str, list[str]] | None = None
+) -> list[tuple[str, list[str]]]:
+    """Shard `k` of `n`: `[(module, [function, ...]), ...]`, in `shard_targets` order.
+
+    **Split by function, not by module (PI, 2026-09-30; the module docstring says
+    why).** A module is cut wherever its chunk ends, and each machine runs
+    `mutate.py --all --only` on its part of each module it touches.
+
+    The flat target list is cut into `n` contiguous chunks whose sizes differ by at
+    most one (`_chunk`). Contiguous rather than dealt round-robin so a shard spans
+    few modules, and each module it touches costs one baseline and one restored
+    suite. A name is one target however many times it is defined
+    (`module_functions`), so no boundary can fall inside it. Nothing here depends
+    on the order modules were given or on anything but the inputs, so every CI job
+    computes the same shards while seeing only its own `k`.
+    """
+    targets = shard_targets(modules, functions)
+    start, end = _chunk(len(targets), k, n)
+    plan: list[tuple[str, list[str]]] = []
+    for module, name in targets[start:end]:
+        if plan and plan[-1][0] == module:
+            plan[-1][1].append(name)
+        else:
+            plan.append((module, [name]))
+    return plan
 
 
 def parse_shard(value: str) -> tuple[int, int]:
@@ -245,7 +277,7 @@ def parse_shard(value: str) -> tuple[int, int]:
     parts = value.split("/")
     if len(parts) != 2 or not all(part.isdigit() for part in parts):
         raise argparse.ArgumentTypeError(
-            f"--shard wants K/N as two positive integers (e.g. 1/6), got {value!r}"
+            f"--shard wants K/N as two positive integers (e.g. 1/12), got {value!r}"
         )
     k, n = int(parts[0]), int(parts[1])
     if n < 1:
@@ -270,10 +302,14 @@ def changed_files(base: str | None) -> list[str] | None:
     return [line for line in result.stdout.splitlines() if line]
 
 
-def run(modules: list[str]) -> int:
+def run(plan: list[tuple[str, list[str] | None]]) -> int:
+    """One `mutate.py --all` per module, in order: the whole module when its entry
+    is `None`, and `--only` its part of the module when a shard cut it."""
     failures = []
-    for module in modules:
+    for module, only in plan:
         command = [sys.executable, "tools/mutate.py", "--all"]
+        if only is not None:
+            command += ["--only", ",".join(only)]
         if RETURNS[module] != "[]":
             command += ["--returns", RETURNS[module]]
         command.append(f"{PACKAGE}/{module}.py")
@@ -283,7 +319,7 @@ def run(modules: list[str]) -> int:
     if failures:
         print(f"\nMUTATION GATE FAILED: {', '.join(failures)}")
         return 1
-    print(f"\nmutation gate passed: {len(modules)} module(s)")
+    print(f"\nmutation gate passed: {len(plan)} module(s)")
     return 0
 
 
@@ -307,8 +343,9 @@ def main() -> int:
         type=parse_shard,
         metavar="K/N",
         help=(
-            "run only the K-th of N function-count-balanced groups of the selected "
-            "modules (meaningful with --all or an escalated sweep; see shard_groups)"
+            "run only the K-th of N contiguous, near-equal chunks of the selected "
+            "modules' functions, a module cut wherever its chunk ends (see "
+            "shard_plan)"
         ),
     )
     parser.add_argument("--dry-run", action="store_true")
@@ -338,29 +375,49 @@ def main() -> int:
     print(f"mutation gate: {len(modules)} module(s) -- {why}")
     print(f"  selected: {', '.join(modules) if modules else '(none)'}")
 
-    # --shard is literal: it partitions whatever `modules` already is, never
-    # re-expanding it. `ci.yml` only ever pairs it with `--all`, but nothing stops
-    # `--changed-only --shard` too -- a small selection sharded N ways is mostly
-    # empty shards, which `shard_groups` already handles.
+    # --shard is literal: it cuts the functions of whatever `modules` already is,
+    # never re-expanding it. `ci.yml` pairs it with `--all` (the nightly) and with
+    # `--changed-only` (a push); a small selection cut twelve ways is mostly empty
+    # shards, and an empty shard passes at once.
+    plan: list[tuple[str, list[str] | None]] = [(module, None) for module in modules]
     if args.shard and modules:
         k, n = args.shard
-        total = len(modules)
-        modules = shard_groups(modules, n)[k - 1]
-        print(f"  shard {k}/{n}: {len(modules)} of {total} module(s), balanced by function count")
-        print(f"    shard selected: {', '.join(modules) if modules else '(none)'}")
-        if not modules:
+        functions = {module: module_functions(module) for module in modules}
+        hollow = [module for module in modules if not functions[module]]
+        if hollow:
+            # Unsharded, `mutate.py --all` refuses a module it finds nothing in. A
+            # module with no targets lands in no chunk, so sharded it would vanish
+            # from every shard and the gate would pass having never examined it.
+            # Every shard computes the whole list, so every shard refuses.
+            print(
+                f"NO FUNCTIONS TO MUTATE: {', '.join(hollow)}\n"
+                f"`mutate.py --all` would refuse each one (no `def`, or source that "
+                f"does not parse). Fix it, or move it to EXEMPT with a reason."
+            )
+            return 1
+        total = len(shard_targets(modules, functions))
+        chosen = shard_plan(modules, k, n, functions)
+        count = sum(len(names) for _, names in chosen)
+        print(
+            f"  shard {k}/{n}: {count} of {total} function(s), in {len(chosen)} "
+            f"module(s) -- contiguous by module name, then by function"
+        )
+        for module, names in chosen:
+            print(f"    {module} ({len(names)}): {', '.join(names)}")
+        if not chosen:
             print(
                 f"  shard {k}/{n} is empty: {n} shard(s) requested for {total} "
-                f"module(s); nothing to run"
+                f"function(s); nothing to run"
             )
             return 0
+        plan = chosen
 
     if not modules:
         print("  nothing this change could have affected; the nightly sweep covers the rest")
         return 0
     if args.dry_run:
         return 0
-    return run(modules)
+    return run(plan)
 
 
 if __name__ == "__main__":
