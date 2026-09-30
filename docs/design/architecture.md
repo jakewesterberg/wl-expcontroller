@@ -142,15 +142,16 @@ no trial runs, so the task rewards nothing; each pass still drains, publishes an
 `_ends`; and during a run the commands it drains are the only ones a manual reward is
 given for. `_manual_reward` gives one: a person's press of *give reward*, one delivery of
 the bounded config's `reward_correct` through `welfare.Rig.reward`, strobed
-`MANUAL_REWARD` first -- during a run only while it is held paused, and since P4d-2b b3a-2
+`MANUAL_REWARD` first — during a run only while it is held paused, and since P4d-2b b3a-2
 (spec §6.0, PI 2026-09-29) in a `wlx taskd` session between runs and while its animal's
-return is awaited -- and refused at any other time: during a trial (XC-157), with no
+return is awaited — and refused at any other time: during a trial (XC-157), with no
 session open (XC-158), after a `wlx run` session's run (XC-184). `Session._command` hands
 every reward to `_manual_reward` first, in every phase, with `held`, which only `_hold`
-sets -- so a change to that pass-through is also a change to welfare-critical behavior. All three call `welfare` unchanged, and none holds a clock or a limit of its
-own; they are on this list because a plausible
-mistake in any — the limit asked on one path and not the other, a paused session that
-forgot to ask, a reward given while trials run, given outside a run where no session is open to count it, or paid from another entry — ends a session
+sets — so a change to that pass-through is also a change to welfare-critical behavior. All
+three call `welfare` unchanged, and none holds a clock or a limit of its own; they are on
+this list because a plausible mistake in any — the limit asked on one path and not the
+other, a paused session that forgot to ask, a reward given while trials run, given outside
+a run where no session is open to count it, or paid from another entry — ends a session
 late or rewards an animal when nobody meant it to, and passes every refusal `welfare` has.
 
 **The other two `taskd` functions are `Session.set`, whole, and `Session._schedule`; the

@@ -1339,8 +1339,8 @@ class Session:
         `commanded`, `deliveries` and `last_delivery_wall_at`. So it is on the fluid
         total and the time since the last reward. `MANUAL_REWARD` is strobed first, as a
         task strobes `REWARD_COMMANDED` before its `Reward`, and one `reward` row goes to
-        the record, with the mL given, at the instant the reward was commanded, and a feed
-        row saying where it was given.
+        the record, with the mL given and where it was given (`where`), at the instant the
+        reward was commanded, and a feed row saying the same.
 
         **When, by phase** (the b3a-2 plan, decision 4):
 
@@ -1455,6 +1455,7 @@ class Session:
             at=self.welfare.last_delivery_wall_at,
             ml=ml,
             entry=MANUAL_REWARD_ENTRY,
+            where=where,
         )
 
     def _refuse(self, name: str, by: str, why: str) -> None:
@@ -1489,12 +1490,13 @@ class Session:
         peer and was the third one, unbounded.
 
         **Nothing arriving here is accepted once the loop has ended but a manual reward
-        in a `wlx taskd` session** (P4d-2a spec §10, Task 8; P4d-2b spec §6.0). A parameter
-        staged after the last trial could never be applied, and a stop has nothing left
-        to stop -- both are refused with the reason rather than silently kept. The page's
-        return is `EndSession`, which `wlx taskd` takes itself (`service.Service._end`) and
-        never routes here. A manual reward is handed to `_manual_reward` before anything
-        else, in every phase, and it gives one while the animal's return is awaited.
+        or a mark's note in a `wlx taskd` session** (P4d-2a spec §10, Task 8; P4d-2b spec
+        §6.0). A parameter staged after the last trial could never be applied, and a stop
+        has nothing left to stop -- both are refused with the reason rather than silently
+        kept. The page's return is `EndSession`, which `wlx taskd` takes itself
+        (`service.Service._end`) and never routes here. A manual reward is handed to
+        `_manual_reward` before anything else, in every phase, and it gives one while the
+        animal's return is awaited.
 
         **`held` is true only for a command `_hold` drained** (P4d-2b b2a, amended
         2026-09-28): the session held paused at this boundary. Only a manual reward

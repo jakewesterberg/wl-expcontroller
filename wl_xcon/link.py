@@ -1142,9 +1142,12 @@ class ManualReward:
     much, "Same as a correct trial" -- so it carries who pressed it and nothing else:
     the size is the bounded config's `reward_correct`, read by `taskd` when it gives
     the reward, and nothing a console sends can set it. `taskd.Session._manual_reward`
-    gives it only while the session is held paused, and refuses it with a sentence at
-    any other time. **Never sent twice**: `wlx serve` answers one it cannot confirm
-    *unknown*, and nothing on the command path re-sends a command."""
+    gives it while the session is held paused and, in a `wlx taskd` session, between
+    runs and while the return is awaited (P4d-2b spec §6.0), and refuses it with a
+    sentence at any other time: during a trial it waits on XC-157, with no session open
+    on XC-158, and after a `wlx run` session's run on XC-184. **Never sent twice**:
+    `wlx serve` answers one it cannot confirm *unknown*, and nothing on the command path
+    re-sends a command."""
 
     KIND: ClassVar[str] = "reward"
 

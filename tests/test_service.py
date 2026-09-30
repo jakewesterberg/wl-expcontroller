@@ -1913,3 +1913,26 @@ def test_during_a_run_a_hand_reward_is_still_given_only_while_paused(tmp_path):
     (refusal,) = [r for r in frame.refusals if r.name == "reward"]
     assert "the session is not paused" in refusal.why and "no reward was given" in refusal.why
     assert 4134 not in service.session.card.codes
+
+
+def test_a_reward_drained_after_the_end_that_records_the_return_gives_nothing(tmp_path):
+    """The animal is home once `EndSession` records its return, and the session is closed
+    in that pass: a reward drained after it in the same pass finds no session open, and
+    is refused with XC-158's sentence -- no fluid, no `MANUAL_REWARD`."""
+    service = _service(tmp_path)
+    _step(service, _open())
+    session = service.session
+
+    frame = _step(service, _end(), ManualReward(by=BY))
+
+    assert isinstance(frame, Idle) and service.session is None
+    assert [r for r in frame.refusals if r.name == "reward"] == [
+        Refused(
+            "reward",
+            BY,
+            "no session is open, so no reward was given: a reward with no session open, "
+            "which flushes the line, waits on XC-158",
+        )
+    ]
+    assert (session.welfare.commanded, session.welfare.deliveries) == (0.0, 0)
+    assert 4134 not in session.card.codes

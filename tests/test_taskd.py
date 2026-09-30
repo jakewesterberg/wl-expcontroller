@@ -3791,6 +3791,7 @@ def test_a_manual_reward_while_paused_is_one_correct_trial_reward_through_the_ta
     (row,) = _manual_rows(session)
     assert (row["by"], row["trial_index"]) == ("jake", 3)
     assert (row["ml"], row["entry"]) == (0.15, "reward_correct")
+    assert row.get("where") == "given while paused before trial 3", "the record says where"
     assert row["at"] == last
     held = [frame for frame in link.published if frame.paused_at is not None]
     assert held[-1].fluid_session_ml == pytest.approx(after)
@@ -3846,8 +3847,8 @@ def test_a_manual_reward_at_any_other_time_is_refused_and_nothing_is_given(
 
 
 def test_after_the_loop_a_manual_reward_is_refused_and_nothing_is_given(tmp_path):
-    """After the session has ended, a reward is refused with the post-loop sentence,
-    as every command is then, and the fluid total does not move."""
+    """After a `wlx run` session's run, a reward is refused with `_manual_reward`'s own
+    sentence, which names XC-184, and the fluid total does not move."""
     link, wall = Simulated(), _Wall(WALL_NOW)
     session = _fixed_and_run(tmp_path, link, wall)
     given = (session.welfare.commanded, session.welfare.deliveries)
@@ -4310,6 +4311,7 @@ def test_between_runs_a_hand_reward_is_one_correct_trial_reward_through_the_task
     assert (pump.delivered, pump.strobed_before) == ([0.15], [REWARD_CODE])
     (row,) = _manual_rows(session)
     assert (row["by"], row["ml"], row["entry"]) == ("jake", 0.15, "reward_correct")
+    assert row.get("where") == "given between runs", "the record says where, as the feed does"
     assert row["at"] == session.welfare.last_delivery_wall_at
     assert session.controls[-1][3] == "0.15 mL of reward_correct, given between runs"
     assert [r for r in session.refusals if r[0] == "reward"] == []
@@ -4323,6 +4325,10 @@ def test_after_a_run_and_while_the_return_is_awaited_a_hand_reward_is_given_and_
     session.receive(ManualReward(by="jake"))
 
     assert [row["run"] for row in _manual_rows(session)] == [0, 0]
+    assert [row.get("where") for row in _manual_rows(session)] == [
+        "given between runs",
+        "given while the animal's return is awaited",
+    ]
     assert [said for kind, _, _, said in session.controls if kind == "reward"] == [
         "0.15 mL of reward_correct, given between runs",
         "0.15 mL of reward_correct, given while the animal's return is awaited",
@@ -4360,3 +4366,73 @@ def test_a_pump_that_fails_a_hand_reward_between_runs_is_not_caught(tmp_path):
     with pytest.raises(RuntimeError, match="solenoid did not answer"):
         session.receive(ManualReward(by="jake"))
     assert session.welfare.deliveries == 1, "charged before the valve"
+
+
+def test_a_fluid_stop_left_from_the_last_run_does_not_refuse_a_reward_between_runs(tmp_path):
+    """A scheduled stop belongs to the run it was set on (spec §6.1): a fluid one the run
+    never reached is left on the session until the next run starts, which clears it,
+    and between runs it is not asked. Here the second press takes the session past it,
+    and is given, as the first was."""
+    link = Simulated()
+    session = _service_session(tmp_path, link=link)
+    link.queue(ScheduleStop(kind="fluid", value=0.15, by="sam"))
+    link.queue(Stop(by="sam"))
+    session.run(_run_spec(trials=2))
+    assert session.scheduled_stop[3] == "after 0.15 mL this session", "left from the run"
+    assert session.welfare.session_total() == 0.0
+
+    session.receive(ManualReward(by="jake"))
+    session.receive(ManualReward(by="jake"))
+
+    assert session.welfare.session_total() == pytest.approx(0.30)
+    assert session.card.codes.count(REWARD_CODE) == 2
+    assert [r for r in session.refusals if r[0] == "reward"] == []
+
+
+def _outside_a_run_presses(session: Session) -> None:
+    """One press between runs, and one after *End session* while the return is awaited."""
+    session.receive(ManualReward(by="jake"))
+    session.end_runs("jake")
+    session.receive(ManualReward(by="jake"))
+
+
+def test_outside_a_run_a_config_without_reward_correct_refuses_the_reward(tmp_path):
+    """As during a run: no `reward_correct`, no size, and never another entry's."""
+    bounds = Bounds(
+        subject="A",
+        ceilings={
+            "reward_large": Ceiling(value=0.3, maximum=0.4, unit="mL"),
+            "out_of_cage": Ceiling(value=800.0, maximum=100_000.0, unit="s"),
+        },
+        minima={"daily_fluid": Floor(value=250.0, unit="mL")},
+    )
+    session = _service_session(tmp_path, bounds=bounds)
+
+    _outside_a_run_presses(session)
+
+    whys = [why for name, _, why in session.refusals if name == "reward"]
+    assert len(whys) == 2
+    assert all("has no 'reward_correct' entry" in why for why in whys)
+    assert session.welfare.deliveries == 0 and session.pump.delivered == []
+    assert REWARD_CODE not in session.card.codes and _manual_rows(session) == []
+
+
+def test_outside_a_run_an_allocation_without_manual_reward_refuses_the_reward(tmp_path):
+    """As during a run: a reward the recording could not show is not given."""
+    session = _service_session(tmp_path)
+    session.allocation = dataclasses.replace(
+        session.allocation,
+        task_events={
+            code: name
+            for code, name in session.allocation.task_events.items()
+            if name != "MANUAL_REWARD"
+        },
+    )
+
+    _outside_a_run_presses(session)
+
+    whys = [why for name, _, why in session.refusals if name == "reward"]
+    assert len(whys) == 2
+    assert all("no MANUAL_REWARD event code" in why for why in whys)
+    assert session.welfare.deliveries == 0 and session.pump.delivered == []
+    assert REWARD_CODE not in session.card.codes and _manual_rows(session) == []
