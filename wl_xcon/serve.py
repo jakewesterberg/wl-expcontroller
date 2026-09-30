@@ -18,7 +18,8 @@ already runs, so no new dependency:
 - `POST /commands` (P4d-2b b2a, spec §5.3) -- one JSON command from the box's own
   page, accepted only under spec §2's four checks and validated before anything is
   queued (`parse_command`); answered *sent*, *not delivered* or *busy*, the truth
-  about delivery.
+  about delivery. Since P4d-2b b3a-2 it also takes `wlx taskd`'s own four -- `open`,
+  `check`, `start`, `end` -- built by the wire's own rules (`link._command_from`).
 
 Everything else is 404 or 405, as JSON, never the stdlib's HTML page. **Every request
 is answered only when its `Host` names this console** (spec §2, §5.3): loopback, the
@@ -482,6 +483,16 @@ REWARD_UNKNOWN = (
     },
 )
 
+#: What the page is told when the rig has one of `wlx taskd`'s own commands -- an open,
+#: a check, a start or an end (P4d-2b b3a-2): what it did is the page's to show from
+#: the frames that follow, as a session, a pre-flight, a run, the question a far mark
+#: raises, or a refusal with its sentence. `SENT`'s "at its next trial boundary" is a
+#: run's command's, and not true of an open between runs.
+SERVICE_SENT = (
+    "sent: the rig has it; the page shows what it did -- a session, a pre-flight, a run, "
+    "a question to answer, or a refusal with its reason"
+)
+
 
 class BadCommand(ValueError):
     """A `POST /commands` body that is not a command this console sends. The message
@@ -519,8 +530,19 @@ _SHAPES = {
     "schedule": frozenset({"at", "trials", "ml"}),
     "mark": frozenset({"pressed_at"}),
     "note": frozenset({"mark", "note"}),
+    # P4d-2b b3a-2: `wlx taskd`'s own, by the wire's field names (`link._command_from`).
+    "open": frozenset({
+        "session_id", "animal", "deployment", "view", "departure", "delivered_today",
+        "answer", "amend_to", "amend_reason",
+    }),
+    "check": frozenset({"task", "values"}),
+    "start": frozenset({"task", "values", "trials", "acknowledged"}),
+    "end": frozenset({"session_id", "returned", "confirm"}),
 }
 _SCHEDULES = {"at": "clock", "trials": "trials", "ml": "fluid"}
+#: The kinds `wlx taskd` takes that the page sends by the wire's own field names, built
+#: by the wire's own function (`link._command_from`; the b3a-2 plan, decision 3).
+_SERVICE_KINDS = frozenset({"open", "check", "start", "end"})
 
 
 def _finite(value: int | float) -> bool:
@@ -575,6 +597,11 @@ def parse_command(data: object):
     extra = set(data) - {"kind", "by"} - _SHAPES[kind]
     if extra:
         raise BadCommand(f"a {kind} command takes no {', '.join(sorted(extra))}")
+    if kind in _SERVICE_KINDS:
+        try:
+            return _link._command_from({**data, "by": by})
+        except _link.CommandRefused as refused:
+            raise BadCommand(refused.why) from refused
     if kind == "set":
         name = data.get("name")
         if not isinstance(name, str) or not name or len(name) > _link.TEXT_LIMIT:
@@ -726,16 +753,16 @@ class Outbox:
             job.done.set()
 
 
-def _delivered(command) -> Callable[[object], tuple[int, dict]]:
-    """The command thread's work for one command: deliver it and say so, or say why
-    not (spec §5.3)."""
+def _delivered(command, said: str = SENT) -> Callable[[object], tuple[int, dict]]:
+    """The command thread's work for one command: deliver it and say so, in `said`, or
+    say why not (spec §5.3)."""
 
     def work(commands) -> tuple[int, dict]:
         try:
             commands.deliver(command)
         except _link.NotDelivered as exc:
             return not_delivered(str(exc))
-        return 200, {"status": "sent", "said": SENT}
+        return 200, {"status": "sent", "said": said}
 
     return work
 
@@ -1245,6 +1272,10 @@ class Server:
         if isinstance(request, _link.ManualReward):
             # Its own answers, never a re-send (PI, 2026-09-28): see `_rewarded`.
             return self._commands.submit(_rewarded(request))
+        if isinstance(
+            request, (_link.OpenSession, _link.CheckRun, _link.StartRun, _link.EndSession)
+        ):
+            return self._commands.submit(_delivered(request, SERVICE_SENT))
         if isinstance(request, MarkNote):
             pressed_at, received_at = self._recall(request.mark)
             request = _link.Mark(

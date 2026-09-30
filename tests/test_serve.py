@@ -37,14 +37,18 @@ from wl_xcon.cli import main
 from wl_xcon.link import (
     SCHEMA,
     CancelScheduledStop,
+    CheckRun,
+    EndSession,
     Idle,
     ManualReward,
     Mark,
     NotDelivered,
+    OpenSession,
     Pause,
     Resume,
     ScheduleStop,
     SetParameter,
+    StartRun,
     Stop,
     Unacknowledged,
     ZmqConsole,
@@ -60,6 +64,8 @@ from wl_xcon.serve import (
     QUEUE_DEPTH,
     REWARD_SENT,
     REWARD_UNKNOWN,
+    SENT,
+    SERVICE_SENT,
     BadCommand,
     Hub,
     MarkNote,
@@ -2459,6 +2465,123 @@ def test_each_command_the_page_sends_parses_to_what_the_rig_is_sent(body, expect
 def test_a_parse_refusal_is_a_bad_command():
     with pytest.raises(BadCommand):
         parse_command({"kind": "pause", "by": ""})
+
+
+# --- P4d-2b b3a-2: the service's commands from the page ------------------------------
+
+#: The page's `open` body, every field as the *New session* dialog sends it.
+OPEN_BODY = {
+    "kind": "open", "by": "jake", "session_id": "2027-01-14_01", "animal": "REFERENCE",
+    "deployment": "rig_fixed", "view": "direct", "departure": "09:30",
+    "delivered_today": 12, "answer": None, "amend_to": None, "amend_reason": "",
+}
+START_BODY = {
+    "kind": "start", "by": "jake", "task": "fixation_detection.py", "values": {},
+    "trials": 3, "acknowledged": ["pump calibration", "eye tracker"],
+}
+END_BODY = {"kind": "end", "by": "jake", "session_id": None, "returned": None, "confirm": False}
+PAGE = "jake (box, unverified)"
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (OPEN_BODY, OpenSession(
+            by=PAGE, session_id="2027-01-14_01", animal="REFERENCE", deployment="rig_fixed",
+            view="direct", departure="09:30", delivered_today=12.0, answer=None,
+            amend_to=None, amend_reason="",
+        )),
+        ({**OPEN_BODY, "answer": "amend", "amend_to": "09:10", "amend_reason": "typed 9:30"},
+         OpenSession(
+            by=PAGE, session_id="2027-01-14_01", animal="REFERENCE", deployment="rig_fixed",
+            view="direct", departure="09:30", delivered_today=12.0, answer="amend",
+            amend_to="09:10", amend_reason="typed 9:30",
+        )),
+        ({"kind": "check", "by": "jake", "task": "fixation_detection.py", "values": {}},
+         CheckRun(by=PAGE, task="fixation_detection.py", values={})),
+        (START_BODY, StartRun(
+            by=PAGE, task="fixation_detection.py", values={}, trials=3,
+            acknowledged=("pump calibration", "eye tracker"),
+        )),
+        ({**END_BODY, "session_id": "2027-01-14_01", "returned": "now"},
+         EndSession(by=PAGE, session_id="2027-01-14_01", returned="now", confirm=False)),
+        (END_BODY, EndSession(by=PAGE, session_id=None, returned=None, confirm=False)),
+    ],
+    ids=["open", "open-amended", "check", "start", "end-with-return", "end-return-later"],
+)
+def test_each_session_command_the_page_sends_is_the_one_the_wire_would_decode(body, expected):
+    """The b3a-2 plan, decision 3: a page's body is built by the wire's own function, so
+    it is checked by exactly the rules the rig checks the packet by."""
+    import msgpack
+
+    from wl_xcon.link import _decode_command
+
+    assert parse_command(body) == expected
+    assert _decode_command(msgpack.packb({**body, "by": PAGE}, use_bin_type=True)) == expected
+
+
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        ({**OPEN_BODY, "session_id": 7}, "session_id is text of 1 to 200 characters"),
+        ({**OPEN_BODY, "departure": ""}, "departure is text of 1 to 200 characters"),
+        ({**OPEN_BODY, "deployment": "cage_side"}, "deployment is rig_fixed or rig_chaired"),
+        ({**OPEN_BODY, "view": "both"}, "setup is direct or stereoscope"),
+        ({**OPEN_BODY, "delivered_today": "lots"}, "delivered_today is mL or nothing"),
+        ({**OPEN_BODY, "delivered_today": float("inf")}, "delivered_today is mL or nothing"),
+        ({**OPEN_BODY, "answer": "yes"}, "answered confirm, amend or none"),
+        ({"kind": "check", "by": "jake", "task": "", "values": {}}, "task is text of 1 to 200"),
+        ({"kind": "check", "by": "jake", "task": "t.py", "values": [1]}, "at most 64 named settings"),
+        ({**START_BODY, "trials": "3"}, "trials are a whole number from 1"),
+        ({**START_BODY, "trials": True}, "trials are a whole number from 1"),
+        ({**START_BODY, "acknowledged": "pump calibration"}, "acknowledged items are at most 16 names"),
+        ({**START_BODY, "values": {"fix_hold": True}}, "a setting is a finite number"),
+        ({**END_BODY, "confirm": "yes"}, "confirm is true or false"),
+        ({**END_BODY, "returned": ""}, "returned is text of 1 to 200"),
+        ({**END_BODY, "extra": 1}, "a end command takes no extra"),
+        ({**OPEN_BODY, "by": " "}, "every command records who sent it"),
+    ],
+)
+def test_a_malformed_session_command_is_refused_with_the_wires_sentence(body, said):
+    """Review Focus 3: never a traceback, and the sentence the rig would have given."""
+    with pytest.raises(BadCommand) as refused:
+        parse_command(body)
+
+    assert said in str(refused.value)
+
+
+def test_a_session_command_from_the_boxs_page_is_dispatched_and_a_malformed_one_is_not():
+    """Spec §2's four checks, as for b2a's commands: the box's page's `open` reaches the
+    command path as the person named; a malformed one is a JSON 400 and reaches
+    nothing."""
+    dispatch = _Dispatch((200, {"status": "sent", "said": SERVICE_SENT}))
+    with _served(_hub(), dispatch=dispatch) as port:
+        sent = _post(port, OPEN_BODY)
+        refused = _post(port, {**START_BODY, "trials": "3"})
+
+    assert sent == (200, {"status": "sent", "said": SERVICE_SENT})
+    assert refused[0] == 400 and refused[1]["said"].startswith("not sent: ")
+    assert [type(request) for request in dispatch.seen] == [OpenSession]
+    assert dispatch.seen[0].by == PAGE
+
+
+def test_the_services_commands_are_answered_with_what_the_page_shows_next(zmq_cleanup):
+    """*Sent* for one of `wlx taskd`'s commands says the page shows what it did; b2a's
+    sentence -- "acts on it at its next trial boundary" -- is a run's, and stays theirs.
+    Each is handed to the command thread once."""
+    pub, rep = _endpoints(zmq_cleanup)
+    server = Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN)
+    sender = _Answers(None)
+    server._commands.submit = lambda work: work(sender)
+    check = CheckRun(by=PAGE, task="fixation_detection.py", values={})
+
+    assert server.dispatch(check) == (200, {"status": "sent", "said": SERVICE_SENT})
+    assert server.dispatch(Stop(by=PAGE)) == (200, {"status": "sent", "said": SENT})
+    assert sender.sent == [check, Stop(by=PAGE)]
+    assert SERVICE_SENT == (
+        "sent: the rig has it; the page shows what it did -- a session, a pre-flight, a "
+        "run, a question to answer, or a refusal with its reason"
+    )
 
 
 def test_the_boxs_page_may_write_and_the_same_box_under_a_lan_name_may_not(monkeypatch):

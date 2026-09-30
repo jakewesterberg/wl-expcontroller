@@ -1512,14 +1512,24 @@ def _decode_command(payload: bytes) -> Command:
     ever added it -- there is no special case for it here to keep it from being a
     special case.
 
-    **Every field is checked here, before a command exists** (M8, P4d-2b b2a): a
+    **Every field is checked before a command exists** (`_command_from`) (M8, P4d-2b b2a): a
     command that decoded and is malformed raises `CommandRefused`, naming what it
     could of the parameter and the sender; bytes that are not a command at all raise
     whatever `msgpack` or the dict raised, and `drain` refuses those as before.
     """
     import msgpack
 
-    data = msgpack.unpackb(payload, raw=False)
+    return _command_from(msgpack.unpackb(payload, raw=False))
+
+
+def _command_from(data: dict) -> Command:
+    """A command from its fields, every one checked before a command exists (M8, P4d-2b
+    b2a): what `_decode_command` reads off the wire, and since P4d-2b b3a-2 what
+    `serve.parse_command` builds `wlx taskd`'s four commands from, so a page's body is
+    checked by exactly the rules the rig checks the packet by (the b3a-2 plan, decision
+    3). Raises `CommandRefused` for a command that is malformed, naming what it could of
+    the parameter and the sender, `ValueError` for a kind this file does not know, and
+    whatever a mapping raises for data that is not one."""
     kind = data["kind"]
     if kind == "set":
         name = data.get("name")
