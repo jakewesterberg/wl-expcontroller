@@ -299,7 +299,15 @@ display layer that per-trial scenes do not reset.
   fragments to the page (P4d-2b spec §1). WebSockets are deferred to the replica pane, if
   V11 shows a browser can carry it at display rate.
 - **Hardware truth:** every trial event gets a strobed word into the recorders and a JSONL
-  record carrying the word, frame index and monotonic time.
+  record carrying the word, frame index and monotonic time. **Each trial is framed in the
+  stream** (XC-155): `TRIAL_START` (32) and its `TRIAL_NUMBER` escape (`0x8001`, four words)
+  at the boundary before its first frame, and `TRIAL_END` (33) after its outcome marker, or
+  none after a trial that faults. The escape is unbroken on every path the loop takes, but
+  not on every path: a Ctrl-C or a card fault landing between its words cuts it short, and
+  wl-preproc's decoder then logs a `DecodeError` and loses that trial's number, and so the
+  trial. The number counts from 1 across a session's runs and is the trial's `trial_number`
+  in `trials.jsonl`, the field wl-preproc joins a line to its recorded trial by. `CONDITION`
+  is not emitted yet (XC-197).
 
 ## The display: direct view, and stereo as viewports
 

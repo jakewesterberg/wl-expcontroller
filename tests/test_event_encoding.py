@@ -85,9 +85,9 @@ def test_our_payload_framing_matches_theirs_exactly(escape, value):
     decoding -- a checksum convention that is self-consistent but not theirs, or a
     word order that reads back the same because both halves were swapped.
 
-    **`CONDITION` too, although nothing emits it yet** (it waits on the conditions the
-    day's plan brings, XC-150): `words_for` has framed it since it was written, and no
-    test read that framing against theirs until XC-155.
+    **`CONDITION` too, although nothing emits it yet** (XC-197, which waits on the
+    conditions the day's plan brings, XC-150): `words_for` has framed it since it was
+    written, and no test read that framing against theirs until XC-155.
     """
     their = wl_preproc_events.Escape[escape]
     payload = [(value >> 16) & 0xFFFF, value & 0xFFFF]
