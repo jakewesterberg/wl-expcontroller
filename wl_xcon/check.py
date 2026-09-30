@@ -230,6 +230,14 @@ def _iter_param_refs(value: object) -> list[P]:
     return []
 
 
+def parameters_used(trial: Trial) -> frozenset[str]:
+    """Every parameter a task references anywhere -- its states, its windows and the
+    stimuli they name -- by name: what its trials resolve (`run._resolve`), and so what a
+    run must have a value for (`preflight.values`, P4d-2b b3a-2). `_iter_param_refs`,
+    from the task down, so a new vocabulary member is covered the day it is added."""
+    return frozenset(ref.name for ref in _iter_param_refs(trial))
+
+
 def _undeclared_parameters(trial: Trial) -> list[Finding]:
     """S1 §9 check 6: every parameter a task references is declared.
 

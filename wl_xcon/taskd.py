@@ -1828,8 +1828,17 @@ class Session:
         # at this run's first boundary, as a live write always has.
         self._trial = trial
         self._run = run
-        if not implied:
-            self.spec.values = dict(run.values)
+        # **The task's own starting values, under the run's** (P4d-2b spec §6.2:
+        # "Starting values are the task's own"; S8 §3.4's task layer; the b3a-2 plan,
+        # decision 1): each declared `Param.start` that the run was not given. `wlx run`'s
+        # one run fills its spec's own dict, as its values always were (`RunSpec.of`).
+        starts = {param.name: param.start for param in trial.params if param.start is not None}
+        given = dict(run.values)
+        if implied:
+            for name, start in starts.items():
+                self.spec.values.setdefault(name, start)
+        else:
+            self.spec.values = {**starts, **given}
         self.run_index = 0 if self.run_index is None else self.run_index + 1
         self.stopped_because, self.stop_kind = "", None
         self.paused_at = None
@@ -1854,7 +1863,7 @@ class Session:
             trials=run.trials,
             seed=run.seed,
             blocks=None if not run.blocks else [block.name for block in run.blocks],
-            layers={"run": dict(self.spec.values)},
+            layers={"task": starts, "run": given},
             resolved=dict(self.spec.values),
             # The welfare-bounded values it starts with -- a reward size set in an
             # earlier run of this session carries into this one (Question 1, PI).

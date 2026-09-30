@@ -13,6 +13,7 @@ from _rig import DIRECT, RIG, STEREOSCOPE
 import _sessions
 from _sessions import WALL, session
 from wl_xcon import preflight
+from wl_xcon.check import parameters_used
 from wl_xcon.cli import _load_allocation, _load_trial
 from wl_xcon.link import Preflight, PreflightItem
 from wl_xcon.task import Param
@@ -324,3 +325,58 @@ def test_a_blank_name_is_fine_when_nothing_was_acknowledged():
     rows = preflight.rows(_checked("pass", "unknown"), "", ())
 
     assert all(r["acknowledged_by"] is None for r in rows)
+
+
+def test_parameters_used_names_every_parameter_the_task_references():
+    """From the task down -- states, windows and the stimuli they name -- as
+    `run._resolve` meets them in a trial."""
+    assert parameters_used(_load_trial(TASK)) == frozenset({
+        "fix_hold", "fix_timeout", "fix_window", "response_window", "target_hold",
+        "target_looks", "target_position", "target_window",
+    })
+
+
+def test_a_run_given_nothing_starts_from_the_tasks_own_values():
+    """What the page sends (P4d-2b spec §6.2): no values, and the task's own pass."""
+    item = preflight.values(_load_trial(TASK), {})
+
+    assert (item.result, item.said) == ("pass", "7 starting value(s), each declared and in range")
+
+
+def _starting(**starts):
+    """The reference task with the named parameters' own `start` replaced."""
+    trial = _load_trial(TASK)
+    return dataclasses.replace(
+        trial,
+        params=[
+            dataclasses.replace(param, start=starts[param.name]) if param.name in starts else param
+            for param in trial.params
+        ],
+    )
+
+
+def test_a_number_the_task_uses_that_nothing_gives_a_value_fails_naming_it():
+    """Review Focus 2 (the b3a-2 plan, decision 2). A run with a parameter its trials
+    resolve and no value for it faulted at its first trial -- `run._resolve`: "no value
+    bound for parameter" -- after `RUN_START`. The pre-flight now fails it, naming each,
+    so the start is refused first. An appearance, which nothing resolves before S4's
+    display exists, is not refused unset."""
+    trial = _starting(fix_hold=None, fix_window=None)
+
+    item = preflight.values(trial, {})
+
+    assert (item.name, item.result) == ("starting values", "fail")
+    assert "'fix_hold' is used by the task and has no starting value" in item.said
+    assert "'fix_window' is used by the task and has no starting value" in item.said
+    assert "target_looks" not in item.said
+    assert preflight.values(trial, {"fix_hold": 0.3, "fix_window": 2.0}).result == "pass"
+
+
+def test_a_tasks_own_start_outside_its_range_fails_as_a_sent_value_does():
+    item = preflight.values(_starting(fix_hold=99.0), {})
+
+    assert item.result == "fail"
+    assert "'fix_hold' is declared over [0.05, 2.0] s and 99.0 is outside it" in item.said
+    assert preflight.values(_starting(fix_hold=99.0), {"fix_hold": 0.3}).result == "pass", (
+        "what was sent is what the run starts with"
+    )

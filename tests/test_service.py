@@ -1848,3 +1848,15 @@ def test_e2e_an_amendment_with_no_reason_or_no_sender_is_refused_and_marks_nothi
 
     assert _kinds(rig.folders[2]) == ["departure", "departure amended", "session opened",
                                       "returned", "session ended"]
+
+
+def test_a_run_started_with_no_values_starts_from_the_tasks_own(tmp_path):
+    """What a page sends (P4d-2b spec §6.2: "Starting values are the task's own"): no
+    values, and the run starts, and runs to its end, at the task's own."""
+    service = _service(tmp_path)
+    _step(service, _open())
+
+    frame = _step(service, _start(values={}))
+
+    assert (frame.phase, frame.run_index, frame.stop_kind) == ("between_runs", 0, "completed")
+    assert _runs(service.root)[0]["resolved"]["fix_hold"] == 0.3

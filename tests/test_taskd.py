@@ -65,6 +65,13 @@ VALUES = {
     "target_looks": None,
 }
 
+#: `tasks/fixation_detection.py`'s own starting values (`Param.start`; the b3a-2 plan,
+#: decision 1).
+FIXATION_STARTS = {
+    "fix_timeout": 4.0, "fix_hold": 0.3, "response_window": 0.6, "target_hold": 0.2,
+    "fix_window": 2.0, "target_window": 3.0, "target_position": 10.0,
+}
+
 
 def _bounds(daily_fluid: float = 250.0, **over: float) -> Bounds:
     ceilings = {
@@ -271,7 +278,7 @@ def test_the_run_a_session_spec_describes_is_run_0_in_every_file_it_writes(tmp_p
         "allocation": "tasks/allocation.py",
     }
     assert start["resolved"]["fix_hold"] == 0.3, "what it started with, before the staged 0.5"
-    assert start["layers"] == {"run": start["resolved"]}
+    assert start["layers"] == {"task": FIXATION_STARTS, "run": start["resolved"]}
     assert start["bounded"] == {"reward_correct": 0.15}
     assert (start["unplanned"], start["preflight"], start["trials"], start["seed"]) == (
         True, None, 5, 1,
@@ -4046,6 +4053,31 @@ def _service_session(tmp_path, link=None, **spec) -> Session:
         made.head_fixed(at=made.wall_now())
     made.open(how="wlx taskd")
     return made
+
+
+def test_a_run_starts_from_its_tasks_own_values_under_the_ones_it_was_given(tmp_path):
+    """P4d-2b spec §6.2 and S8 §3.4's task layer (the b3a-2 plan, decision 1): a run's
+    values are its task's `Param.start`s with what the run was given over them, and its
+    start row keeps the two layers apart."""
+    session = _service_session(tmp_path)
+
+    session.run(
+        RunSpec(task="tasks/fixation_detection.py", trials=2, seed=2, values={"fix_hold": 0.5})
+    )
+
+    start, _ = _runs(session)
+    assert start["layers"] == {"task": FIXATION_STARTS, "run": {"fix_hold": 0.5}}
+    assert start["resolved"] == {**FIXATION_STARTS, "fix_hold": 0.5}
+    assert session.stop_kind == "completed", "every parameter it uses had a value"
+
+
+def test_wlx_runs_one_run_takes_the_tasks_own_value_where_set_gave_none(tmp_path):
+    session = _session(_spec(tmp_path, trials=2, values={"fix_hold": 0.5}))
+
+    session.run()
+
+    assert session.stop_kind == "completed"
+    assert session.spec.values == {**FIXATION_STARTS, "fix_hold": 0.5}
 
 
 def test_a_service_session_waits_between_runs_and_keeps_the_head_fixed(tmp_path):

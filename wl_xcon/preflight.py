@@ -30,7 +30,7 @@ from collections.abc import Collection
 from pathlib import Path
 
 from wl_xcon.bounds import Exceeded
-from wl_xcon.check import check
+from wl_xcon.check import check, parameters_used
 from wl_xcon.cli import _load_bounds, _load_subject_settings, _load_trial, _setup_words
 from wl_xcon.geometry import Rig
 from wl_xcon.link import Preflight, PreflightItem
@@ -110,18 +110,27 @@ def task(path: Path, allocation, geometry) -> tuple[PreflightItem, Trial | None]
 
 
 def values(trial: Trial | None, given: dict) -> PreflightItem:
-    """A run's starting values against the task's own declarations: **fail** for a name
-    it does not declare, a word where it takes a number, a number outside its range, a
-    choice it does not offer, or a declaration it cannot be compared with. Starting
-    values are the task's own (spec §6.2); they arrive from a console, so they are
-    checked as `Session.set` checks a live one, non-finite numbers included. **Nothing a
-    task's declarations hold raises out of here.**"""
+    """A run's starting values -- its task's own (`Param.start`), with what a console
+    sent over them (P4d-2b spec §6.2; S8 §3.4) -- against the task's own declarations:
+    **fail** for a name it does not declare, a word where it takes a number, a number
+    outside its range, a choice it does not offer, or a declaration it cannot be
+    compared with; and **for a number the task uses that nothing gives a value** (the
+    b3a-2 plan, decision 2): a run started without one faults at its first trial
+    (`run._resolve`), after `RUN_START`, so it is refused here instead, naming each. A
+    categorical parameter is an appearance, which nothing in this build resolves before
+    a trial needs it -- S4's display is not built -- so one left unset is not refused.
+    Checked as `Session.set` checks a live value, non-finite numbers included. **Nothing
+    a task's declarations hold raises out of here.**"""
     if trial is None:
         return PreflightItem(
             STARTING_VALUES, FAIL, "the task did not load, so its values cannot be checked"
         )
     try:
         declared = {param.name: param for param in trial.params}
+        starts = {
+            name: param.start for name, param in declared.items() if param.start is not None
+        }
+        used = parameters_used(trial)
     except Exception as broken:  # noqa: BLE001 -- a task's declarations are code's output
         return PreflightItem(
             STARTING_VALUES,
@@ -129,8 +138,9 @@ def values(trial: Trial | None, given: dict) -> PreflightItem:
             f"the task's parameter declarations could not be read: "
             f"{type(broken).__name__}: {broken}",
         )
+    merged = {**starts, **given}
     wrong = []
-    for name, value in given.items():
+    for name, value in merged.items():
         param = declared.get(name)
         # **Fails closed per value** (the b3a-1 final review, Important 1): `Param` checks
         # none of its fields, so a bound typed as text or `choices` that are not a
@@ -158,10 +168,17 @@ def values(trial: Trial | None, given: dict) -> PreflightItem:
                 f"{name!r} could not be checked against its declaration: "
                 f"{type(broken).__name__}: {broken}"
             )
+    for name in sorted(used):
+        param = declared.get(name)
+        if param is not None and not param.choices and name not in merged:
+            wrong.append(
+                f"{name!r} is used by the task and has no starting value: the task "
+                f"declares none, and none was sent"
+            )
     if wrong:
         return PreflightItem(STARTING_VALUES, FAIL, "; ".join(wrong))
     return PreflightItem(
-        STARTING_VALUES, PASS, f"{len(given)} starting value(s), each declared and in range"
+        STARTING_VALUES, PASS, f"{len(merged)} starting value(s), each declared and in range"
     )
 
 

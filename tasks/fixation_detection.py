@@ -46,17 +46,19 @@ detection = Trial(
             on="target",
         ),
     ],
+    # Each number starts where the console mockup the PI reviewed shows it (P4d-2b spec
+    # §6.2, "Starting values are the task's own"); the appearance is left to the run.
     params=[
-        Param("fix_timeout", unit="s", low=0.5, high=10.0),
-        Param("fix_hold", unit="s", low=0.05, high=2.0),
-        Param("response_window", unit="s", low=0.1, high=3.0),
-        Param("target_hold", unit="s", low=0.05, high=1.0),
-        Param("fix_window", unit="deg", low=0.5, high=5.0),
-        Param("target_window", unit="deg", low=0.5, high=6.0),
+        Param("fix_timeout", unit="s", low=0.5, high=10.0, start=4.0),
+        Param("fix_hold", unit="s", low=0.05, high=2.0, start=0.3),
+        Param("response_window", unit="s", low=0.1, high=3.0, start=0.6),
+        Param("target_hold", unit="s", low=0.05, high=1.0, start=0.2),
+        Param("fix_window", unit="deg", low=0.5, high=5.0, start=2.0),
+        Param("target_window", unit="deg", low=0.5, high=6.0, start=3.0),
         # ±16° again (direct-view spec §8), checked against direct view's ±30.5° field.
         # ±12 was the interim, at the stereoscope's mask, before direct view had a
         # `Geometry` (2026-09-28).
-        Param("target_position", unit="deg", low=-16.0, high=16.0),
+        Param("target_position", unit="deg", low=-16.0, high=16.0, start=10.0),
         # Appearance is a parameter, so switching circles among squares for
         # penguins among elephants is a value applied in an ITI -- not a new
         # task and not a new block.

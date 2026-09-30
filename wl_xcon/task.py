@@ -137,6 +137,14 @@ class Param:
     high: float | None = None
     choices: tuple = ()
     live: bool = True
+    #: **The value a run starts with when nobody gives one** (P4d-2b spec §6.2:
+    #: "Starting values are the task's own"; S8 §3.4's *task* layer, under what a console
+    #: or `wlx run --set` gives): a number inside `[low, high]`, or one of `choices`.
+    #: `None`, the default, leaves it to whoever starts the run -- and a `wlx taskd` run
+    #: whose trials use a number nobody gave is refused by its pre-flight
+    #: (`preflight.values`), not faulted at its first trial. Checked there, not at load:
+    #: `wlx run` checks it no more than it checks `--set` (XC-159).
+    start: object = None
 
 
 @dataclass(frozen=True, slots=True)

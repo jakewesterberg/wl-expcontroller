@@ -192,10 +192,10 @@ def _either_task(tmp_path, reach: float) -> str:
     """`fixation_detection` declared for either setup, its target reaching `reach`°."""
     text = Path("tasks/fixation_detection.py").read_text(encoding="utf-8")
     written_for = 'view="direct"'
-    target = 'Param("target_position", unit="deg", low=-16.0, high=16.0)'
+    target = 'Param("target_position", unit="deg", low=-16.0, high=16.0, start=10.0)'
     assert text.count(written_for) == 1 and text.count(target) == 1
     text = text.replace(written_for, 'view="either"').replace(
-        target, f'Param("target_position", unit="deg", low={-reach}, high={reach})'
+        target, f'Param("target_position", unit="deg", low={-reach}, high={reach}, start=10.0)'
     )
     # One file per reach: two files of the same name, size and second share a bytecode
     # cache entry, and the second would silently load the first's task.

@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-183.**
+**Next free ID: XC-184.**
 
 ## Brainstorms queued for the PI
 
@@ -35,6 +35,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-012** Write the task's event-code table into the session directory, so nothing downstream must re-derive it from the task. — 2026-09-19, [CHECKPOINT, "The console design"](CHECKPOINT.md#the-console-design-brainstormed-and-settled) — waits on: nothing
 - **XC-013** Demo mode: run a task with keyboard and mouse gaze (roadmap M1; P4d-2b slice b4). — 2026-08-31, [roadmap M1](roadmap.md#m1--simulated-skeleton) — waits on: nothing
 - **XC-146** An automatic simulated subject an operator sets up in behavioral terms (accuracy, median RT and its spread, fixation-break and no-response rates) at session start, on the command line and later the page, that performs any task through the same path as demo mode, with the census reporting the achieved figures beside the requested ones; `simulate.Subject` already plays sessions headless, with its rates fixed in code. — 2026-09-29, PI request, [XC-013's roadmap M1](roadmap.md#m1--simulated-skeleton) — waits on: nothing
+- **XC-183** Declare starting values (`Param.start`) in `adaptive_detection`, `visual_search` and `calibration`, so `wlx taskd` runs them from the page; until then each one's pre-flight refuses its run, naming every number it uses with no value. — 2026-09-30, [b3a-2 plan, decision 1](superpowers/plans/2026-09-30-p4d2b-b3a2-page-sessions.md#plan-decisions) — waits on: nothing
 - **XC-014** Operator documentation, how to run a session for a tech or student, with the D4 acceptance test (a stranger runs a session). — 2026-08-31, [roadmap M1](roadmap.md#m1--simulated-skeleton) — waits on: nothing
 - **XC-015** P4d-2b b2b: the controls for people signed in to wl-works, reward size included, with the `Verified`/`Local` actor split (P4d-3). — 2026-09-27, [CHECKPOINT, 2026-09-27 afternoon](CHECKPOINT.md#what-moved-on-2026-09-27-afternoon-b1-merged-b2-designed-the-camera-ci) — waits on: XC-102, XC-147, XC-148 and XC-149 built in wl-works; XC-151; XC-152
 - **XC-016** P4d-2b b3a-2, the page's half of the session service `wlx taskd` (b3a-1): `wlx serve` endpoints and the page's forms to open a session, check and start a run (the pre-flight shown, each unknown acknowledged by name) and end one (the head's release now, the return then); a confirm or amend sent only in reply to the frame's question, re-sending the typed time; the idle page showing the offered animals and tasks and a frame's pre-flight; spec §6.5's end-to-end cases through the page; and a manual reward between runs (PI, 2026-09-29, spec §6.0). — 2026-09-26, [P4d-2b spec §6](superpowers/specs/2026-09-26-P4d2b-browser-console-design.md#6-slice-b3a-sessions-from-the-page-approved-in-conversation-2026-09-29) — waits on: nothing

@@ -77,8 +77,8 @@ def whole_point_task(folder: Path) -> Path:
     for old, new in (
         ('            "target",\n            at=(P("target_position"), 0.0),',
          '            "target",\n            at=P("target_point"),'),
-        ('        Param("target_position", unit="deg", low=-16.0, high=16.0),',
-         '        Param("target_position", unit="deg", low=-16.0, high=16.0),\n'
+        ('        Param("target_position", unit="deg", low=-16.0, high=16.0, start=10.0),',
+         '        Param("target_position", unit="deg", low=-16.0, high=16.0, start=10.0),\n'
          '        Param("target_point", unit="deg", choices=((10.0, 0.0), (-10.0, 0.0))),'),
         ('                On(SaccadeTo("target"), "verify", do=[Mark(4098)]),',
          '                On(SaccadeTo("target"), "verify", do=[Mark(4098)]),\n'
@@ -98,8 +98,8 @@ def malformed_task(folder: Path) -> Path:
     and passes its checks -- and a starting value held against that bound raised
     `TypeError` out of the pre-flight (the b3a-1 final review, Important 1)."""
     text = Path("tasks/fixation_detection.py").read_text()
-    old = 'Param("fix_hold", unit="s", low=0.05, high=2.0),'
+    old = 'Param("fix_hold", unit="s", low=0.05, high=2.0, start=0.3),'
     assert text.count(old) == 1, old
     path = Path(folder) / "malformed.py"
-    path.write_text(text.replace(old, 'Param("fix_hold", unit="s", low="0.05", high=2.0),'))
+    path.write_text(text.replace(old, 'Param("fix_hold", unit="s", low="0.05", high=2.0, start=0.3),'))
     return path

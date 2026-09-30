@@ -14,7 +14,7 @@ system cannot distinguish from a hand-written one.
 
 from __future__ import annotations
 
-from wl_xcon.task import Disc, Family, FixPoint, Outcome, P, Stimulus
+from wl_xcon.task import Disc, Family, FixPoint, Outcome, P, Param, Stimulus
 
 
 def test_a_fix_point_is_an_ordinary_stimulus():
@@ -103,3 +103,10 @@ def test_a_family_leaves_the_wire_value_alone():
     that carries `Outcome.value` reads exactly what it did before."""
     assert Outcome.CORRECT.value == "correct"
     assert Outcome("abort") is Outcome.ABORT
+
+
+def test_a_parameter_declares_the_value_a_run_starts_with_or_none():
+    """P4d-2b spec §6.2: "Starting values are the task's own" -- S8 §3.4's task layer.
+    Optional: a parameter the task leaves to whoever starts the run declares none."""
+    assert Param("fix_hold", unit="s", low=0.05, high=2.0).start is None
+    assert Param("fix_hold", unit="s", low=0.05, high=2.0, start=0.3).start == 0.3
