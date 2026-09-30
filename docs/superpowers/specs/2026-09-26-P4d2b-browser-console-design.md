@@ -733,6 +733,36 @@ And by the plan's review, while it was built (2026-09-29), each in `wl_xcon/serv
   another session, or confirming a return nobody was asked about, is refused during a run
   exactly as between runs.
 
+### 6.7 Decided by the b3a-2 plan (2026-09-30), for the PI's review with §6.4
+
+`docs/superpowers/plans/2026-09-30-p4d2b-b3a2-page-sessions.md` decided what this section
+left open; the welfare ones are in its summary for the PI.
+- **Starting values are the task's own, declared on each parameter** (plan decision 1):
+  `Param.start`, under what a run is given, both layers in its `runs.jsonl` start row (S8
+  §3.4), for `wlx taskd`'s runs and `wlx run`'s alike, which takes a task's own value where
+  `--set` gives none. A `start` is a finite number or nothing: `Param` refuses any other as
+  the task is built, so a task declaring one fails to load and its pre-flight fails it.
+  `fixation_detection` declares the values the mockup shows (the other reference tasks
+  declare none yet, XC-183). A `wlx taskd` run of a task that uses a number with no value,
+  or a parameter it never declares, is refused by its pre-flight, naming each (decision 2).
+- **The hand reward between runs and while the return is awaited** (decision 4) is given in
+  a `wlx taskd` session, and its record row says where it was given (`where`, the feed's
+  words, while paused too); during a trial (XC-157), with no session open (XC-158) and after
+  a `wlx run` session's run (XC-184) it stays refused. §5.2's *give reward* is live between
+  runs and while the return is awaited, as well as while paused.
+- **The page's four commands are built by the wire's own function** (decision 3,
+  `link._command_from`), and answered *sent* with what the page will show.
+- **A far return's warning offers what the rig takes** (decision 16, the controller's ruling
+  of 2026-09-30): "Confirm it, or type it again", since a return has no amendment; a far
+  departure's warning is unchanged. Words only, in `welfare.py`, whose
+  `return_needs_confirmation` docstring no longer names an amendment path. A command sent
+  while the return is awaited is refused naming the page's *record return…*.
+- **The page's forms** (decisions 6-12): the mockup's `dlg-new`, `pf-panel`, `pf-pill`,
+  `a-start`, `a-stop` and `end-confirm`, with the departure typed and no `now` for it, the
+  id typed, deployment, setup and fluid given today added, no rig or save folder, an
+  acknowledgement box per unknown item, the run's trial count (1000, `wlx run`'s default),
+  *end session* then *record return…*, and a stranded animal's *end session…* on its banner.
+
 ## 7. Not in this slice
 
 - Plots (accuracy over time, RT distribution, accuracy by position) — their own slice, with
