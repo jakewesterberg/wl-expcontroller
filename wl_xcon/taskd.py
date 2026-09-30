@@ -2063,9 +2063,10 @@ class Session:
                 # consecutively, on the loop's one thread: after everything this
                 # boundary strobes, and before the trial's first frame. They are
                 # computed before `TRIAL_START`, so `words_for`, the one call here that
-                # can raise, raises ahead of the stream and never leaves a trial opened
-                # without its number. Only a Ctrl-C or a card that fails between the
-                # emits can still cut the escape short.
+                # can raise before anything is strobed, raises ahead of the stream and
+                # never leaves a trial opened without its number. Once `TRIAL_START` is
+                # out, a card that fails between the emits, a Ctrl-C, a SIGTERM or a
+                # crash can still cut the escape short (XC-199).
                 self._trial_number += 1
                 escape = words_for(TRIAL_NUMBER, self._trial_number)
                 self.card.emit(TRIAL_START)

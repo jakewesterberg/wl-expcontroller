@@ -4554,10 +4554,11 @@ trial = Trial(
 
 def _escapes(codes: list) -> list:
     """Each `TRIAL_NUMBER` escape in a stream, as the four words from its escape word on.
-    Found by the escape word alone, which holds for these tests' streams: a payload word
-    is that value only for a trial numbered 0x8001 or more, and a checksum is that value
-    only when the number's high and low words are equal -- 0, 65,537, 131,074 and so on
-    -- and the highest number any stream here strobes is 65,536."""
+    Found by the escape word alone, which holds for these tests' streams. A payload word
+    is that value only for a trial numbered 0x8001 (32,769) or more, and the one stream
+    here past that strobes 65,536, whose payload words are 1 and 0. A checksum is that
+    value only when the number's high and low words are equal -- 0, 65,537, 131,074 and
+    so on -- which no stream here strobes."""
     return [codes[i : i + 4] for i, code in enumerate(codes) if code == TRIAL_NUMBER_ESCAPE]
 
 
@@ -4663,10 +4664,11 @@ def test_a_trial_that_faults_is_opened_and_numbered_and_never_closed(tmp_path, m
 
 
 def test_a_trial_that_reaches_no_outcome_is_still_closed(tmp_path, monkeypatch):
-    """A trial `run_trial` returns from without an outcome -- a hang, which `check()`
-    rules out for any task it passes -- strobes no outcome marker, and it still ended:
-    `TRIAL_END` closes it, and its line records `hang`. The second trial runs whole, so
-    the run's one trial is completed and the run ends."""
+    """A trial `run_trial` returns from without an outcome -- a hang, at `max_frames`,
+    which a task that passes `check()` can still reach, since check 4 exempts a state
+    declared `unbounded=True` (a lever never pressed) -- strobes no outcome marker, and
+    it still ended: `TRIAL_END` closes it, and its line records `hang`. The second trial
+    runs whole, so the run's one trial is completed and the run ends."""
     from wl_xcon import taskd
 
     real, calls = taskd.run_trial, []
@@ -4711,9 +4713,10 @@ def test_a_number_past_16_bits_is_strobed_whole_high_word_first(tmp_path):
 
 def test_a_number_past_uint32_faults_the_session_before_its_trial_opens(tmp_path):
     """The escape's words are computed before `TRIAL_START`, so `words_for`, the one call
-    at a trial's opening that can raise, raises ahead of the stream: a number the escape
-    cannot carry faults the session with nothing of that trial strobed, never a
-    `TRIAL_START` left with no number after it. (Set on the counter directly, as above.)"""
+    at a trial's opening that can raise before anything is strobed, raises ahead of the
+    stream: a number the escape cannot carry faults the session with nothing of that
+    trial strobed, never a `TRIAL_START` left with no number after it. (Set on the
+    counter directly, as above.)"""
     task = tmp_path / "one_state.py"
     task.write_text(ONE_STATE_TASK)
     session = _session(_spec(tmp_path, trials=1, task=str(task), values={}))

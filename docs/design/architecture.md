@@ -300,14 +300,19 @@ display layer that per-trial scenes do not reset.
   V11 shows a browser can carry it at display rate.
 - **Hardware truth:** every trial event gets a strobed word into the recorders and a JSONL
   record carrying the word, frame index and monotonic time. **Each trial is framed in the
-  stream** (XC-155): `TRIAL_START` (32) and its `TRIAL_NUMBER` escape (`0x8001`, four words)
-  at the boundary before its first frame, and `TRIAL_END` (33) after its outcome marker, or
-  none after a trial that faults. The escape is unbroken on every path the loop takes, but
-  not on every path: a Ctrl-C or a card fault landing between its words cuts it short, and
-  wl-preproc's decoder then logs a `DecodeError` and loses that trial's number, and so the
-  trial. The number counts from 1 across a session's runs and is the trial's `trial_number`
-  in `trials.jsonl`, the field wl-preproc joins a line to its recorded trial by. `CONDITION`
-  is not emitted yet (XC-197).
+  stream** (XC-155): `TRIAL_START` (32) and its `TRIAL_NUMBER` escape (`0x8001`, four
+  words) at the boundary before its first frame, and `TRIAL_END` (33) after its outcome
+  marker. A trial with no outcome (a hang) still gets `TRIAL_END`; a trial that faults or
+  is interrupted gets none. The escape is unbroken on every path the loop takes, but not
+  on every exit: a card fault, a Ctrl-C, a SIGTERM or a crash between its words cuts it
+  short, and wl-preproc's decoder then takes the next words as its payload whatever they
+  are, losing that trial and what comes next with it: in a `wlx taskd` session, the next
+  run's `RUN_START`, and if the escape was cut after its first word, the next trial too
+  (XC-199). Read the stream through wl-preproc's `decode_stream`, never by value: from
+  trial 32 the escape's payload words take marker values. The number counts from 1 across
+  a session's runs and is the trial's `trial_number` in `trials.jsonl`, the field
+  wl-preproc will join a line to its recorded trial by, once it reads it (XC-198).
+  `CONDITION` is not emitted yet (XC-197).
 
 ## The display: direct view, and stereo as viewports
 
