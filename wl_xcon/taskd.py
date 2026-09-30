@@ -2061,10 +2061,15 @@ class Session:
                 # wl-preproc reads the payload by position, so a word strobed inside it
                 # fails the checksum and loses the trial. The four go out here,
                 # consecutively, on the loop's one thread: after everything this
-                # boundary strobes, and before the trial's first frame.
+                # boundary strobes, and before the trial's first frame. They are
+                # computed before `TRIAL_START`, so `words_for`, the one call here that
+                # can raise, raises ahead of the stream and never leaves a trial opened
+                # without its number. Only a Ctrl-C or a card that fails between the
+                # emits can still cut the escape short.
                 self._trial_number += 1
+                escape = words_for(TRIAL_NUMBER, self._trial_number)
                 self.card.emit(TRIAL_START)
-                for word in words_for(TRIAL_NUMBER, self._trial_number):
+                for word in escape:
                     self.card.emit(word)
                 result = run_trial(
                     trial,

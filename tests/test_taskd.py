@@ -4555,8 +4555,9 @@ trial = Trial(
 def _escapes(codes: list) -> list:
     """Each `TRIAL_NUMBER` escape in a stream, as the four words from its escape word on.
     Found by the escape word alone, which holds for these tests' streams: a payload word
-    is that value only for a trial numbered 0x8001 or more, and a checksum is only for
-    trial 0, which no session strobes."""
+    is that value only for a trial numbered 0x8001 or more, and a checksum is that value
+    only when the number's high and low words are equal -- 0, 65,537, 131,074 and so on
+    -- and the highest number any stream here strobes is 65,536."""
     return [codes[i : i + 4] for i, code in enumerate(codes) if code == TRIAL_NUMBER_ESCAPE]
 
 
@@ -4602,14 +4603,19 @@ def test_nothing_is_strobed_inside_a_trial_numbers_escape(tmp_path):
     """S2 §6 item 3: an escape is atomic -- "no other code may be emitted between them,
     on any code path". wl-preproc reads the payload by position, so a word strobed
     inside it fails the checksum and loses the trial. Here a mark arrives at every
-    check, each boundary's and every frame's, and a change is staged, so the loop
-    strobes something everywhere it can; each trial's escape still goes out whole,
-    straight after its `TRIAL_START`, with its boundary's mark before the trial opens
-    and its first frame's after `FIX_ON`."""
-    link = Simulated()
+    check -- each boundary's, every frame's and each paused wait's -- a change is
+    staged, and after the second trial the session is paused, given a hand reward while
+    held, and resumed, so the loop strobes something everywhere it can. Each trial's
+    escape still goes out whole, straight after its `TRIAL_START`, with its boundary's
+    mark before the trial opens and its first frame's after `FIX_ON`; the pause, the
+    reward and the resume all fall between the second trial's close and the third's
+    opening."""
+    link = _Scripted(script={1: [ManualReward(by="jake")], 2: [Resume(by="sam")]}, step=10.0)
     link.marks.extend([5] * 100_000)
     link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
-    session = _session(_spec(tmp_path, trials=3), link=link)
+    session, wall = _walled(tmp_path, link, trials=3)
+    link.wall = wall
+    _scheduled_at_trial(link, session, 2, Pause(by="jake"))
 
     session.run()
 
@@ -4623,6 +4629,12 @@ def test_nothing_is_strobed_inside_a_trial_numbers_escape(tmp_path):
         ]
         assert codes[at + 5 : at + 7] == [FIX_ON, MARK_CODE], "the first frame's, after"
     assert 4130 in codes, "the staged change was strobed at a boundary"
+    between = codes[codes.index(TRIAL_END_CODE, opened[1]) : opened[2]]
+    assert [code for code in between if code in (PAUSE_CODE, REWARD_CODE, RESUME_CODE)] == [
+        PAUSE_CODE, REWARD_CODE, RESUME_CODE,
+    ], "held between the second trial and the third, and a hand reward given there"
+    assert MARK_CODE in between[between.index(PAUSE_CODE) :], "a mark while held"
+    assert codes.count(REWARD_CODE) == 1, "the one hand reward, given while held"
 
 
 def test_a_trial_that_faults_is_opened_and_numbered_and_never_closed(tmp_path, monkeypatch):
