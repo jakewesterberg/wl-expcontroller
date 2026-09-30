@@ -4078,6 +4078,8 @@ def test_wlx_runs_one_run_takes_the_tasks_own_value_where_set_gave_none(tmp_path
 
     assert session.stop_kind == "completed"
     assert session.spec.values == {**FIXATION_STARTS, "fix_hold": 0.5}
+    start, _ = _runs(session)
+    assert start["layers"] == {"task": FIXATION_STARTS, "run": {"fix_hold": 0.5}}
 
 
 def test_a_service_session_waits_between_runs_and_keeps_the_head_fixed(tmp_path):

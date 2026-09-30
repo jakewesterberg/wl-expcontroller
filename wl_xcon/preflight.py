@@ -170,7 +170,9 @@ def values(trial: Trial | None, given: dict) -> PreflightItem:
             )
     for name in sorted(used):
         param = declared.get(name)
-        if param is not None and not param.choices and name not in merged:
+        if param is None:
+            wrong.append(f"{name!r} is used by the task and is not declared")
+        elif not param.choices and name not in merged:
             wrong.append(
                 f"{name!r} is used by the task and has no starting value: the task "
                 f"declares none, and none was sent"

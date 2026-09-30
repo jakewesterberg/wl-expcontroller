@@ -380,3 +380,16 @@ def test_a_tasks_own_start_outside_its_range_fails_as_a_sent_value_does():
     assert preflight.values(_starting(fix_hold=99.0), {"fix_hold": 0.3}).result == "pass", (
         "what was sent is what the run starts with"
     )
+
+
+def test_a_parameter_used_but_never_declared_fails_naming_it():
+    """`check()`'s undeclared-parameter finding walks the states only; a window's radius
+    naming nothing declared passed both and faulted after `RUN_START`."""
+    from wl_xcon.task import P
+
+    trial = _load_trial(TASK)
+    windows = [dataclasses.replace(trial.windows[0], radius=P("fix_windw"))] + list(trial.windows[1:])
+    item = preflight.values(dataclasses.replace(trial, windows=windows), {})
+
+    assert item.result == "fail"
+    assert "'fix_windw' is used by the task and is not declared" in item.said

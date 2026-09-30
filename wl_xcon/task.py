@@ -139,12 +139,27 @@ class Param:
     live: bool = True
     #: **The value a run starts with when nobody gives one** (P4d-2b spec §6.2:
     #: "Starting values are the task's own"; S8 §3.4's *task* layer, under what a console
-    #: or `wlx run --set` gives): a number inside `[low, high]`, or one of `choices`.
+    #: or `wlx run --set` gives): a number, which `preflight.values` holds
+    #: to `[low, high]`. Only a number: a starting appearance is not carried until
+    #: something records and publishes one, so `__post_init__` refuses any other.
     #: `None`, the default, leaves it to whoever starts the run -- and a `wlx taskd` run
     #: whose trials use a number nobody gave is refused by its pre-flight
     #: (`preflight.values`), not faulted at its first trial. Checked there, not at load:
     #: `wlx run` checks it no more than it checks `--set` (XC-159).
     start: object = None
+
+    def __post_init__(self) -> None:
+        start = self.start
+        if start is not None and (
+            isinstance(start, bool)
+            or not isinstance(start, (int, float))
+            or not math.isfinite(start)
+        ):
+            raise ValueError(
+                f"parameter {self.name!r}: a task's starting value is a number, and "
+                f"{start!r} is not a finite one; a starting appearance is not carried "
+                f"until something records and publishes one"
+            )
 
 
 @dataclass(frozen=True, slots=True)
