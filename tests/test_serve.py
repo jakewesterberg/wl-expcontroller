@@ -8,11 +8,14 @@ seconds rather than hanging the suite (and the mutation sweep) for 300.
 
 from __future__ import annotations
 
+import argparse
+import html
 import http.client
 import json
 import os
 import queue
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -28,12 +31,13 @@ from types import SimpleNamespace
 import pytest
 
 from _frames import ENDPOINT, frame, idle
-from _rig import DIRECT, PATH as RIG_FILE
+from _rig import DIRECT, PATH as RIG_FILE, RIG
 # Autouse: every `ZmqLink`/`ZmqConsole` built here, `wlx serve`'s telemetry thread's and
 # `wlx run --link`'s included, has its context destroyed at teardown without `close()`.
 from _zmq_release import _every_zmq_context_released  # noqa: F401
-from wl_xcon import serve
-from wl_xcon.cli import main
+from wl_xcon import marks, serve
+from wl_xcon.cli import _load_allocation, main
+from wl_xcon.service import Service
 from wl_xcon.link import (
     SCHEMA,
     CancelScheduledStop,
@@ -50,6 +54,7 @@ from wl_xcon.link import (
     SetParameter,
     StartRun,
     Stop,
+    Telemetry,
     Unacknowledged,
     ZmqConsole,
     ZmqLink,
@@ -3857,3 +3862,431 @@ def test_an_idle_frame_is_held_and_derives_no_rate():
     steady.t += 2.0
     hub.offer(frame(trial_index=0))
     assert hub.trials_per_min() is None
+
+
+# --- P4d-2b b3a-2: sessions from the page, end to end (spec §6.5) ---------------------
+
+#: The reference config whose out-of-cage limit is a ten-minute placeholder
+#: (`tasks/reference_bounds.py`), passed between runs by moving the service's wall.
+TEN_MINUTES = "tasks/reference_bounds.py"
+#: The one task these services offer, copied into `--tasks`.
+TASK = "fixation_detection.py"
+#: What nothing measures yet, acknowledged by name to start a run.
+UNKNOWN = ["pump calibration", "eye tracker"]
+#: Who the page's commands are recorded as (`serve._person`).
+BY = "jake (box, unverified)"
+#: `wlx taskd`'s head-fixation, release, run-start and run-end codes (`tasks/allocation.py`).
+HEAD_FIXED, HEAD_RELEASED, RUN_START, RUN_END = 4128, 4129, 4135, 4136
+
+
+def _service_folders(tmp_path, bounds: str = TWELVE_HOURS, animals=("REFERENCE",)):
+    """`--subjects`, `--tasks` and `--root` for a service, as `tests/test_service.py`'s
+    `_folders` builds them -- copied, for `_main_uninterrupted`'s reason."""
+    subjects, tasks, root = tmp_path / "subjects", tmp_path / "tasks", tmp_path / "sessions"
+    for animal in animals:
+        (subjects / animal).mkdir(parents=True)
+        (subjects / animal / "bounds.py").write_text(
+            Path(bounds).read_text().replace('subject="REFERENCE"', f'subject="{animal}"')
+        )
+    tasks.mkdir()
+    shutil.copy(f"tasks/{TASK}", tasks / TASK)
+    root.mkdir()
+    return subjects, tasks, root
+
+
+def _typed(seconds_ago: float = 0.0) -> str:
+    """A time as a person types it, with its date: `seconds_ago` before this host's now
+    (negative is after it)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - seconds_ago))
+
+
+def _open_body(**over) -> dict:
+    """What the page's *New session* dialog sends (Task 6's `openSession`)."""
+    body = {
+        "kind": "open", "session_id": "2027-01-14_01", "animal": "REFERENCE",
+        "deployment": "rig_fixed", "view": "direct", "departure": _typed(),
+        "delivered_today": 0, "answer": None, "amend_to": None, "amend_reason": "",
+    }
+    body.update(over)
+    return body
+
+
+def _start_body(**over) -> dict:
+    """What *start run* sends: the task's own values, both unknowns acknowledged."""
+    body = {"kind": "start", "task": TASK, "values": {}, "trials": 3, "acknowledged": list(UNKNOWN)}
+    body.update(over)
+    return body
+
+
+def _end_body(returned="now", **over) -> dict:
+    """What *end session* or the return form sends."""
+    body = {"kind": "end", "session_id": "2027-01-14_01", "returned": returned, "confirm": False}
+    body.update(over)
+    return body
+
+
+def _between(frame) -> bool:
+    return isinstance(frame, Telemetry) and frame.phase == "between_runs"
+
+
+def _record(root, name: str, session_id: str = "2027-01-14_01") -> list[dict]:
+    path = Path(root) / session_id / "xcon" / name
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+class _Taskd:
+    """A real `wlx taskd` on a thread, over a `ZmqLink` built there, and a real `wlx serve`
+    beside it -- the page's two processes -- and what a test reads them through: every
+    frame published, on this test's own SUB socket (`_Session.seen`'s reason); the page's
+    fragments as a browser's first event carries them; and the cards its sessions strobed
+    onto. `tests/test_service.py`'s `_Rig` with a `Server`, copied rather than imported
+    for `_main_uninterrupted`'s reason; every trial paced and budgeted as
+    `CONTROL_TRIAL_BUDGET` says."""
+
+    def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, folders=None,
+                 bounds=TWELVE_HOURS, wall=None):
+        from wl_xcon import dio
+
+        _trial_budget(monkeypatch, CONTROL_TRIAL_BUDGET, pace_s=CONTROL_TRIAL_PACE_S)
+        self.cards: list = []
+        cards = self.cards
+
+        class _KeptCard(dio.Simulated):
+            def __init__(self, *args, **kwargs) -> None:
+                super().__init__(*args, **kwargs)
+                cards.append(self)
+
+        self._card = _KeptCard
+        self.pub, self.rep, self.mark = _three_endpoints(zmq_cleanup)
+        self.folders = folders or _service_folders(tmp_path, bounds)
+        self.wall = wall
+        self.stop = threading.Event()
+        #: Set by a test to leave without `shutdown`, as a crash would.
+        self.crash = False
+        self.recorder = zmq_cleanup(
+            ZmqConsole(self.pub, None, settle_s=0.0, receive_timeout_s=0.0)
+        )
+        self.frames: list = []
+        self._looked = 0
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+        self.server = Server(
+            sub=self.pub, req=self.rep, mark=self.mark, http=("127.0.0.1", 0), token=TOKEN
+        )
+        self.server.start()
+
+    def _serve(self) -> None:
+        subjects, tasks, root = self.folders
+        with ZmqLink(self.pub, self.rep, self.mark) as link:
+            service = Service(
+                rig=RIG, rig_path=RIG_FILE, subjects=subjects, tasks=tasks,
+                allocation=_load_allocation(Path(ALLOCATION)), allocation_path=ALLOCATION,
+                root=root, link=link, card=self._card, wall_clock=self.wall,
+            )
+            try:
+                service.serve(self.stop)
+            finally:
+                if not self.crash:
+                    service.shutdown()
+
+    def post(self, body: dict):
+        """`POST /commands` as the box's page sends it, from a person named jake."""
+        return _post(self.server.address[1], {**body, "by": "jake"})
+
+    def seen(self, predicate, seconds: float = 10.0):
+        """The first frame published, from the last one this returned on, for which
+        `predicate` is true -- each read as it arrives. Fails within `seconds`, or within
+        `LAST_FRAME_S` once the service's thread has gone (`tests/test_service.py`'s
+        `_Rig.seen`, for its reason)."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            while self._looked < len(self.frames):
+                frame = self.frames[self._looked]
+                self._looked += 1
+                if predicate(frame):
+                    return frame
+            try:
+                self.frames.append(self.recorder.receive())
+                continue
+            except TimeoutError:
+                pass
+            if not self.thread.is_alive():
+                deadline = min(deadline, time.monotonic() + LAST_FRAME_S)
+            time.sleep(0.005)
+        ended = "" if self.thread.is_alive() else "; the service had ended"
+        raise AssertionError(f"no frame within {seconds} s satisfied {predicate}{ended}")
+
+    def page(self, predicate, seconds: float = 10.0) -> dict:
+        """The page's fragments once this console holds a frame for which `predicate` is
+        true: a browser's first event, the full render (spec §4.3)."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            latest = self.server.hub.snapshot(on_box=True, stale_after_s=30.0)[0]
+            if latest is not None and predicate(latest):
+                with _stream(self.server.address[1]) as response:
+                    return next(_events(response, deadline_s=seconds))["frags"]
+            time.sleep(0.01)
+        raise AssertionError(f"the console held no frame within {seconds} s satisfying {predicate}")
+
+    def __enter__(self) -> "_Taskd":
+        self.thread.start()
+        try:
+            self.seen(lambda frame: True)  # the subscription is live
+        except BaseException:
+            # `with` does not call `__exit__` when `__enter__` raises.
+            self.__exit__(None, None, None)
+            raise
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        if self.thread.is_alive():
+            try:
+                self.post({"kind": "stop"})  # a run left going is stopped at its boundary
+            except Exception:  # noqa: BLE001 -- best-effort cleanup
+                pass
+        self.stop.set()
+        self.thread.join(timeout=30)
+        assert not self.thread.is_alive(), "the service did not stop"
+
+
+def test_page_e2e_open_a_session_run_it_twice_and_end_it(tmp_path, monkeypatch, zmq_cleanup):
+    """Spec §6.5, through the page's endpoints: open a session, two runs, end it. The
+    first run's *start run* is pressed twice before the run shows (Review Focus 5): one
+    run, the second press refused on the feed, never queued behind it."""
+    with _Taskd(tmp_path, monkeypatch, zmq_cleanup) as taskd:
+        assert taskd.post(_open_body()) == (200, {"status": "sent", "said": SERVICE_SENT})
+        taskd.seen(_between)
+        before = taskd.page(_between)
+        assert taskd.post({"kind": "check", "task": TASK, "values": {}})[0] == 200
+        taskd.seen(lambda f: _between(f) and f.preflight is not None)
+        checked = taskd.page(lambda f: _between(f) and f.preflight is not None)
+        # Fifty trials, so the second press -- sent the moment the first is acknowledged
+        # -- reaches the rig while the run it started is still going.
+        assert taskd.post(_start_body(trials=50))[0] == 200
+        assert taskd.post(_start_body(trials=50))[0] == 200
+        taskd.seen(lambda f: _between(f) and f.run_index == 0 and f.stop_kind == "completed")
+        twice = taskd.seen(lambda f: _between(f) and any(r.name == "start" for r in f.refusals))
+        assert taskd.post(_start_body())[0] == 200
+        taskd.seen(lambda f: _between(f) and f.run_index == 1 and f.stop_kind == "completed")
+        assert taskd.post(_end_body())[0] == 200
+        taskd.seen(lambda f: isinstance(f, Idle))
+
+    root = taskd.folders[2]
+    runs = _record(root, "runs.jsonl")
+    assert [(r["event"], r["run"]) for r in runs] == [("start", 0), ("end", 0), ("start", 1), ("end", 1)]
+    for start in (runs[0], runs[2]):
+        assert start["by"] == BY and start["layers"]["run"] == {}
+        assert start["layers"]["task"]["fix_hold"] == 0.3
+        assert {r["name"]: r["acknowledged_by"] for r in start["preflight"] if r["result"] == "unknown"} == {
+            name: BY for name in UNKNOWN
+        }
+    (refusal,) = [r for r in twice.refusals if r.name == "start"]
+    assert refusal.by == BY
+    assert "already starting" in refusal.why or "a run is in progress" in refusal.why
+    codes = taskd.cards[0].codes
+    assert codes[0] == HEAD_FIXED and codes[-1] == HEAD_RELEASED
+    assert codes.count(RUN_START) == codes.count(RUN_END) == 2
+    assert [row["kind"] for row in _record(root, "welfare_notes.jsonl")] == [
+        "departure", "session opened", "returned", "session ended",
+    ]
+    assert "take the pre-flight first" in before["controls"]
+    assert '<option value="fixation_detection.py">' in before["task-sel"]
+    assert 'data-task="fixation_detection.py">start run</button>' in checked["controls"]
+    assert "pre-flight · 2 to acknowledge" in checked["pf-pill"]
+
+
+def test_page_e2e_the_limit_reached_between_runs_refuses_a_run_and_the_page_asks_for_the_return(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5: the service's wall is this host's, moved forward by the test once the
+    first run has ended, so the ten-minute placeholder limit passes between runs. The
+    page then shows the pre-flight's fail, greys *start run* with it, and offers *end
+    session*; the rig refuses the start anyway."""
+    offset = [0.0]
+    with _Taskd(tmp_path, monkeypatch, zmq_cleanup, bounds=TEN_MINUTES,
+                wall=lambda: time.time() + offset[0]) as taskd:
+        taskd.post(_open_body(departure=_typed(120)))
+        taskd.seen(_between)
+        taskd.post(_start_body(trials=2))
+        taskd.seen(lambda f: _between(f) and f.run_index == 0 and f.stop_kind == "completed")
+        offset[0] = 600.0
+        taskd.post({"kind": "check", "task": TASK, "values": {}})
+
+        def failed(f) -> bool:
+            return _between(f) and f.preflight is not None and any(
+                i.name == "out of cage" and i.result == "fail" for i in f.preflight.items
+            )
+
+        shown_frame = taskd.seen(failed)
+        shown = taskd.page(failed)
+        taskd.post(_start_body(trials=2))
+        refused = taskd.seen(lambda f: _between(f) and any(r.name == "start" and "out of cage" in r.why for r in f.refusals))
+        taskd.post(_end_body())
+        taskd.seen(lambda f: isinstance(f, Idle))
+
+    (item,) = [i for i in shown_frame.preflight.items if i.name == "out of cage"]
+    assert "end the session (End session) and record the animal's return" in item.said
+    assert html.escape(item.said) in shown["preflight"]
+    assert 'disabled title="pre-flight: out of cage failing">start run</button>' in shown["controls"]
+    assert 'data-cmd="end" data-session="2027-01-14_01">end session</button>' in shown["end-actions"]
+    assert "pre-flight · 1 fail" in shown["pf-pill"]
+    assert refused.run_index == 0, "no second run"
+    assert len(_record(taskd.folders[2], "runs.jsonl")) == 2
+
+
+def test_page_e2e_a_crash_strands_the_animal_and_its_return_is_recorded_from_its_banner(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5: a crash and restart refuses a new session until the stranded animal's
+    return is recorded -- here from the page: its banner's *end session…* names its
+    session, and the refusal tells a person to use it (XC-176)."""
+    folders = _service_folders(tmp_path, TWELVE_HOURS, ("B", "REFERENCE"))
+    with _Taskd(tmp_path, monkeypatch, zmq_cleanup, folders=folders) as first:
+        first.post(_open_body())
+        first.seen(_between)
+        first.crash = True
+
+    with _Taskd(tmp_path, monkeypatch, zmq_cleanup, folders=folders) as second:
+        found = second.seen(lambda f: isinstance(f, Idle) and f.stranded)
+        stranded = second.page(lambda f: isinstance(f, Idle) and f.stranded)
+        second.post(_open_body(session_id="2027-01-14_02", animal="B"))
+        refused = second.seen(lambda f: isinstance(f, Idle) and any(r.name == "open" for r in f.refusals))
+        feed = second.page(lambda f: isinstance(f, Idle) and any(r.name == "open" for r in f.refusals))
+        second.post(_end_body(session_id="2027-01-14_01"))
+        second.seen(lambda f: isinstance(f, Idle) and f.stranded == ())
+        second.post(_open_body(session_id="2027-01-14_02", animal="B"))
+        second.seen(lambda f: isinstance(f, Telemetry) and f.subject == "B")
+
+    assert [s.session_id for s in found.stranded] == ["2027-01-14_01"]
+    assert 'data-return="2027-01-14_01">end session…</button>' in stranded["banners"]
+    assert re.search(r'data-cmd="new" disabled title="[^"]+">new session', stranded["setup"])
+    (why,) = [r.why for r in refused.refusals if r.name == "open"]
+    assert "Record it with End session, naming its session" in why
+    assert html.escape(why) in feed["rt-changes"]
+    assert [row["kind"] for row in _record(folders[2], "welfare_notes.jsonl")] == [
+        "departure", "session opened", "returned",
+    ]
+
+
+def test_page_e2e_an_unknown_item_is_acknowledged_by_its_name_and_found_in_runs_jsonl(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5: the page shows each unknown with a box carrying its exact name; a start
+    that ticks none is refused naming them, and one that ticks both runs, the record
+    saying who acknowledged each."""
+    with _Taskd(tmp_path, monkeypatch, zmq_cleanup) as taskd:
+        taskd.post(_open_body())
+        taskd.seen(_between)
+        taskd.post({"kind": "check", "task": TASK, "values": {}})
+        shown = taskd.page(lambda f: _between(f) and f.preflight is not None)["preflight"]
+        taskd.post(_start_body(acknowledged=[]))
+        refused = taskd.seen(lambda f: _between(f) and any(r.name == "start" for r in f.refusals))
+        taskd.post(_start_body())
+        taskd.seen(lambda f: _between(f) and f.run_index == 0 and f.stop_kind == "completed")
+
+    for name in UNKNOWN:
+        assert f'<input type="checkbox" data-ack="{name}" aria-label="acknowledge {name}"> acknowledge' in shown
+    assert "checked" not in shown
+    (why,) = [r.why for r in refused.refusals if r.name == "start"]
+    assert "pump calibration, eye tracker" in why
+    (start,) = [r for r in _record(taskd.folders[2], "runs.jsonl") if r["event"] == "start"]
+    assert {r["name"]: r["acknowledged_by"] for r in start["preflight"] if r["result"] == "unknown"} == {
+        name: BY for name in UNKNOWN
+    }
+
+
+def test_page_e2e_every_departure_and_return_refusal_is_the_terminals_own_sentence(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """Spec §6.5: every refusal of the departure and the return, through the page exactly
+    as through the terminal -- the sentence the terminal's parser and `welfare` give,
+    carried to the page's feed unchanged. One of each kind over the page's endpoints;
+    `tests/test_marks.py` and `tests/test_service.py` hold every one."""
+    try:
+        marks.clock_time("25:99")
+    except argparse.ArgumentTypeError as bad:
+        unreadable = str(bad)
+    with _Taskd(tmp_path, monkeypatch, zmq_cleanup) as taskd:
+        taskd.post(_open_body(departure="25:99"))
+        taskd.seen(lambda f: isinstance(f, Idle) and any(r.why == unreadable for r in f.refusals))
+        taskd.post(_open_body(departure=_typed(-3600)))
+        taskd.seen(lambda f: isinstance(f, Idle) and any("in the future" in r.why for r in f.refusals))
+        taskd.post(_open_body(departure=_typed(13 * 3600)))
+        past = taskd.seen(lambda f: isinstance(f, Idle) and any("at or outside the limit" in r.why for r in f.refusals))
+        far = _typed(2 * 3600)
+        taskd.post(_open_body(departure=far))
+        asked = taskd.seen(lambda f: isinstance(f, Idle) and f.question is not None)
+        banner = taskd.page(lambda f: isinstance(f, Idle) and f.question is not None)["banners"]
+        amend = dict(departure=far, answer="amend", amend_to=_typed(600))
+        taskd.post(_open_body(**amend))
+        taskd.seen(lambda f: isinstance(f, Idle) and any("no reason given" in r.why for r in f.refusals))
+        taskd.post(_open_body(amend_reason="typed the hour before for the one after", **amend))
+        taskd.seen(_between)
+        before = _typed(3600)
+        taskd.post(_end_body(returned=before))
+        taskd.seen(lambda f: isinstance(f, Telemetry) and f.question is not None and f.question.mark == "return")
+        taskd.post(_end_body(returned=before, confirm=True))
+        early = taskd.seen(lambda f: isinstance(f, Telemetry) and any("having left it at" in r.why for r in f.refusals))
+        feed = taskd.page(lambda f: isinstance(f, Telemetry) and any("having left it at" in r.why for r in f.refusals))["rt-changes"]
+        taskd.post(_end_body())
+        taskd.seen(lambda f: isinstance(f, Idle))
+
+    assert past.question is None, "a departure past the ceiling is refused, never asked about"
+    assert asked.question.answers == ("confirm", "amend")
+    for answer in ("confirm", "amend"):
+        assert f'data-answer="{answer}" data-mark="departure" data-session="2027-01-14_01"' in banner
+    (why,) = [r.why for r in early.refusals if "having left it at" in r.why]
+    assert html.escape(why) in feed
+    assert [row["kind"] for row in _record(taskd.folders[2], "welfare_notes.jsonl")] == [
+        "departure", "departure amended", "session opened", "returned", "session ended",
+    ]
+    assert [p.name for p in taskd.folders[2].iterdir()] == ["2027-01-14_01"], (
+        "nothing was written for a refused open"
+    )
+
+
+def test_page_e2e_the_hand_reward_is_given_between_runs_and_while_the_return_is_awaited(
+    tmp_path, monkeypatch, zmq_cleanup
+):
+    """PI, 2026-09-29 (spec §6.0), through the page: between runs and while the return is
+    awaited, one press is one `reward_correct` on the fluid total, the record and the
+    recorded event stream; while a run's trials run it is still refused (XC-157), and
+    with no session open too (XC-158)."""
+    with _Taskd(tmp_path, monkeypatch, zmq_cleanup) as taskd:
+        taskd.post(_open_body())
+        opened = taskd.seen(_between)
+        live = taskd.page(_between)["controls"]
+        assert taskd.post({"kind": "reward"}) == (200, {"status": "sent", "said": REWARD_SENT})
+        between = taskd.seen(lambda f: _between(f) and any(c.kind == "reward" for c in f.controls))
+        taskd.post(_start_body(trials=300))
+        taskd.seen(lambda f: isinstance(f, Telemetry) and f.phase == "running" and f.trial_index >= 2)
+        taskd.post({"kind": "reward"})
+        running = taskd.seen(lambda f: isinstance(f, Telemetry) and any(r.name == "reward" for r in f.refusals))
+        taskd.post({"kind": "stop"})
+        taskd.seen(lambda f: _between(f) and f.run_index == 0)
+        taskd.post(_end_body(returned=None))
+        taskd.seen(lambda f: isinstance(f, Telemetry) and f.phase == "awaiting_return")
+        waiting = taskd.page(lambda f: isinstance(f, Telemetry) and f.phase == "awaiting_return")["controls"]
+        taskd.post({"kind": "reward"})
+        awaiting = taskd.seen(
+            lambda f: isinstance(f, Telemetry) and f.phase == "awaiting_return"
+            and [c.kind for c in f.controls].count("reward") == 2
+        )
+        taskd.post(_end_body())
+        taskd.seen(lambda f: isinstance(f, Idle))
+        taskd.post({"kind": "reward"})
+        idle_frame = taskd.seen(lambda f: isinstance(f, Idle) and any(r.name == "reward" for r in f.refusals))
+
+    button = '<button type="button" class="btn" data-cmd="reward">give reward</button>'
+    assert button in live and button in waiting
+    assert between.fluid_session_ml == pytest.approx(opened.fluid_session_ml + REWARD_ML)
+    assert between.controls[-1].said == "0.05 mL of reward_correct, given between runs"
+    (during,) = [r for r in running.refusals if r.name == "reward"]
+    assert "the session is not paused" in during.why and "no reward was given" in during.why
+    assert awaiting.controls[-1].said == (
+        "0.05 mL of reward_correct, given while the animal's return is awaited"
+    )
+    (none,) = [r for r in idle_frame.refusals if r.name == "reward"]
+    assert "no session is open, so no reward was given" in none.why and "XC-158" in none.why
+    assert taskd.cards[0].codes.count(MANUAL_REWARD_CODE) == 2, "one press, one reward, none refused"
+    rows = [row for row in _record(taskd.folders[2], "controls.jsonl") if row["kind"] == "reward"]
+    assert [(r["by"], r["ml"], r["entry"]) for r in rows] == [(BY, REWARD_ML, "reward_correct")] * 2
