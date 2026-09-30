@@ -1536,13 +1536,13 @@ def page(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>expcontroller console</title>
+<title>xcon console</title>
 <style>{_FONT_FACES}{_CSS}</style>
 </head>
 <body data-stale-after="{stale_after_s:g}" data-can-write="{int(can_write)}" data-debounce-ms="{DEBOUNCE_MS}">
 <div class="wrap">
   <header class="head glass">
-    <span class="logo">{_LOGO}<span class="app">expcontroller</span></span>
+    <span class="logo">{_LOGO}<span class="app">xcon</span></span>
     <span id="state">{p['state']}</span>
     <div class="id" id="head-id">{p['head-id']}</div>
     <span class="spacer"></span>

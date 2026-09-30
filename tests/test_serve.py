@@ -597,6 +597,11 @@ def test_the_page_is_served_with_every_pane_and_its_own_nonce():
     assert "font-src 'self'" in policy
     assert b'id="strip"' in body and b"2027-01-14_01" in body
     assert b"http://" not in body and b"https://" not in body
+    # The package is wl-xcon since 2026-09-28 (XC-053); the page named it by its old
+    # name in the tab and the logo until the PI saw it there (2026-09-30).
+    assert b"<title>xcon console</title>" in body
+    assert b'<span class="app">xcon</span>' in body
+    assert b"expcontroller" not in body
 
 
 def test_every_bundled_font_is_served_with_its_type():
