@@ -306,10 +306,12 @@ display layer that per-trial scenes do not reset.
   is interrupted gets none. The escape is unbroken on every path the loop takes, but not
   on every exit: a card fault, a Ctrl-C, a SIGTERM or a crash between its words cuts it
   short, and wl-preproc's decoder then takes the next words as its payload whatever they
-  are, losing that trial and what comes next with it: in a `wlx taskd` session, the next
-  run's `RUN_START`, and if the escape was cut after its first word, the next trial too
-  (XC-199). Read the stream through wl-preproc's `decode_stream`, never by value: from
-  trial 32 the escape's payload words take marker values. The number counts from 1 across
+  are, losing that trial and what comes next with it. When a `wlx taskd` session goes on
+  to another run with nothing strobed between, that is the next run's `RUN_START` and, if
+  the escape was cut after its first word, the next trial too (XC-199). Read the stream
+  through wl-preproc's `decode_stream`, never by value: from trial 1 the escape's payload
+  words take marker values (1-3 are `SESSION_START`, `SESSION_END` and `BLOCK_END`,
+  32-38 the trial markers). The number counts from 1 across
   a session's runs and is the trial's `trial_number` in `trials.jsonl`, the field
   wl-preproc will join a line to its recorded trial by, once it reads it (XC-198).
   `CONDITION` is not emitted yet (XC-197).
