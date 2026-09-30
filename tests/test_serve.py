@@ -4051,7 +4051,11 @@ class _Taskd:
 def test_page_e2e_open_a_session_run_it_twice_and_end_it(tmp_path, monkeypatch, zmq_cleanup):
     """Spec §6.5, through the page's endpoints: open a session, two runs, end it. The
     first run's *start run* is pressed twice before the run shows (Review Focus 5): one
-    run, the second press refused on the feed, never queued behind it."""
+    run, the second press refused on the feed, never queued behind it. Which refusal
+    fires is timing: two POSTs landing in one `drain()` give "a run is already starting"
+    (`Service._start`'s same-pass guard), the second in a later one "a run is in progress"
+    (`taskd`'s in-run refusal). Either is asserted; the same-pass guard itself is pinned at
+    service level by `tests/test_service.py::test_two_starts_in_one_pass_start_one_run`."""
     with _Taskd(tmp_path, monkeypatch, zmq_cleanup) as taskd:
         assert taskd.post(_open_body()) == (200, {"status": "sent", "said": SERVICE_SENT})
         taskd.seen(_between)
@@ -4081,7 +4085,10 @@ def test_page_e2e_open_a_session_run_it_twice_and_end_it(tmp_path, monkeypatch, 
         }
     (refusal,) = [r for r in twice.refusals if r.name == "start"]
     assert refusal.by == BY
-    assert "already starting" in refusal.why or "a run is in progress" in refusal.why
+    assert "already starting" in refusal.why or "a run is in progress" in refusal.why, (
+        f"neither the same-pass guard ('already starting') nor the in-run refusal "
+        f"('a run is in progress') fired: {refusal.why!r}"
+    )
     codes = taskd.cards[0].codes
     assert codes[0] == HEAD_FIXED and codes[-1] == HEAD_RELEASED
     assert codes.count(RUN_START) == codes.count(RUN_END) == 2
@@ -4222,6 +4229,9 @@ def test_page_e2e_every_departure_and_return_refusal_is_the_terminals_own_senten
         taskd.post(_open_body(amend_reason="typed the hour before for the one after", **amend))
         taskd.seen(_between)
         before = _typed(3600)
+        taskd.post(_end_body(returned=_typed(-3600)))
+        future = taskd.seen(lambda f: isinstance(f, Telemetry) and any(
+            r.name == "end" and "in the future" in r.why for r in f.refusals))
         taskd.post(_end_body(returned=before))
         taskd.seen(lambda f: isinstance(f, Telemetry) and f.question is not None and f.question.mark == "return")
         taskd.post(_end_body(returned=before, confirm=True))
@@ -4234,6 +4244,8 @@ def test_page_e2e_every_departure_and_return_refusal_is_the_terminals_own_senten
     assert asked.question.answers == ("confirm", "amend")
     for answer in ("confirm", "amend"):
         assert f'data-answer="{answer}" data-mark="departure" data-session="2027-01-14_01"' in banner
+    (ahead,) = [r.why for r in future.refusals if r.name == "end" and "in the future" in r.why]
+    assert "the return is a clock time, and this one is later than the clock" in ahead
     (why,) = [r.why for r in early.refusals if "having left it at" in r.why]
     assert html.escape(why) in feed
     assert [row["kind"] for row in _record(taskd.folders[2], "welfare_notes.jsonl")] == [
