@@ -641,13 +641,14 @@ def _session_refused(refusals) -> str:
     for the always-visible control bar: a start refused on the Setup tab, or a return on
     the End tab, showed only in the Runtime tab's feed, where the person was not (the
     b3a-2 final review, I3; `serve.SERVICE_SENT` promises the page shows a refusal with its
-    reason). *Last*, as a reward's refusal is shown (`_reward_answer`), since a refusal
-    carries no time (XC-113)."""
+    reason). *Last*, and drawn as a reward's refusal is (`_reward_answer`), since a refusal
+    carries no time (XC-113): it stays after a later command succeeds, so it reads as the
+    last one, not as an alarm about the one just sent."""
     refused = [refusal for refusal in refusals if refusal.name in SESSION_COMMANDS]
     if not refused:
         return ""
     last = refused[-1]
-    return f'<span class="sent crit">last refused · {_e(last.name)}: {_e(last.why)}</span>'
+    return f'<span class="nm">last refused · {_e(last.name)}: {_e(last.why)}</span>'
 
 
 def _outside_a_run(frame: Telemetry, view: View) -> str:

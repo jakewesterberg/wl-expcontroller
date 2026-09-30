@@ -1443,7 +1443,7 @@ def test_a_refused_session_command_shows_in_the_control_bar_escaped(name, phase)
 
     controls = fragments(_between(phase=phase, refusals=refusals), view())["controls"]
 
-    assert f'<span class="sent crit">last refused · {name}: why &lt;b&gt;&amp;</span>' in controls
+    assert f'<span class="nm">last refused · {name}: why &lt;b&gt;&amp;</span>' in controls
     assert "older" not in controls and "not a session command" not in controls
 
 
@@ -1452,7 +1452,7 @@ def test_the_idle_control_bar_shows_a_refused_open_or_stranded_return():
 
     controls = fragments(idle(refusals=refusals), view())["controls"]
 
-    assert '<span class="sent crit">last refused · open: no session opens while &lt;b&gt;</span>' in controls
+    assert '<span class="nm">last refused · open: no session opens while &lt;b&gt;</span>' in controls
     assert "last refused" not in fragments(idle(), view())["controls"]
     assert "last refused ·" not in fragments(_between(), view())["controls"]
 
