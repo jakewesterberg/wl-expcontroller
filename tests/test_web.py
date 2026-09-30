@@ -1074,11 +1074,13 @@ def test_the_script_pins_the_box_only_write_guard():
 # --- P4d-2b b2a, amended 2026-09-28 (PI): a manual reward during a pause -------------
 
 
-def test_the_reward_button_is_live_only_while_paused_and_greyed_otherwise():
-    """PI, 2026-09-28: a manual reward during a pause. The button works only while the
-    session is paused (`paused_at`), and otherwise says why: greyed with its reason
-    while trials run, with the §2 sentence away from the box, and gone once the
-    session has ended. One button and no key: a click is one command."""
+def test_during_a_run_the_reward_button_is_live_only_while_paused_and_greyed_otherwise():
+    """PI, 2026-09-28: a manual reward during a pause. During a run the button works only
+    while the session is paused (`paused_at`), and otherwise says why: greyed with its
+    reason while trials run, with the §2 sentence away from the box, and gone once a
+    `wlx run` session has ended. One button and no key: a click is one command. Outside a
+    run, in a `wlx taskd` session, it is live too (PI, 2026-09-29): see
+    `test_outside_a_run_the_hand_reward_and_mark_are_live_with_what_the_last_press_did`."""
     at = 1_700_000_030.0
     paused = _controls(paused_at=at)
     running = _controls()
@@ -1423,6 +1425,53 @@ def test_outside_a_run_the_hand_reward_and_mark_are_live_with_what_the_last_pres
     assert "0.15 mL of reward_correct, given between runs" in controls
 
 
+@pytest.mark.parametrize(
+    "name, phase",
+    [("start", "between_runs"), ("check", "between_runs"), ("end", "awaiting_return"), ("end", "between_runs")],
+)
+def test_a_refused_session_command_shows_in_the_control_bar_escaped(name, phase):
+    """The b3a-2 final review, I3: a start refused on the Setup tab, or a return refused
+    on the End tab, showed only in the Runtime tab's feed. `serve.SERVICE_SENT` promises
+    the page shows a refusal with its reason; the newest of the session's own commands'
+    refusals shows in the always-visible control bar, as a reward's does."""
+    refusals = (
+        Refused("start", "jake", "older"),
+        Refused("reward", "jake", "a reward's own"),
+        Refused(name, "jake", "why <b>&"),
+        Refused("set", "jake", "not a session command"),
+    )
+
+    controls = fragments(_between(phase=phase, refusals=refusals), view())["controls"]
+
+    assert f'<span class="sent crit">last refused · {name}: why &lt;b&gt;&amp;</span>' in controls
+    assert "older" not in controls and "not a session command" not in controls
+
+
+def test_the_idle_control_bar_shows_a_refused_open_or_stranded_return():
+    refusals = (Refused("open", "jake", "no session opens while <b>"),)
+
+    controls = fragments(idle(refusals=refusals), view())["controls"]
+
+    assert '<span class="sent crit">last refused · open: no session opens while &lt;b&gt;</span>' in controls
+    assert "last refused" not in fragments(idle(), view())["controls"]
+    assert "last refused ·" not in fragments(_between(), view())["controls"]
+
+
+def test_the_phases_the_page_lights_the_reward_in_are_the_ones_the_rig_gives_it_in():
+    """The b3a-2 final review, m3: `taskd.OUTSIDE_A_RUN` decides in which phases outside a
+    run the rig gives a hand reward, and `web._hand_reward_now` repeats it. The page must
+    light the button in exactly those phases -- and during a run only while paused."""
+    from wl_xcon.taskd import OUTSIDE_A_RUN
+    from wl_xcon.web import _hand_reward_now
+
+    phases = ("", "running", "between_runs", "awaiting_return", "closed")
+    lit = {phase for phase in phases if _hand_reward_now(frame(service=True, phase=phase))}
+
+    assert lit == set(OUTSIDE_A_RUN)
+    assert not any(_hand_reward_now(frame(service=False, phase=phase)) for phase in phases)
+    assert _hand_reward_now(frame(service=True, phase="running", paused_at=1_700_000_030.0))
+
+
 def test_while_the_return_is_awaited_there_is_no_run_to_start():
     controls = fragments(_between(phase="awaiting_return"), view())["controls"]
 
@@ -1611,7 +1660,10 @@ def test_the_idle_page_offers_a_new_session_and_says_which_animals_and_tasks_the
     assert button in parts["setup"]
     assert "<dt>animals</dt><dd>A, B</dd>" in parts["setup"]
     assert "<dt>tasks offered</dt><dd>fixation_detection.py</dd>" in parts["setup"]
-    assert parts["dn-subject"] == '<option value="A">A</option><option value="B">B</option>'
+    assert parts["dn-subject"] == (
+        '<option value="">choose the animal</option>'
+        '<option value="A">A</option><option value="B">B</option>'
+    ), "the b3a-2 final review, I1: no animal is chosen until a person chooses one"
     assert re.search(r'data-cmd="new" disabled title="[^"]+">new session</button>', stranded["setup"])
     assert fragments(frame(), view())["dn-subject"] == '<option value="">no animal offered</option>'
 
@@ -1781,7 +1833,7 @@ def test_start_sends_the_task_whose_preflight_is_shown_and_only_while_it_is_chos
         'post({ kind: "start", task: task, values: {}, trials: trials, acknowledged: acknowledged });'
     ) in start
     assert 'post({ kind: "check", task: task, values: {} });' in _function("takePreflight")
-    assert 'else if (e.target.id === "task-sel") { takePreflight(false); }' in _SCRIPT
+    assert 'else if (e.target.id === "task-sel") { if (betweenRuns()) { takePreflight(false); } }' in _SCRIPT
 
 
 def test_a_new_session_is_sent_with_every_field_the_dialog_asks_as_typed():
@@ -1802,6 +1854,61 @@ def test_a_new_session_is_sent_with_every_field_the_dialog_asks_as_typed():
     assert 'var today = given === "" ? null : Number(given);' in body
     assert "lastOpen = Object.assign({}, request);" in body
     assert body.index("lastOpen = Object.assign({}, request);") < body.index("post(")
+
+
+def test_the_new_session_dialog_forgets_what_was_typed_once_the_session_it_sent_opens():
+    """The b3a-2 final review, I1: the dialog reopened with the last session's departure,
+    id and fluid given today -- a departure within thirty minutes of now is taken on trust,
+    and the fluid figure feeds the day's floor. They are cleared, and the subject set back
+    to its placeholder, **only once the page shows the session it sent open** (the
+    Summary's *end session* names it), so a refused or unanswered open keeps what was
+    typed for a retry, and no other frame clears it."""
+    settle, swap, send = _function("settleOpen"), _function("swap"), _function("openSession")
+
+    assert 'if (id === "end-actions") { settleOpen(); }' in swap
+    assert "pendingOpen = request.session_id;" in send
+    assert 'if (!request.animal) { el("dn-msg").textContent = "not sent: choose the animal"; return; }' in send
+    assert "if (pendingOpen === null) { return; }" in settle
+    assert (
+        "var shown = el(\"end-actions\").querySelector('[data-cmd=\"end\"][data-session]');"
+    ) in settle
+    assert 'if (!shown || shown.getAttribute("data-session") !== pendingOpen) { return; }' in settle
+    guard = settle.index('!== pendingOpen) { return; }')
+    for cleared in ('el("dn-left").value = "";', 'el("dn-id").value = "";', 'el("dn-given").value = "";',
+                    'el("dn-subject").value = "";', "pendingOpen = null;"):
+        assert cleared in settle and settle.index(cleared) > guard, cleared
+    assert "pendingOpen" not in _function("onFrame"), "not on every frame"
+
+
+def test_a_preflight_items_sentence_takes_the_rows_width():
+    """The b3a-2 final review, m4: the pre-flight's items were laid out in columns of at
+    least 320 px, which left each sentence a sliver -- the pump calibration's wrapped
+    about twenty lines. One item per row, across the panel; and the end confirmation's
+    return field is wide enough for its placeholder."""
+    from wl_xcon.web import _CSS
+
+    pf = re.search(r"\n\.pf \{([^}]*)\}", _CSS).group(1)
+    assert "auto-fill" not in pf and "grid-template-columns: minmax(0, 1fr);" in pf
+    width = re.search(r"#end-return \{ width: (\d+)ch; \}", _CSS)
+    assert width and int(width.group(1)) >= len("now, HH:MM, or blank for later")
+
+
+def test_a_message_for_the_dialog_is_shown_in_it_not_behind_its_scrim():
+    """Task 6's deferred point, with I3: while *New session* is open, `post`'s own "not
+    sent: give your name" went to the control bar's line behind the dialog's scrim."""
+    tell = _function("tell")
+
+    assert 'if (!el("dlg-new").hidden) { el("dn-msg").textContent = text; }' in tell
+
+
+def test_choosing_a_task_takes_the_preflight_only_between_runs():
+    """The b3a-2 final review, m1: choosing a task sent a check in every phase, and each
+    put a refusal on the feed while idle, running or awaiting the return. The pre-flight
+    pill is a button only between runs (`_pf_pill`), and the script reads that."""
+    assert "return Boolean(el(\"pf-pill\").querySelector('[data-cmd=\"check\"]'));" in _function("betweenRuns")
+    assert 'data-cmd="check"' in fragments(_between(), view())["pf-pill"]
+    for outside in (frame(service=True), _between(phase="awaiting_return"), idle(), None):
+        assert 'data-cmd="check"' not in fragments(outside, view())["pf-pill"]
 
 
 def test_an_answer_re_sends_the_time_as_typed_and_only_for_a_warning_this_page_raised():

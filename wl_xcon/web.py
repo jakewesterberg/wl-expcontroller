@@ -454,13 +454,17 @@ def _banners(frame: Telemetry | None, view: View) -> str:
 # --- the run's task and its pre-flight (P4d-2b b3a-2) ------------------------------
 
 
-def _options(names, none: str) -> str:
+def _options(names, none: str, choose: str | None = None) -> str:
     """A select's options, one per name, or one empty option saying why there is none.
     A frame re-renders them; the page's script keeps the option a person chose (the
-    b3a-2 plan, decision 11)."""
+    b3a-2 plan, decision 11). With `choose`, an empty option saying it comes first, so
+    nothing is chosen until a person chooses: the *New session* dialog's subject, which
+    had silently become the first animal once the last session closed (the b3a-2 final
+    review, I1)."""
     if not names:
         return f'<option value="">{_e(none)}</option>'
-    return "".join(f'<option value="{_e(name)}">{_e(name)}</option>' for name in names)
+    first = "" if choose is None else f'<option value="">{_e(choose)}</option>'
+    return first + "".join(f'<option value="{_e(name)}">{_e(name)}</option>' for name in names)
 
 
 def _pf_state(frame: Telemetry | Idle | None) -> tuple[str, str]:
@@ -627,6 +631,25 @@ def _start_button(frame: Telemetry, view: View) -> str:
     )
 
 
+#: The service's own commands, which a person sends from the page's forms (P4d-2b spec
+#: §6.2): the newest refusal of one is shown beside the controls (`_session_refused`).
+SESSION_COMMANDS = ("open", "check", "start", "end")
+
+
+def _session_refused(refusals) -> str:
+    """The newest refusal of an open, a check, a start or an end, with the rig's sentence,
+    for the always-visible control bar: a start refused on the Setup tab, or a return on
+    the End tab, showed only in the Runtime tab's feed, where the person was not (the
+    b3a-2 final review, I3; `serve.SERVICE_SENT` promises the page shows a refusal with its
+    reason). *Last*, as a reward's refusal is shown (`_reward_answer`), since a refusal
+    carries no time (XC-113)."""
+    refused = [refusal for refusal in refusals if refusal.name in SESSION_COMMANDS]
+    if not refused:
+        return ""
+    last = refused[-1]
+    return f'<span class="sent crit">last refused · {_e(last.name)}: {_e(last.why)}</span>'
+
+
 def _outside_a_run(frame: Telemetry, view: View) -> str:
     """A `wlx taskd` session between runs or awaiting its animal's return (spec §6.0,
     §6.2): *start run* between runs, with the unplanned warning beside it, and *give
@@ -642,7 +665,10 @@ def _outside_a_run(frame: Telemetry, view: View) -> str:
         + "</span>"
     )
     note = "" if view.can_write else f'<span class="nm">{CONTROLS_AT_THE_BOX}</span>'
-    return lead + _reward_button(frame, view) + _mark_button(view) + _reward_answer(frame) + note
+    return (
+        lead + _reward_button(frame, view) + _mark_button(view) + _reward_answer(frame)
+        + _session_refused(frame.refusals) + note
+    )
 
 
 def _controls(frame: Telemetry | None, view: View) -> str:
@@ -1147,12 +1173,14 @@ def _idle(frame: Idle, view: View) -> dict[str, str]:
     panes["state"] = '<span class="pill neutral" data-state="idle">no session open</span>'
     panes["head-id"] = '<span class="nm">no session open</span>'
     panes["banners"] = _idle_banners(frame, view)
-    panes["controls"] = '<span class="nm">controls · no session open</span>'
+    panes["controls"] = (
+        '<span class="nm">controls · no session open</span>' + _session_refused(frame.refusals)
+    )
     panes["rt-health"] = _health_pane(frame, view)
     panes["rt-changes"] = _idle_refusals(frame)
     panes["task-sel"] = _options(frame.offered_tasks, "no task offered")
     panes["setup"] = _idle_setup(frame, view)
-    panes["dn-subject"] = _options(frame.animals, "no animal offered")
+    panes["dn-subject"] = _options(frame.animals, "no animal offered", "choose the animal")
     return panes
 
 
@@ -1430,7 +1458,7 @@ h3 { margin: 0; font-family: var(--cond); font-weight: 600; font-size: 11.5px; l
 .tsel .field { width: 5em; border-radius: 3px; }
 button.pill { border: 0; cursor: pointer; }
 .btn.go { background: var(--ok); border-color: var(--ok); color: var(--bg); }
-.pf { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 20px; }
+.pf { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 20px; }
 .pf .row { display: grid; grid-template-columns: 12px minmax(0, 10em) minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; padding: 3px 0; border-bottom: 1px solid var(--rule); min-height: 30px; }
 .pf .val { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .st { width: 10px; height: 10px; border-radius: 50%; }
@@ -1439,7 +1467,8 @@ button.pill { border: 0; cursor: pointer; }
 .dialog .grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; }
 .dialog .end { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .dialog .field, .dialog select { width: 100%; border-radius: 3px; font: inherit; }
-#amend-to, #end-return, #ret-at { width: 13em; }
+#amend-to, #ret-at { width: 13em; }
+#end-return { width: 32ch; }
 #amend-why { width: min(28em, 50vw); }
 body.stale .strip, body.stale .panels { filter: grayscale(1); opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -1500,10 +1529,11 @@ _LOGO = (
 #: clock, and the only `Date.now()` here -- then opens the note box: Enter attaches
 #: the note, Esc leaves the mark bare, and a second mark leaves the first bare.
 #:
-#: **Sessions from the page (P4d-2b b3a-2).** Choosing a task, or pressing the pre-flight
-#: pill, takes the pre-flight (`check`); *start run* sends the task of the pre-flight
-#: shown, the trial count and the unknown items ticked, then clears the ticks; *new
-#: session* sends the dialog's fields as typed; *end session* sends the return typed, or
+#: **Sessions from the page (P4d-2b b3a-2).** Choosing a task between runs, or pressing the
+#: pre-flight pill, takes the pre-flight (`check`); *start run* sends the task of the
+#: pre-flight shown, the trial count and the unknown items ticked, then clears the ticks;
+#: *new session* sends the dialog's fields as typed, and they are cleared once the page
+#: shows that session open (the b3a-2 final review, I1); *end session* sends the return typed, or
 #: none for later; a warning's *confirm* or *amend* re-sends the open or the return this
 #: page sent, with its answer, and a warning this page did not raise is not answered.
 #: A swap keeps a select's chosen option and the ticks. It still renders nothing itself.
@@ -1544,6 +1574,8 @@ _SCRIPT = """
   // and the session the return form is for.
   var lastOpen = null;
   var lastEnd = null;
+  // The session id of an open this page sent and has not yet seen open (`settleOpen`).
+  var pendingOpen = null;
   var acked = {};
   var returnFor = null;
   function el(id) { return document.getElementById(id); }
@@ -1582,6 +1614,7 @@ _SCRIPT = """
     if (chosen !== null) { choose(node, chosen); }
     if (id === "controls") { holdReward(); }
     if (id === "preflight") { restoreAcks(); }
+    if (id === "end-actions") { settleOpen(); }
   }
   function release() {
     if (heldParams !== null && !busy()) {
@@ -1595,6 +1628,21 @@ _SCRIPT = """
     Array.prototype.forEach.call(select.options, function (option) {
       if (option.value === value) { select.value = value; }
     });
+  }
+  function settleOpen() {
+    // The b3a-2 final review, I1: once the page shows the session it sent open -- the
+    // Summary's *end session* names it -- the New session dialog forgets what was typed
+    // for it, so the next session's starts empty and with no animal chosen. A refused or
+    // unanswered open keeps it, for a retry.
+    if (pendingOpen === null) { return; }
+    var shown = el("end-actions").querySelector('[data-cmd="end"][data-session]');
+    if (!shown || shown.getAttribute("data-session") !== pendingOpen) { return; }
+    el("dn-left").value = "";
+    el("dn-id").value = "";
+    el("dn-given").value = "";
+    el("dn-subject").value = "";
+    el("dn-msg").textContent = "";
+    pendingOpen = null;
   }
   function restoreAcks() {
     Array.prototype.forEach.call(document.querySelectorAll("input[data-ack]"), function (box) {
@@ -1646,6 +1694,8 @@ _SCRIPT = """
     var line = el("sent");
     line.textContent = text;
     line.className = "sent " + (tone || "");
+    // Task 6's deferred point: the control bar's line is behind the dialog's scrim.
+    if (!el("dlg-new").hidden) { el("dn-msg").textContent = text; }
   }
   function post(command, then, after) {
     var done = after || function () {};
@@ -1757,6 +1807,10 @@ _SCRIPT = """
   // field is a static element no frame replaces; each form sends one command through
   // `post`, the one `fetch`, which adds who sent it.
   function chosenTask() { return el("task-sel").value; }
+  function betweenRuns() {
+    // The pre-flight pill is a button only between runs (`_pf_pill`).
+    return Boolean(el("pf-pill").querySelector('[data-cmd="check"]'));
+  }
   function takePreflight(showPanel) {
     var task = chosenTask();
     acked = {};
@@ -1808,7 +1862,9 @@ _SCRIPT = """
       amend_to: null,
       amend_reason: ""
     };
+    if (!request.animal) { el("dn-msg").textContent = "not sent: choose the animal"; return; }
     lastOpen = Object.assign({}, request);
+    pendingOpen = request.session_id;
     post(request, function (answer) {
       el("dn-msg").textContent = answer.said;
       if (answer.status === "sent") { el("dlg-new").hidden = true; }
@@ -1897,7 +1953,7 @@ _SCRIPT = """
     if (!e.target.matches) { return; }
     if (e.target.matches("input[data-param]")) { schedule(e.target); }
     else if (e.target.matches("input[data-ack]")) { acked[e.target.getAttribute("data-ack")] = e.target.checked; }
-    else if (e.target.id === "task-sel") { takePreflight(false); }
+    else if (e.target.id === "task-sel") { if (betweenRuns()) { takePreflight(false); } }
   });
   document.addEventListener("focusout", function () { setTimeout(release, 0); });
   document.addEventListener("keydown", function (e) {
