@@ -4436,3 +4436,65 @@ def test_outside_a_run_an_allocation_without_manual_reward_refuses_the_reward(tm
     assert all("no MANUAL_REWARD event code" in why for why in whys)
     assert session.welfare.deliveries == 0 and session.pump.delivered == []
     assert REWARD_CODE not in session.card.codes and _manual_rows(session) == []
+
+
+
+# --- the session's trial number (XC-155) --------------------------------------------
+
+
+def test_each_trial_line_carries_its_number_counted_across_the_sessions_runs(tmp_path):
+    """XC-155 spec §2.2: the number counts from 1 across the whole session, whichever run
+    a trial is in, and is written on its `trials.jsonl` line as `trial_number` -- the
+    field wl-preproc joins a line to its recorded trial by. `index` and `run` stay
+    beside it, per run."""
+    session = _service_session(tmp_path)
+
+    session.run(_run_spec(trials=3))
+    session.run(_run_spec(trials=2))
+
+    assert [(row["run"], row["index"], row["trial_number"]) for row in _trial_rows(session)] == [
+        (0, 0, 1), (0, 1, 2), (0, 2, 3), (1, 0, 4), (1, 1, 5),
+    ]
+
+
+def test_a_new_session_numbers_its_trials_from_1_again(tmp_path):
+    """Spec §2.2: unique within one session. A new session is another session --
+    another id, another folder -- and starts again at 1."""
+    first = _service_session(tmp_path / "a")
+    first.run(_run_spec(trials=2))
+
+    second = _service_session(tmp_path / "b")
+    second.run(_run_spec(trials=2))
+
+    assert [row["trial_number"] for row in _trial_rows(first)] == [1, 2]
+    assert [row["trial_number"] for row in _trial_rows(second)] == [1, 2]
+
+
+def test_a_trial_that_faults_keeps_its_number_and_the_next_trial_never_reuses_it(
+    tmp_path, monkeypatch
+):
+    """The number is taken as a trial starts (`Session._trial_number`), so a trial that
+    faults has used it -- the recording has it, though no line is written for the trial
+    -- and the session's next trial takes the next one. A number used twice would be
+    two trials in one recording, and wl-preproc keeps the first and drops the second
+    silently (XC-155 spec §2.2)."""
+    from wl_xcon import taskd
+
+    real, calls = taskd.run_trial, []
+
+    def faults_second(*args, **kwargs):
+        calls.append(None)
+        if len(calls) == 2:
+            raise RuntimeError("the display went away")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", faults_second)
+    session = _service_session(tmp_path)
+
+    with pytest.raises(RuntimeError, match="the display went away"):
+        session.run(_run_spec(trials=3))
+    session.run(_run_spec(trials=2))
+
+    assert [(row["run"], row["trial_number"]) for row in _trial_rows(session)] == [
+        (0, 1), (1, 3), (1, 4),
+    ]

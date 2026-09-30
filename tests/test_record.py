@@ -85,7 +85,7 @@ def test_a_trial_is_on_disk_before_the_session_ends(tmp_path):
     the lesson wl-sync learned when its own recorder held a whole session in memory
     and a crash took all of it."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=1, outcome="correct", params={"fix_hold": 0.3}, run=0)
+    record.trial(index=1, outcome="correct", params={"fix_hold": 0.3}, run=0, trial_number=2)
 
     written = (
         tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl"
@@ -98,8 +98,8 @@ def test_every_trial_carries_its_whole_resolved_parameter_set(tmp_path):
     """P16. A pointer to "the config" is not enough: a change mid-session is
     invisible at analysis time unless each trial says what it actually ran with."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=1, outcome="correct", params={"fix_hold": 0.3}, run=0)
-    record.trial(index=2, outcome="correct", params={"fix_hold": 0.9}, run=0)
+    record.trial(index=1, outcome="correct", params={"fix_hold": 0.3}, run=0, trial_number=2)
+    record.trial(index=2, outcome="correct", params={"fix_hold": 0.9}, run=0, trial_number=3)
 
     rows = [
         json.loads(line)
@@ -116,7 +116,7 @@ def test_the_subject_is_on_every_trial_not_only_in_a_header(tmp_path):
     keyed on the sync box's day-scoped id. Naming the subject per trial is what
     makes a day partition correctly whatever wl-sync decides about `_02`."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=1, outcome="correct", params={}, run=0)
+    record.trial(index=1, outcome="correct", params={}, run=0, trial_number=2)
 
     row = json.loads(
         (tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl").read_text()
@@ -145,11 +145,13 @@ def test_a_session_record_opens_no_file_until_something_is_written(tmp_path):
 
 def test_the_trial_file_is_reopened_for_each_run_and_every_row_names_its_run(tmp_path):
     """Spec §6.3: "Every trial row names its run." The record lives for the session and
-    its trial file for a run: closed with one, reopened by the next one's first trial."""
+    its trial file for a run: closed with one, reopened by the next one's first trial.
+    **And every row carries its trial number beside its run and its index** (XC-155),
+    written as given: `taskd` counts it across the session, and wl-preproc joins on it."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=0, outcome="correct", params={}, run=0)
+    record.trial(index=0, outcome="correct", params={}, run=0, trial_number=1)
     record.close()
-    record.trial(index=0, outcome="no_response", params={}, run=1)
+    record.trial(index=0, outcome="no_response", params={}, run=1, trial_number=2)
     record.close()
     record.close()  # a second close does nothing
 
@@ -157,10 +159,22 @@ def test_the_trial_file_is_reopened_for_each_run_and_every_row_names_its_run(tmp
         json.loads(line)
         for line in (record.directory / "trials.jsonl").read_text().splitlines()
     ]
-    assert [(row["run"], row["index"], row["outcome"]) for row in rows] == [
-        (0, 0, "correct"),
-        (1, 0, "no_response"),
+    assert [(row["run"], row["index"], row["trial_number"], row["outcome"]) for row in rows] == [
+        (0, 0, 1, "correct"),
+        (1, 0, 2, "no_response"),
     ]
+
+
+def test_a_trial_row_is_never_written_without_its_trial_number(tmp_path):
+    """XC-155: wl-preproc joins a `trials.jsonl` line to the recording's trial by its
+    `trial_number` alone, so a line written without one would join nothing, and nothing
+    would say so. Required, as `run` is, and never defaulted."""
+    record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
+
+    with pytest.raises(TypeError, match="trial_number"):
+        record.trial(index=0, outcome="correct", params={}, run=0)
+
+    assert not (record.directory / "trials.jsonl").exists()
 
 
 def test_a_run_row_carries_its_event_its_run_and_its_local_time(tmp_path):
@@ -220,7 +234,7 @@ def test_a_crash_leaves_every_trial_written_so_far(tmp_path):
     file is on disk mid-session, not at the end of one."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
     for index in range(5):
-        record.trial(index=index, outcome="correct", params={}, run=0)
+        record.trial(index=index, outcome="correct", params={}, run=0, trial_number=index + 1)
     del record  # no close(), no __exit__ -- the process died
 
     lines = (
@@ -279,6 +293,8 @@ def test_a_simulated_session_writes_a_real_session_directory(tmp_path):
     assert len(rows) == 50
     assert sum(census.outcomes.values()) == 50
     assert json.loads(rows[0])["params"] == {"timeout": 1.0}
+    # The numbers a rig's session of this one run would strobe (XC-155).
+    assert [json.loads(row)["trial_number"] for row in rows] == list(range(1, 51))
 
 
 def test_closing_releases_the_file_and_the_context_manager_does_it_for_you(tmp_path):
@@ -290,7 +306,7 @@ def test_closing_releases_the_file_and_the_context_manager_does_it_for_you(tmp_p
     `__exit__` surviving -- three methods nothing exercised.
     """
     with SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A") as r:
-        r.trial(index=1, outcome="correct", params={}, run=0)
+        r.trial(index=1, outcome="correct", params={}, run=0, trial_number=2)
         handle = r._trials
         assert not handle.closed
 

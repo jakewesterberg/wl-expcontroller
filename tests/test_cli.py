@@ -425,7 +425,9 @@ def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "correct" in out
-    assert (tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl").exists()
+    lines = (tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl").read_text().splitlines()
+    # `wlx run`'s one run numbers its trials from 1 (XC-155).
+    assert [json.loads(line)["trial_number"] for line in lines] == list(range(1, 21))
 
 
 def test_wlx_run_refuses_a_session_that_does_not_say_how_long_the_animal_was_out(

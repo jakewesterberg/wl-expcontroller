@@ -358,5 +358,8 @@ def simulate(
                 outcome=result.outcome.value if result.outcome else "hang",
                 params=dict(values or {}),
                 run=0,  # one simulated run; a session of several is `taskd`'s
+                # The number a rig's session of this one run strobes for the trial,
+                # counting from 1 (`taskd.Session._trial_number`); a census strobes none.
+                trial_number=index + 1,
             )
     return tally.census()

@@ -1739,10 +1739,13 @@ def test_e2e_open_a_session_run_it_twice_and_end_it(tmp_path, monkeypatch, zmq_c
         ("start", 0), ("end", 0), ("start", 1), ("end", 1),
     ]
     trials = [
-        json.loads(line)["run"]
+        json.loads(line)
         for line in (root / "2027-01-14_01" / "xcon" / "trials.jsonl").read_text().splitlines()
     ]
-    assert trials == [0, 0, 0, 1, 1, 1]
+    # Each trial's number counts on across the session's two runs (XC-155).
+    assert [(trial["run"], trial["trial_number"]) for trial in trials] == [
+        (0, 1), (0, 2), (0, 3), (1, 4), (1, 5), (1, 6),
+    ]
     codes = rig.cards[0].codes
     assert codes[0] == 4128 and codes[-1] == 4129
     assert codes.count(4135) == codes.count(4136) == 2

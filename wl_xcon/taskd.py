@@ -334,6 +334,16 @@ class Session:
     _elapsed: float = field(init=False, default=0.0, repr=False)
     _staged: list = field(init=False, default_factory=list, repr=False)
     _sequence: int = field(init=False, default=0, repr=False)
+    #: **The number of the session's latest trial, counted from 1 across all its runs**
+    #: (XC-155), or 0 before its first: strobed in that trial's `TRIAL_NUMBER` escape and
+    #: written on its `trials.jsonl` line as `trial_number`, the field wl-preproc joins a
+    #: line to its recorded trial by. Kept for the session beside `_sequence`, which
+    #: `run()`'s reset leaves alone for the same reason (the b3a-1 plan, decision 2): a
+    #: run's `index` restarts at 0, and a number that restarted would name two trials in
+    #: one recording, of which wl-preproc keeps the first and drops the second silently.
+    #: **Taken as a trial starts**, so a trial that faults keeps its number -- it is in
+    #: the recording -- and the next trial never reuses it.
+    _trial_number: int = field(init=False, default=0, repr=False)
     _record: SessionRecord | None = field(init=False, default=None, repr=False)
     #: The run in progress or the last one, or `None` before any.
     _run: RunSpec | None = field(init=False, default=None, repr=False)
@@ -2043,6 +2053,8 @@ class Session:
                 condition = scheduler.next_trial()
                 values = {**self.spec.values, **condition.values}
                 world = make_world(trial, values, index)
+                # The trial's number, taken as it starts (`_trial_number`).
+                self._trial_number += 1
                 result = run_trial(
                     trial,
                     world,
@@ -2074,6 +2086,7 @@ class Session:
                     block=scheduler.block.name,
                     condition=condition.name,
                     run=self.run_index,
+                    trial_number=self._trial_number,
                 )
                 if self.observe is not None:
                     self.observe(condition, values, result)
