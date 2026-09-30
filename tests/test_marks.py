@@ -228,9 +228,18 @@ def test_the_pages_answers_are_the_terminals(tmp_path):
     assert amended.at == pytest.approx(WALL - 600, abs=1.0)
 
 
-#: Dates `datetime` parses and this host's calendar cannot place: the parser's
-#: `astimezone()` raises `ValueError` for them, which is not an `ArgumentTypeError`.
-UNPLACEABLE = ["0001-01-01T00:00", "9999-12-31T23:59"]
+#: A date `datetime` parses and no host's calendar can place: the parser's
+#: `astimezone()` raises `ValueError` for it, which is not an `ArgumentTypeError`.
+#: Seen on macOS and on CI's Linux at UTC.
+UNPLACEABLE = ["0001-01-01T00:00"]
+
+#: The calendar's last minute. Whether a host can place it depends on the host:
+#: macOS cannot (the parser's `ValueError`), while CI's Linux at UTC -- the rig's
+#: platform -- can, and there it is a time in the future. Either way it is refused
+#: and nothing is marked; which refusal comes is the host's.
+LAST_MINUTE = "9999-12-31T23:59"
+REFUSED = (argparse.ArgumentTypeError, Exceeded)
+REFUSED_AS = "is not a clock time|in the future"
 
 
 @pytest.mark.parametrize("text", ["half past nine", "25:00", "", *UNPLACEABLE])
@@ -269,6 +278,35 @@ def test_a_return_time_the_host_cannot_place_is_refused_in_the_terminals_words(
 
     with pytest.raises(argparse.ArgumentTypeError, match="is not a clock time"):
         marks.page_return(made, returned=text, confirm=True, by="jake")
+
+    assert made.welfare.returned_wall_at is None
+
+
+@pytest.mark.parametrize(
+    ("departure", "answer", "amend_to", "amend_reason"),
+    [(LAST_MINUTE, None, None, ""), (typed(9 * 3600), "amend", LAST_MINUTE, "typo")],
+    ids=["typed", "amended"],
+)
+def test_a_departure_in_the_calendars_last_minute_is_refused_on_any_host(
+    tmp_path, departure, answer, amend_to, amend_reason
+):
+    made = session(tmp_path)
+
+    with pytest.raises(REFUSED, match=REFUSED_AS):
+        decision = marks.page_departure(
+            made, departure=departure, answer=answer, amend_to=amend_to,
+            amend_reason=amend_reason, by="jake",
+        )
+        marks.depart(made, decision)
+
+    assert made.welfare.left_cage_wall_at is None
+
+
+def test_a_return_in_the_calendars_last_minute_is_refused_on_any_host(tmp_path):
+    made = _departed(tmp_path)
+
+    with pytest.raises(REFUSED, match=REFUSED_AS):
+        marks.page_return(made, returned=LAST_MINUTE, confirm=True, by="jake")
 
     assert made.welfare.returned_wall_at is None
 
