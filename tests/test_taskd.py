@@ -368,6 +368,45 @@ def test_a_run_that_faults_writes_its_end_row_and_strobes_no_run_end(tmp_path, m
     assert _block_words(session.card.codes) == [("run", 1), ("start", 1)]
 
 
+@pytest.mark.parametrize(
+    ("failure", "kind", "said"),
+    [
+        (OSError("the card did not answer"), "fault", "the card did not answer"),
+        (KeyboardInterrupt(), "operator", "interrupted at the terminal"),
+    ],
+    ids=["card-fault", "ctrl-c"],
+)
+def test_a_run_that_fails_as_its_escape_goes_out_names_its_stop_and_writes_its_end_row(
+    tmp_path, failure, kind, said
+):
+    """The run-markers final review, item 2: a card that fails on the run escape's first
+    word, or a Ctrl-C there, before the loop's first boundary. Both handlers call
+    `publish`, which was bound only after the run's opening emits, so either one raised
+    `UnboundLocalError` from the handler, chained to the real exception, and published
+    nothing. Now the failure goes on to the caller as itself, after one frame naming the
+    stop, and the run's end row is written, as for a failure anywhere else in the run."""
+    link = Simulated()
+    session = _session(_spec(tmp_path, trials=3), link=link)
+    real = session.card.emit
+
+    def emit(code: int) -> None:
+        if code == RUN_ESCAPE:
+            raise failure
+        real(code)
+
+    session.card.emit = emit
+
+    with pytest.raises(type(failure)):
+        session.run()
+
+    assert session.card.codes == [4128, RUN_START], "the escape's first word failed"
+    assert (session.stop_kind, link.published[-1].stop_kind) == (kind, kind)
+    assert said in link.published[-1].stopped_because
+    start, end = _runs(session)
+    assert (start["event"], end["event"], end["stop_kind"]) == ("start", "end", kind)
+    assert (end["trials"], end["strobed"]) == (0, False)
+
+
 def test_a_run_whose_allocation_has_no_run_codes_runs_and_says_it_was_not_strobed(tmp_path):
     allocation = tmp_path / "no_run_codes.py"
     allocation.write_text(
@@ -4627,7 +4666,9 @@ def _escapes(codes: list) -> list:
     so on -- which no stream here strobes. **A block's `BLOCK_START` is an escape too**
     (session-levels spec §4): its payload word is that value only for block 32,769, and
     its checksum, 0x8002 XOR the block's number while every task code is 0, only for
-    block 3. No stream read here opens a third block."""
+    block 3. **So is a run's escape** (XC-205): its payload word is that value only for
+    run 32,769, and its checksum, 0x8006 XOR the run's number, only for run 7. No stream
+    read here opens a third block or a seventh run."""
     return [codes[i : i + 4] for i, code in enumerate(codes) if code == TRIAL_NUMBER_ESCAPE]
 
 

@@ -1977,6 +1977,8 @@ class Session:
             },
             preflight=preflight_rows,
             by=by,
+            # Whether the allocation's own `RUN_START` code (4135) went out, and only
+            # that: wl-preproc's run escape opens the run either way (XC-205).
             strobed=start_code is not None,
             run_in_session=levels.runs,
             run_in_task=levels.task_runs[levels.task],
@@ -1986,7 +1988,10 @@ class Session:
         self._scheduler = scheduler
         self._index = 0
         self.phase = "running"
-        #: Whether this run's `RUN_END` went out: only on an ending by design.
+        #: Whether the allocation's own `RUN_END` code (4136) went out: only on an
+        #: ending by design, and only when the allocation has one. wl-preproc's
+        #: `RUN_END` marker (4, XC-205) goes out on every ending by design and is not
+        #: what this records. The end row's `strobed`.
         ended_strobed = False
         # **The per-frame mark check** (P4d-2b spec §5.1), handed to `run_trial` as
         # its one per-frame hook. Bound once, here, so each frame is two calls and a
@@ -1999,17 +2004,10 @@ class Session:
                 stamp(mark, frame)
 
         try:
-            if start_code is not None:
-                self.card.emit(start_code)
-            # **wl-preproc's run escape, unbroken, right after the allocation's
-            # `RUN_START`** (XC-205; session-levels spec §4: `RUN_START`, then each
-            # block, its trials and its `BLOCK_END`, then `RUN_END`). Sent whether or
-            # not the allocation has that code: the escape is wl-preproc's framework
-            # code, not the allocation's. Nothing goes out between its four words on any
-            # path the loop takes; a card fault, a Ctrl-C, a SIGTERM or a crash between
-            # them cuts it short, as it does a block's or a trial's (XC-199).
-            for word in run_words:
-                self.card.emit(word)
+            # **Bound before the run's first emit** (the run-markers final review, item
+            # 2): both handlers below call `publish`, so a card fault or a Ctrl-C on 4135
+            # or on the run escape's words would otherwise raise `UnboundLocalError` from
+            # the handler, chained to the real exception, with no frame naming the stop.
             index = 0
             #: Block transitions taken. Bounded by the plan -- see the check below.
             advanced = 0
@@ -2033,6 +2031,18 @@ class Session:
                 """
                 self._index = index
                 self._publish()
+
+            if start_code is not None:
+                self.card.emit(start_code)
+            # **wl-preproc's run escape, unbroken, right after the allocation's
+            # `RUN_START`** (XC-205; session-levels spec §4: `RUN_START`, then each
+            # block, its trials and its `BLOCK_END`, then `RUN_END`). Sent whether or
+            # not the allocation has that code: the escape is wl-preproc's framework
+            # code, not the allocation's. Nothing goes out between its four words on any
+            # path the loop takes; a card fault, a Ctrl-C, a SIGTERM or a crash between
+            # them cuts it short, as it does a block's or a trial's (XC-199).
+            for word in run_words:
+                self.card.emit(word)
 
             while True:
                 self._apply_staged(index)

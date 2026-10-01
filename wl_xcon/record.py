@@ -96,6 +96,12 @@ CONTROLS = "controls.jsonl"
 #: retired the unplanned run (P4d-2b spec §4.0); wl-preproc reads no such field (its
 #: `main`, `b0f8b52`, read 2026-10-01).
 #:
+#: **`strobed` means the allocation's own codes and nothing else**: on the start row,
+#: whether its `RUN_START` (4135) went out; on the end row, whether its `RUN_END` (4136)
+#: did. wl-preproc's run escape opens every run, and its `RUN_END` marker closes every
+#: run that ends by design, whatever `strobed` says (XC-205), so a completed run on an
+#: allocation without 4135/4136 records `strobed: false` and is still framed.
+#:
 #: **Two rows, not the spec's one** (the b3a-1 plan, decision 4), so a run's start, and
 #: the acknowledgements it started on, are on disk before its first trial: a process
 #: that dies mid-run leaves the start row, and the missing end row is the signal, as a
