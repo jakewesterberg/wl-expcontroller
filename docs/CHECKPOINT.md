@@ -375,6 +375,10 @@ rig sign-in is deployed (it heads wl.works' build order next), the manual reward
   `prepare-session` (no plan fields) and the fluid envelope, its `planned_task`, `session_intent` and
   `probes[]` withdrawn; dated notes in `docs/pending-wl-works-amendments.md`; XC-208 lists the
   older specs that still state a day's plan.
+- **CI, read shard by shard before the fast-forward** (push run `36886820643`, the branch's first
+  push): pytest `2121 passed` on 3.11-3.13; seven modules, **189 caught, 0 survived**, every catch a
+  real `N failed`, every baseline and restore at `2121 passed`; the five timeouts (`scheduler.record`,
+  `service.step`, `taskd._ends`, `publish`, `_publish`) were each verified before.
 - **Proof**: 2121 passed; the review drove nine scenarios through wl-preproc's decoder and assembler
   (each run's escape `(n, 0)` from 1, marker 4 only on by-design ends, every other word unchanged,
   no decode errors); `words_for_run` swept 29 failed, `taskd.run` 264 failed.
