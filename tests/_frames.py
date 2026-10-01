@@ -1,6 +1,6 @@
 """A complete `Telemetry` frame, at this build's `SCHEMA`, for the browser console's
 tests (P4d-2b b1; schema 8's fields since b2a, schema 9's since direct view part 2, schema 10's since b3a,
-schema 12's since session levels).
+schema 12's since session levels, schema 13's since XC-026).
 
 Imported by `test_health.py`, `test_web.py` and `test_serve.py` as
 `from _frames import frame`; never collected, because its name does not start with
@@ -13,6 +13,7 @@ the same kind of reason: the frame is a direct-view session, which has none. Sch
 `question` are `None` for the ordinary frame, like `paused_at`. Schema 12's `performance` is
 a running session's four levels, each level's counts distinct from every other's, and
 `returned_at` is `None`, like `paused_at`: a running session's animal has not gone back.
+Schema 13's `resumed_at` is `None` too: a session opened in this process, never resumed.
 """
 
 from __future__ import annotations
@@ -91,6 +92,7 @@ def frame(**overrides) -> Telemetry:
             block_type="near",
         ),
         returned_at=None,
+        resumed_at=None,
     )
     return replace(base, **overrides) if overrides else base
 

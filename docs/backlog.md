@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-209.**
+**Next free ID: XC-210.**
 
 ## Brainstorms queued for the PI
 
@@ -116,6 +116,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-199** The `TRIAL_NUMBER` escape is not unbroken on an abort, though S2 §6 item 3 asks for it "on any code path, including an abort": a card fault, a Ctrl-C, a SIGTERM (XC-160) or a crash between `Session.run`'s five emits (nine when the trial opens a block, whose `BLOCK_START` escape is cut short the same way, session-levels spec §4; and each run's own escape, four words after its `RUN_START`, is a window of its own, XC-205) cuts it short, and wl-preproc's decoder takes the next words as its payload, losing that trial and, when a `wlx taskd` session goes on to another run with nothing strobed between, the next run's `RUN_START`, its run escape (XC-205) when the cut falls after the first or second word, and possibly its first block's opening and first trial too; wl-preproc's `assemble` then folds that run into the faulted one, which reads as closed by design because the next run's `RUN_END` marker closes it, and a cut after the second word reads run number 2, 3 or 4 as a bare `SESSION_END`, `BLOCK_END` or `RUN_END`; close it by deferring `KeyboardInterrupt` (and XC-160's handler) across those emits, or accept it and annotate S2 §6 item 3. — 2026-09-30, [XC-155 spec §2.1](superpowers/specs/2026-09-30-xc155-trial-markers-design.md#21-what-each-trial-sends-to-the-recording), the XC-155 final review — waits on: nothing
 - **XC-201** `wlx run` does not refuse a reused `--session-id`: `SessionRecord.open` makes the folder with `exist_ok`, its `.jsonl` records are appended to and `config.json` is overwritten, so two sessions can write one folder, where `wlx taskd` refuses an id already used. — 2026-09-30, [`record.py`](../wl_xcon/record.py), the XC-155 final review — waits on: nothing
 - **XC-206** `BLOCK_END` at an advance goes out at the boundary that advances, after that boundary's own strobes, so a pause held between two blocks is measured inside the earlier one; emitting it right after a block's last `TRIAL_END` would not. — 2026-10-01, [session-levels spec §4](superpowers/specs/2026-10-01-session-levels-and-strip-design.md#4-the-recording-decided-sent-to-wl-preproc-2026-10-01), the session-levels final review (M6) — waits on: nothing
+- **XC-209** `cli._load_bounds` (and the other `cli._load_*`) runs a file through Python's bytecode cache, which keys on the source's whole-second mtime and size, so an edit that keeps the size, saved in the same second as the last load, runs the old bounds; compile from the source instead. — 2026-10-01, [`cli.py`'s `_load_bounds`](../wl_xcon/cli.py), found by XC-026 Task 4's changed-bounds test — waits on: nothing
 
 ## Debt
 

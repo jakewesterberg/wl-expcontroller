@@ -21,7 +21,7 @@ from _rig import PATH as RIG_FILE
 from _rig import RIG
 from _sessions import WALL, malformed_task, typed, whole_point_task
 from _zmq_release import _every_zmq_context_released  # noqa: F401
-from wl_xcon import preflight
+from wl_xcon import preflight, resume
 from wl_xcon.cli import _load_allocation, main
 from wl_xcon.bounds import Exceeded
 from wl_xcon.link import (
@@ -33,6 +33,7 @@ from wl_xcon.link import (
     OpenSession,
     Pause,
     Refused,
+    ResumeSession,
     SetParameter,
     Simulated,
     StartRun,
@@ -707,7 +708,9 @@ def test_a_stranded_session_found_at_start_refuses_every_open_until_its_return_i
     service = _made(folders)
 
     idle = _step(service)
-    assert idle.stranded == (Stranded("2027-01-13_01", "REFERENCE", WALL - 3600),)
+    assert [(s.session_id, s.subject, s.left_at) for s in idle.stranded] == [
+        ("2027-01-13_01", "REFERENCE", WALL - 3600)
+    ]
     refused = _step(service, _open())
     assert "no session opens while an animal's return is not recorded" in _refused(refused)[-1]
 
@@ -735,7 +738,9 @@ def test_a_crashed_sessions_torn_last_line_leaves_it_stranded_never_skipped(tmp_
         handle.write('{"kind": "retur')
     service = _made(folders)
 
-    assert _step(service).stranded == (Stranded("2027-01-13_01", "", None),)
+    assert _step(service).stranded == (
+        Stranded("2027-01-13_01", "", None, False, "its welfare record cannot be read"),
+    )
     refused = _step(service, _end(session_id="2027-01-13_01"))
     assert "cannot be read" in _refused(refused)[-1] and "repair" in _refused(refused)[-1]
     assert _step(service, _open()).phase == "idle"
@@ -791,7 +796,9 @@ def test_a_welfare_record_this_host_cannot_read_is_stranded_not_a_crash(tmp_path
     (folders[2] / "2027-01-13_01" / "xcon" / "welfare_notes.jsonl").mkdir(parents=True)
     service = _made(folders)
 
-    assert _step(service).stranded == (Stranded("2027-01-13_01", "", None),)
+    assert _step(service).stranded == (
+        Stranded("2027-01-13_01", "", None, False, "its welfare record cannot be read"),
+    )
     refused = _step(service, _end(session_id="2027-01-13_01"))
     assert "cannot be read" in _refused(refused)[-1]
     assert _step(service, _open()).phase == "idle"
@@ -1302,7 +1309,8 @@ def test_during_a_run_the_services_own_commands_are_refused_not_queued(tmp_path)
     """Review Focus 4: a second start sent while a run is in progress -- a double click --
     is refused, never started after the first."""
     link = _Script({4: [_start(), _open(session_id="2027-01-14_02"),
-                        CheckRun(by=BY, task=TASK, values={})]})
+                        CheckRun(by=BY, task=TASK, values={}),
+                        ResumeSession(by=BY, session_id="2027-01-14_01")]})
     service = _service(tmp_path, link=link)
     _step(service, _open())
 
@@ -1310,7 +1318,7 @@ def test_during_a_run_the_services_own_commands_are_refused_not_queued(tmp_path)
 
     assert frame.run_index == 0 and len(_runs(service.root)) == 2
     in_progress = [r.name for r in frame.refusals if "a run is in progress" in r.why]
-    assert in_progress == ["start", "open", "check"]
+    assert in_progress == ["start", "open", "check", "resume_session"]
     assert frame.preflight is None, "the check took no pre-flight"
     assert [p.name for p in service.root.iterdir()] == ["2027-01-14_01"]
 
@@ -1511,6 +1519,301 @@ def test_a_service_given_no_seed_records_a_fresh_one_in_each_runs_start_row(tmp_
 
     (seed,) = [row["seed"] for row in _runs(root) if row["event"] == "start"]
     assert type(seed) is int and 0 <= seed < 2**31
+
+
+# --- resume (XC-026) -------------------------------------------------------------
+
+
+def _run_to_its_end(service) -> Telemetry:
+    """The run the last pass accepted, at its end. `Service.step` runs a run it accepted
+    in the same pass, through to its end (`_run`), so no pass is left to drive: this
+    checks that it completed and the session is back between runs, rather than assuming
+    it."""
+    frame = service.link.published[-1]
+    assert (frame.phase, frame.stop_kind, service._starting) == ("between_runs", "completed", None)
+    return frame
+
+
+def _crashed(folders, *session_ids, delivered_today=0.0, run=False) -> None:
+    """Sessions left as a process that died leaves them: each opened by a service of its
+    own -- all built before any opened, so none finds another stranded -- given a run if
+    `run`, and then dropped, with no end and no return."""
+    services = [_made(folders) for _ in session_ids]
+    for service, session_id in zip(services, session_ids):
+        _step(service, _open(session_id=session_id, delivered_today=delivered_today))
+        if run:
+            _step(service, _start())
+            _run_to_its_end(service)
+
+
+def _written(root, session_id) -> dict:
+    """Every file under a session's folder, by its path there, with its bytes."""
+    folder = root / session_id
+    return {
+        str(path.relative_to(folder)): path.read_bytes()
+        for path in sorted(folder.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _resume_refused(service, session_id) -> str:
+    """A resume sent and refused: its sentence, once it is known that **nothing was
+    written to the stranded folder** and the session is still stranded."""
+    before = _written(service.root, session_id)
+
+    frame = _step(service, ResumeSession(by=BY, session_id=session_id))
+
+    assert _written(service.root, session_id) == before, "a refused resume wrote nothing"
+    assert session_id in [s.session_id for s in service.stranded]
+    assert frame.refusals[-1].name == "resume_session"
+    return _refused(frame)[-1]
+
+
+def test_a_stopped_session_is_resumed_and_its_numbers_go_on(tmp_path):
+    folders = _folders(tmp_path)
+    first = _made(folders)
+    _step(first, _open())
+    _step(first, _start())
+    _run_to_its_end(first)
+    # the process stops: a second service over the same root, with no end and no return
+    second = _made(folders)
+    idle = _step(second)
+    assert [(s.session_id, s.resumable, s.why) for s in idle.stranded] == [("2027-01-14_01", True, "")]
+
+    frame = _step(second, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    assert frame.session_id == "2027-01-14_01" and frame.phase == "between_runs"
+    assert frame.resumed_at == WALL
+    assert second.stranded == []
+    _step(second, _start())
+    _run_to_its_end(second)
+    runs = _runs(folders[2])
+    assert [row["run"] for row in runs if row["event"] == "start"] == [0, 1]
+
+
+@pytest.mark.parametrize("today", [40.0, None])
+def test_a_resumed_sessions_day_takes_the_earlier_fluid_from_its_record(tmp_path, today):
+    """The day's earlier fluid is `config.json`'s `already_delivered_today`, as given at
+    open: never read afresh, and never `0.0` for a day nobody measured -- `None` stays
+    `None`, and the day's total with it (spec §4)."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01", delivered_today=today, run=True)
+    service = _made(folders)
+
+    frame = _step(service, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    assert service.session.welfare.already_today == today
+    assert frame.fluid_session_ml > 0, "the run before the crash gave fluid"
+    if today is None:
+        assert (frame.fluid_today_ml, frame.shortfall_ml) == (None, None)
+    else:
+        assert frame.fluid_today_ml == pytest.approx(today + frame.fluid_session_ml)
+
+
+def test_one_stranded_session_is_resumed_while_another_stays_stranded(tmp_path):
+    """Plan ruling 7 (spec §5): each stranded session is resumed or ended on its own, so
+    another still stranded is no bar to a resume -- and is still a bar to a new open.
+    A resumed session starts the idle feed and the last summary afresh, as an open does."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01", "2027-01-14_02")
+    service = _made(folders)
+    assert [s.session_id for s in _step(service).stranded] == ["2027-01-14_01", "2027-01-14_02"]
+    _step(service, _open(session_id="2027-01-14_03"))
+    assert service.refusals != []
+
+    frame = _step(service, ResumeSession(by=BY, session_id="2027-01-14_02"))
+
+    assert (frame.session_id, frame.resumed_at) == ("2027-01-14_02", WALL)
+    assert [s.session_id for s in service.stranded] == ["2027-01-14_01"]
+    assert service.refusals == [], "the idle feed starts afresh with the resumed session"
+    idle = _step(service, _end())
+    assert isinstance(idle, Idle) and [s.session_id for s in idle.stranded] == ["2027-01-14_01"]
+    assert idle.closed is not None and idle.closed.session_id == "2027-01-14_02"
+    refused = _step(service, _open(session_id="2027-01-14_03"))
+    assert isinstance(refused, Idle)
+    assert "no session opens while an animal's return is not recorded" in _refused(refused)[-1]
+    assert not (folders[2] / "2027-01-14_03").exists()
+
+    frame = _step(service, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    assert frame.session_id == "2027-01-14_01" and service.stranded == []
+    assert (service.refusals, service.closed) == ([], None)
+
+
+def test_an_open_refused_for_a_stranded_animal_says_it_can_be_resumed_or_ended(tmp_path):
+    folders = _folders(tmp_path)
+    _strand(folders[2])
+
+    refused = _step(_made(folders), _open())
+
+    assert _refused(refused)[-1].endswith(
+        ". Resume it, or record its return with End session, naming its session"
+    )
+
+
+def test_a_resume_while_a_session_is_open_is_refused_and_writes_nothing(tmp_path):
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01", "2027-01-14_02")
+    service = _made(folders)
+    _step(service, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    why = _resume_refused(service, "2027-01-14_02")
+
+    assert why == (
+        "a session is open (2027-01-14_01); a stranded session is resumed only while none is"
+    )
+    assert service.session.spec.session_id == "2027-01-14_01"
+
+
+def test_a_stranded_session_whose_config_is_torn_cannot_be_resumed_and_says_so(tmp_path):
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01")
+    config = folders[2] / "2027-01-14_01" / "xcon" / "config.json"
+    config.write_text(config.read_text()[:40])
+    service = _made(folders)
+
+    (found,) = _step(service).stranded
+    assert found.resumable is False and "config.json" in found.why
+
+    why = _resume_refused(service, "2027-01-14_01")
+
+    assert "config.json" in why and why.endswith("end it instead")
+
+
+def test_a_stranded_session_with_no_config_cannot_be_resumed_and_says_so(tmp_path):
+    """A record from before the service kept one: `_strand` writes only the departure."""
+    folders = _folders(tmp_path)
+    _strand(folders[2])
+    service = _made(folders)
+
+    (found,) = _step(service).stranded
+    assert (found.left_at, found.resumable) == (WALL - 3600, False) and "config.json" in found.why
+
+    assert "config.json" in _resume_refused(service, "2027-01-13_01")
+
+
+def test_a_stranded_session_recorded_before_xc026_cannot_be_resumed_and_says_why(tmp_path):
+    """Spec §4: its fluid so far cannot be known, and is never taken as zero."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01", run=True)
+    path = folders[2] / "2027-01-14_01" / "xcon" / "config.json"
+    config = json.loads(path.read_text())
+    del config["already_delivered_today"]
+    path.write_text(json.dumps(config))
+    service = _made(folders)
+
+    (found,) = _step(service).stranded
+    assert (found.resumable, found.why) == (False, resume.PREDATES)
+
+    assert _resume_refused(service, "2027-01-14_01") == resume.PREDATES
+
+
+def test_a_stranded_session_past_its_out_of_cage_limit_is_refused_with_welfares_sentence(tmp_path):
+    """Plan ruling 6: asked of `must_stop` on the recorded departure, before anything is
+    written; the page then asks for the return."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01")
+    wall = _Wall()
+    service = _made(folders, wall=wall)
+    (found,) = service.stranded
+    wall.at = found.left_at + 28_800 + 1
+
+    why = _resume_refused(service, "2027-01-14_01")
+
+    assert why == (
+        "out_of_cage: subject 'REFERENCE' has been out of its cage 28801 s against a "
+        "ceiling of 28800; record its return with End session instead"
+    )
+
+
+@pytest.mark.parametrize(
+    ("was", "now", "named"),
+    [
+        ("maximum=10.0", "maximum=9.0", "reward_correct"),
+        ('Floor(value=20.0, unit="mL")', 'Floor(value=25.0, unit="mL")', "daily_fluid"),
+        (
+            '"out_of_cage": Ceiling(',
+            '"reward_error": Ceiling(value=0.0, maximum=1.0, unit="mL"),\n        "out_of_cage": Ceiling(',
+            "reward_error",
+        ),
+    ],
+)
+def test_a_stranded_session_whose_animals_bounds_changed_is_refused_naming_what(
+    tmp_path, was, now, named
+):
+    """Plan ruling 3: what `config.json` recorded at open and the bounds loaded now must
+    be equal -- a changed ceiling, a changed floor, or an entry added -- since a session's
+    limits do not change across a restart."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01")
+    path = folders[0] / "REFERENCE" / "bounds.py"
+    assert path.read_text().count(was) == 1
+    path.write_text(path.read_text().replace(was, now))
+    # `cli._load_bounds` loads through Python's bytecode cache, which a same-size edit in
+    # the same second as the open's load does not invalidate (`20.0` to `25.0`).
+    shutil.rmtree(path.parent / "__pycache__", ignore_errors=True)
+    service = _made(folders)
+
+    why = _resume_refused(service, "2027-01-14_01")
+
+    assert why == (
+        f"'REFERENCE''s bounds changed since session 2027-01-14_01 opened ({named}); a "
+        f"session's limits do not change across a restart, so end it instead"
+    )
+
+
+def test_a_resume_naming_no_stranded_session_is_refused_naming_it(tmp_path):
+    service = _service(tmp_path)
+
+    frame = _step(service, ResumeSession(by=BY, session_id="2027-01-14_09"))
+
+    assert _refused(frame) == ["no stranded session '2027-01-14_09' can be resumed"]
+    assert list(service.root.iterdir()) == []
+
+
+def test_a_stranded_session_whose_welfare_record_cannot_be_read_is_refused_saying_so(tmp_path):
+    folders = _folders(tmp_path)
+    directory = _strand(folders[2])
+    with (directory / "welfare_notes.jsonl").open("a") as handle:
+        handle.write('{"kind": "retur')
+    service = _made(folders)
+
+    why = _resume_refused(service, "2027-01-13_01")
+
+    assert why == (
+        "no stranded session '2027-01-13_01' can be resumed: its welfare record cannot be read"
+    )
+
+
+@pytest.mark.parametrize("where", ["relative", "absolute"])
+def test_a_resumable_record_whose_animal_is_no_folder_name_runs_nothing_outside_subjects(
+    tmp_path, where
+):
+    """`_close_stranded`'s rule (fix round 1 of Task 7, Critical), for a resume: the
+    record's animal becomes a path, and the bounded config there is code. `wlx run
+    --subject` takes any text, so a record may name `../outside` or an absolute path;
+    nothing outside `--subjects` runs for it, and nothing is written."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = tmp_path / "ran.txt"
+    (outside / "bounds.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n"
+    )
+    subject = "../outside" if where == "relative" else str(outside)
+    directory = folders[2] / "2027-01-14_01" / "xcon"
+    config = json.loads((directory / "config.json").read_text())
+    (directory / "config.json").write_text(json.dumps({**config, "subject": subject}))
+    rows = [{**row, "subject": subject} for row in _rows(folders[2])]
+    (directory / "welfare_notes.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    service = _made(folders)
+    assert [(s.subject, s.resumable) for s in service.stranded] == [(subject, True)]
+
+    why = _resume_refused(service, "2027-01-14_01")
+
+    assert not marker.exists(), "a file outside --subjects ran"
+    assert "one folder name" in why and repr(subject) in why
 
 
 # --- wlx taskd -----------------------------------------------------------------

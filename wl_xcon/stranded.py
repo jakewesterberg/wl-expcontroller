@@ -11,7 +11,8 @@ its session open -- each leaves exactly that. **A line that is not a row** -- a 
 mid-write -- **fails closed**, and so does a record this host cannot read as a file: the
 session is stranded with its departure unknown, and
 its return cannot be taken until the file is repaired by hand, since a departure nobody
-can read is one no return can be checked against.
+can read is one no return can be checked against. **And whether it can be resumed**
+(XC-026): `resume.read` is asked, and its refusal kept as `why`.
 
 **Closed under `welfare`'s rules.** `restore` builds a `Welfare` holding only the
 recorded departure (`Welfare.restore_departure`) and wraps it in a `Restored`, which
@@ -28,6 +29,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from wl_xcon import resume as _resume
 from wl_xcon.bounds import Bounds, Exceeded
 from wl_xcon.link import Stranded
 from wl_xcon.record import WELFARE_NOTES, XCON_DIRNAME, welfare_note
@@ -62,19 +64,21 @@ def find(root: Path) -> list[Stranded]:
                 elif row["kind"] == "returned":
                     departure = None
             if departure is not None:
-                found.append(
-                    Stranded(
-                        session_id=session_id,
-                        subject=str(departure["subject"]),
-                        left_at=float(departure["now"]),
-                    )
-                )
+                left_at = float(departure["now"])
+                try:
+                    _resume.read(notes.parent, left_at)
+                    resumable, why = True, ""
+                except _resume.Unresumable as unresumable:
+                    resumable, why = False, str(unresumable)
+                found.append(Stranded(session_id=session_id, subject=str(departure["subject"]),
+                                      left_at=left_at, resumable=resumable, why=why))
         except (ValueError, KeyError, TypeError, OSError):
             # `json.JSONDecodeError` is a `ValueError`; a row that is not an object, or
             # has no kind, is the others; a record this host cannot read as a file -- a
             # folder in its place, no permission -- is an `OSError` (fix round 1 of Task
             # 7: it crashed the service at start). Fail closed.
-            found.append(Stranded(session_id=session_id, subject="", left_at=None))
+            found.append(Stranded(session_id=session_id, subject="", left_at=None,
+                                  resumable=False, why="its welfare record cannot be read"))
     return found
 
 

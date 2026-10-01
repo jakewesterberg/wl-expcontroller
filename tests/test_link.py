@@ -47,6 +47,7 @@ from wl_xcon.link import (
     Refused,
     RemoteBindRefused,
     Resume,
+    ResumeSession,
     SCHEMA,
     ScheduleStop,
     ScheduledStop,
@@ -64,6 +65,7 @@ from wl_xcon.link import (
     ZmqConsole,
     ZmqLink,
     ZmqMarks,
+    _command_from,
     _decode_command,
     _encode_command,
     decode,
@@ -194,6 +196,8 @@ def _session_with(
         # A stand-in for `Session.performance` (schema 12, session-levels spec §5): a
         # session with nothing counted yet, its levels read as given.
         performance=Performance(Counts({}, 0), None, None, None, None, None, None, None, None),
+        # `Session.resumed_at` (schema 13, XC-026): a session opened in this process.
+        resumed_at=None,
     )
 
 
@@ -1962,7 +1966,7 @@ def test_schema_8_reads_the_pause_the_schedule_and_the_feed_from_the_session():
 
     telemetry = Telemetry.of(session, Tally(), _scheduler(), index=40)
 
-    assert telemetry.schema == SCHEMA == 12
+    assert telemetry.schema == SCHEMA == 13
     assert telemetry.paused_at == 1_700_000_100.0
     assert telemetry.scheduled_stop == ScheduledStop(
         kind="trials", target=48.0, by="jake (box, unverified)", said="after trial 48"
@@ -2025,15 +2029,15 @@ def test_a_frame_carries_the_setup_the_session_runs_in():
     assert decode(encode(stereo)).view == "stereoscope"
     assert decode(encode(stereo)).half_ipd_cm == 1.6
     assert decode(encode(_telemetry())).half_ipd_cm is None
-    assert SCHEMA == 12
+    assert SCHEMA == 13
 
 
-def test_a_schema_7_frame_is_refused_by_a_schema_12_reader():
-    """§3's schema rule: a reader built for 12 refuses 7 by name, before touching a
+def test_a_schema_7_frame_is_refused_by_a_schema_13_reader():
+    """§3's schema rule: a reader built for 13 refuses 7 by name, before touching a
     field (`SchemaMismatch`), and says which it reads."""
     old = encode(replace(_telemetry(), schema=7))
 
-    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 12"):
+    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 13"):
         decode(old)
 
 
@@ -2127,7 +2131,7 @@ def test_schema_10_survives_the_wire_with_its_absences_intact():
         assert decode(encode(original)) == original
     assert type(decode(encode(populated)).preflight.items[0]) is PreflightItem
     assert type(decode(encode(populated)).question) is Question
-    assert SCHEMA == 12
+    assert SCHEMA == 13
 
 
 def test_a_session_before_its_first_run_has_no_block_task_or_counts():
@@ -2183,7 +2187,7 @@ def test_an_idle_frame_carries_the_last_closed_sessions_summary_across_the_wire(
     assert type(restored.closed) is Telemetry and restored.closed.phase == "closed"
     assert (restored.closed.fluid_today_ml, restored.closed.shortfall_ml) == (None, None)
     assert decode(encode(replace(idle, closed=None))).closed is None
-    assert SCHEMA == 12
+    assert SCHEMA == 13
 
 
 def test_idle_of_carries_what_it_is_given_as_the_closed_summary():
@@ -2200,12 +2204,12 @@ def test_idle_of_carries_what_it_is_given_as_the_closed_summary():
 def test_an_idle_frame_of_another_schema_is_refused_by_name():
     old = encode(
         Idle(
-            schema=11, phase="idle", wall_at=1.0, stranded=(), question=None,
+            schema=12, phase="idle", wall_at=1.0, stranded=(), question=None,
             refusals=(), refusals_dropped=0, animals=(), offered_tasks=(),
         )
     )
 
-    with pytest.raises(SchemaMismatch, match="carried schema 11 and this console reads schema 12"):
+    with pytest.raises(SchemaMismatch, match="carried schema 12 and this console reads schema 13"):
         decode(old)
 
 
@@ -2236,6 +2240,7 @@ SERVICE_COMMANDS = (
         acknowledged=("pump calibration", "eye tracker"),
     ),
     EndSession(by="jake", session_id=None, returned="now", confirm=True),
+    ResumeSession(by="jake", session_id="2027-01-13_01"),
 )
 
 
@@ -2270,6 +2275,8 @@ def test_the_services_commands_cross_a_real_socket_intact(zmq_cleanup, command):
         ({"kind": "check", "task": ""}, "task"),
         ({"kind": "end", "confirm": "yes"}, "confirm"),
         ({"kind": "end", "returned": 1_700_000_000}, "returned"),
+        ({"kind": "resume_session", "session_id": ""}, "session_id"),
+        ({"kind": "resume_session", "session_id": 7}, "session_id"),
     ],
 )
 def test_a_service_command_with_a_malformed_field_is_refused_before_it_exists(fields, said):
@@ -2284,6 +2291,7 @@ def test_a_service_command_with_a_malformed_field_is_refused_before_it_exists(fi
         "check": {"by": "jake", "task": "t.py", "values": {}},
         "start": {"by": "jake", "task": "t.py", "values": {}, "trials": 3, "acknowledged": []},
         "end": {"by": "jake", "session_id": None, "returned": None, "confirm": False},
+        "resume_session": {"by": "jake", "session_id": "2027-01-13_01"},
     }[fields["kind"]]
 
     with pytest.raises(CommandRefused) as refused:
@@ -2330,7 +2338,7 @@ def test_the_strips_levels_and_the_return_survive_the_wire():
     assert decode(encode(original)) == original
     # 12 added `performance` (the strip's session, task, run and block counts) and
     # `returned_at` (the recorded return).
-    assert SCHEMA == 12
+    assert SCHEMA == 13
 
 
 def test_a_frame_between_runs_carries_the_session_alone():
@@ -2362,3 +2370,76 @@ def test_the_frame_reads_the_return_from_welfare():
     session.welfare.returned_to_cage(at=600.0, wall_now=600.0)
 
     assert Telemetry.of(session, Tally(), _scheduler(), index=0).returned_at == 600.0
+
+
+# ---------------------------------------------------------------------------
+# Schema 13 (XC-026 spec §8a items 4-5): which stranded sessions can be resumed, the
+# instant one was, and the command that resumes one
+# ---------------------------------------------------------------------------
+
+
+def test_a_stranded_sessions_resumability_and_why_survive_the_wire():
+    """Both fields, written and read by name: a resumable one, and one that is not with
+    the sentence the page shows for it."""
+    idle = Idle(
+        schema=SCHEMA, phase="idle", wall_at=1_700_000_000.0,
+        stranded=(
+            Stranded("2027-01-13_01", "B", 1_699_990_000.0, resumable=True, why=""),
+            Stranded("2027-01-13_02", "B", 1_699_991_000.0, resumable=False, why="its record was written before"),
+            Stranded("2027-01-13_03", "", None, resumable=False, why="its welfare record cannot be read"),
+        ),
+        question=None, refusals=(), refusals_dropped=0, animals=("B",), offered_tasks=(),
+    )
+    import msgpack
+
+    packed = msgpack.unpackb(encode(idle), raw=False)["stranded"]
+
+    assert [(s["resumable"], s["why"]) for s in packed] == [
+        (True, ""), (False, "its record was written before"),
+        (False, "its welfare record cannot be read"),
+    ]
+    assert decode(encode(idle)) == idle
+    assert Stranded("x", "B", 1.0) == Stranded("x", "B", 1.0, resumable=False, why="")
+
+
+def test_the_instant_a_session_was_resumed_survives_the_wire_and_none_stays_none():
+    resumed = replace(_telemetry(), resumed_at=1_700_000_050.0)
+
+    assert decode(encode(resumed)).resumed_at == 1_700_000_050.0
+    assert decode(encode(_telemetry())).resumed_at is None
+    # 13 added `Stranded.resumable` and `why`, and `Telemetry.resumed_at`.
+    assert SCHEMA == 13
+
+
+def test_the_frame_reads_the_resume_from_the_session():
+    """`Session.resumed_at`, read as given: `None` for a session opened in this process,
+    the resume's instant for one resumed."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    assert Telemetry.of(session, Tally(), _scheduler(), index=0).resumed_at is None
+
+    session.resumed_at = 1_700_000_050.0
+
+    assert Telemetry.of(session, Tally(), _scheduler(), index=0).resumed_at == 1_700_000_050.0
+
+
+def test_a_schema_12_frame_is_refused_by_name():
+    with pytest.raises(SchemaMismatch, match="carried schema 12 and this console reads schema 13"):
+        decode(encode(replace(_telemetry(), schema=12)))
+
+
+def test_a_resume_session_command_names_its_session_or_is_refused():
+    """XC-026 spec §8a item 5: kind `resume_session`, since `resume` is the pause's. A
+    resume naming no session is refused before a command exists, naming the field."""
+    assert _command_from({"kind": "resume_session", "by": "jake", "session_id": "2027-01-13_01"}) == (
+        ResumeSession(by="jake", session_id="2027-01-13_01")
+    )
+    assert ResumeSession.KIND == "resume_session"
+
+    for missing in ({"kind": "resume_session", "by": "jake"},
+                    {"kind": "resume_session", "by": "jake", "session_id": None}):
+        with pytest.raises(CommandRefused) as refused:
+            _command_from(missing)
+        assert (refused.value.name, refused.value.by) == ("resume_session", "jake")
+        assert "session_id" in refused.value.why
+    with pytest.raises(CommandRefused, match="'resume_session' command must say who sent it"):
+        _command_from({"kind": "resume_session", "session_id": "2027-01-13_01"})

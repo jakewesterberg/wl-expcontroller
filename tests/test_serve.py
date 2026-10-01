@@ -4179,7 +4179,7 @@ def test_page_e2e_a_crash_strands_the_animal_and_its_return_is_recorded_from_its
     assert 'data-return="2027-01-14_01">end session…</button>' in stranded["banners"]
     assert re.search(r'data-cmd="new" disabled title="[^"]+">new session', stranded["setup"])
     (why,) = [r.why for r in refused.refusals if r.name == "open"]
-    assert "Record it with End session, naming its session" in why
+    assert "Resume it, or record its return with End session, naming its session" in why
     assert html.escape(why) in feed["rt-changes"]
     assert [row["kind"] for row in _record(folders[2], "welfare_notes.jsonl")] == [
         "departure", "session opened", "returned",

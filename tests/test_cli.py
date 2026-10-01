@@ -959,6 +959,7 @@ def _telemetry(**overrides) -> Telemetry:
             block_type="near",
         ),
         returned_at=None,
+        resumed_at=None,  # schema 13's, like `returned_at`'s `None`: opened here
     )
     return replace(base, **overrides) if overrides else base
 

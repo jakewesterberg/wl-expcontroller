@@ -6,10 +6,10 @@ is recorded, and then idle again for the next animal. **All of one animal's welf
 lives in one `taskd.Session`** (PI, 2026-09-29: "One always-on rig service"), which is
 the shape S9a §7 drew; nothing carries from one session to the next.
 
-Its commands are the link's -- `OpenSession`, `CheckRun`, `StartRun` and `EndSession`
-beside b2a's -- over the socket `wlx run --link` binds. **They are read once per
-housekeeping pass while no run is in progress, and at each trial boundary during one**,
-never per frame (the b3a-1 plan, decision 18). A run sees the link through `_Routed`:
+Its commands are the link's -- `OpenSession`, `CheckRun`, `StartRun`, `EndSession` and
+`ResumeSession` beside b2a's -- over the socket `wlx run --link` binds. **They are read
+once per housekeeping pass while no run is in progress, and at each trial boundary during
+one**, never per frame (the b3a-1 plan, decision 18). A run sees the link through `_Routed`:
 **an `EndSession` during a run stops it**, and the session ends once the run has
 returned; any other of the service's own commands during a run is refused, never kept
 for later. **Every run is checked before it starts** (`_start`): its pre-flight taken
@@ -21,7 +21,8 @@ runs with its animal still out, so the return can be taken.
 **Crash safety is a refusal, not a recovery** (spec §6.1). On start the service finds
 every session under `--root` with a departure and no return (`stranded.find`), and while
 one exists it opens no session, for that animal or any other, until an `EndSession`
-naming it records the return.
+naming it records the return -- **or a `ResumeSession` naming it resumes that same
+session from its record** (XC-026, `_resume`), which is not a new one.
 
 **A confirm or an amend is taken only as the answer to a question this service posed**
 (the b3a-1 review's Ruling 1, 2026-09-29; `_unasked`). The PI's rule for a far mark is a
@@ -66,14 +67,15 @@ from pathlib import Path
 from wl_xcon import link as _link
 from wl_xcon import marks as _marks
 from wl_xcon import preflight as _preflight
+from wl_xcon import resume as _resume_mod
 from wl_xcon import stranded as _stranded
-from wl_xcon.bounds import Exceeded
+from wl_xcon.bounds import Bounds, Exceeded
 from wl_xcon.cli import _load_allocation, _load_bounds, _load_rig, _load_subject_settings
 from wl_xcon.codes import Allocation
 from wl_xcon.dio import Simulated as SimulatedCard
 from wl_xcon.geometry import Rig
 from wl_xcon.record import XCON_DIRNAME
-from wl_xcon.taskd import RunSpec, Session, SessionSpec
+from wl_xcon.taskd import RunSpec, Session, SessionSpec, bounds_record
 from wl_xcon.welfare import Deployment, SessionClock
 from wl_xcon.welfare import Simulated as SimulatedPump
 
@@ -206,7 +208,9 @@ def _contained(names: tuple[str, ...], build: Callable[[], object]) -> tuple:
 
 
 #: The service's own commands: taken between runs, never handed to a run.
-_SERVICE_COMMANDS = (_link.OpenSession, _link.CheckRun, _link.StartRun, _link.EndSession)
+_SERVICE_COMMANDS = (
+    _link.OpenSession, _link.CheckRun, _link.StartRun, _link.EndSession, _link.ResumeSession,
+)
 
 
 class _Routed:
@@ -426,6 +430,14 @@ class Service:
             self._check(command)
         elif isinstance(command, _link.StartRun):
             self._start(command)
+        elif isinstance(command, _link.ResumeSession):
+            idle = self.session is None
+            self._resume(command)
+            if idle and self.session is not None:
+                # As for an open: the idle feed and the last summary were about before.
+                self.refusals.clear()
+                self.refusals_dropped = 0
+                self.closed = None
         elif self.session is not None:
             self.session.receive(command)
         elif isinstance(command, _link.ManualReward):
@@ -502,43 +514,74 @@ class Service:
                 f"session id {command.session_id!r} is already used under {self.root}; "
                 f"every session has its own"
             )
-        folder = self.subjects / command.animal
+        session, _bounds = self._build(
+            session_id=command.session_id, animal=command.animal,
+            deployment=command.deployment, view=command.view,
+            delivered_today=command.delivered_today,
+        )
+        return session
+
+    def _build(
+        self,
+        *,
+        session_id: str,
+        animal: str,
+        deployment: str,
+        view: str,
+        delivered_today: float | None,
+    ) -> tuple[Session, Bounds]:
+        """A session for `animal`, built from its files under `--subjects` and **not
+        opened**: nothing is written. Returned with the bounds it loaded, which a resume
+        compares with its record's (`_resume`). Raises `SystemExit`, `ValueError` or
+        `Exceeded` with the sentence a refusal says.
+
+        **The animal is held to `_folder_name` before any path is built** (XC-026): an
+        open has already checked it (`_session_for`), and a resume's comes from a record
+        -- `config.json`'s subject, which `wlx run --subject` takes as any text -- so a
+        `../outside` or an absolute path never makes a `bounds.py` outside `--subjects`
+        the code that runs, as `_close_stranded` refuses one."""
+        if not _folder_name(animal):
+            raise ValueError(
+                f"an animal is one folder name -- letters, digits, '_', '.' and '-', "
+                f"starting with a letter or digit -- and {animal!r} is not one"
+            )
+        folder = self.subjects / animal
         bounds_path = folder / "bounds.py"
         if not bounds_path.is_file():
-            raise ValueError(f"there is no animal {command.animal!r}: {bounds_path} does not exist")
+            raise ValueError(f"there is no animal {animal!r}: {bounds_path} does not exist")
         bounds = _load_bounds(bounds_path)
-        if bounds.subject != command.animal:
+        if bounds.subject != animal:
             raise ValueError(
                 f"{bounds_path} holds {bounds.subject!r}'s bounded config, and this folder "
-                f"is {command.animal!r}'s; ceilings belong to an animal"
+                f"is {animal!r}'s; ceilings belong to an animal"
             )
         settings_path = None
-        if command.view == "direct":
+        if view == "direct":
             geometry = self.rig.direct()
         else:
             settings_path = folder / "settings.py"
             if not settings_path.is_file():
                 raise ValueError(
-                    f"the stereoscope needs {command.animal!r}'s settings, and "
+                    f"the stereoscope needs {animal!r}'s settings, and "
                     f"{settings_path} does not exist"
                 )
             geometry = self.rig.stereoscope(
-                _load_subject_settings(settings_path, command.animal).half_ipd_cm
+                _load_subject_settings(settings_path, animal).half_ipd_cm
             )
-        return Session(
+        session = Session(
             SessionSpec(
                 task="",
                 allocation=self.allocation_path,
                 root=self.root,
-                session_id=command.session_id,
-                subject=command.animal,
+                session_id=session_id,
+                subject=animal,
                 trials=0,
                 frame_period=FRAME_PERIOD,
                 seed=0,
                 values={},
                 bounds=bounds,
-                already_delivered_today=command.delivered_today,
-                deployment=Deployment(command.deployment),
+                already_delivered_today=delivered_today,
+                deployment=Deployment(deployment),
                 geometry=geometry,
                 bounds_config=str(bounds_path),
                 rig_config=self.rig_path,
@@ -550,6 +593,7 @@ class Service:
             service=True,
             wall_clock=self.wall_clock,
         )
+        return session, bounds
 
     def _open(self, command: _link.OpenSession) -> None:
         """**Welfare-critical.** Open a session (P4d-2b spec §6.2): **none while one is
@@ -577,7 +621,7 @@ class Service:
                 "open",
                 command.by,
                 f"no session opens while an animal's return is not recorded: {names}. "
-                f"Record it with End session, naming its session",
+                f"Resume it, or record its return with End session, naming its session",
             )
             return
         # What a departure's question is posed for, beside its session and instant (fix
@@ -639,6 +683,66 @@ class Service:
             session.head_fixed(session.wall_now())
         session.offered_tasks = self._tasks()
         self.session = session
+
+    def _resume(self, command: _link.ResumeSession) -> None:
+        """**Welfare-critical** (pending the PI's ruling on the list). A stranded session
+        resumed (XC-026 spec §5): refused, saying why, while a session is open, for an id
+        not stranded, when its record cannot give what a resume needs, when its animal's
+        bounds changed since it opened, or when the animal is past its out-of-cage limit
+        on the recorded departure -- each **before anything is written** (plan ruling 6).
+        Otherwise built as `_open` builds one (`_build`), from its record (`resume.read`),
+        and resumed (`Session.resume`). Another session still stranded is no bar: each is
+        resumed or ended on its own (spec §5; plan ruling 7)."""
+        if self.session is not None:
+            self._refuse(command.KIND, command.by,
+                         f"a session is open ({self.session.spec.session_id}); a stranded "
+                         f"session is resumed only while none is")
+            return
+        found = next((s for s in self.stranded if s.session_id == command.session_id), None)
+        if found is None or found.left_at is None:
+            self._refuse(command.KIND, command.by,
+                         f"no stranded session {command.session_id!r} can be resumed"
+                         + ("" if found is None else f": {found.why}"))
+            return
+        directory = self.root / found.session_id / XCON_DIRNAME
+        try:
+            restoration = _resume_mod.read(directory, found.left_at)
+            session, bounds = self._build(
+                session_id=found.session_id, animal=restoration.subject,
+                deployment=restoration.deployment, view=restoration.view,
+                delivered_today=restoration.already_today,
+            )
+        except (_resume_mod.Unresumable, SystemExit, ValueError, TypeError, Exceeded) as refused:
+            self._refuse(command.KIND, command.by, _sentence(refused))
+            return
+        except Exception as broken:  # noqa: BLE001 -- the animal's files are code
+            self._refuse(command.KIND, command.by,
+                         f"the session could not be built: {type(broken).__name__}: {broken}")
+            return
+        now_bounds = bounds_record(bounds)
+        changed = sorted(
+            name
+            for kind in ("ceilings", "minima")
+            for name in set(restoration.bounds_at_open[kind]) | set(now_bounds[kind])
+            if restoration.bounds_at_open[kind].get(name) != now_bounds[kind].get(name)
+        )
+        if changed:
+            self._refuse(command.KIND, command.by,
+                         f"{restoration.subject!r}'s bounds changed since session "
+                         f"{found.session_id} opened ({', '.join(changed)}); a session's "
+                         f"limits do not change across a restart, so end it instead")
+            return
+        stop = _stranded.restore(found, bounds, directory, self.wall_now).welfare.must_stop(
+            self.wall_now()
+        )
+        if stop is not None:
+            self._refuse(command.KIND, command.by,
+                         f"{stop}; record its return with End session instead")
+            return
+        session.resume(restoration, by=command.by, how="wlx taskd")
+        session.offered_tasks = self._tasks()
+        self.session = session
+        self.stranded.remove(found)
 
     # --- runs -----------------------------------------------------------------------
 

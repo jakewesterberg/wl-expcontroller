@@ -5,7 +5,8 @@ implements.** This file holds the message (`Telemetry`, `Staged`, `Refused`), th
 idle frame `wlx taskd` publishes while no session is open (`Idle`, since schema 10;
 carrying the last closed session's summary since schema 11),
 the commands a console sends back (`SetParameter`, `Stop`, and since b3a the service's
-`OpenSession`, `CheckRun`, `StartRun` and `EndSession`; `Command`), the port a session
+`OpenSession`, `CheckRun`, `StartRun` and `EndSession`, and since XC-026 its
+`ResumeSession`; `Command`), the port a session
 publishes and drains through (`Link`, `Absent`, `Simulated`), its wire encoding
 (`encode`/`decode`, plus the command-side `_encode_command`/`_decode_command`), and
 the one live transport that carries all of it over a real socket (`ZmqLink`,
@@ -130,7 +131,12 @@ from wl_xcon.welfare import DAILY_FLUID, OUT_OF_CAGE
 #: run and block counts from `taskd.Session.performance`, and `returned_at`, the
 #: recorded return (`welfare.returned_wall_at`). `outcomes` and `trial_index` stay the
 #: run's, unchanged in meaning. A reader of 11 refuses 12 and 12 refuses 11, by name.
-SCHEMA = 12
+#:
+#: 13 (2026-10-01, XC-026): `Stranded.resumable` and `why`, whether a stranded session
+#: can be resumed and why not; `Telemetry.resumed_at`, the instant a session was resumed
+#: (`None` for one opened in this process). Nothing else changed meaning. A reader of 12
+#: refuses 13 and 13 refuses 12, by name.
+SCHEMA = 13
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -316,11 +322,15 @@ class Question:
 class Stranded:
     """A session found under `--root` with a departure and no return (P4d-2b spec §6.1):
     its id, its animal, and the departure's instant -- `None`, with an empty subject,
-    when its record has a line that is not a row and cannot be read."""
+    when its record has a line that is not a row and cannot be read. And whether a resume
+    can be offered and, when not, why (XC-026 §8a item 4): `why` is empty for one that
+    can, and otherwise the sentence the page shows."""
 
     session_id: str
     subject: str
     left_at: float | None
+    resumable: bool = False
+    why: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -609,6 +619,10 @@ class Telemetry:
     #: `welfare.returned_wall_at`: the recorded return, on the session's anchored clock,
     #: or `None` before it (spec §5). Read, as every welfare figure here is.
     returned_at: float | None
+    #: `session.resumed_at`: the instant a stranded session was resumed in this process
+    #: (schema 13, XC-026 §8a item 4), or `None` for one opened here -- for the console's
+    #: banner and the end-of-session line.
+    resumed_at: float | None
 
     @classmethod
     def of(cls, session, tally, scheduler, index: int) -> "Telemetry":
@@ -766,6 +780,8 @@ class Telemetry:
             # Session-levels spec §5: the session's own reading, and welfare's.
             performance=session.performance,
             returned_at=session.welfare.returned_wall_at,
+            # XC-026 (schema 13): the session's own.
+            resumed_at=session.resumed_at,
         )
 
 
@@ -868,7 +884,10 @@ def encode(telemetry: Telemetry | Idle) -> bytes:
                 "phase": telemetry.phase,
                 "wall_at": telemetry.wall_at,
                 "stranded": [
-                    {"session_id": s.session_id, "subject": s.subject, "left_at": s.left_at}
+                    {
+                        "session_id": s.session_id, "subject": s.subject, "left_at": s.left_at,
+                        "resumable": s.resumable, "why": s.why,
+                    }
                     for s in telemetry.stranded
                 ],
                 "question": _question_out(telemetry.question),
@@ -956,6 +975,7 @@ def _telemetry_out(telemetry: Telemetry) -> dict:
         "offered_tasks": list(telemetry.offered_tasks),
         "performance": _performance_out(telemetry.performance),
         "returned_at": telemetry.returned_at,
+        "resumed_at": telemetry.resumed_at,
     }
 
 
@@ -1059,7 +1079,13 @@ def _idle_from(data: dict) -> Idle:
         schema=data["schema"],
         phase=data["phase"],
         wall_at=data["wall_at"],
-        stranded=tuple(Stranded(**s) for s in data["stranded"]),
+        stranded=tuple(
+            Stranded(
+                session_id=s["session_id"], subject=s["subject"], left_at=s["left_at"],
+                resumable=s["resumable"], why=s["why"],
+            )
+            for s in data["stranded"]
+        ),
         question=_question_in(data["question"]),
         refusals=tuple(Refused(**r) for r in data["refusals"]),
         refusals_dropped=data["refusals_dropped"],
@@ -1129,6 +1155,7 @@ def _telemetry_from(data: dict) -> Telemetry:
         offered_tasks=tuple(data["offered_tasks"]),
         performance=_performance_in(data["performance"]),
         returned_at=data["returned_at"],
+        resumed_at=data["resumed_at"],
     )
 
 
@@ -1330,6 +1357,16 @@ class EndSession:
     confirm: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ResumeSession:
+    """Resume a stranded session (XC-026 spec §5), named by its id, from the page."""
+
+    KIND: ClassVar[str] = "resume_session"
+
+    by: str
+    session_id: str
+
+
 Command = (
     SetParameter
     | Stop
@@ -1343,6 +1380,7 @@ Command = (
     | CheckRun
     | StartRun
     | EndSession
+    | ResumeSession
 )
 
 #: The kinds of scheduled stop, in the order a person is offered them.
@@ -1410,8 +1448,9 @@ def check_schedule(kind: object, value: object) -> str | None:
 def _encode_command(command: Command) -> bytes:
     """A command to msgpack -- `SetParameter`, `Stop`, and since P4d-2b b2a `Pause`,
     `Resume`, `Mark`, `ScheduleStop`, `CancelScheduledStop` and `ManualReward`, and
-    since P4d-2b b3a `OpenSession`, `CheckRun`, `StartRun` and `EndSession` --
-    tagged by kind so `_decode_command` knows which dataclass to rebuild.
+    since P4d-2b b3a `OpenSession`, `CheckRun`, `StartRun` and `EndSession`, and since
+    XC-026 `ResumeSession` -- tagged by kind so `_decode_command` knows which dataclass to
+    rebuild.
 
     Private, unlike `encode`/`decode`: its callers are `ZmqConsole.send` and
     `ZmqCommands.deliver`, both in this same file, so this is an implementation detail
@@ -1468,6 +1507,8 @@ def _encode_command(command: Command) -> bytes:
             "kind": "end", "by": command.by, "session_id": command.session_id,
             "returned": command.returned, "confirm": command.confirm,
         }
+    elif isinstance(command, ResumeSession):
+        payload = {"kind": command.KIND, "by": command.by, "session_id": command.session_id}
     else:
         raise TypeError(f"no wire encoding for {command!r}")
     return msgpack.packb(payload, use_bin_type=True)
@@ -1765,6 +1806,9 @@ def _command_from(data: dict) -> Command:
             returned=_word(data, "returned", "end", by, optional=True),
             confirm=confirm,
         )
+    if kind == "resume_session":
+        by = _actor(data.get("by"), kind)
+        return ResumeSession(by=by, session_id=_word(data, "session_id", kind, by))
     raise ValueError(f"unknown command kind on the wire: {_quoted(kind)}")
 
 

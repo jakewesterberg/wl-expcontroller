@@ -1823,9 +1823,9 @@ def test_the_closed_summary_keeps_an_unknown_day_unknown():
 
 
 def test_a_stranded_animals_return_is_recorded_from_its_banner_naming_its_session():
-    """XC-176: `Service._open`'s refusal says "Record it with End session, naming its
-    session", and this is where. A record that cannot be read is repaired by hand first,
-    so it has no button."""
+    """XC-176: `Service._open`'s refusal says "Resume it, or record its return with End
+    session, naming its session", and this is where its return is recorded. A record
+    that cannot be read is repaired by hand first, so it has no button."""
     banners = fragments(
         idle(stranded=(Stranded("2027-01-13_01", "B", 1_700_000_000.0), Stranded("2027-01-13_02", "", None))),
         view(),
