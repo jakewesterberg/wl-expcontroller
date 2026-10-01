@@ -261,7 +261,7 @@ def _hours_minutes(seconds: float) -> str:
     Separate from `_clock` and deliberately wordier than it: `_clock`'s `9:15:00`
     is for a figure an operator glances at repeatedly on a running console, and this
     is for the one sentence that has to be *read* once, at session start, so that a
-    nine-hour typo registers as nine hours.
+    three-hour typo registers as three hours.
     """
     total = max(0, int(seconds))
     hours, remainder = divmod(total, 3600)

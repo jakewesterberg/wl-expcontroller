@@ -27,10 +27,11 @@ refusal messages an operator actually reads.
   `approaching_limit`, at `WARN_WITHIN_DEFAULT`, which he accepted the same day as a
   starting value.
 - **Either mark more than thirty minutes from now is confirmed by a person** (PI,
-  2026-09-20), or amended with a reason and a name. They are clock times, so a
-  nine-hour typo passes every refusal there is; `departure_needs_confirmation`,
-  `return_needs_confirmation` and `amend_mark` are the mitigation, the marks
-  themselves refuse an unconfirmed one, and `CONFIRM_MARK_WITHIN` is his figure.
+  2026-09-20), or amended with a reason and a name. They are clock times, so a typo
+  of a few hours -- `15:45` for `18:45` -- passes every refusal there is;
+  `departure_needs_confirmation`, `return_needs_confirmation` and `amend_mark` are
+  the mitigation, the marks themselves refuse an unconfirmed one, and
+  `CONFIRM_MARK_WITHIN` is his figure.
 - **Three deployment kinds, not two** (PI, 2026-09-20): head-fixation is a property
   of the deployment rather than of being on a rig. **S8 §5.2 item 4 has the table**
   of which marks each kind requires, refuses and event-codes; the one thing to carry
@@ -619,8 +620,9 @@ class Welfare:
 
         **PI, 2026-09-20**: more than thirty minutes from the current time and the
         experimenter confirms it, or amends it. It is the mitigation for the guard he
-        accepted losing when the marks became clock times -- `08:45` typed for `18:45`
-        is nine hours, and no refusal will ever catch it (S8 §5.2 item 4).
+        accepted losing when the marks became clock times -- `15:45` typed for `18:45`
+        is three hours early, inside the eight-hour ceiling, and no refusal will ever
+        catch it (S8 §5.2 item 4).
 
         A string and never an exception, like `must_stop` and `approaching_limit`: a
         far mark is not wrong, it is unverified, and a caller's job is to get a
