@@ -125,7 +125,12 @@ from wl_xcon.welfare import DAILY_FLUID, OUT_OF_CAGE
 #: spec §6.2 has the page show the closed session's summary. `None` before any session
 #: has closed and once the next opens. Nothing else changed meaning. A reader of 10
 #: refuses 11 and 11 refuses 10, by name (`SchemaMismatch`).
-SCHEMA = 11
+#:
+#: 12 (2026-10-01, session-levels spec §5): `performance`, the strip's session, task,
+#: run and block counts from `taskd.Session.performance`, and `returned_at`, the
+#: recorded return (`welfare.returned_wall_at`). `outcomes` and `trial_index` stay the
+#: run's, unchanged in meaning. A reader of 11 refuses 12 and 12 refuses 11, by name.
+SCHEMA = 12
 
 #: How many refusals a session keeps, per source, and therefore how many one
 #: `Telemetry` frame can carry.
@@ -382,6 +387,40 @@ class Idle:
 
 
 @dataclass(frozen=True, slots=True)
+class Counts:
+    """One level's outcome counts for the strip (session-levels spec §5): by outcome's
+    wire string, as `Telemetry.outcomes`, and the trials that reached no outcome."""
+
+    outcomes: dict
+    hangs: int
+
+
+@dataclass(frozen=True, slots=True)
+class Performance:
+    """The strip's four levels (session-levels spec §5 and §6), from
+    `taskd.Session.performance`: read from the session's `levels.Levels` and its run's
+    tally, never recomputed here.
+
+    `task`, `run` and `block` and their names are `None` while no run goes: between
+    runs, awaiting the return, closed. `block`, `block_in_session` and `block_type`
+    are also `None` in a run before its first trial and between its blocks: a block
+    opens with its first trial (the session-levels plan, ruling 1)."""
+
+    session: Counts
+    task: Counts | None
+    run: Counts | None
+    block: Counts | None
+    #: The run's task by name (`levels.task_name`), and how many runs of it so far.
+    task_name: str | None
+    runs_of_task: int | None
+    #: The run in progress's `run_in_session`.
+    run_in_session: int | None
+    #: The open block's `block_in_session` and its block type.
+    block_in_session: int | None
+    block_type: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class Telemetry:
     """What a session tells its consoles, once per trial boundary.
 
@@ -564,6 +603,12 @@ class Telemetry:
     question: Question | None
     #: `session.offered_tasks`: the task files `wlx taskd` offers; empty for `wlx run`.
     offered_tasks: tuple
+    #: `session.performance`: the strip's session, task, run and block counts
+    #: (session-levels spec §5).
+    performance: Performance
+    #: `welfare.returned_wall_at`: the recorded return, on the session's anchored clock,
+    #: or `None` before it (spec §5). Read, as every welfare figure here is.
+    returned_at: float | None
 
     @classmethod
     def of(cls, session, tally, scheduler, index: int) -> "Telemetry":
@@ -718,6 +763,9 @@ class Telemetry:
             preflight=session.preflight,
             question=session.question,
             offered_tasks=tuple(session.offered_tasks),
+            # Session-levels spec §5: the session's own reading, and welfare's.
+            performance=session.performance,
+            returned_at=session.welfare.returned_wall_at,
         )
 
 
@@ -755,6 +803,42 @@ def _question_in(data: dict | None) -> Question | None:
         at=data["at"],
         said=data["said"],
         answers=tuple(data["answers"]),
+    )
+
+
+def _counts_out(counts: Counts | None) -> dict | None:
+    return None if counts is None else {"outcomes": dict(counts.outcomes), "hangs": counts.hangs}
+
+
+def _counts_in(data: dict | None) -> Counts | None:
+    return None if data is None else Counts(outcomes=dict(data["outcomes"]), hangs=data["hangs"])
+
+
+def _performance_out(performance: Performance) -> dict:
+    return {
+        "session": _counts_out(performance.session),
+        "task": _counts_out(performance.task),
+        "run": _counts_out(performance.run),
+        "block": _counts_out(performance.block),
+        "task_name": performance.task_name,
+        "runs_of_task": performance.runs_of_task,
+        "run_in_session": performance.run_in_session,
+        "block_in_session": performance.block_in_session,
+        "block_type": performance.block_type,
+    }
+
+
+def _performance_in(data: dict) -> Performance:
+    return Performance(
+        session=_counts_in(data["session"]),
+        task=_counts_in(data["task"]),
+        run=_counts_in(data["run"]),
+        block=_counts_in(data["block"]),
+        task_name=data["task_name"],
+        runs_of_task=data["runs_of_task"],
+        run_in_session=data["run_in_session"],
+        block_in_session=data["block_in_session"],
+        block_type=data["block_type"],
     )
 
 
@@ -870,6 +954,8 @@ def _telemetry_out(telemetry: Telemetry) -> dict:
         "preflight": _preflight_out(telemetry.preflight),
         "question": _question_out(telemetry.question),
         "offered_tasks": list(telemetry.offered_tasks),
+        "performance": _performance_out(telemetry.performance),
+        "returned_at": telemetry.returned_at,
     }
 
 
@@ -1041,6 +1127,8 @@ def _telemetry_from(data: dict) -> Telemetry:
         ),
         question=_question_in(data["question"]),
         offered_tasks=tuple(data["offered_tasks"]),
+        performance=_performance_in(data["performance"]),
+        returned_at=data["returned_at"],
     )
 
 

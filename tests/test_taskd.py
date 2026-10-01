@@ -5022,3 +5022,53 @@ def test_a_sessions_blocks_and_trials_assemble_in_wl_preproc(tmp_path):
     for trial in assembly.trials:
         inside = [b for b in assembly.blocks if b.start_s <= trial.start_s <= b.end_s]
         assert len(inside) == 1, trial
+
+
+# --- the strip's four levels on the feed (session-levels spec §5) -------------------
+
+
+def test_the_performance_counts_the_session_the_task_the_run_and_the_block(tmp_path):
+    """Spec §5: read at a boundary during a run (from `observe`), then between runs."""
+    session = _service_session(tmp_path)
+    seen = []
+    session.observe = lambda condition, values, result: seen.append(session.performance)
+    session.run(_levels_run(blocks=_plan("X", "Y")))
+    session.run(_levels_run(blocks=_plan("X")))
+
+    during = seen[-1]  # the second run's last trial
+    assert during.task_name == "fixation_detection"
+    assert (during.runs_of_task, during.run_in_session, during.block_in_session) == (2, 2, 3)
+    assert during.block_type == "X"
+    assert sum(during.session.outcomes.values()) + during.session.hangs == 6
+    assert sum(during.task.outcomes.values()) + during.task.hangs == 6
+    assert sum(during.run.outcomes.values()) + during.run.hangs == 2
+    assert sum(during.block.outcomes.values()) + during.block.hangs == 2
+
+    between = session.performance
+    assert (between.task, between.run, between.block, between.task_name) == (None, None, None, None)
+    assert sum(between.session.outcomes.values()) + between.session.hangs == 6
+
+
+def test_the_frames_a_session_publishes_carry_its_performance(tmp_path):
+    """The path, not the piece: what `Telemetry.of` puts on the wire is the session's own
+    reading, at the boundary after a run's last trial and between runs. A second task's
+    run counts in the session and not in the first task's line."""
+    session = _service_session(tmp_path)
+    seen = []
+    session.observe = lambda condition, values, result: seen.append(session.performance)
+    session.run(_levels_run(blocks=_plan("X", "Y")))
+    session.run(_other_run(tmp_path, _plan("C", each=1)))
+
+    running = [f for f in session.link.published if f.phase == "running"]
+    assert running[-1].performance == seen[-1]
+    last = running[-1].performance
+    assert (last.task_name, last.runs_of_task, last.run_in_session) == ("one_state", 1, 2)
+    assert (last.block_in_session, last.block_type) == (3, "C")
+    assert sum(last.task.outcomes.values()) + last.task.hangs == 1
+    assert sum(last.session.outcomes.values()) + last.session.hangs == 5
+
+    session.publish()
+    between = session.link.published[-1]
+    assert between.phase == "between_runs"
+    assert between.performance == session.performance
+    assert between.performance.run is None

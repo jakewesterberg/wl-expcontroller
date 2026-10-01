@@ -133,6 +133,13 @@ def _next_occurrence(hhmm: str, wall: float) -> float:
     raise ValueError(f"no occurrence of {hhmm} after {wall} within a day")
 
 
+def _counts(tally) -> _link.Counts:
+    """A tally as the strip's counts, by outcome's wire string as `Telemetry.outcomes`."""
+    return _link.Counts(
+        outcomes={k.value: v for k, v in tally.outcomes.items()}, hangs=tally.hangs
+    )
+
+
 @dataclass
 class SessionSpec:
     """Everything a session needs before it starts.
@@ -924,6 +931,28 @@ class Session:
         if self._run is not None:
             return self._run.task
         return self.spec.task or None
+
+    @property
+    def performance(self) -> _link.Performance:
+        """The strip's four levels (session-levels spec §5): the session's, and while a
+        run goes its task's, its own and its open block's, read from `_levels` and the
+        run's tally."""
+        levels = self._levels
+        session = _counts(levels.session_tally)
+        if self.phase != "running" or levels.task is None:
+            return _link.Performance(session, None, None, None, None, None, None, None, None)
+        open_block = levels.block_tally is not None
+        return _link.Performance(
+            session=session,
+            task=_counts(levels.task_tallies[levels.task]),
+            run=_counts(self._tally),
+            block=_counts(levels.block_tally) if open_block else None,
+            task_name=levels.task,
+            runs_of_task=levels.task_runs[levels.task],
+            run_in_session=levels.runs,
+            block_in_session=levels.blocks if open_block else None,
+            block_type=self._scheduler.block.name if open_block else None,
+        )
 
     @property
     def staged(self) -> tuple:

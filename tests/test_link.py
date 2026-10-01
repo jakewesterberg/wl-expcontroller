@@ -30,6 +30,7 @@ from wl_xcon.link import (
     CheckRun,
     CommandRefused,
     Control,
+    Counts,
     EndSession,
     FrameError,
     Idle,
@@ -39,6 +40,7 @@ from wl_xcon.link import (
     OpenSession,
     ParamRow,
     Pause,
+    Performance,
     Preflight,
     PreflightItem,
     Question,
@@ -189,6 +191,9 @@ def _session_with(
         preflight=None,
         question=None,
         offered_tasks=(),
+        # A stand-in for `Session.performance` (schema 12, session-levels spec §5): a
+        # session with nothing counted yet, its levels read as given.
+        performance=Performance(Counts({}, 0), None, None, None, None, None, None, None, None),
     )
 
 
@@ -1957,7 +1962,7 @@ def test_schema_8_reads_the_pause_the_schedule_and_the_feed_from_the_session():
 
     telemetry = Telemetry.of(session, Tally(), _scheduler(), index=40)
 
-    assert telemetry.schema == SCHEMA == 11
+    assert telemetry.schema == SCHEMA == 12
     assert telemetry.paused_at == 1_700_000_100.0
     assert telemetry.scheduled_stop == ScheduledStop(
         kind="trials", target=48.0, by="jake (box, unverified)", said="after trial 48"
@@ -2020,15 +2025,15 @@ def test_a_frame_carries_the_setup_the_session_runs_in():
     assert decode(encode(stereo)).view == "stereoscope"
     assert decode(encode(stereo)).half_ipd_cm == 1.6
     assert decode(encode(_telemetry())).half_ipd_cm is None
-    assert SCHEMA == 11
+    assert SCHEMA == 12
 
 
-def test_a_schema_7_frame_is_refused_by_a_schema_11_reader():
-    """§3's schema rule: a reader built for 11 refuses 7 by name, before touching a
+def test_a_schema_7_frame_is_refused_by_a_schema_12_reader():
+    """§3's schema rule: a reader built for 12 refuses 7 by name, before touching a
     field (`SchemaMismatch`), and says which it reads."""
     old = encode(replace(_telemetry(), schema=7))
 
-    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 11"):
+    with pytest.raises(SchemaMismatch, match="carried schema 7 and this console reads schema 12"):
         decode(old)
 
 
@@ -2122,7 +2127,7 @@ def test_schema_10_survives_the_wire_with_its_absences_intact():
         assert decode(encode(original)) == original
     assert type(decode(encode(populated)).preflight.items[0]) is PreflightItem
     assert type(decode(encode(populated)).question) is Question
-    assert SCHEMA == 11
+    assert SCHEMA == 12
 
 
 def test_a_session_before_its_first_run_has_no_block_task_or_counts():
@@ -2178,7 +2183,7 @@ def test_an_idle_frame_carries_the_last_closed_sessions_summary_across_the_wire(
     assert type(restored.closed) is Telemetry and restored.closed.phase == "closed"
     assert (restored.closed.fluid_today_ml, restored.closed.shortfall_ml) == (None, None)
     assert decode(encode(replace(idle, closed=None))).closed is None
-    assert SCHEMA == 11
+    assert SCHEMA == 12
 
 
 def test_idle_of_carries_what_it_is_given_as_the_closed_summary():
@@ -2195,12 +2200,12 @@ def test_idle_of_carries_what_it_is_given_as_the_closed_summary():
 def test_an_idle_frame_of_another_schema_is_refused_by_name():
     old = encode(
         Idle(
-            schema=10, phase="idle", wall_at=1.0, stranded=(), question=None,
+            schema=11, phase="idle", wall_at=1.0, stranded=(), question=None,
             refusals=(), refusals_dropped=0, animals=(), offered_tasks=(),
         )
     )
 
-    with pytest.raises(SchemaMismatch, match="carried schema 10 and this console reads schema 11"):
+    with pytest.raises(SchemaMismatch, match="carried schema 11 and this console reads schema 12"):
         decode(old)
 
 
@@ -2299,3 +2304,61 @@ def test_an_end_command_whose_confirm_is_not_a_bool_is_never_coerced():
             _decode_command(_packed(**base, confirm=bad))
     assert _decode_command(_packed(**base)).confirm is False
     assert _decode_command(_packed(**base, confirm=True)).confirm is True
+
+
+# ---------------------------------------------------------------------------
+# Schema 12 (session-levels spec §5): the strip's four levels, and the return
+# ---------------------------------------------------------------------------
+
+
+def test_the_strips_levels_and_the_return_survive_the_wire():
+    original = replace(
+        _telemetry(),
+        performance=Performance(
+            session=Counts({"correct": 9, "no_fixation": 2}, 1),
+            task=Counts({"correct": 7}, 0),
+            run=Counts({"correct": 4}, 0),
+            block=Counts({"correct": 2}, 0),
+            task_name="fixation_detection",
+            runs_of_task=2,
+            run_in_session=3,
+            block_in_session=27,
+            block_type="near",
+        ),
+        returned_at=1_700_000_100.0,
+    )
+    assert decode(encode(original)) == original
+    # 12 added `performance` (the strip's session, task, run and block counts) and
+    # `returned_at` (the recorded return).
+    assert SCHEMA == 12
+
+
+def test_a_frame_between_runs_carries_the_session_alone():
+    performance = Performance(Counts({}, 0), None, None, None, None, None, None, None, None)
+    original = replace(_telemetry(), performance=performance, phase="between_runs")
+    assert decode(encode(original)).performance == performance
+
+
+def test_the_frame_reads_the_levels_from_the_session():
+    """Read, never recomputed (the `Telemetry` docstring's rule): the frame's levels are
+    `session.performance` as the session gives them."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    session.performance = Performance(
+        Counts({"correct": 3}, 1), Counts({"correct": 2}, 0), Counts({"correct": 1}, 0),
+        None, "fixation_detection", 1, 1, None, None,
+    )
+
+    assert Telemetry.of(session, Tally(), _scheduler(), index=0).performance == (
+        session.performance
+    )
+
+
+def test_the_frame_reads_the_return_from_welfare():
+    """`welfare.returned_wall_at`, read as every welfare figure on the frame is: `None`
+    before the return, the recorded instant after it (spec §5)."""
+    session = _session_with(delivered_ml=1.0, already_today=None)
+    assert Telemetry.of(session, Tally(), _scheduler(), index=0).returned_at is None
+
+    session.welfare.returned_to_cage(at=600.0, wall_now=600.0)
+
+    assert Telemetry.of(session, Tally(), _scheduler(), index=0).returned_at == 600.0

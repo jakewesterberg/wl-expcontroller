@@ -45,7 +45,9 @@ from wl_xcon.cli import (
 from wl_xcon.link import (
     SCHEMA,
     Control,
+    Counts,
     ParamRow,
+    Performance,
     Preflight,
     PreflightItem,
     Question,
@@ -943,6 +945,20 @@ def _telemetry(**overrides) -> Telemetry:
         preflight=None,  # schema 10's, like `paused_at`'s `None`
         question=None,
         offered_tasks=(),
+        # Schema 12's, as `_frames.frame()` carries them. `render` reads neither: the
+        # terminal console shows the run's `outcomes`, as before (session-levels spec §5).
+        performance=Performance(
+            session=Counts({"correct": 30, "no_fixation": 10}, 0),
+            task=Counts({"correct": 20, "no_fixation": 5}, 0),
+            run=Counts({"correct": 12, "no_fixation": 3}, 0),
+            block=Counts({"correct": 4, "no_fixation": 1}, 0),
+            task_name="fixation_detection",
+            runs_of_task=2,
+            run_in_session=3,
+            block_in_session=27,
+            block_type="near",
+        ),
+        returned_at=None,
     )
     return replace(base, **overrides) if overrides else base
 
