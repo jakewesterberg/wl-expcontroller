@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-203.**
+**Next free ID: XC-204.**
 
 ## Brainstorms queued for the PI
 
@@ -158,6 +158,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-195** The page's end-to-end helper `_Taskd`: `seen()` moves its cursor past the frame it returns (relying on refusals persisting in later frames), `__exit__`'s best-effort `except`, and a wrong session id on End or a stale answer are exercised at service level only. — 2026-09-30, [CHECKPOINT 2026-09-30, b3a-2](CHECKPOINT.md#what-moved-on-2026-09-30-p4d-2b-slice-b3a-2-sessions-from-the-page) — waits on: nothing
 - **XC-200** `run.run_trial`'s docstring says a well-formed task cannot hang because check 4 proves every wait bounded, but check 4 exempts a state declared `unbounded=True`: fix the sentence (`run.py` was left untouched on XC-155's branch). — 2026-09-30, [`run.py`](../wl_xcon/run.py), the XC-155 final review — waits on: nothing
 - **XC-202** `mutation_gate.py` prints `mutation gate: N module(s)` and `mutation gate passed: N module(s)` counting a shard's module parts, and its dry-run plan the same, so a shard holding parts of seven modules reads as seven modules swept whole. — 2026-10-01, [CHECKPOINT 2026-09-30, b3a-2, "Two builds followed"](CHECKPOINT.md#what-moved-on-2026-09-30-p4d-2b-slice-b3a-2-sessions-from-the-page) — waits on: nothing
+- **XC-203** `tests/test_serve.py`'s `_Session.frame` fails with "wlx run had ended" but names neither `wlx run`'s exit code nor the last frame the console held, so CI's one failure of `test_e2e_with_taskd_gone_the_page_is_told_not_delivered` (run `36789375559`, shard 8's baseline: ended before the console showed trial 1) cannot be told from an early exit, an early stop or a console that never subscribed; say them, then find it if it recurs. — 2026-10-01, [CHECKPOINT 2026-09-30, XC-155](CHECKPOINT.md#what-moved-on-2026-09-30-xc-155-every-trial-framed-and-numbered-in-the-recording) — waits on: nothing
 
 ## Needs the rig
 

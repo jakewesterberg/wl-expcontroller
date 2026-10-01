@@ -10,8 +10,8 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > ruled for dated documents; read `wl_expcontroller/taskd.py` there as `wl_xcon/taskd.py`.
 >
 > **This file describes `main`.** The newest entry, "What moved on 2026-09-30, XC-155", describes
-> every trial framed and numbered in the recording (reaching `main` by fast-forward once its CI
-> reads green). Below it, also dated 2026-09-30, P4d-2b slices b3a-2 (the page's forms for the
+> every trial framed and numbered in the recording (on `main` since 2026-10-01, by fast-forward
+> once its CI read green). Below it, also dated 2026-09-30, P4d-2b slices b3a-2 (the page's forms for the
 > session service, and the hand reward between runs) and b3a-1 (the session service `wlx taskd`),
 > each approved by the PI that day and on `main`. The entry before them, 2026-09-29, covers the
 > package rename, check 8 failing closed and direct view part 2. Run
@@ -339,12 +339,15 @@ figure was one low. In order:
 
 ## What moved on 2026-09-30, XC-155: every trial framed and numbered in the recording
 
-**Resume here (state at 2026-09-30, night):** XC-155 is built and reviewed on
-`xc155-trial-markers` and reaches `main` by fast-forward once its push run reads green. Its reply
-to wl-preproc is drafted (git-ignored, `.claude/worktrees/xc155/.superpowers/xc155/wl-preproc-reply.md`)
-and is sent once the branch is on `main`; XC-198 tracks the answer. It was rebased on 2026-10-01
-onto `main` at `d409077`, which carries the function-level CI sharding, so its push run is the
-first to split `taskd` across twelve machines.
+**Resume here (state at 2026-10-01):** XC-155 is built, reviewed and **on `main`**
+(`d409077..eeec053`, a fast-forward, after a rebase onto the function-shard CI) once its push run
+read green shard by shard (below). **Its reply went to wl-preproc on 2026-10-01** (to its session,
+`wl-preproc-38`; a copy is in the git-ignored `.superpowers/archive/xc155/ledger-archive/`):
+the field is `trial_number`, what the stream carries, what a cut escape and a faulted run cost
+there, and three questions (two sessions in one sync-box recording, a trial with no outcome, the
+`smallint` ceiling). **XC-198 holds its answer**; reading `trial_number` is wl-preproc's to build.
+Nothing is in flight. Next is the list under b3a-2's entry below: b2b once wl-works has deployed,
+the manual reward's other two slices, then XC-183 and XC-186.
 
 - **What it does.** Every trial is framed in the event stream: `TRIAL_START` (32), then the
   `TRIAL_NUMBER` escape (0x8001, four words, computed before anything is strobed), the trial's
@@ -373,6 +376,17 @@ first to split `taskd` across twelve machines.
   `N failed` (one survivor, L19, closed by its own test); `run.py` and the welfare-critical
   surface unchanged by diff and AST. Subagent-driven: four tasks, a review each, a whole-branch
   review with the real run, one fix wave, and the controller's one-sentence corrections.
+- **CI, read shard by shard before the fast-forward** (push run `36789375559`, the branch's first
+  push, so the gate diffed against `main`): pytest `2037 passed` on 3.11-3.13; seven modules
+  (`cli`, `codes`, `encode`, `record`, `service`, `simulate`, `taskd`), 157 functions in twelve
+  shards of 13-14, **157 caught, 0 survived**, every catch a real `N failed`, every baseline and
+  restore at `2037 passed`, the shards taking 29 to 49 minutes. Four catches were timeouts, each
+  verified before (`taskd._ends`, `taskd._publish`, `service.step` in b3a-2's entry,
+  `simulate.signal`'s known one). **Shard 8 first failed on its `taskd` baseline**, before any
+  mutation: `test_serve.py::test_e2e_with_taskd_gone_the_page_is_told_not_delivered` found `wlx
+  run` ended before the console showed trial 1, a flake XC-155 cannot cause (its per-trial work is
+  six list appends on the simulated card). It did not recur in 24 runs of `test_serve.py`'s 19 end
+  to end tests in three loaded lanes locally, and shard 8 re-run passed whole (XC-203).
 - **The backlog:** XC-155 closed; XC-197 (`CONDITION`, waits on XC-150), XC-198 (the questions to
   wl-preproc), XC-199 (the escape on an abort), XC-200 (`run.py`'s hang sentence), XC-201
   (`wlx run` accepts a reused session id); XC-173 waits on nothing now.
