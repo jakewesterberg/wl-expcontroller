@@ -9,8 +9,10 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > written with**, `wl-expcontroller` and `wl_expcontroller/…` paths included, as the PI
 > ruled for dated documents; read `wl_expcontroller/taskd.py` there as `wl_xcon/taskd.py`.
 >
-> **This file describes `main`.** The newest entry, "What moved on 2026-10-01, the port race CI
-> failed on", is a test-only fix (on `main` by fast-forward once its CI read green). Below it,
+> **This file describes `main`.** The newest entry, "What moved on 2026-10-01: session levels",
+> is the PI's vocabulary, ten position numbers on every trial line, block markers in the
+> recording, schema 12 and the two-cell strip (on `main` by fast-forward once its CI read green).
+> Below it, the eight-hour correction and the port race CI failed on, both 2026-10-01. Below them,
 > "What moved on 2026-09-30, XC-155", describes every trial framed and numbered in the recording (on `main` since 2026-10-01, by fast-forward
 > once its CI read green). Below it, also dated 2026-09-30, P4d-2b slices b3a-2 (the page's forms for the
 > session service, and the hand reward between runs) and b3a-1 (the session service `wlx taskd`),
@@ -337,6 +339,65 @@ figure was one low. In order:
   a path outside the workspace, and no credentials for it.
 
 ---
+
+## What moved on 2026-10-01: session levels
+
+**Resume here (state at 2026-10-01, evening):** session levels is built, reviewed and on `main`
+(branch `session-levels-design`, a fast-forward once its push run read green). Nothing is in
+flight. **Next:** XC-205 (wl-preproc's run markers, now on its `main`), then XC-026 (carrying
+numbers across a crash, the PI: before January), b2b once wl-works says it has deployed, the manual
+reward's other two slices (XC-157, XC-158), XC-183 and XC-186.
+
+- **The PI's rulings, 2026-10-01, asked in the UI.** Spec `docs/superpowers/specs/2026-10-01-session-levels-and-strip-design.md`,
+  plan `docs/superpowers/plans/2026-10-01-session-levels.md`, mockup
+  `docs/superpowers/mockups/2026-10-01-console-mockup-v13.html` (it declares UTF-8: the PI uses
+  Safari, which garbles "·" and "°" in a page that does not).
+  - **The vocabulary**: session ⊃ task ⊃ run ⊃ block ⊃ trial. A **run** is one start-to-stop of
+    one task; a **block** is one stretch of trials under one block type, inside a run, recurring
+    and numbered as it occurs. This superseded wl-works' glossary row of 2026-08-09 ("block = one
+    run of one task"), which had made wl-preproc ask for `BLOCK_START` per run that morning.
+  - **Ten position numbers on every trial line**, each from 1: trial in session (`trial_number`),
+    task, run and block; block in session, task and run; run in session and task; task in session
+    (by first appearance). Block numbers in a task continue across its runs.
+  - **The strip**: a fluid box (today / floor, then supplement, last reward, back to cage) beside
+    Correct / trials at session, task, this run and this block (the block's number in the
+    session). The ←cage box is gone, and the supplement is back on the strip.
+- **What was built** (subagent-driven, seven tasks, a review each, one fix round in Task 6, a
+  whole-branch review that drove real sessions through wl-preproc, one fix wave):
+  - `wl_xcon/levels.py` counts every level; `taskd.Session._levels` replaces XC-155's
+    `_trial_number`. `runs.jsonl`'s start rows place each run (`run_in_session`, `run_in_task`,
+    `task_in_session`).
+  - **The recording** marks each block: `BLOCK_START` (`0x8002`, block in session, task code 0
+    until wl-xtasks allocates) just before its first trial, `BLOCK_END` (3) when its type is done
+    or its run ends by design, then `RUN_END`; none on a fault or interrupt. A block opens with its
+    first trial, so a run stopped before any trial uses no number. XC-199 widened: a cut escape can
+    now take a block's opening too.
+  - **Schema 12**: `Telemetry.performance` (session, task, run and block counts) and
+    `returned_at`.
+  - **Every run number shown counts from 1**: the page's header, pill, banner, strip, *wl-works
+    sees* pane and changes feed, `/health`'s text and the terminal console. Until today the page
+    printed the 0-based index; the final review found wl-works reads no rig `/health` run text.
+  - The live page has no stalled-animal signal; the mockup's amber is XC-021's.
+- **Proof**: 2107 passed. Task 7's sweep over every new and changed function: all caught but
+  `web._per_correct`, which survived and was killed in the fix wave (2 failed); the fix wave's
+  re-sweep caught `_state_text` (8 failed) and `_after_service_run` (44 failed). The final review
+  drove a `wlx run`, a service session with recurring block plans, faulted runs, a stop mid-block
+  and a limit stop through wl-preproc's `decode_stream`, `assemble` and `read_rig_trials`: every
+  line's ten numbers matched the stream, every block id matched its lines, every trial lay in its
+  block, and every running frame's counts matched the record.
+- **Other repositories**:
+  - **wl-preproc** accepted the vocabulary and `BLOCK_START` per block, answered XC-198's
+    questions (one recording per animal; a trial with no outcome stores; MySQL refuses a
+    `trial_id` above 32,767, so those trials are left out and counted), and allocated its own run
+    markers: escape `0x8006` (run in session, task code) and marker 4, on its `main` at `b0f8b52`.
+    Sending them is XC-205. Its `nwb/conditions.py` now joins lines by `trial_number`.
+  - **wl-works** adopted the vocabulary (its spec `2026-10-01-block-run-vocabulary-design.md`,
+    `main` `3d0f4358`; `animal_session_block` → `animal_session_run`) and queued XC-150's design
+    (the day's plan, which brings real block plans) as its next brainstorm, before rig sign-in's
+    build (the PI).
+- **The backlog**: XC-198 and XC-203 closed; XC-204 (throttled-container HTTP timeouts), XC-205
+  (run markers) and XC-206 (a pause held between blocks is measured inside the earlier one)
+  filed; XC-026 due before January.
 
 ## What moved on 2026-10-01: the out-of-cage limit is eight hours
 
