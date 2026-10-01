@@ -364,5 +364,8 @@ def simulate(
                 # One run of one block (`levels.Position.lone`): the numbers a rig's
                 # session of this one run would strobe and write; a census strobes none.
                 position=Position.lone(index),
+                # A census commands nothing through `welfare`: no fluid, no reward.
+                fluid_ml=0.0,
+                last_reward_at=None,
             )
     return tally.census()

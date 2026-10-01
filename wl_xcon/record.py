@@ -108,6 +108,12 @@ CONTROLS = "controls.jsonl"
 #: missing `returned` row is for the out-of-cage interval.
 RUNS = "runs.jsonl"
 
+#: Each trial's position, written as the trial starts (XC-026 spec §8a item 1): at the
+#: boundary, after its words are computed and before its first strobe, never in a frame.
+#: A trial that dies mid-trial has strobed its number and has no `trials.jsonl` line,
+#: so a resume takes every number from here and never issues one twice in a recording.
+TRIAL_STARTS = "trial_starts.jsonl"
+
 
 def welfare_note(
     directory: Path,
@@ -187,6 +193,9 @@ class SessionRecord:
     #: `None` between runs. **The record itself lives for the session** (P4d-2b spec
     #: §6.3): one folder, one `config.json`, and one refusal cap across its runs.
     _trials: TextIO | None = None
+    #: The start-row file (`TRIAL_STARTS`), opened by a run's first trial and closed
+    #: with `_trials`.
+    _starts: TextIO | None = None
     #: Refusal rows written this session, and refusals seen past the cap since the last
     #: notice. `close` turns a non-zero drop count into one notice row -- see `refusal`.
     _refusals_written: int = 0
@@ -210,6 +219,8 @@ class SessionRecord:
         *,
         run: int,
         position: Position,
+        fluid_ml: float,
+        last_reward_at: float | None,
     ) -> None:
         """One trial's record, flushed before returning.
 
@@ -233,6 +244,11 @@ class SessionRecord:
         block, its block's in the session, task and run, its run's in the session and
         task, and its task's in the session. Required, as `run` is: a line written
         without them would join nothing, and nothing would say so.
+
+        **And the fluid it commanded, and its last reward's instant** (XC-026 spec §4,
+        §8a item 3): what a resume adds up, written with the line as the trial ends,
+        never in a frame. Required, as `position` is: a line without them leaves its
+        session's fluid unknowable after a crash.
         """
         if self._trials is None:
             self._trials = (self.directory / "trials.jsonl").open("a", encoding="utf-8")
@@ -247,12 +263,25 @@ class SessionRecord:
                     "params": params,
                     "block": block,
                     "condition": condition,
+                    "fluid_ml": fluid_ml,
+                    "last_reward_at": last_reward_at,
                 },
                 sort_keys=True,
             )
             + "\n"
         )
         self._trials.flush()
+
+    def trial_start(self, position: Position, *, run: int, task: str) -> None:
+        """One row of `TRIAL_STARTS`: the trial's position, its run (from 0) and its
+        task, flushed before returning, since the trial it names may never end."""
+        if self._starts is None:
+            self._starts = (self.directory / TRIAL_STARTS).open("a", encoding="utf-8")
+        self._starts.write(
+            json.dumps({"run": run, "task": task, **position.as_record()}, sort_keys=True)
+            + "\n"
+        )
+        self._starts.flush()
 
     def configure(self, fixed: dict) -> None:
         """What is fixed for the whole session (P4d-2b spec §6.3): the animal, the
@@ -444,6 +473,9 @@ class SessionRecord:
         if self._trials is not None:
             self._trials.close()
             self._trials = None
+        if self._starts is not None:
+            self._starts.close()
+            self._starts = None
 
     def __enter__(self) -> SessionRecord:
         return self

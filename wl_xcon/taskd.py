@@ -146,6 +146,15 @@ def _counts(tally) -> _link.Counts:
     )
 
 
+def bounds_record(bounds) -> dict:
+    """A bounded config as `config.json` records it (P4d-2b spec §6.3), and as a resume
+    compares it (XC-026 plan ruling 3): every ceiling and every minimum, in full."""
+    return {
+        "ceilings": {name: dataclasses.asdict(c) for name, c in bounds.ceilings.items()},
+        "minima": {name: dataclasses.asdict(f) for name, f in bounds.minima.items()},
+    }
+
+
 @dataclass
 class SessionSpec:
     """Everything a session needs before it starts.
@@ -618,16 +627,8 @@ class Session:
             "subject": self.spec.subject,
             "service": self.service,
             "deployment": self.spec.deployment.value,
-            "bounds": {
-                "ceilings": {
-                    name: dataclasses.asdict(ceiling)
-                    for name, ceiling in self.spec.bounds.ceilings.items()
-                },
-                "minima": {
-                    name: dataclasses.asdict(floor)
-                    for name, floor in self.spec.bounds.minima.items()
-                },
-            },
+            "bounds": bounds_record(self.spec.bounds),
+            "already_delivered_today": self.spec.already_delivered_today,
             "versions": {
                 "bounds": self.spec.bounds_config,
                 "rig": self.spec.rig_config,
@@ -2151,6 +2152,10 @@ class Session:
                     else ()
                 )
                 escape = words_for(TRIAL_NUMBER, position.trial_number)
+                # XC-026 §8a item 1: the start, once its words are framed and before
+                # any of them is strobed; and the fluid before it, for its line.
+                record.trial_start(position, run=self.run_index, task=run.task)
+                commanded_before = self.welfare.commanded
                 # **A block opens with its first trial** (session-levels spec §4; plan
                 # ruling 1): `BLOCK_START` with its number in the session and its task's
                 # code, unbroken, just before that trial's `TRIAL_START`. An abort between
@@ -2199,6 +2204,12 @@ class Session:
                     condition=condition.name,
                     run=self.run_index,
                     position=position,
+                    fluid_ml=self.welfare.commanded - commanded_before,
+                    last_reward_at=(
+                        self.welfare.last_delivery_wall_at
+                        if self.welfare.commanded > commanded_before
+                        else None
+                    ),
                 )
                 if self.observe is not None:
                     self.observe(condition, values, result)

@@ -3905,6 +3905,12 @@ def test_a_manual_reward_while_paused_is_one_correct_trial_reward_through_the_ta
     assert held[-1].last_reward_at == last
     assert [c.kind for c in held[-1].controls][-1] == "reward"
     assert len((session.directory / "trials.jsonl").read_text().splitlines()) == 6
+    # XC-026 §8a item 3: the lines' fluid and the hand's add up to what was commanded, so
+    # a reward given while paused is in no trial's line and a resume still counts it.
+    hand = [row["ml"] for row in _controls_rows(session) if row["kind"] == "reward"]
+    assert hand, "the paused reward was given"
+    total = sum(line["fluid_ml"] for line in _trial_rows(session)) + sum(hand)
+    assert total == pytest.approx(session.welfare.commanded)
 
 
 @pytest.mark.parametrize(
@@ -4923,6 +4929,69 @@ def _levels_run(blocks=None, trials=50, seed=2):
     return RunSpec(
         task="tasks/fixation_detection.py", trials=trials, seed=seed, values=dict(VALUES), blocks=blocks
     )
+
+
+def test_each_trial_line_carries_the_fluid_it_commanded_and_its_last_reward(tmp_path):
+    """XC-026 spec §4 item 1, §8a item 3: a line's fluid is what was commanded during the
+    trial; a rewarded trial has its last reward's instant, an unrewarded one null."""
+    session = _service_session(tmp_path)
+    session.run(_levels_run(blocks=_plan("X", each=4)))
+
+    lines = _trial_rows(session)
+    assert sum(line["fluid_ml"] for line in lines) == pytest.approx(session.welfare.commanded)
+    rewarded = [line for line in lines if line["fluid_ml"] > 0]
+    assert rewarded, "the plan's seed gives at least one rewarded trial"
+    assert all(line["last_reward_at"] is not None for line in rewarded)
+    assert all(line["last_reward_at"] is None for line in lines if line["fluid_ml"] == 0)
+
+
+def test_each_trial_start_is_written_before_the_trial_runs(tmp_path, monkeypatch):
+    """§8a item 1: a trial that faults has its start row and no line."""
+    from wl_xcon import taskd
+
+    real, calls = taskd.run_trial, []
+
+    def faults_second(*args, **kwargs):
+        calls.append(None)
+        if len(calls) == 2:
+            raise RuntimeError("the display went away")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "run_trial", faults_second)
+    session = _service_session(tmp_path)
+    run = _levels_run(blocks=_plan("X", each=3))
+    try:
+        session.run(run)
+    except RuntimeError:
+        pass  # a service session may raise or record the fault and return
+
+    path = session.directory / "trial_starts.jsonl"
+    starts = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [row["trial_number"] for row in starts] == [1, 2]
+    assert [line["trial_number"] for line in _trial_rows(session)] == [1]
+    assert (starts[0]["run"], starts[0]["task"]) == (0, run.task)
+
+
+def test_config_records_the_days_earlier_fluid_known_and_unknown(tmp_path):
+    """§4 item 3: null when unknown, never zero."""
+    def read(s):
+        return json.loads((s.directory / "config.json").read_text())
+
+    known = _service_session(tmp_path / "a", already_delivered_today=42.5)
+    unknown = _service_session(tmp_path / "b", already_delivered_today=None)
+    assert read(known)["already_delivered_today"] == 42.5
+    assert read(unknown)["already_delivered_today"] is None
+
+
+def test_bounds_record_is_what_config_json_holds_after_an_open(tmp_path):
+    """XC-026 plan ruling 3: one helper builds both sides of a resume's comparison."""
+    from wl_xcon.taskd import bounds_record
+
+    session = _service_session(tmp_path)
+    held = json.loads((session.directory / "config.json").read_text())["bounds"]
+    assert held == bounds_record(session.spec.bounds)
+    assert held["ceilings"]["reward_correct"] == {"value": 0.15, "maximum": 0.40, "unit": "mL"}
+    assert held["minima"] == {"daily_fluid": {"value": 250.0, "unit": "mL"}}
 
 
 def _other_run(tmp_path, blocks):

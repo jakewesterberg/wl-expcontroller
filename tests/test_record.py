@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from wl_xcon.levels import Position
-from wl_xcon.record import RUNS, REFUSAL_LOG_LIMIT, SessionRecord, welfare_note
+from wl_xcon.record import RUNS, REFUSAL_LOG_LIMIT, TRIAL_STARTS, SessionRecord, welfare_note
 
 
 def test_the_record_lands_where_wl_preproc_expects_it(tmp_path):
@@ -87,7 +87,9 @@ def test_a_trial_is_on_disk_before_the_session_ends(tmp_path):
     and a crash took all of it."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
     record.trial(
-        index=1, outcome="correct", params={"fix_hold": 0.3}, run=0, position=Position.lone(1)
+        index=1, outcome="correct", params={"fix_hold": 0.3}, run=0, position=Position.lone(1),
+        fluid_ml=0.0,
+        last_reward_at=None,
     )
 
     written = (
@@ -102,10 +104,14 @@ def test_every_trial_carries_its_whole_resolved_parameter_set(tmp_path):
     invisible at analysis time unless each trial says what it actually ran with."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
     record.trial(
-        index=1, outcome="correct", params={"fix_hold": 0.3}, run=0, position=Position.lone(1)
+        index=1, outcome="correct", params={"fix_hold": 0.3}, run=0, position=Position.lone(1),
+        fluid_ml=0.0,
+        last_reward_at=None,
     )
     record.trial(
-        index=2, outcome="correct", params={"fix_hold": 0.9}, run=0, position=Position.lone(2)
+        index=2, outcome="correct", params={"fix_hold": 0.9}, run=0, position=Position.lone(2),
+        fluid_ml=0.0,
+        last_reward_at=None,
     )
 
     rows = [
@@ -123,7 +129,7 @@ def test_the_subject_is_on_every_trial_not_only_in_a_header(tmp_path):
     keyed on the sync box's day-scoped id. Naming the subject per trial is what
     makes a day partition correctly whatever wl-sync decides about `_02`."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=1, outcome="correct", params={}, run=0, position=Position.lone(1))
+    record.trial(index=1, outcome="correct", params={}, run=0, position=Position.lone(1), fluid_ml=0.0, last_reward_at=None)
 
     row = json.loads(
         (tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl").read_text()
@@ -156,7 +162,7 @@ def test_the_trial_file_is_reopened_for_each_run_and_every_row_names_its_run(tmp
     **And every row carries its trial number beside its run and its index** (XC-155),
     written as given: `taskd` counts it across the session, and wl-preproc joins on it."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.trial(index=0, outcome="correct", params={}, run=0, position=Position.lone(0))
+    record.trial(index=0, outcome="correct", params={}, run=0, position=Position.lone(0), fluid_ml=0.0, last_reward_at=None)
     record.close()
     record.trial(
         index=0,
@@ -164,6 +170,8 @@ def test_the_trial_file_is_reopened_for_each_run_and_every_row_names_its_run(tmp
         params={},
         run=1,
         position=Position(2, 2, 1, 1, 2, 2, 1, 2, 2, 1),
+        fluid_ml=0.0,
+        last_reward_at=None,
     )
     record.close()
     record.close()  # a second close does nothing
@@ -186,7 +194,7 @@ def test_a_trial_row_is_never_written_without_its_position(tmp_path):
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
 
     with pytest.raises(TypeError, match="position"):
-        record.trial(index=0, outcome="correct", params={}, run=0)
+        record.trial(index=0, outcome="correct", params={}, run=0, fluid_ml=0.0, last_reward_at=None)
 
     assert not (record.directory / "trials.jsonl").exists()
 
@@ -198,7 +206,7 @@ def test_a_trial_row_carries_its_ten_position_numbers(tmp_path):
     `index` and `run` stay beside them, 0-based, as they were."""
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
     position = Position(512, 400, 58, 18, 27, 21, 3, 4, 2, 2)
-    record.trial(index=57, outcome="correct", params={}, run=3, position=position)
+    record.trial(index=57, outcome="correct", params={}, run=3, position=position, fluid_ml=0.0, last_reward_at=None)
 
     row = json.loads((record.directory / "trials.jsonl").read_text().splitlines()[-1])
     assert {k: row[k] for k in position.as_record()} == position.as_record()
@@ -263,7 +271,9 @@ def test_a_crash_leaves_every_trial_written_so_far(tmp_path):
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
     for index in range(5):
         record.trial(
-            index=index, outcome="correct", params={}, run=0, position=Position.lone(index)
+            index=index, outcome="correct", params={}, run=0, position=Position.lone(index),
+            fluid_ml=0.0,
+            last_reward_at=None,
         )
     del record  # no close(), no __exit__ -- the process died
 
@@ -336,7 +346,7 @@ def test_closing_releases_the_file_and_the_context_manager_does_it_for_you(tmp_p
     `__exit__` surviving -- three methods nothing exercised.
     """
     with SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A") as r:
-        r.trial(index=1, outcome="correct", params={}, run=0, position=Position.lone(1))
+        r.trial(index=1, outcome="correct", params={}, run=0, position=Position.lone(1), fluid_ml=0.0, last_reward_at=None)
         handle = r._trials
         assert not handle.closed
 
@@ -461,3 +471,27 @@ def test_a_welfare_note_is_not_written_into_either_file_beside_it(tmp_path):
 
     assert not (directory / "parameter_changes.jsonl").exists()
     assert not (directory / "refusals.jsonl").exists()
+
+
+def test_a_trial_start_is_one_line_of_the_position_a_run_and_a_task(tmp_path):
+    """XC-026 spec §8a item 1: the ten position fields plus `run` and `task`, nothing else."""
+    record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
+    position = Position.lone(4)
+    record.trial_start(position, run=2, task="tasks/x.py")
+
+    text = (tmp_path / "2027-01-14_01" / "xcon" / TRIAL_STARTS).read_text()
+    assert text.count("\n") == 1, "flushed, one line"
+    assert json.loads(text) == {"run": 2, "task": "tasks/x.py", **position.as_record()}
+    assert len(position.as_record()) == 10
+    record.close()
+
+
+def test_a_trial_line_carries_its_fluid_and_its_last_reward(tmp_path):
+    record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
+    record.trial(
+        index=1, outcome="correct", params={}, run=0, position=Position.lone(1),
+        fluid_ml=0.3, last_reward_at=1_700_000_001.5,
+    )
+
+    row = json.loads((tmp_path / "2027-01-14_01" / "xcon" / "trials.jsonl").read_text())
+    assert (row["fluid_ml"], row["last_reward_at"]) == (0.3, 1_700_000_001.5)
