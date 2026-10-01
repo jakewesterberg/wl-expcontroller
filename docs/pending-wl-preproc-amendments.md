@@ -4,6 +4,8 @@
 ([`superpowers/specs/2026-08-31-S2-event-vocabulary-design.md`](superpowers/specs/2026-08-31-S2-event-vocabulary-design.md)).
 Written here rather than applied there, following that repository's own convention for
 `wl-works`. Read against `wl_preproc/contracts/events.py` at commit `f7fb10a`.
+**And one from XC-026, opened 2026-10-01**: what a resumed session's stream holds, at the end
+of this file, before the note that is not an ask.
 
 **Two of the three are free, and the third is small.** Items 2 and 3 change no numbers and
 no wire behaviour — one records an ownership split in a docstring, the other corrects a
@@ -208,6 +210,52 @@ second-order rung for every session. Our calibration block now presents a **3×3
 computes conditioning online, refusing to complete on a degenerate constellation rather than
 discovering it in your pipeline. Recorded here because that table is doing work outside your
 repository now, and a change to it would reach us.
+
+---
+
+# OPEN — a resumed session's stream: 4137, numbers that go on, and the crashed run's end
+
+Opened 2026-10-01 by XC-026 ([its spec](superpowers/specs/2026-10-01-xc026-resume-design.md)
+§6, "Told to wl-preproc once built"). Read against wl-preproc's `main` at `6a67ae2`
+(2026-10-01), `wl_preproc/events/assemble.py` as it stood there.
+
+## What changed on our side
+
+`wlx taskd` now resumes a session whose process stopped before its animal's return: the same
+session, in the same sync-box recording.
+
+- **4137 `SESSION_RESUMED` marks a resume.** A provisional code in our `tasks/allocation.py`,
+  beside 4135 and 4136; wl-xtasks owns the final number, as for those two. It is strobed once
+  at each resume, when the allocation has it.
+- **Numbers continue across it.** The resumed session's next `RUN_START` escape (`0x8006`)
+  carries the next run number, and every block (`BLOCK_START`, `0x8002`) and trial
+  (`TRIAL_NUMBER`, `0x8001`) number carries on, so one recording never repeats a trial, block
+  or run number. That holds across a process crash. A power loss can lose rows a resume numbers
+  from, since they are flushed and not `fsync`ed; that is our XC-210.
+- **The crashed run stays unclosed**, as any run that faults does: no `RUN_END` marker (4) and
+  no 4136 for it, no `BLOCK_END` for its open block, and no `TRIAL_END` for the trial cut short.
+- **The head-fixed codes.** A resumed rig-fixed session strobes another `HEAD_FIXED` (4128) at
+  the resume, with no `HEAD_RELEASED` (4129) between, since a run needs the head marked fixed
+  and nothing recorded whether it was released across the crash. **Unless its runs were ended
+  before the crash** (End session, its return not yet given): its 4129 is already in the
+  stream, and it comes back waiting for its return (the PI, 2026-10-01: "Bring it back
+  waiting") with no run to start, so its resume strobes no 4128. So one recording holds one or
+  more 4128 and at most one 4129, after the last 4128: at the session's end, or before the 4137
+  of a resume that brings it back waiting. A session ended from a restart with no resume never
+  strobes 4129. Restraint bounds nothing on our side; the codes are its durable record.
+
+## One consequence in `assemble`, for you to decide on
+
+`assemble` closes a run left open only at the next `RUN_START` escape, at the last event before
+it, and closes that run's open block there too. After a crash and a resume, the last event
+before the resumed run's escape is that run's 4135, which follows the 4137 (and, rig-fixed, the
+resume's 4128). So **the crashed run's `last_s`, and its open block's, span the downtime**
+between the crash and the resume: minutes, or more, in which nothing ran.
+
+The tightest bound the stream gives for the crashed run is its last event before the 4137. We
+ask nothing yet: 4137's number is provisional until wl-xtasks allocates it, and reading it
+would tie `assemble` to a code `contracts/events.py` does not own. Recorded so that a run's
+length read from a resumed recording is not taken at face value meanwhile.
 
 ---
 

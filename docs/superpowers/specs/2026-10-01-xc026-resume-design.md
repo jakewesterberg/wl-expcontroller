@@ -52,7 +52,7 @@ supplement shown.)* It restores:
 | What | From |
 |---|---|
 | Subject, deployment, view and setup | `config.json`, with the animal's bounds and settings files loaded as at open. If the loaded bounds' ceilings or floor differ from what `config.json` recorded, it is refused: a session's limits do not change silently across a crash. |
-| The welfare-bounded values it last ran with (a reward size set during the session) | The last run's `runs.jsonl` start row (`bounded`), then later `parameter_changes.jsonl` rows. A value set in one run carries into the next (the PI's Question 1, b3a-1). |
+| The welfare-bounded values it last ran with (a reward size set during the session) | The last run's `runs.jsonl` start row (`bounded`), then later `parameter_changes.jsonl` rows. A value set in one run carries into the next (the PI's Question 1, b3a-1). The out-of-cage limit is in no start row, so its latest change, in any run, is carried (2026-10-01, the final review's I2). |
 | The departure (the out-of-cage clock) | `welfare_notes.jsonl` (`Welfare.restore_departure`, as `stranded.restore` uses it) |
 | The fluid so far, and the day's earlier fluid | The new rows in §4 |
 | Every position number: trial, block, run and task, and the session's and each task's tallies | `trials.jsonl` and `runs.jsonl` (`levels.Levels`, rebuilt) |
@@ -60,6 +60,13 @@ supplement shown.)* It restores:
 - **The interrupted run stays as it ended**: faulted, with no `RUN_END`. It has a start row and
   no end row, or an end row with `stop_kind` `fault`. The next run's number is the last run's
   plus one. Block and trial numbers carry on, so **one recording never repeats a number**.
+  *(2026-10-01, the final review's M3: across a process crash, not a power loss. The rows a
+  resume numbers from, `trial_starts.jsonl` and `runs.jsonl`'s start rows, are flushed to the
+  operating system before their strobes and never `fsync`ed, so a host that loses power can
+  lose rows whose numbers the recording already holds, and a resume would issue them again.
+  Whether to `fsync` them waits on a measurement, XC-210. And the next run's number is the
+  largest recorded plus one, as the start rows recorded it: the final review's I3 found a run
+  that failed before its start row, which a count of the rows would have repeated.)*
 - **Not restored: restraint.** Its marks are event codes on the recording, not rows. The PI ruled
   that head-fixation bounds nothing (2026-09-19, and "only cage to cage time matters",
   2026-09-26). After a resume, `chair_seconds` is `None` ("not measured"), never a guess.
@@ -108,10 +115,12 @@ On resume:
 - **`Service._resume`** (new, welfare-critical) builds the session as §3 says and publishes it.
   It **refuses**, with a refusal row saying why, when:
   - a session is already open;
-  - the stranded record cannot be read (it fails closed, as `stranded.find` does today);
+  - the stranded record cannot be read (it fails closed, as `stranded.find` does today), or its
+    `config.json` names another session than its folder (2026-10-01, the final review's M5);
   - the record predates §4 (above);
-  - the animal is already past its out-of-cage limit, on the restored departure. The page then
-    asks for the return, and only *end* is offered; *(2026-10-01, Task 7's review: "then" is
+  - the animal is already past its out-of-cage limit, on the restored departure and the limit
+    the session last had (2026-10-01, the final review's I2: never its file's, when the session
+    lowered it). The page then asks for the return, and only *end* is offered; *(2026-10-01, Task 7's review: "then" is
     after the refused resume. The service marks that stranded session not resumable, with the
     refusal's sentence as its reason, so its banner no longer offers resume; past the limit only
     ever stays true. The changed-bounds refusal below leaves it resumable.)*

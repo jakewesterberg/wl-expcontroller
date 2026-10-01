@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-210.**
+**Next free ID: XC-211.**
 
 ## Brainstorms queued for the PI
 
@@ -191,6 +191,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 - **XC-085** P9's bring-up checks: exposure stamps agree, 8 cameras for 12 hours, darkness at the eye with P1 and P4 unchanged, no added neural noise, a preview that never disturbs recording. — 2026-09-27, [P9 spec §6](superpowers/specs/2026-09-27-P9-camera-system-design.md#6-testing-and-bring-up) — waits on: the camera hardware
 - **XC-086** Measure the tracker's 940 nm light at the eye with a power meter, and choose the ND filter's OD from it. — 2026-09-27, [S0 §7.10](superpowers/specs/2026-08-31-S0-hosts-and-hardware-design.md#710-eye-light-drivers-and-the-safety-cap) — waits on: the eye-light hardware
 - **XC-139** V12: measure the console mark-check's effect on frame timing on a rig; the PI approved shipping b2a with it unverified on 2026-09-28. — 2026-09-28, [validation V12](validation.md#v12--console-controls-in-the-frame-loop-p4d-2b-b2a) — waits on: the rig
+- **XC-210** A resume repeats no number across a process crash but can after a power loss, since `trial_starts.jsonl` and `runs.jsonl`'s start rows are flushed before their strobes and never `fsync`ed; measure an `fsync` of each at the boundary on the rig PC's disk, then make them durable or say the power-loss case is accepted. — 2026-10-01, [XC-026 spec §3](superpowers/specs/2026-10-01-xc026-resume-design.md#3-what-a-resume-does), the XC-026 final review (M3) — waits on: the rig PC
 
 ## Waiting on another repository
 

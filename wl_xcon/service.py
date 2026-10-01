@@ -18,11 +18,13 @@ acknowledgement written into `runs.jsonl`. **A run's fault is contained** (decis
 published, written into its end row, said on stderr, and the session left open between
 runs with its animal still out, so the return can be taken.
 
-**Crash safety is a refusal, not a recovery** (spec §6.1). On start the service finds
-every session under `--root` with a departure and no return (`stranded.find`), and while
-one exists it opens no session, for that animal or any other, until an `EndSession`
-naming it records the return -- **or a `ResumeSession` naming it resumes that same
-session from its record** (XC-026, `_resume`), which is not a new one.
+**After a crash, nothing new opens until the stranded session is ended or resumed** (spec
+§6.1; XC-026). On start the service finds every session under `--root` with a departure
+and no return (`stranded.find`), and while one exists it opens no session, for that
+animal or any other, until an `EndSession` naming it records the return -- **or a
+`ResumeSession` naming it resumes that same session from its record** (XC-026,
+`_resume`), which is not a new one. A record that cannot carry a resume is refused one,
+so its only recovery is its return.
 
 **A confirm or an amend is taken only as the answer to a question this service posed**
 (the b3a-1 review's Ruling 1, 2026-09-29; `_unasked`). The PI's rule for a far mark is a
