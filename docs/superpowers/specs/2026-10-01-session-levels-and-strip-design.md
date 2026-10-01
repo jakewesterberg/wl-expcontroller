@@ -149,6 +149,9 @@ never recomputed by a console (the `Telemetry` docstring's rule):
   the strip says "between runs".
 - `outcomes` and `trial_index`, the run's, stay as they are for every other reader: the
   *Working?* pane, `/health`, and the terminal console.
+- **`returned_at`**: `welfare.returned_wall_at`, the recorded return on the session's anchored
+  clock, or `None` before it. It is read, as every welfare figure on the frame is, so the
+  strip can say when the animal went back.
 
 ## 6. The console's strip (decided; drawn in mockup v13)
 
@@ -165,8 +168,8 @@ below session"). **This amends P4d-2b §4.0**:
   the terminal console already shows them.
 - **last reward**: the time since it, then the reward per correct while a run goes, or "no run
   going".
-  - A stalled animal turns the whole cell amber, as the last-reward cell did, and the line bold
-    amber.
+  - The mockup turns the cell amber when the animal stalls. The live page has never had a stall
+    signal; that is one of XC-021's accepted console items, not built here.
 - **back to cage**: "by HH:MM", then "N out · M left":
   - the deadline is the departure plus the limit, both the frame's;
   - amber within the duration warning; red at the limit;
