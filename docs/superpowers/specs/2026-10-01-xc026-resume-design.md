@@ -159,6 +159,38 @@ This spec does not widen the list (the PI, 2026-09-30). `Service._resume` restor
 out-of-cage clock and the fluid, so whether it joins the list is a question in his review
 summary, his to answer.
 
+## 8a. Corrections found while planning (2026-10-01)
+
+A read of the code for the plan found five things this spec had not settled. Each is decided here;
+none changes what the PI chose.
+
+1. **A trial that dies mid-trial has strobed its number and has no `trials.jsonl` line**, since
+   the line is written as the trial ends. Rebuilding from lines alone would issue that trial's
+   number, and its block's if it opened one, a second time in the same recording. So **each
+   trial's position is also written as it starts**, at the boundary before `TRIAL_START` and never
+   in a frame, as a row of a new `trial_starts.jsonl`. The rebuild takes every number from those
+   rows.
+2. **A head-fixed (`RIG_FIXED`) session cannot start a run without a head-fixed mark**
+   (`Welfare.preflight`). A resume of one therefore **marks the head fixed again at the resume**
+   and strobes `HEAD_FIXED`; its restraint time counts from the resume, an undercount. Restraint
+   bounds nothing (the PI, 2026-09-19 and 2026-09-26). §3's "`chair_seconds` is `None`" stands for
+   a chaired session only.
+3. **More session state is restored:**
+   - the parameter-change sequence number, `_sequence`, from `parameter_changes.jsonl`'s largest
+     `sequence`, so its join numbers never repeat;
+   - the last reward's instant (`welfare.last_delivery_wall_at`): each trial's line also carries
+     `last_reward_at` (the instant of its last reward, or `null`), and the hand-reward rows carry
+     `at` already. Otherwise the strip would read "no reward yet" after a resume.
+4. **The page must know which stranded sessions can be resumed.** `link.Stranded` gains
+   `resumable: bool` and `why: str` (empty when resumable), set by `stranded.find`.
+   Telemetry gains `resumed_at` (the resume's instant, or `None`) for the console's banner and the
+   end-of-session line. Schema 12 → 13.
+5. **The command's wire kind is `resume_session`**, since `resume` is already the pause's resume.
+
+Also, the pump's delivered line is not reconciled anywhere in production today
+(`Welfare.reconcile` is called only by tests), so §4's sentence on it describes nothing to carry.
+The hand-reward row already carries `ml` (§4 item 2). Only its reading on resume is new.
+
 ## 9. Out of scope
 
 - Resuming from the terminal (`wlx run`).
