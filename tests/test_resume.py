@@ -292,6 +292,14 @@ def test_an_unreadable_record_cannot_be_resumed(tmp_path, name):
         read(directory, DEPARTURE)
 
 
+def test_a_record_whose_config_names_another_session_cannot_be_resumed(tmp_path):
+    """The final review's M5: a folder copied under another name is not that session."""
+    directory = _folder(tmp_path, config=_config(session_id="2027-01-13_01"))
+
+    with pytest.raises(Unresumable, match="config.json names session '2027-01-13_01'"):
+        read(directory, DEPARTURE)
+
+
 def test_a_line_with_no_start_cannot_be_resumed(tmp_path):
     directory = _two_runs(tmp_path)
     with (directory / "trials.jsonl").open("a") as handle:

@@ -1996,6 +1996,21 @@ def test_a_stranded_session_whose_animals_bounds_changed_is_refused_naming_what(
     assert [(s.resumable, s.why) for s in _step(service).stranded] == [(True, "")]
 
 
+def test_a_session_folder_copied_under_another_name_cannot_be_resumed(tmp_path):
+    """The final review's M5: its `config.json` names the session it was, and the copy is
+    not that session, so it is offered only *end*, saying why."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01")
+    shutil.copytree(folders[2] / "2027-01-14_01", folders[2] / "2027-01-14_02")
+    service = _made(folders)
+
+    copied = [s for s in _step(service).stranded if s.session_id == "2027-01-14_02"]
+
+    assert [s.resumable for s in copied] == [False]
+    assert "config.json names session '2027-01-14_01'" in copied[0].why
+    assert "config.json names session '2027-01-14_01'" in _resume_refused(service, "2027-01-14_02")
+
+
 def test_a_resume_naming_no_stranded_session_is_refused_naming_it(tmp_path):
     service = _service(tmp_path)
 

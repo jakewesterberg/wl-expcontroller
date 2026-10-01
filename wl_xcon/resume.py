@@ -94,6 +94,12 @@ def _read(directory: Path, departure: float) -> Restoration:
         config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise Unresumable(f"its config.json cannot be read ({error}); end it instead") from error
+    # The final review's M5: a folder copied under another name is not that session.
+    if str(config["session_id"]) != directory.parent.name:
+        raise Unresumable(
+            f"its config.json names session {config['session_id']!r} and its folder is "
+            f"{directory.parent.name!r}, so it is not the session it records; end it instead"
+        )
     starts = _rows(directory, TRIAL_STARTS)
     lines = _rows(directory, "trials.jsonl")
     if (
