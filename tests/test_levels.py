@@ -115,6 +115,18 @@ def test_tasks_are_numbered_by_first_appearance():
     assert again.task_in_session == 1
 
 
+def test_a_new_task_is_numbered_past_the_largest_task_not_by_the_count():
+    """XC-026's final review, I3: counts rebuilt from a record can have a gap -- task 2's
+    run raised after `start_run` and before its start row, so nothing recorded it -- and
+    a new task numbered by the count would repeat task 3. Live there is no gap, and the
+    largest plus one is the count plus one (above)."""
+    levels = Levels(order={"calibration": 1, "detection": 3})
+
+    levels.start_run(FIX)
+
+    assert levels.order["fixation_detection"] == 4
+
+
 def test_outcomes_are_counted_at_the_session_its_task_and_its_block():
     levels = Levels()
     levels.start_run(FIX)

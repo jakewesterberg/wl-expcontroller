@@ -1618,6 +1618,63 @@ def test_a_stopped_session_is_resumed_and_its_numbers_go_on(tmp_path):
     assert [row["run"] for row in runs if row["event"] == "start"] == [0, 1]
 
 
+def _kept_cards() -> tuple[list, type]:
+    """A card class whose every instance is kept, in the order the services build them,
+    so their codes read as one recording; and the list they are kept in."""
+    from wl_xcon import dio
+
+    cards: list = []
+
+    class _Kept(dio.Simulated):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            cards.append(self)
+
+    return cards, _Kept
+
+
+@_contract
+def test_a_run_that_raised_before_its_start_row_leaves_no_number_a_resume_repeats(
+    tmp_path, monkeypatch, capsys
+):
+    """The final review's I3, as it was driven: run 2 raises after `Levels.start_run` and
+    before its start row is written -- its `Scheduler`, here -- which the service contains;
+    run 3 runs; the process stops. The resumed session's next run is run 4: its numbers
+    are rebuilt from those the start rows recorded, never by counting the rows, which
+    strobed run 3 twice in one recording."""
+    from wl_xcon import taskd
+
+    real, calls = taskd.Scheduler, [0]
+
+    def fails_once(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise RuntimeError("a scheduler that fails once")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(taskd, "Scheduler", fails_once)
+    cards, kept = _kept_cards()
+    folders = _folders(tmp_path)
+    first = _made(folders, card=kept)
+    _step(first, _open())
+    for _ in range(3):
+        _step(first, _start())
+    assert "a scheduler that fails once" in capsys.readouterr().err
+    second = _made(folders, card=kept)
+    _step(second, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    _step(second, _start())
+
+    _run_to_its_end(second)
+    stream = [(i * 0.001, word) for i, word in enumerate(w for card in cards for w in card.codes)]
+    events = their_events.decode_stream(stream)
+    assert [e.words for e in events if isinstance(e, their_events.PayloadEvent)
+            and e.escape is their_events.Escape.RUN_START] == [(1, 0), (3, 0), (4, 0)]
+    assert [run.run_number for run in their_assemble(events).runs] == [1, 3, 4]
+    assert [(row["run"], row["run_in_session"]) for row in _runs(folders[2])
+            if row["event"] == "start"] == [(0, 1), (2, 3), (3, 4)]
+
+
 @pytest.mark.parametrize("today", [40.0, None])
 def test_a_resumed_sessions_day_takes_the_earlier_fluid_from_its_record(tmp_path, today):
     """The day's earlier fluid is `config.json`'s `already_delivered_today`, as given at

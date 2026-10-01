@@ -18,9 +18,14 @@ def _pos(*numbers, run, task=TASK):
     return {"run": run, "task": task, **dict(zip(NAMES, numbers))}
 
 
-def _start(run, bounded, task=TASK):
+def _start(run, bounded, task=TASK, numbers=None):
+    """A run's start row with the numbers `Session.run` records in it: `numbers` is its
+    `(run_in_session, run_in_task, task_in_session)`, by default the run of one task whose
+    record index is `run`."""
+    run_in_session, run_in_task, task_in_session = numbers or (run + 1, run + 1, 1)
     return {"event": "start", "run": run, "at": DEPARTURE + 60 * run, "task": task,
-            "bounded": bounded}
+            "bounded": bounded, "run_in_session": run_in_session, "run_in_task": run_in_task,
+            "task_in_session": task_in_session}
 
 
 def _end(run):
@@ -151,6 +156,46 @@ def test_a_session_opened_with_no_run_reads_back_with_run_one_next(tmp_path):
     assert got.bounded == {}
     got.levels.start_run(TASK)
     assert got.levels.start_trial()[0].run_in_session == 1
+
+
+# The final review's I3: a run that raises after `Levels.start_run` and before its start
+# row (`Session.run` contains it, and the session goes on) took its numbers and wrote
+# none. Counting start rows would issue them again; the start rows' own numbers do not.
+
+
+def _next_run(directory, task=TASK) -> tuple:
+    levels = read(directory, DEPARTURE).levels
+    levels.start_run(task)
+    position = levels.start_trial()[0]
+    return position.run_in_session, position.run_in_task, position.task_in_session
+
+
+def test_the_next_run_is_numbered_past_every_run_recorded_not_by_the_rows(tmp_path):
+    """Run 2 raised before its start row: the next is run 4, and the task's run 4."""
+    directory = _folder(tmp_path, runs=[_start(0, {}), _end(0), _start(2, {}), _end(2)])
+
+    assert _next_run(directory) == (4, 4, 1)
+
+
+def test_a_task_new_since_a_gap_is_numbered_past_every_task_recorded(tmp_path):
+    """Detection, the session's second task, raised before its start row; calibration
+    then took task 3. Detection's next run is the session's fourth task, never the third."""
+    directory = _folder(tmp_path, runs=[
+        _start(0, {}), _end(0),
+        _start(2, {}, task="tasks/calibration.py", numbers=(3, 1, 3)), _end(2),
+    ])
+
+    assert _next_run(directory, "tasks/detection.py") == (4, 1, 4)
+    assert _next_run(directory, "tasks/calibration.py") == (4, 2, 3)
+
+
+def test_a_start_row_without_its_run_and_task_numbers_cannot_be_resumed(tmp_path):
+    row = _start(0, {})
+    del row["task_in_session"]
+    directory = _folder(tmp_path, runs=[row])
+
+    with pytest.raises(Unresumable, match="run and task numbers"):
+        read(directory, DEPARTURE)
 
 
 def test_a_restored_tally_counts_hangs(tmp_path):

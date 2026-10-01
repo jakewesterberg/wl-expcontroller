@@ -20,7 +20,11 @@ from pathlib import Path
 
 from wl_xcon.levels import Levels, task_name
 from wl_xcon.record import CONTROLS, RUNS, TRIAL_STARTS
+from wl_xcon.simulate import Tally
 from wl_xcon.task import Outcome
+
+#: The numbers a run's start row records (`Session.run`), which a resume continues from.
+RUN_NUMBERS = ("run_in_session", "run_in_task", "task_in_session")
 
 #: Why a record written before XC-026 cannot be resumed, said once, for the page.
 PREDATES = (
@@ -113,11 +117,26 @@ def _read(directory: Path, departure: float) -> Restoration:
     instants = [line["last_reward_at"] for line in lines if line["last_reward_at"] is not None]
     instants += [row["at"] for row in hand if row["at"] is not None]
 
-    # Runs replayed as they started, so the run and task numbers are `start_run`'s own;
-    # trials and blocks taken from the starts, the largest of each.
+    # The run and task numbers each start row recorded, the largest of each (the final
+    # review's I3). Never counted from the rows: a run that raised after `start_run` and
+    # before its row took numbers no row holds, and a count would issue them again. Its
+    # row is written before the run's first strobe, so every run number strobed is here.
+    # Trials and blocks are taken from the starts, the largest of each.
     levels = Levels()
     for row in run_rows:
-        levels.start_run(row["task"])
+        if any(key not in row for key in RUN_NUMBERS):
+            raise Unresumable(
+                f"its runs.jsonl start row for run {row['run']} does not record its run and "
+                f"task numbers, so the next run's could repeat one in the recording; end it "
+                f"instead"
+            )
+        name = levels.task = task_name(row["task"])
+        levels.runs = max(levels.runs, int(row["run_in_session"]))
+        levels.task_runs[name] = max(levels.task_runs.get(name, 0), int(row["run_in_task"]))
+        levels.order[name] = max(levels.order.get(name, 0), int(row["task_in_session"]))
+        levels.task_trials.setdefault(name, 0)
+        levels.task_blocks.setdefault(name, 0)
+        levels.task_tallies.setdefault(name, Tally())
     for row in starts:
         name = task_name(row["task"])
         levels.trials = max(levels.trials, int(row["trial_number"]))

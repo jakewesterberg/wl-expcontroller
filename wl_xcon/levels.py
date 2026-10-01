@@ -73,7 +73,9 @@ class Levels:
     blocks: int = 0
     #: Runs started in the session: the last one's `run_in_session`.
     runs: int = 0
-    #: Each task's `task_in_session`, by name, in order of first appearance.
+    #: Each task's `task_in_session`, by name, in order of first appearance. A new task
+    #: takes the largest so far plus one: live that is the count plus one, and a session
+    #: rebuilt from its record (`resume.read`) can have a gap the count would repeat.
     order: dict = field(default_factory=dict)
     #: By task name: its trials, blocks and runs so far in the session.
     task_trials: dict = field(default_factory=dict)
@@ -97,7 +99,7 @@ class Levels:
         name = task_name(task)
         self.task = name
         self.runs += 1
-        self.order.setdefault(name, len(self.order) + 1)
+        self.order.setdefault(name, max(self.order.values(), default=0) + 1)
         self.task_runs[name] = self.task_runs.get(name, 0) + 1
         self.task_trials.setdefault(name, 0)
         self.task_blocks.setdefault(name, 0)
