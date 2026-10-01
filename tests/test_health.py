@@ -714,6 +714,8 @@ def test_the_readings_say_no_session_is_open_and_which_animal_is_stranded():
 
 
 def test_between_runs_the_state_names_the_run_and_how_it_ended():
+    """`run_index` 2 is the session's third run: a person reads runs from 1, as the
+    page's header, pill and banner give them (session-levels spec §6)."""
     rows = {
         r["key"]: r["value"]
         for r in readings(
@@ -723,7 +725,7 @@ def test_between_runs_the_state_names_the_run_and_how_it_ended():
         )
     }
 
-    assert rows["state"] == "between runs · run 2 ended (operator): stopped by jake"
+    assert rows["state"] == "between runs · run 3 ended (operator): stopped by jake"
 
 
 def test_a_frame_with_no_task_yet_is_worded_not_printed_as_none():

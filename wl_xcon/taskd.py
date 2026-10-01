@@ -1835,14 +1835,16 @@ class Session:
         said on the feed -- a row kept would read "applies at the next trial" of a run
         that may never come. **And nothing is paused**: a run stopped while paused
         published its last frame paused, as the truth of how it ended, and a between-runs
-        frame saying "paused" would read as a run held and waiting."""
+        frame saying "paused" would read as a run held and waiting. The feed names the
+        run from 1, as a person reads it beside the page's header and pill
+        (session-levels spec §6); `run_index` counts from 0, as the record's `run` does."""
         for name, was, now, by, _bounded in self._staged:
             self._feed(
                 "set",
                 by,
                 self.wall_now(),
                 f"{name} {_shown(was)} → {_shown(now)} was not applied: run "
-                f"{self.run_index} ended first",
+                f"{self.run_index + 1} ended first",
             )
         self._staged.clear()
         self.paused_at = None

@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import sys
 import textwrap
 import threading
@@ -4174,7 +4175,9 @@ def test_a_service_session_ended_without_a_run_still_builds_its_frames(tmp_path)
 
 def test_a_change_staged_as_a_service_run_ends_is_dropped_and_said(tmp_path):
     """Plan decision 2: nothing between runs applies a staged change, so it is dropped,
-    and the feed says so rather than showing it staged for a run that may never come."""
+    and the feed says so rather than showing it staged for a run that may never come.
+    The session's first run is run 1 on the feed, as a person reads it (session-levels
+    spec §6)."""
     link = Simulated()
     session = _service_session(tmp_path, link=link)
     link.queue(SetParameter(name="fix_hold", value=0.5, by="jake"))
@@ -4183,9 +4186,43 @@ def test_a_change_staged_as_a_service_run_ends_is_dropped_and_said(tmp_path):
     session.run(_run_spec(trials=5))
 
     assert session.staged == ()
-    assert "fix_hold 0.30 → 0.50 was not applied: run 0 ended first" in [
+    assert "fix_hold 0.30 → 0.50 was not applied: run 1 ended first" in [
         control[3] for control in session.controls
     ]
+
+
+def test_a_between_runs_page_names_one_run_in_every_pane(tmp_path):
+    """The session-levels final review, I3, the path and not the piece: a real
+    between-runs frame -- the session's second run, stopped with a change staged --
+    through the wire and rendered as `wlx serve` renders it. The pill, header and banner
+    named it run 2 while *wl-works sees* (`/health`'s text) and the changes feed
+    (`_after_service_run`) named it run 1, at the moment an operator decides whether to
+    start another."""
+    from _frames import view
+
+    from wl_xcon.link import decode, encode
+    from wl_xcon.web import fragments
+
+    link = Simulated()
+    session = _service_session(tmp_path, link=link)
+    session.run(_run_spec(trials=2))
+    link.queue(SetParameter(name="fix_hold", value=0.5, by="jake"))
+    link.queue(Stop(by="jake"))
+    session.run(_run_spec(trials=5))
+    session.publish()
+
+    between = decode(encode(link.published[-1]))
+    panes = fragments(between, view())
+
+    assert between.phase == "between_runs" and between.run_index == 1
+    named = {
+        "pill": re.findall(r"run (\d+) ended", panes["state"]),
+        "header": re.findall(r'<span class="k">Run</span><span class="v">(\d+)</span>', panes["head-id"]),
+        "banner": re.findall(r"Run (\d+) ended", panes["banners"]),
+        "wl-works sees": re.findall(r"run (\d+) ended", panes["rt-health"]),
+        "changes": re.findall(r"was not applied: run (\d+) ended first", panes["rt-changes"]),
+    }
+    assert named == dict.fromkeys(named, ["2"])
 
 
 def test_between_runs_a_command_for_a_run_is_refused_and_a_mark_is_stamped_and_noted(tmp_path):

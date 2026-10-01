@@ -180,8 +180,11 @@ def _state_text(frame: Telemetry | Idle) -> str:
     if frame.phase == "between_runs":
         if frame.run_index is None:
             return "between runs · no run yet"
+        # A person reads runs from 1, as the page's header, pill, banner and strip give
+        # them (session-levels spec §3 and §6); `run_index` counts from 0 on the wire,
+        # as the record's `run` does.
         return (
-            f"between runs · run {frame.run_index} ended ({frame.stop_kind}): "
+            f"between runs · run {frame.run_index + 1} ended ({frame.stop_kind}): "
             f"{frame.stopped_because}"
         )
     if frame.stop_kind is None:

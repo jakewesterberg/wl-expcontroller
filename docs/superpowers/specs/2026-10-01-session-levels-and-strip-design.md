@@ -199,6 +199,12 @@ Between runs, one line reading "between runs" stands in for the task, run and bl
   hours, and the 12 recorded since 2026-09-19 was wrong. The mockup shows 8. The repository's
   documents and the reference bounds config are corrected on their own branch,
   `fix-out-of-cage-8h`, whose welfare-code lines go to the PI before it merges.
+- **Every run number a person reads counts from 1** (two decisions made during the build,
+  2026-10-01). The page and the terminal console name a run from 1 wherever they show one:
+  the header, the pill, the banner, the strip (`run_in_session`), the *wl-works sees* pane
+  and the changes feed (`run_index + 1`). And `/health`'s text does the same. The wire's
+  `run_index` and the record's `run` stay 0-based (§3), so a page that names one run by two
+  numbers is a bug, not a convention.
 
 ## 7. Not in the welfare-critical surface
 
