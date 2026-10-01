@@ -2256,6 +2256,12 @@ class Session:
                     condition=condition.name,
                     run=self.run_index,
                     position=position,
+                    # **The trial's whole commanded difference**, and `resume.read` adds it
+                    # to every hand reward's `ml` in `controls.jsonl` (XC-026 spec §4).
+                    # Disjoint today: a hand reward is given only outside a trial. One
+                    # given during a trial (XC-157, unbuilt) would land in both, and a
+                    # resume would overcount the fluid and shrink the supplement: XC-157
+                    # counts it here or in its row, never both (the final review's I5).
                     fluid_ml=self.welfare.commanded - commanded_before,
                     last_reward_at=(
                         self.welfare.last_delivery_wall_at
