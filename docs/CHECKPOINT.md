@@ -9,8 +9,9 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > written with**, `wl-expcontroller` and `wl_expcontroller/…` paths included, as the PI
 > ruled for dated documents; read `wl_expcontroller/taskd.py` there as `wl_xcon/taskd.py`.
 >
-> **This file describes `main`.** The newest entry, "What moved on 2026-09-30, XC-155", describes
-> every trial framed and numbered in the recording (on `main` since 2026-10-01, by fast-forward
+> **This file describes `main`.** The newest entry, "What moved on 2026-10-01, the port race CI
+> failed on", is a test-only fix (on `main` by fast-forward once its CI read green). Below it,
+> "What moved on 2026-09-30, XC-155", describes every trial framed and numbered in the recording (on `main` since 2026-10-01, by fast-forward
 > once its CI read green). Below it, also dated 2026-09-30, P4d-2b slices b3a-2 (the page's forms for the
 > session service, and the hand reward between runs) and b3a-1 (the session service `wlx taskd`),
 > each approved by the PI that day and on `main`. The entry before them, 2026-09-29, covers the
@@ -337,9 +338,48 @@ figure was one low. In order:
 
 ---
 
+## What moved on 2026-10-01: the port race CI failed on
+
+**Resume here (state at 2026-10-01):** XC-155 is on `main` and green there (below); its reply is
+with wl-preproc, which acknowledged it the same day and will answer with its design of reading
+`trial_number` (XC-198). This entry is a test-only fix, branch `fix-port-race`, asked of the PI
+in the UI ("Fix it now"). Nothing else is in flight. Next is the list under b3a-2's entry: b2b
+once wl-works has deployed, the manual reward's other two slices, then XC-183 and XC-186.
+
+- **What failed.** CI's baseline (the unmutated suite, before any mutant) failed twice, once on
+  XC-155's branch (run `36789375559`, shard 8) and once on `main` after its merge (run
+  `36797081773`, shard 3), each time an end-to-end test in `test_serve.py` finding `wlx run`
+  ended before the console showed its first trial, with **one warning** where every clean
+  baseline on record has none. Each re-run passed.
+- **Not XC-155.** It reproduced on neither copy locally under load (36 full runs at twelve
+  processes, 144 end-to-end runs at 48), and no session thread was alive across tests. **In a
+  Linux container limited to two CPUs it did**: 3 of 80 runs, the warning `ZMQError: Address
+  already in use` from `wlx run`'s thread, which had died before making its card. A probe of
+  `/proc/net/tcp`, in the two runs it covered, found the port held by a **listening** socket
+  with connections into it.
+- **The cause: probe, release, bind later.** Eight tests found a free port by binding port 0,
+  reading it and releasing it, and `wlx run`, `wlx taskd` or the test bound it again later. In
+  that gap the console's own web server, which binds port 0 itself, can be handed the same port.
+  macOS never showed it (XC-061). It has been there since the end-to-end tests were written;
+  the comment on `CONTROL_TRIAL_BUDGET` now says its "wlx run had ended" of 2026-09-29 may have
+  been this too.
+- **The fix.** `tests/_ports.py` picks loopback ports from 20000-32767, below the ranges the
+  kernels choose from themselves (read 2026-10-01: Linux 32768-60999, macOS 49152-65535),
+  checks each is free, and **refuses** a kernel whose range reaches into that band rather than
+  trusting it (`tests/test_ports.py`, 8 tests; each of its five guards broken in turn fails one
+  or two of them). All eight sites use it. A failed wait now says how `wlx run` ended, its exit
+  code or that it raised (closes XC-203). **Measured on Linux under the load that reproduced it**
+  (six two-CPU containers, `test_serve.py`'s end-to-end tests): **0 of 120 runs** hit the race,
+  where the code before it hit 2 of 60; a port held on purpose (a throwaway test, in the
+  container only) fails with "wlx run had ended, raising before main() returned".
+- **Also seen, filed:** in those throttled containers, the end-to-end tests' 5 s HTTP timeout
+  fails too, often, though never yet in CI (XC-204).
+- **`main` after XC-155:** its push run's one red shard (3, the race) re-ran green, so XC-155's
+  sweep on `main` reads 157 of 157 caught, as on the branch.
+
 ## What moved on 2026-09-30, XC-155: every trial framed and numbered in the recording
 
-**Resume here (state at 2026-10-01):** XC-155 is built, reviewed and **on `main`**
+**State after XC-155 (2026-10-01; the entry above supersedes it):** XC-155 is built, reviewed and **on `main`**
 (`d409077..eeec053`, a fast-forward, after a rebase onto the function-shard CI) once its push run
 read green shard by shard (below). **Its reply went to wl-preproc on 2026-10-01** (to its session,
 `wl-preproc-38`; a copy is in the git-ignored `.superpowers/archive/xc155/ledger-archive/`):
@@ -386,7 +426,8 @@ the manual reward's other two slices, then XC-183 and XC-186.
   mutation: `test_serve.py::test_e2e_with_taskd_gone_the_page_is_told_not_delivered` found `wlx
   run` ended before the console showed trial 1, a flake XC-155 cannot cause (its per-trial work is
   six list appends on the simulated card). It did not recur in 24 runs of `test_serve.py`'s 19 end
-  to end tests in three loaded lanes locally, and shard 8 re-run passed whole (XC-203).
+  to end tests in three loaded lanes locally, and shard 8 re-run passed whole. **Found on
+  2026-10-01**: a port race in the tests' setup (the entry above).
 - **The backlog:** XC-155 closed; XC-197 (`CONDITION`, waits on XC-150), XC-198 (the questions to
   wl-preproc), XC-199 (the escape on an abort), XC-200 (`run.py`'s hang sentence), XC-201
   (`wlx run` accepts a reused session id); XC-173 waits on nothing now.

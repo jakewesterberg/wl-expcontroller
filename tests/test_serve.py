@@ -31,6 +31,7 @@ from types import SimpleNamespace
 import pytest
 
 from _frames import ENDPOINT, frame, idle
+from _ports import endpoints as free_endpoints
 from _rig import DIRECT, PATH as RIG_FILE, RIG
 # Autouse: every `ZmqLink`/`ZmqConsole` built here, `wlx serve`'s telemetry thread's and
 # `wlx run --link`'s included, has its context destroyed at teardown without `close()`.
@@ -1292,16 +1293,6 @@ def server_cleanup():
     yield _register
 
 
-def _endpoints(zmq_cleanup) -> tuple[str, str]:
-    """A free PUB/REP pair on loopback, bound by a throwaway link and released."""
-    probe = zmq_cleanup(
-        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    )
-    pub, rep = probe.pub_endpoint, probe.rep_endpoint
-    probe.close()
-    return pub, rep
-
-
 #: The strip's time since the last reward before any reward (`web._last_reward`).
 _NONE_YET = (
     '<span class="lab">Since last reward</span>'
@@ -1341,7 +1332,7 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
     the stop frame, `phase` still `running`, is the last one the console sees.
     """
     _trial_budget(monkeypatch, E2E_TRIAL_BUDGET)
-    pub, rep = _endpoints(zmq_cleanup)
+    pub, rep = free_endpoints(2)
     first = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
     first.start()
     second = None
@@ -1597,7 +1588,7 @@ def test_a_real_schema_6_frame_is_refused_by_name_not_a_keyerror(
 
 
 def test_closing_the_server_stops_serving(zmq_cleanup, server_cleanup):
-    pub, rep = _endpoints(zmq_cleanup)
+    pub, rep = free_endpoints(2)
     server = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
     server.start()
     port = server.address[1]
@@ -1622,7 +1613,7 @@ def test_closing_the_server_stops_its_threads_and_open_streams(
     Bounded well under the 5 s join cap (2 s), so a mutant that reintroduces either
     deletion fails this test in seconds -- not by hanging the suite, and not merely
     by being slower than an assertion nobody wrote."""
-    pub, rep = _endpoints(zmq_cleanup)
+    pub, rep = free_endpoints(2)
     server = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
     server.start()
 
@@ -1671,7 +1662,7 @@ def _serve_args(
 def test_wlx_serve_serves_until_interrupted_then_closes(
     tmp_path, monkeypatch, capsys, zmq_cleanup, server_cleanup
 ):
-    pub, rep = _endpoints(zmq_cleanup)
+    pub, rep = free_endpoints(2)
     seen: dict = {}
 
     def interrupted(server: Server) -> None:
@@ -2574,7 +2565,7 @@ def test_the_services_commands_are_answered_with_what_the_page_shows_next(zmq_cl
     """*Sent* for one of `wlx taskd`'s commands says the page shows what it did; b2a's
     sentence -- "acts on it at its next trial boundary" -- is a run's, and stays theirs.
     Each is handed to the command thread once."""
-    pub, rep = _endpoints(zmq_cleanup)
+    pub, rep = free_endpoints(2)
     server = Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN)
     sender = _Answers(None)
     server._commands.submit = lambda work: work(sender)
@@ -2872,9 +2863,7 @@ def test_a_command_is_sent_when_the_rig_acknowledges_it(zmq_cleanup, server_clea
 def test_with_taskd_gone_the_page_is_told_not_delivered(zmq_cleanup, server_cleanup):
     """Spec §5.4: with `taskd` gone, the page is told *not delivered* -- once the
     connect timeout passes, since there is no rig to wait a reply from."""
-    probe = _rig(zmq_cleanup)
-    pub, rep = probe.pub_endpoint, probe.rep_endpoint
-    probe.close()
+    pub, rep = free_endpoints(2)
     server = server_cleanup(
         Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN, connect_timeout_s=0.2)
     )
@@ -3113,6 +3102,8 @@ MARKERS = {34, 35, 36, 37, 38}
 #: **400, with each trial paced** (after `main`'s run `36497082927`, 2026-09-29). There,
 #: the mark end to end failed once in a restore run, on unmutated code, with "wlx run
 #: had ended": the budget ran out before the console showed what the test waited for.
+#: (2026-10-01: those words were also all that a `wlx run` killed at startup by the
+#: port race `tests/_ports.py` closes left behind, so that failure may have been it.)
 #: The simulator runs trials unpaced, a few hundred frames a second, and `wlx serve`'s
 #: telemetry thread handles every frame in turn. So a runner slow enough leaves the
 #: console's latest frame behind a session producing at nearly the rate the thread can
@@ -3133,14 +3124,6 @@ CONTROL_TRIAL_PACE_S = 0.005
 #: How long `_Session.frame` still waits once `wlx run` has ended, for the last frame
 #: it published to reach the console.
 LAST_FRAME_S = 2.0
-
-
-def _three_endpoints(zmq_cleanup) -> tuple[str, str, str]:
-    """A free PUB/REP/mark triple on loopback, bound by a throwaway link and released."""
-    probe = _rig(zmq_cleanup)
-    endpoints = probe.pub_endpoint, probe.rep_endpoint, probe.mark_endpoint
-    probe.close()
-    return endpoints
 
 
 class _Session:
@@ -3179,7 +3162,7 @@ class _Session:
                 cards.append(self)
 
         monkeypatch.setattr(dio, "Simulated", _KeptCard)
-        self.pub, self.rep, self.mark = _three_endpoints(zmq_cleanup)
+        self.pub, self.rep, self.mark = free_endpoints(3)
         self.root = tmp_path
         self.session_id = session_id
         self.bounds = bounds
@@ -3262,8 +3245,7 @@ class _Session:
             if not self.runner.is_alive():
                 deadline = min(deadline, time.monotonic() + LAST_FRAME_S)
             time.sleep(0.01)
-        ended = "" if self.runner.is_alive() else "; wlx run had ended"
-        raise AssertionError(f"no frame within {seconds} s satisfied {predicate}{ended}")
+        raise AssertionError(f"no frame within {seconds} s satisfied {predicate}{self._ended()}")
 
     def seen(self, predicate, seconds: float = 20.0):
         """The first frame `wlx run` published, from the last one this returned on, for
@@ -3292,9 +3274,23 @@ class _Session:
             if not self.runner.is_alive():
                 deadline = min(deadline, time.monotonic() + LAST_FRAME_S)
             time.sleep(0.005)
-        ended = "" if self.runner.is_alive() else "; wlx run had ended"
         raise AssertionError(
-            f"no frame published within {seconds} s satisfied {predicate}{ended}"
+            f"no frame published within {seconds} s satisfied {predicate}{self._ended()}"
+        )
+
+    def _ended(self) -> str:
+        """What a failed wait says about `wlx run`: nothing while it runs, and once it
+        has ended, how (XC-203). CI's two failures of 2026-09-30 and 2026-10-01 said only
+        "wlx run had ended", which could not tell a session stopped early from a `wlx
+        run` that never started; it had raised on a port taken from under it
+        (`tests/_ports.py`)."""
+        if self.runner.is_alive():
+            return ""
+        if "exit_code" in self.result:
+            return f"; wlx run had ended, exit code {self.result['exit_code']}"
+        return (
+            "; wlx run had ended, raising before main() returned (pytest reports its "
+            "exception as a thread-exception warning)"
         )
 
     def ended(self):
@@ -3957,7 +3953,7 @@ class _Taskd:
                 cards.append(self)
 
         self._card = _KeptCard
-        self.pub, self.rep, self.mark = _three_endpoints(zmq_cleanup)
+        self.pub, self.rep, self.mark = free_endpoints(3)
         self.folders = folders or _service_folders(tmp_path, bounds)
         self.wall = wall
         self.stop = threading.Event()

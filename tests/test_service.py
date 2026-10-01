@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from _ports import endpoints as free_endpoints
 from _rig import PATH as RIG_FILE
 from _rig import RIG
 from _sessions import WALL, malformed_task, typed, whole_point_task
@@ -1637,11 +1638,7 @@ class _Rig:
                 cards.append(self)
 
         self._card = _KeptCard
-        probe = zmq_cleanup(
-            ZmqLink("tcp://127.0.0.1:0", "tcp://127.0.0.1:0", "tcp://127.0.0.1:0")
-        )
-        self.pub, self.rep, self.mark = probe.pub_endpoint, probe.rep_endpoint, probe.mark_endpoint
-        probe.close()
+        self.pub, self.rep, self.mark = free_endpoints(3)
         self.folders = folders or _folders(tmp_path, bounds)
         self.wall = wall
         self.stop = threading.Event()

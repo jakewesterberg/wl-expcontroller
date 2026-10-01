@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from _ports import endpoints as free_endpoints
 from _rig import DIRECT, STEREOSCOPE
 from wl_xcon.bounds import Bounds, Ceiling, Floor
 from wl_xcon.link import (
@@ -1740,9 +1741,7 @@ def test_a_mark_with_no_rig_to_reach_is_not_delivered_and_says_so(zmq_cleanup):
     """`wlx serve` tells the page the truth (spec §5.3): with no rig on the mark
     endpoint the signal is refused at once, not queued for a session that is gone.
     `IMMEDIATE` makes the socket queue only to a completed connection."""
-    probe = _marked_link(zmq_cleanup)
-    endpoint = probe.mark_endpoint
-    probe.close()
+    (endpoint,) = free_endpoints(1)
     marks = zmq_cleanup(ZmqMarks(endpoint, connect_timeout_s=0.1))
 
     with pytest.raises(NotDelivered, match="no rig is listening"):
@@ -1859,9 +1858,7 @@ def test_with_no_rig_connected_a_command_is_not_delivered(zmq_cleanup):
     """With `taskd` gone the page is told *not delivered* (spec §5.4), and it is told
     once the connect timeout passes, not after a reply timeout: `IMMEDIATE` queues a
     message only to a completed connection, so there is nothing to wait a reply for."""
-    probe = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
-    endpoint = probe.rep_endpoint
-    probe.close()
+    (endpoint,) = free_endpoints(1)
     commands = zmq_cleanup(ZmqCommands(endpoint, reply_timeout_s=30.0, connect_timeout_s=0.1))
 
     started = time.monotonic()
@@ -2076,9 +2073,7 @@ def test_a_command_the_rig_took_and_never_acknowledged_is_told_from_one_never_se
     connected, is a plain `NotDelivered`: nothing was given."""
     link = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
     took = zmq_cleanup(ZmqCommands(link.rep_endpoint, reply_timeout_s=0.2))
-    probe = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
-    gone = probe.rep_endpoint
-    probe.close()
+    (gone,) = free_endpoints(1)
     never = zmq_cleanup(ZmqCommands(gone, reply_timeout_s=30.0, connect_timeout_s=0.1))
 
     with pytest.raises(Unacknowledged, match="did not acknowledge it within 0.2 s"):

@@ -28,6 +28,7 @@ import pytest
 
 # Autouse: every `ZmqLink`/`ZmqConsole` built here, `main()`'s own included, has its
 # context destroyed at teardown without `close()` (`tests/_zmq_release.py`).
+from _ports import endpoints as free_endpoints
 from _rig import PATH as RIG_FILE
 from _zmq_release import _every_zmq_context_released  # noqa: F401
 from _frames import idle
@@ -734,11 +735,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     seen. This test keeps its actual point -- a real console attaches, and a real
     write reaches the record -- and stops there.
     """
-    probe = zmq_cleanup(
-        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0")
-    )
-    pub_endpoint, rep_endpoint = probe.pub_endpoint, probe.rep_endpoint
-    probe.close()
+    pub_endpoint, rep_endpoint = free_endpoints(2)
     far_bounds = _far_bounds(tmp_path)
 
     result: dict[str, int] = {}
