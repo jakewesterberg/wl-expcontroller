@@ -750,7 +750,7 @@ auditory performance feedback, plus vocalization monitoring.
 | 8 | MUA feature definition v0 (band, rectification, window, CAR) | PI, scientific | S7 |
 | 9 | Console toolkit (PyQtGraph is the working recommendation) | S9 | S9 |
 | 10 | Whether `rhxfeatd` and `neurofeatd` share an implementation | S7 | S7 |
-| 11 | Restart-safety: can a session resume after a `taskd` crash | S8 | S8 |
+| 11 | ~~Restart-safety: can a session resume after a `taskd` crash~~ **Answered by XC-026** (2026-10-01): a `wlx taskd` session resumes from its record, its departure read back and every number carried on; `wlx run` does not resume | S8 | — |
 
 ---
 

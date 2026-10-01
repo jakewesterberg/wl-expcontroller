@@ -86,7 +86,8 @@ On resume:
 - the day's total adds (3), or stays unknown when (3) is `null`, exactly as at open.
 
 - **A crash mid-trial** can miss only that trial's reward from the sum. That makes the shortfall,
-  and so the supplement, come out larger, never smaller.
+  and so the supplement, come out larger, never smaller. *(Not the whole of it: §8a's
+  correction of 2026-10-01 adds every trial that faulted.)*
 - **The pump's delivered line** is reconciled from the resume on. The restored part counts as
   commanded (`reconcile_report` says so).
 - **A record written before this change** has no `fluid_ml`, no hand-reward `ml` and no
@@ -118,6 +119,12 @@ On resume:
   `0x8006`) carries the next run number, and every block and trial number continues.
 - **4137 `SESSION_RESUMED`** marks the resume. wl-preproc's rule already bounds the crashed run
   at the next run's start.
+- **A resumed rig-fixed (`RIG_FIXED`) session strobes a second `HEAD_FIXED` (4128) at the
+  resume, with no `HEAD_RELEASED` (4129) between** (added 2026-10-01; §8a item 2, pinned by the
+  plan's path test). The resume marks the head fixed again because a run needs it, and nothing
+  recorded whether it was released across the crash. So one recording can hold several 4128 and
+  one 4129, at the session's end; the session's own restraint time counts from the latest 4128.
+  Restraint bounds nothing.
 
 ## 7. Testing (sim first)
 
@@ -190,6 +197,14 @@ none changes what the PI chose.
 Also, the pump's delivered line is not reconciled anywhere in production today
 (`Welfare.reconcile` is called only by tests), so §4's sentence on it describes nothing to carry.
 The hand-reward row already carries `ml` (§4 item 2). Only its reading on resume is new.
+
+**Corrected 2026-10-01, while writing the plan's path test: §4's "a crash mid-trial can miss
+only that trial's reward" is not the whole of it.** A `wlx taskd` session survives a trial that
+faults: `Service._run` contains the fault, and the session goes on between runs. That trial's
+commanded fluid is in the process's total but has no line, since a line is written only as a
+trial ends. So a later resume undercounts **every faulted trial in the session**, not only the
+trial the crash cut short. It is still an undercount, so the shortfall, and the supplement,
+come out larger, never smaller.
 
 ## 9. Out of scope
 

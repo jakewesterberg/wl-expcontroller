@@ -744,6 +744,20 @@ for the thing the zero *means*.
 **A restart is never silent.** The console shows it, the record carries it, and the session
 summary reports it.
 
+**Built by XC-026 (2026-10-01; [its spec](2026-10-01-xc026-resume-design.md)), for a `wlx taskd`
+session.** A session whose process stopped before its animal's return is resumed from the page,
+*resume session* beside *end session…* (the PI, 2026-10-01: "Resume or end"): the same session
+and folder, between runs, its next run numbered on and every block and trial number carried
+forward from the record (`trial_starts.jsonl`), so one recording never repeats a number. **The
+departure is read from the record, not retyped** (the PI, 2026-10-01: "Take it silently"): the
+`departure` row in `welfare_notes.jsonl`, which did not exist when the duration clock's answer
+above was ruled on 2026-09-20, so that answer no longer holds for a `wlx taskd` session. The
+fluid so far is the sum of each trial line's `fluid_ml` and each hand reward's `ml` — commanded
+figures, since the delivered line is reconciled nowhere yet (XC-026 spec §8a) — and a record
+that cannot give it is not resumed, never taken as zero. The restart is recorded as a `session
+resumed` row and strobed as the provisional 4137 `SESSION_RESUMED`; the console shows a banner
+and the summary says when. `wlx run` does not resume (XC-026 spec §9).
+
 ---
 
 ## 7. Welfare-critical modules

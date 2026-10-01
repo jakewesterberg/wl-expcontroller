@@ -625,6 +625,15 @@ XC-150.)*
   return; while one exists it **refuses to open a new session**, for that animal or any other,
   until someone records that animal's return time, and the page shows the stranded session and
   asks for it. An animal out of its cage is never forgotten because a process died.
+  **Resume beside end** (XC-026, 2026-10-01; the PI: "Resume or end";
+  [its spec](2026-10-01-xc026-resume-design.md) §5): the stranded banner offers *resume
+  session* beside *end session…*. A resume reopens the same session from its record, between
+  runs, with its departure read from the record and its numbers carried on; it is not a new
+  session, so the refusal above still holds for an open, and with two stranded each is resumed
+  or ended on its own. A record that cannot carry a resume — written before XC-026, or one it
+  cannot read — is offered only *end*, and the banner says why. A resume of an animal already
+  past its out-of-cage limit, or whose bounds changed since the session opened, is refused when
+  sent, before anything is written, saying why and to end the session instead.
 - **`wlx run` stays**, for the terminal: it opens a session, runs one run and ends it, through
   the same session and run code as the service, so the terminal and the page are two peers on
   one path and not two implementations.

@@ -8,6 +8,7 @@ from __future__ import annotations
 import gc
 import inspect
 import json
+import os
 import shutil
 import threading
 import time
@@ -33,6 +34,7 @@ from wl_xcon.link import (
     OpenSession,
     Pause,
     Refused,
+    Resume,
     ResumeSession,
     SetParameter,
     Simulated,
@@ -45,9 +47,32 @@ from wl_xcon.link import (
     ZmqLink,
 )
 from wl_xcon.record import welfare_note
+from wl_xcon.scheduler import Block, Condition
 from wl_xcon.service import Service, _fresh_seed
+from wl_xcon.task import Outcome
 from wl_xcon.taskd import Session
 from wl_xcon.welfare import Welfare
+
+#: wl-preproc's decoder and trial assembler, for the path through two crashes (XC-026):
+#: `tests/test_taskd.py`'s guard. A missing checkout skips that test locally and fails
+#: this module under `WLX_REQUIRE_PREPROC=1`, which CI sets.
+_REQUIRED = os.environ.get("WLX_REQUIRE_PREPROC") == "1"
+try:
+    from wl_preproc.contracts import events as their_events
+    from wl_preproc.events.assemble import assemble as their_assemble
+except ImportError as exc:  # pragma: no cover - exercised by the CI job
+    if _REQUIRED:
+        raise AssertionError(
+            f"WLX_REQUIRE_PREPROC=1 but wl-preproc is not importable ({exc}). A resumed "
+            f"session's stream read by wl-preproc's own code is the only check that one "
+            f"recording repeats no number; skipping it would report numbers nobody read"
+        ) from exc
+    their_events = their_assemble = None
+
+_contract = pytest.mark.skipif(
+    their_assemble is None,
+    reason="wl-preproc checkout not beside this repo; the path through its assembler cannot run",
+)
 
 ALLOCATION = "tasks/allocation.py"
 EIGHT_HOURS = Path("tasks/eight_hour_bounds.py")
@@ -85,13 +110,14 @@ def _folders(tmp_path, bounds: Path = EIGHT_HOURS, animals=("REFERENCE",)):
     return subjects, tasks, root
 
 
-def _made(folders, *, link=None, wall=None, seed=lambda: 7) -> Service:
+def _made(folders, *, link=None, wall=None, seed=lambda: 7, card=None) -> Service:
     subjects, tasks, root = folders
     return Service(
         rig=RIG, rig_path=RIG_FILE, subjects=subjects, tasks=tasks,
         allocation=_load_allocation(Path(ALLOCATION)), allocation_path=ALLOCATION,
         root=root, link=link if link is not None else Simulated(), seed=seed,
         wall_clock=wall if wall is not None else _Wall(),
+        **({} if card is None else {"card": card}),
     )
 
 
@@ -1973,6 +1999,211 @@ def test_an_animal_whose_bounds_will_not_load_is_refused_alike_by_an_open_and_a_
 
     assert said in why
     assert isinstance(_step(service), Idle), "the service goes on"
+
+
+# --- the path through two crashes (XC-026 spec §7; plan Task 7) ------------------
+
+
+def _xy_plan() -> list[Block]:
+    """Blocks X then Y, two trials each, every trial paying: four trials a run, and the
+    run's third trial opens its second block."""
+    return [
+        Block(name=name, conditions=[Condition(name.lower(), {}, target=2)],
+              counts_toward=frozenset(Outcome))
+        for name in ("X", "Y")
+    ]
+
+
+def _dying(monkeypatch, *, ran: int, began: int) -> list[float]:
+    """`taskd.run_trial`, counted across every service in the test. The trial of call
+    `ran` runs its frames, and then its process dies: before its outcome, its
+    `TRIAL_END` or its line. The trial of call `began` dies as it begins, before its first
+    frame. **Each dies by `KeyboardInterrupt`**, which `Service._run` does not contain
+    (it is no `Exception`), so it leaves `Service.step` in the middle of the trial; the
+    test then drops the service with no `shutdown` -- no end, no return -- as `_Rig`'s
+    `crash` leaves one. Unlike a kill, `Session.run`'s `finally` still writes the run's end
+    row; `resume.read` reads only start rows, so what a resume restores is the same.
+    Returns what each death took with it, in order: the fluid its trial's frames
+    commanded, which no line holds."""
+    from wl_xcon import taskd
+
+    real, calls, lost = taskd.run_trial, [0], []
+
+    def run_trial(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == began:
+            lost.append(0.0)
+            raise KeyboardInterrupt
+        if calls[0] != ran:
+            return real(*args, **kwargs)
+        welfare = kwargs["effects"].welfare
+        before = welfare.commanded
+        real(*args, **kwargs)
+        lost.append(welfare.commanded - before)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(taskd, "run_trial", run_trial)
+    return lost
+
+
+def _jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def _recorded_fluid(xcon: Path) -> float:
+    """The fluid so far as the record holds it (spec §4): every trial line's `fluid_ml`,
+    then every hand reward's `ml`, summed in `resume.read`'s order."""
+    lines = _jsonl(xcon / "trials.jsonl")
+    hand = [row for row in _jsonl(xcon / "controls.jsonl") if row["kind"] == "reward"]
+    return sum(float(line["fluid_ml"]) for line in lines) + sum(float(row["ml"]) for row in hand)
+
+
+@_contract
+def test_two_crashes_and_their_resumes_repeat_no_number_in_one_recording(tmp_path, monkeypatch):
+    """XC-026, the path and not the piece (spec §7; the plan's Review Focus 1, 3 and 4).
+    One rig-fixed session, three processes, one sync-box recording:
+
+    1. the first opens it and runs run 1 on a block plan, its reward size changed during
+       it and a hand reward given while it is paused; a hand reward between runs; then
+       run 2, whose third trial, the first of block 4, runs its frames and dies;
+    2. the second finds it stranded, resumes it, gives a hand reward, and runs run 3,
+       whose second trial dies as it begins;
+    3. the third resumes it again, runs run 4, a setting changed in it, and ends it.
+
+    Every card's codes, in order, are one stream, read by wl-preproc's own
+    `decode_stream` and `assemble`."""
+    from wl_xcon import dio, taskd
+    from wl_xcon import service as service_module
+
+    cards: list = []
+
+    class _KeptCard(dio.Simulated):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            cards.append(self)
+
+    # The block plan a run is given until XC-207 gives the service one.
+    monkeypatch.setattr(
+        service_module, "RunSpec", lambda **fields: taskd.RunSpec(**fields, blocks=_xy_plan())
+    )
+    lost = _dying(monkeypatch, ran=7, began=9)
+    folders = _folders(tmp_path)
+    xcon = folders[2] / "2027-01-14_01" / "xcon"
+    resumed = ResumeSession(by=BY, session_id="2027-01-14_01")
+
+    def wall(seconds_later: float) -> _Wall:
+        moved = _Wall()
+        moved.at = WALL + seconds_later
+        return moved
+
+    # --- the first process ---
+    # Run 1's seed gives rewarded and unrewarded trials; run 2's rewards its third, so the
+    # first death takes a commanded reward with it.
+    seeds = iter([7, 6])
+    first = _made(folders, card=_KeptCard, seed=lambda: next(seeds), link=_Script({
+        3: [SetParameter(name="reward_correct", value=0.1, by=BY)],
+        5: [Pause(by=BY)], 6: [ManualReward(by=BY)], 7: [Resume(by=BY)],
+    }))
+    _step(first, _open())
+    _step(first, _start())
+    _run_to_its_end(first)
+    _step(first, ManualReward(by=BY))
+    with pytest.raises(KeyboardInterrupt):
+        _step(first, _start())
+    departure = first.session.welfare.left_cage_wall_at
+    died_with = first.session.welfare.session_total()
+    assert lost[0] > 0, "the first death took a reward its trial commanded, and no line holds it"
+
+    # --- the second process: resumed, a hand reward, run 3 dies ---
+    second = _made(folders, card=_KeptCard, wall=wall(600))
+    assert [(s.session_id, s.resumable, s.left_at) for s in _step(second).stranded] == [
+        ("2027-01-14_01", True, departure),
+    ]
+    frame = _step(second, resumed)
+    assert (frame.phase, frame.run_index, frame.resumed_at) == ("between_runs", 1, WALL + 600)
+    welfare = second.session.welfare
+    assert welfare.left_cage_wall_at == departure, "the clock runs from the first departure"
+    assert welfare.session_total() == _recorded_fluid(xcon)
+    assert welfare.session_total() == pytest.approx(died_with - lost[0])
+    assert second.session.spec.bounds.value("reward_correct") == 0.1
+    _step(second, ManualReward(by=BY))
+    with pytest.raises(KeyboardInterrupt):
+        _step(second, _start())
+    died_with = welfare.session_total()
+
+    # --- the third process: resumed again, run 4 to its end, and the session ended ---
+    third = _made(folders, card=_KeptCard, wall=wall(1200), link=_Script({
+        4: [SetParameter(name="reward_correct", value=0.08, by=BY)],
+    }))
+    frame = _step(third, resumed)
+    assert (frame.phase, frame.run_index, frame.resumed_at) == ("between_runs", 2, WALL + 1200)
+    welfare = third.session.welfare
+    assert welfare.left_cage_wall_at == departure, "the clock runs from the first departure"
+    assert welfare.session_total() == _recorded_fluid(xcon)
+    assert welfare.session_total() == pytest.approx(died_with - lost[1])
+    assert third.session.spec.bounds.value("reward_correct") == 0.1, "run 1's size, twice carried"
+    assert welfare.last_delivery_wall_at == WALL + 600, "the second process's hand reward"
+    _step(third, _start())
+    _run_to_its_end(third)
+    assert welfare.session_total() == pytest.approx(_recorded_fluid(xcon)), "each reward once"
+    assert isinstance(_step(third, _end()), Idle)
+
+    # --- the recording, as wl-preproc reads it ---
+    assert len(cards) == 3, "one card a process"
+    stream = [(i * 0.001, word) for i, word in enumerate(w for card in cards for w in card.codes)]
+    events = their_events.decode_stream(stream)
+    assembly = their_assemble(events)
+    escape = their_events.Escape
+
+    def payloads(which) -> list[tuple]:
+        return [e.words for e in events
+                if isinstance(e, their_events.PayloadEvent) and e.escape is which]
+
+    codes = [e.code for e in events if isinstance(e, their_events.SimpleEvent)]
+    assert assembly.errors == []
+    # No trial, block or run number repeats: as strobed, and as assembled.
+    assert [(high << 16) | low for high, low in payloads(escape.TRIAL_NUMBER)] == list(range(1, 14))
+    assert [trial.trial_id for trial in assembly.trials] == list(range(1, 14))
+    assert [block for block, _task in payloads(escape.BLOCK_START)] == list(range(1, 8))
+    assert [block.block_id for block in assembly.blocks] == list(range(1, 8))
+    assert payloads(escape.RUN_START) == [(1, 0), (2, 0), (3, 0), (4, 0)]
+    assert [run.run_number for run in assembly.runs] == [1, 2, 3, 4]
+    # The two that died never closed: their trial, their block and their run.
+    assert [trial.trial_id for trial in assembly.trials if trial.end_s is None] == [7, 9]
+    assert [block.block_id for block in assembly.blocks if block.end_s is None] == [4, 5]
+    assert [run.run_number for run in assembly.runs if run.end_s is None] == [2, 3]
+    assert codes.count(4137) == 2, "SESSION_RESUMED, once at each resume"
+    # Spec §8a item 2: a rig-fixed resume fixes the head again, with no release between.
+    assert (codes.count(4128), codes.count(4129)) == (3, 1)
+
+    # --- the record ---
+    lines = _jsonl(xcon / "trials.jsonl")
+    numbers = [line["trial_number"] for line in lines]
+    assert numbers == sorted(set(numbers)), "strictly increasing"
+    started = [row["trial_number"] for row in _jsonl(xcon / "trial_starts.jsonl")]
+    assert started == list(range(1, 14))
+    assert sorted(set(range(1, numbers[-1] + 1)) - set(numbers)) == [7, 9], "the gaps are the deaths"
+    # Each line joins the trial its number names, inside the block and the run it names.
+    for line in lines:
+        (trial,) = [t for t in assembly.trials if t.trial_id == line["trial_number"]]
+        (block,) = [b for b in assembly.blocks if b.start_s <= trial.start_s <= b.last_s]
+        (run,) = [r for r in assembly.runs if r.start_s <= trial.start_s <= r.last_s]
+        assert (block.block_id, run.run_number) == (line["block_in_session"], line["run_in_session"])
+    runs = [row for row in _jsonl(xcon / "runs.jsonl") if row["event"] == "start"]
+    assert [row["bounded"]["reward_correct"] for row in runs] == [0.05, 0.1, 0.1, 0.1]
+    changes = _jsonl(xcon / "parameter_changes.jsonl")
+    assert [(row["sequence"], row["run"]) for row in changes] == [(1, 0), (2, 3)], "none repeats"
+    hand =[row["where"] for row in _jsonl(xcon / "controls.jsonl") if row["kind"] == "reward"]
+    assert [where.split(" before")[0] for where in hand] == [
+        "given while paused", "given between runs", "given between runs",
+    ]
+    assert _kinds(folders[2]) == [
+        "departure", "session opened", "session resumed", "session resumed", "returned",
+        "session ended",
+    ]
+    assert {(row["by"], row["how"]) for row in _rows(folders[2]) if row["kind"] == "session resumed"} == {
+        (BY, "wlx taskd"),
+    }
 
 
 # --- wlx taskd -----------------------------------------------------------------

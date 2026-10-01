@@ -67,7 +67,7 @@ are detected at the display surface.
 | Component | Runs on | Language | Job | Simulator |
 |---|---|---|---|---|
 | `taskd` | Task PC (Linux) | Python | Trial execution, display, gaze logic, DIO, session record; since P4d-2b b3a also `wlx taskd`, the rig service that holds one animal's session across runs, opened, run and ended from a console (`service.py`) | Full headless run against replayed/synthetic inputs |
-| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and records the actor** — anybody attached has full access, with visibility rather than a lock (S9a §8); `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008). **The link exists** (`wl_xcon/link.py`, P4d-1, 2026-09-19): `taskd` holds a `Link` port, drained and published once per trial boundary and never per frame, whose live implementation (`ZmqLink`) binds a ZMQ PUB socket for `Telemetry`, a REP socket for its commands — `SetParameter` and `Stop`, and since P4d-2b b2a `Pause`, `Resume`, `Mark` (a mark's note), `ScheduleStop`, `CancelScheduledStop` and `ManualReward` (a manual reward: while paused and, in a `wlx taskd` session, between runs and while the return is awaited), and since P4d-2b b3a `OpenSession`, `CheckRun`, `StartRun` and `EndSession`, which `wlx taskd` acts on and a `wlx run` session refuses — which the page's forms send since b3a-2, through `POST /commands`, built by the wire's own rules (`link._command_from`), and whose closed session's summary `wlx taskd`'s idle frame carries until the next session opens (telemetry schema 11) — each checked where it is decoded — and, given a third endpoint, a PULL socket for an operator's mark signal, which the trial loop checks once per frame (ADR-0003's transport, untouched: a third socket on the same link). `ZmqConsole` is the other end. Reached today by `wlx run --link PUB,REP` or `wlx taskd --link PUB,REP` and a terminal client, `wlx console --sub PUB --req REP --as WHO`. **The browser console exists** (P4d-2b slice b1, 2026-09-26, read-only then; the box's writes since b2a and its session forms since b3a-2, below): `wlx serve --link PUB,REP --http HOST:PORT --health-token-file PATH` is its own process — a stdlib `ThreadingHTTPServer`, one `ZmqConsole` on a telemetry thread, server-sent events to each browser from a bounded queue, and every pane rendered in Python (`web.py`) so the page's script only swaps fragments. The wl-works fonts are bundled and served by the box, so the page never reaches the internet (PI, 2026-09-26). Reads are open to the LAN. **Writes come from the box** (P4d-2b slice b2a, 2026-09-28): `POST /commands` is accepted only from a loopback peer, with a `Host` naming loopback, the page's own `Origin` and `Content-Type: application/json` (spec §2), and recorded as `NAME (box, unverified)`; every request is answered only when its `Host` names this console (`--allow-host` adds names). `wlx serve` owns each socket on one thread — a read-only telemetry thread, a command thread whose REQ socket waits for `taskd`'s acknowledgment (*sent*, *not delivered*, *busy*), and a mark thread that sends the signal ahead of every command. Writes from people signed in to wl-works are slice b2b | Runs against a fake `taskd` (`link.Simulated`), or a real one over loopback sockets |
+| `console` | The control box, in a browser on the LAN | Python server + web client | Experimenter UI, live plots, parameter writes, preflight, test screens. **The box authenticates and records the actor** — anybody attached has full access, with visibility rather than a lock (S9a §8); `wl-works` lists devices and links to them, and carries no welfare-affecting action (ADR-0008). **The link exists** (`wl_xcon/link.py`, P4d-1, 2026-09-19): `taskd` holds a `Link` port, drained and published once per trial boundary and never per frame, whose live implementation (`ZmqLink`) binds a ZMQ PUB socket for `Telemetry`, a REP socket for its commands — `SetParameter` and `Stop`, and since P4d-2b b2a `Pause`, `Resume`, `Mark` (a mark's note), `ScheduleStop`, `CancelScheduledStop` and `ManualReward` (a manual reward: while paused and, in a `wlx taskd` session, between runs and while the return is awaited), and since P4d-2b b3a `OpenSession`, `CheckRun`, `StartRun` and `EndSession`, and since XC-026 (2026-10-01) `ResumeSession` (wire kind `resume_session`: a stranded session resumed from its record), which `wlx taskd` acts on and a `wlx run` session refuses — which the page's forms send since b3a-2, through `POST /commands`, built by the wire's own rules (`link._command_from`), and whose closed session's summary `wlx taskd`'s idle frame carries until the next session opens (telemetry schema 13; the summary since 11) — each checked where it is decoded — and, given a third endpoint, a PULL socket for an operator's mark signal, which the trial loop checks once per frame (ADR-0003's transport, untouched: a third socket on the same link). `ZmqConsole` is the other end. Reached today by `wlx run --link PUB,REP` or `wlx taskd --link PUB,REP` and a terminal client, `wlx console --sub PUB --req REP --as WHO`. **The browser console exists** (P4d-2b slice b1, 2026-09-26, read-only then; the box's writes since b2a and its session forms since b3a-2, below): `wlx serve --link PUB,REP --http HOST:PORT --health-token-file PATH` is its own process — a stdlib `ThreadingHTTPServer`, one `ZmqConsole` on a telemetry thread, server-sent events to each browser from a bounded queue, and every pane rendered in Python (`web.py`) so the page's script only swaps fragments. The wl-works fonts are bundled and served by the box, so the page never reaches the internet (PI, 2026-09-26). Reads are open to the LAN. **Writes come from the box** (P4d-2b slice b2a, 2026-09-28): `POST /commands` is accepted only from a loopback peer, with a `Host` naming loopback, the page's own `Origin` and `Content-Type: application/json` (spec §2), and recorded as `NAME (box, unverified)`; every request is answered only when its `Host` names this console (`--allow-host` adds names). `wlx serve` owns each socket on one thread — a read-only telemetry thread, a command thread whose REQ socket waits for `taskd`'s acknowledgment (*sent*, *not delivered*, *busy*), and a mark thread that sends the signal ahead of every command. Writes from people signed in to wl-works are slice b2b | Runs against a fake `taskd` (`link.Simulated`), or a real one over loopback sockets |
 | `neurofeatd` | Acquisition PC | C++ | SpikeGLX `fetchLatest` on the filtered AP stream -> MUA features -> ZMQ PUB | Synthetic feature publisher |
 | `rhxfeatd` | Intan host | C++/Rust | RHX Spike Output socket -> features -> ZMQ PUB; bounded reader | Synthetic spike-raster publisher |
 | `labhost` | Task PC | Python | The pull-only endpoint wl-works polls — **a surface of `console` since 2026-09-19, not its own process** (S9a §7): same server, separate path, separate auth. Served as `GET /health` by `wlx serve` (`health.py`, P4d-2b b1): `HealthResponse` schema 1, contract-tested against wl-preproc's own model; a bearer token read from a file outside the repository, compared with `hmac.compare_digest`, one `401` for every credential failure — the rules of wl-preproc's `responder/handler.py`. Exactly one reading is featured, the most urgent (PI, 2026-09-26), because wl-works shows only the first | Contract tests |
@@ -116,7 +116,17 @@ how such a session is found and its return taken, and the page's route into the 
 `restore_departure` reads back a recorded departure without `left_cage`'s refusals, which
 were applied when it was taken; a mistake in any of
 these leaves an animal out of its cage with nothing saying so, or records its return
-against the wrong instant. **And `service._unasked`** (the b3a-1 review's Ruling 1): a
+against the wrong instant. **Since XC-026 (2026-10-01) a stranded session can also be
+resumed** (the PI: "Resume or end"): the page offers *resume session* beside *end
+session…*, and `Service._resume` reopens the same session from its record (`resume.read`,
+then `Session.resume`) — between runs, its departure restored by `restore_departure` and
+never re-taken, its fluid so far by `Welfare.restore_fluid`, its next run numbered on and
+every block and trial number continuing — refused, before anything is written, while a
+session is open, when its record cannot carry it, when its animal's bounds changed since it
+opened, or when the animal is past its out-of-cage limit. A resume is not a new session, so
+the rule above still holds; with two stranded, each is resumed or ended on its own.
+`Service._resume`, `Service._built` and `resume.py` are not on this list (XC-026 spec §8).
+**And `service._unasked`** (the b3a-1 review's Ruling 1): a
 page's *confirm*, or a departure's *amend*, is taken only as the answer to the question
 the service posed — for that mark, that session and the instant it asked about, and for a
 departure the animal, deployment and setup of the open it was asked about — since the
@@ -325,7 +335,13 @@ display layer that per-trial scenes do not reset.
   wl-preproc now joins a line to its recorded trial by: its `events/rigtrials.py`
   keys each line by it, and `nwb/conditions.py`'s `join` matches that key to the
   stream's `TRIAL_NUMBER` (its `main`, `b0f8b52`, 2026-10-01).
-  Every line carries ten position numbers (`levels.Position`; session-levels spec §3).
+  Every line carries ten position numbers (`levels.Position`; session-levels spec §3),
+  and since XC-026 (2026-10-01) the fluid commanded during the trial (`fluid_ml`) and its
+  last reward's instant (`last_reward_at`). **Each trial's start is written too**, as a
+  row of `trial_starts.jsonl` — its ten numbers, its run and its task — at the boundary,
+  after its words are computed and before its first strobe (XC-026 spec §8a item 1): a
+  trial that dies mid-trial has strobed its number and has no line, and a resume takes
+  every number from these rows, so none is issued twice.
   `CONDITION` is not emitted yet (XC-197).
   **Each block is marked too** (the session-levels spec, 2026-10-01): `BLOCK_START`
   (`0x8002`, its `block_in_session` and its task's code, 0 until wl-xtasks allocates
@@ -344,6 +360,16 @@ display layer that per-trial scenes do not reset.
   before its first trial is the escape and the marker with no block between. The escape
   and the marker go out whether or not the allocation has 4135 and 4136; wl-preproc
   stores those two and reads nothing from them.
+  **A resumed session goes on in the same recording** (XC-026, 2026-10-01): the crashed
+  run, its open block and its trial cut short stay unclosed, as for any interrupted run;
+  the resume strobes the provisional `SESSION_RESUMED` (4137) once, and the next run's
+  escape carries the next run number, with every block and trial number continuing, so
+  one recording never repeats a trial, block or run number. **A resumed rig-fixed
+  session strobes a second `HEAD_FIXED` (4128) at the resume, with no `HEAD_RELEASED`
+  (4129) between** (XC-026 spec §8a item 2): a run needs the head marked fixed, and
+  nothing recorded whether it was released across the crash, so a stream can hold
+  several 4128 and one 4129, at the session's end; the session's own restraint time
+  counts from the latest 4128, an undercount. Restraint bounds nothing (the PI, 2026-09-19 and 2026-09-26).
 
 ## The display: direct view, and stereo as viewports
 
@@ -360,7 +386,8 @@ sensors' housings, or the stereoscope's viewport stopped by its mask.
 refusal of a task written for the other setup, need the session's geometry, and **the checks now
 run against the session's own field, from `--rig` and `--view`** (`wlx run` and `wlx check`,
 direct view part 2, 2026-09-29): a task that does not pass in the chosen setup is refused before
-the session opens. The setup is in the session record and in telemetry schema 9.
+the session opens. The setup is in the session record and in telemetry (schema 13; the setup
+since 9).
 
 Through the stereoscope each eye views one half of the panel through redirection mirrors.
 Therefore one window, one flip, one refresh clock, no genlock — **two viewports on one
