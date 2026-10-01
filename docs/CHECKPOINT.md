@@ -378,6 +378,12 @@ reward's other two slices (XC-157, XC-158), XC-183 and XC-186.
     sees* pane and changes feed, `/health`'s text and the terminal console. Until today the page
     printed the 0-based index; the final review found wl-works reads no rig `/health` run text.
   - The live page has no stalled-animal signal; the mockup's amber is XC-021's.
+- **CI, read shard by shard before the fast-forward** (push run `36857750115`, the branch's first
+  push, so the gate diffed against `main`): pytest `2107 passed` on 3.11-3.13; twelve modules, 349
+  functions in twelve shards of 29-30, **349 caught, 0 survived**, every catch a real `N failed`,
+  every baseline and restore at `2107 passed`. Twelve catches were timeouts, eleven of them
+  verified before (the b3a-2 and 2026-10-01 entries). The new one, **`serve._listen`, was run
+  again locally with no limit: `26 failed` in 313 s**, all in `test_serve.py`, none a hang (XC-140).
 - **Proof**: 2107 passed. Task 7's sweep over every new and changed function: all caught but
   `web._per_correct`, which survived and was killed in the fix wave (2 failed); the fix wave's
   re-sweep caught `_state_text` (8 failed) and `_after_service_run` (44 failed). The final review
