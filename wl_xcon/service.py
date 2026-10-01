@@ -63,6 +63,7 @@ import time
 import traceback
 from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 from wl_xcon import link as _link
 from wl_xcon import marks as _marks
@@ -206,6 +207,9 @@ def _contained(names: tuple[str, ...], build: Callable[[], object]) -> tuple:
         return _unfinished(names, broken)
     return tuple(built) if isinstance(built, list) else (built,)
 
+
+#: What `Service._built` returns: whatever the build it is given returns.
+_Built = TypeVar("_Built")
 
 #: The service's own commands: taken between runs, never handed to a run.
 _SERVICE_COMMANDS = (
@@ -595,6 +599,24 @@ class Service:
         )
         return session, bounds
 
+    def _built(self, kind: str, by: str, build: Callable[[], _Built]) -> _Built | None:
+        """What `build` returns -- a session built and not opened, for an open or a
+        resume -- or `None`, refused under `kind`, saying why: a `SystemExit`,
+        `ValueError`, `TypeError` or `Exceeded` with its own sentence, and anything else
+        named, since the animal's files are code and a broken one is never the
+        service's end. **The one handler `_open` and `_resume` share** (review fix
+        round 1 of XC-026 Task 4), so the two cannot drift."""
+        try:
+            return build()
+        except (SystemExit, ValueError, TypeError, Exceeded) as refused:
+            self._refuse(kind, by, _sentence(refused))
+        except Exception as broken:  # noqa: BLE001 -- the animal's files are code
+            self._refuse(
+                kind, by,
+                f"the session could not be built: {type(broken).__name__}: {broken}",
+            )
+        return None
+
     def _open(self, command: _link.OpenSession) -> None:
         """**Welfare-critical.** Open a session (P4d-2b spec §6.2): **none while one is
         open, and none for any animal while one is stranded** (§6.1); an answer taken
@@ -635,16 +657,8 @@ class Service:
             if unasked is not None:
                 self._refuse("open", command.by, unasked)
                 return
-        try:
-            session = self._session_for(command)
-        except (SystemExit, ValueError, TypeError, Exceeded) as refused:
-            self._refuse("open", command.by, _sentence(refused))
-            return
-        except Exception as broken:  # noqa: BLE001 -- the animal's files are code
-            self._refuse(
-                "open", command.by,
-                f"the session could not be built: {type(broken).__name__}: {broken}",
-            )
+        session = self._built("open", command.by, lambda: self._session_for(command))
+        if session is None:
             return
         try:
             decision = _marks.page_departure(
@@ -694,7 +708,8 @@ class Service:
         its record (`resume.read`), and resumed (`Session.resume`). Another session still
         stranded is no bar: each is resumed or ended on its own (spec §5; plan ruling 7).
         **A record it cannot carry is a refusal, never the service's end** (the
-        controller's ruling on Task 4): what `stranded.restore` raises is said too."""
+        controller's ruling on Task 4): what `stranded.restore` raises is said too, and
+        what `Session.resume` refuses before it writes."""
         if self.session is not None:
             self._refuse(command.KIND, command.by,
                          f"a session is open ({self.session.spec.session_id}); a stranded "
@@ -720,19 +735,14 @@ class Service:
                          f"{restoration.subject!r} and its departure names {found.subject!r}; "
                          f"a record that disagrees with itself is not resumed, so end it instead")
             return
-        try:
-            session, bounds = self._build(
-                session_id=found.session_id, animal=restoration.subject,
-                deployment=restoration.deployment, view=restoration.view,
-                delivered_today=restoration.already_today,
-            )
-        except (SystemExit, ValueError, TypeError, Exceeded) as refused:
-            self._refuse(command.KIND, command.by, _sentence(refused))
+        built = self._built(command.KIND, command.by, lambda: self._build(
+            session_id=found.session_id, animal=restoration.subject,
+            deployment=restoration.deployment, view=restoration.view,
+            delivered_today=restoration.already_today,
+        ))
+        if built is None:
             return
-        except Exception as broken:  # noqa: BLE001 -- the animal's files are code
-            self._refuse(command.KIND, command.by,
-                         f"the session could not be built: {type(broken).__name__}: {broken}")
-            return
+        session, bounds = built
         now_bounds = bounds_record(bounds)
         changed = sorted(
             name
@@ -757,7 +767,14 @@ class Service:
             self._refuse(command.KIND, command.by,
                          f"{stop}; record its return with End session instead")
             return
-        session.resume(restoration, by=command.by, how="wlx taskd")
+        try:
+            session.resume(restoration, by=command.by, how="wlx taskd")
+        except (Exceeded, TypeError, ValueError) as refused:
+            # Its welfare rules refuse a value from the record -- a reward size over its
+            # maximum, a negative fluid, a size that is no number -- before its first
+            # write (review fix round 1, Important 1).
+            self._refuse(command.KIND, command.by, _sentence(refused))
+            return
         session.offered_tasks = self._tasks()
         self.session = session
         self.stranded.remove(found)

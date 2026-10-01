@@ -1902,6 +1902,79 @@ def test_what_the_out_of_cage_check_raises_is_a_refusal_never_the_services_end(
     assert isinstance(_step(service), Idle), "the service goes on"
 
 
+def _start_row_bounded_as(value):
+    def damage(directory) -> None:
+        rows = [json.loads(line) for line in (directory / "runs.jsonl").read_text().splitlines()]
+        rows[0]["bounded"]["reward_correct"] = value
+        (directory / "runs.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return damage
+
+
+def _negative_fluid(directory) -> None:
+    lines = [json.loads(line) for line in (directory / "trials.jsonl").read_text().splitlines()]
+    lines[0]["fluid_ml"] = -1000.0
+    (directory / "trials.jsonl").write_text("".join(json.dumps(r) + "\n" for r in lines))
+
+
+@pytest.mark.parametrize(
+    ("damage", "said"),
+    [
+        (_start_row_bounded_as(100.0), "'reward_correct' may not exceed 10.0 mL (asked for 100.0)"),
+        (_negative_fluid, "a resumed session's commanded fluid is -"),
+        (_start_row_bounded_as("0.05"), "must be real number, not str"),
+    ],
+    ids=["bounded over its maximum", "negative fluid", "bounded not a number"],
+)
+def test_a_record_the_session_will_not_take_back_is_a_refusal_never_the_services_end(
+    tmp_path, damage, said
+):
+    """Review fix round 1, Important 1: `Session.resume` refuses a value its welfare
+    rules refuse -- before its first write -- and a record `find` offers to resume can
+    still hold one. Refused, saying it; nothing written; the service goes on."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01", run=True)
+    damage(folders[2] / "2027-01-14_01" / "xcon")
+    service = _made(folders)
+    (found,) = _step(service).stranded
+    assert found.resumable, "a record find offers to resume"
+
+    assert said in _resume_refused(service, "2027-01-14_01")
+    assert isinstance(_step(service), Idle), "the service goes on"
+
+
+@pytest.mark.parametrize("sent", ["open", "resume_session"])
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        ("BOUNDS = not_defined_anywhere\n", "the session could not be built: NameError: "),
+        ("x = 1\n", "must define BOUNDS"),
+    ],
+    ids=["raises", "defines no BOUNDS"],
+)
+def test_an_animal_whose_bounds_will_not_load_is_refused_alike_by_an_open_and_a_resume(
+    tmp_path, sent, text, said
+):
+    """Review fix round 1, Important 2: `_open` and `_resume` refuse a session they
+    cannot build through one handler (`_built`), so they say the same thing, under
+    their own kind, and neither ends the service."""
+    folders = _folders(tmp_path)
+    if sent == "resume_session":
+        _crashed(folders, "2027-01-14_01")
+    (folders[0] / "REFERENCE" / "bounds.py").write_text(text)
+    service = _made(folders)
+
+    if sent == "open":
+        frame = _step(service, _open())
+        assert list(service.root.iterdir()) == []
+        why = frame.refusals[-1].why
+        assert frame.refusals[-1].name == "open"
+    else:
+        why = _resume_refused(service, "2027-01-14_01")
+
+    assert said in why
+    assert isinstance(_step(service), Idle), "the service goes on"
+
+
 # --- wlx taskd -----------------------------------------------------------------
 
 
