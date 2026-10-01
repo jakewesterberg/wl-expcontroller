@@ -9,7 +9,9 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > written with**, `wl-expcontroller` and `wl_expcontroller/…` paths included, as the PI
 > ruled for dated documents; read `wl_expcontroller/taskd.py` there as `wl_xcon/taskd.py`.
 >
-> **This file describes `main`.** The newest entry, "What moved on 2026-10-01: session levels",
+> **This file describes `main`.** The newest entry, "What moved on 2026-10-01: run markers, and the
+> plan retired", sends wl-preproc's run escape and marker and drops the unplanned-run label. Below it,
+> "What moved on 2026-10-01: session levels",
 > is the PI's vocabulary, ten position numbers on every trial line, block markers in the
 > recording, schema 12 and the two-cell strip (on `main` by fast-forward once its CI read green).
 > Below it, the eight-hour correction and the port race CI failed on, both 2026-10-01. Below them,
@@ -340,13 +342,47 @@ figure was one low. In order:
 
 ---
 
+## What moved on 2026-10-01: run markers, and the plan retired
+
+**Resume here (state at 2026-10-01, night):** this change is on `main` (branch `run-markers`, a
+fast-forward once its push run read green); the PI approved both parts in the UI ("Yes, both") and
+the one welfare-critical docstring it touches (`Service._start`'s, "Approve the wording"). Nothing is
+in flight. **Next:** XC-026 (carrying run, block and trial numbers across a crash, the PI: before
+January), XC-207 (block plans from the task program or chosen at the rig), b2b once wl-works says
+rig sign-in is deployed (it heads wl.works' build order next), the manual reward's other two slices
+(XC-157, XC-158), XC-183 and XC-186.
+
+- **XC-205, closed: every run carries wl-preproc's run markers.** Its escape `0x8006` (run in
+  session from 1, task code 0) goes out right after the allocation's 4135, computed before anything
+  of the run is strobed; its marker 4 goes out on a by-design end, after the open block's
+  `BLOCK_END` and before 4136; a fault or interrupt sends neither. 4135/4136 stay (wl-preproc reads
+  nothing from them); `runs.jsonl`'s `strobed` still means those two. wl-preproc measures runs from
+  the escape and marker into its `core.Run` (its `main` `b0f8b52`). A crashed run is bounded there at
+  its last code before the next run, so a hand reward given between runs after a crash counts
+  toward it (its choice, ADR-0007). The review found a card fault or Ctrl-C among the run's opening
+  emits raised `UnboundLocalError` and published no frame (a window that already existed for 4135):
+  `publish` is now bound first, with a test.
+- **XC-199 widened again**: for runs 2, 3, 4, 5 and 7 the run escape's checksum is itself an escape
+  value, so a cut trial escape before such a run loses the run and folds it into the faulted one,
+  which then reads as closed, and a cut after word 2 can forge `SESSION_END`, `BLOCK_END` or
+  `RUN_END` (checked through wl-preproc's `decode_stream` and `assemble`).
+- **The plan retired** (the PI, through wl-works, 2026-10-01; wl-works `6a57b1cc`, its montage-plan
+  spec §1 and §6): wl.works sends the rig no day's plan; block plans and conditions come from the
+  task programs (wl-xtasks) or are chosen at the rig (XC-207); the "unplanned run" label and its
+  timing-tier warning are gone from the page, and `unplanned` from `runs.jsonl` (wl-preproc never
+  read it). Probes and sites come from SpikeGLX on the rig. XC-150 is narrowed to the task-library
+  pull; XC-101 closed (whether a session opens with calibration is decided at the rig); XC-100 keeps
+  `prepare-session` (no plan fields) and the fluid envelope, its `planned_task`, `session_intent` and
+  `probes[]` withdrawn; dated notes in `docs/pending-wl-works-amendments.md`; XC-208 lists the
+  older specs that still state a day's plan.
+- **Proof**: 2121 passed; the review drove nine scenarios through wl-preproc's decoder and assembler
+  (each run's escape `(n, 0)` from 1, marker 4 only on by-design ends, every other word unchanged,
+  no decode errors); `words_for_run` swept 29 failed, `taskd.run` 264 failed.
+
 ## What moved on 2026-10-01: session levels
 
-**Resume here (state at 2026-10-01, evening):** session levels is built, reviewed and on `main`
-(branch `session-levels-design`, a fast-forward once its push run read green). Nothing is in
-flight. **Next:** XC-205 (wl-preproc's run markers, now on its `main`), then XC-026 (carrying
-numbers across a crash, the PI: before January), b2b once wl-works says it has deployed, the manual
-reward's other two slices (XC-157, XC-158), XC-183 and XC-186.
+**State after session levels (2026-10-01, evening; the entry above supersedes it):** built,
+reviewed and on `main` (`9880c87`).
 
 - **The PI's rulings, 2026-10-01, asked in the UI.** Spec `docs/superpowers/specs/2026-10-01-session-levels-and-strip-design.md`,
   plan `docs/superpowers/plans/2026-10-01-session-levels.md`, mockup
