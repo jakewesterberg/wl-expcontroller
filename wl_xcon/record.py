@@ -90,8 +90,11 @@ CONTROLS = "controls.jsonl"
 
 #: One row when each run starts and one when it ends (P4d-2b spec §6.3), joined by
 #: `run`: the task, the allocation and their versions, the values and the bounded values
-#: it started with, `unplanned`, the pre-flight with who acknowledged each unknown item,
-#: and who started it; then when it ended, why, and how many trials it ran.
+#: it started with, the pre-flight with who acknowledged each unknown item, and who
+#: started it; then when it ended, why, and how many trials it ran. **No `unplanned`**
+#: since 2026-10-01: the start row carried `unplanned: true` on every run until the PI
+#: retired the unplanned run (P4d-2b spec §4.0); wl-preproc reads no such field (its
+#: `main`, `b0f8b52`, read 2026-10-01).
 #:
 #: **Two rows, not the spec's one** (the b3a-1 plan, decision 4), so a run's start, and
 #: the acknowledgements it started on, are on disk before its first trial: a process

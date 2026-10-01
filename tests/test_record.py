@@ -207,7 +207,7 @@ def test_a_trial_row_carries_its_ten_position_numbers(tmp_path):
 
 def test_a_run_row_carries_its_event_its_run_and_its_local_time(tmp_path):
     record = SessionRecord.open(tmp_path, session_id="2027-01-14_01", subject="A")
-    record.run_row("start", 0, 1_700_000_000.0, task="t.py", unplanned=True)
+    record.run_row("start", 0, 1_700_000_000.0, task="t.py", by="jake")
     record.run_row("end", 0, 1_700_000_060.0, stop_kind="completed")
 
     rows = [json.loads(line) for line in (record.directory / RUNS).read_text().splitlines()]
@@ -216,7 +216,7 @@ def test_a_run_row_carries_its_event_its_run_and_its_local_time(tmp_path):
         ("start", 0, 1_700_000_000.0),
         ("end", 0, 1_700_000_060.0),
     ]
-    assert rows[0]["task"] == "t.py" and rows[0]["unplanned"] is True
+    assert rows[0]["task"] == "t.py" and rows[0]["by"] == "jake"
     assert "local" in rows[0]["at_local"]
 
 

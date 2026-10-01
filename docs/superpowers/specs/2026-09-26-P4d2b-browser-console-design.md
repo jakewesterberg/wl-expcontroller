@@ -184,6 +184,12 @@ builds its part; S9a is amended to match when that slice lands.
   unplanned allowed. The page runs the day's plan in order, pushed from wl.works. A run
   outside the plan is an explicit "unplanned run", with a warning that it lowers the
   session's timing tier.
+  *Retired 2026-10-01:* the PI retired this ruling ("Nothing; retire the ruling"), as recorded
+  by wl-works, `6a57b1cc` (its spec `2026-10-01-montage-plan-design.md` §1 and §6). wl.works
+  sends the rig no day's plan; block plans and conditions come from the task programs
+  (wl-xtasks) or are chosen at the rig (backlog XC-207); and wl-preproc withdrew the
+  quarantine the timing-tier cost rested on. Every run is just a run, and the page shows no
+  unplanned-run warning.
 - **P4d-2b is built in six slices, in this order** (PI, 2026-09-26):
   - **b1 — read-only:** the server, the stream, and the read-only page from today's
     telemetry, plus `/health`.
@@ -653,6 +659,9 @@ Writes only from the rig PC's own browser (§2's four checks), until b2b.
   - **The task** is chosen from `--tasks`. Every run is **unplanned** until b3b brings the day's
     plan, and the page says so each time, with the warning that an unplanned run lowers the
     session's timing tier (§4.0).
+    *Retired 2026-10-01:* the PI retired the unplanned-run ruling, as recorded by wl-works,
+    `6a57b1cc` (§4.0). No day's plan comes, the page no longer warns, and `runs.jsonl`'s start
+    row no longer carries `unplanned`.
   - **Pre-flight** is shown before the run starts, under S9a §10's one rule: **fail blocks,
     unknown proceeds on a named acknowledgement written into the record, pass proceeds.** The
     items today: the task's load-time checks in the session's setup (fail if any blocks); the
@@ -672,8 +681,9 @@ Writes only from the rig PC's own browser (§2's four checks), until b2b.
 
 - **One session folder per session**, as now.
   - **`runs.jsonl`**, new: one row per run: its index, task, allocation and their versions, the
-    parameter layers it started with, when it started and ended (wall), `unplanned`, the
-    pre-flight results with who acknowledged each unknown, and why it stopped.
+    parameter layers it started with, when it started and ended (wall), `unplanned` (dropped
+    2026-10-01 with the ruling it recorded, §4.0), the pre-flight results with who acknowledged
+    each unknown, and why it stopped.
   - **Every trial row names its run.**
   - **`config.json`** holds what is fixed for the whole session: the animal, the deployment, the
     bounded config, the rig, the subject settings and the setup. What varies by run moves to

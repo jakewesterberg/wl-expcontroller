@@ -1025,7 +1025,8 @@ def test_an_acknowledged_run_starts_records_who_acknowledged_what_and_ends_betwe
         "task checks": None, "starting values": None, "bounded config": None,
         "out of cage": None, "pump calibration": BY, "eye tracker": BY,
     }
-    assert (start["unplanned"], start["by"], start["seed"], start["trials"]) == (True, BY, 7, 3)
+    assert (start["by"], start["seed"], start["trials"]) == (BY, 7, 3)
+    assert "unplanned" not in start, "retired by the PI, 2026-10-01 (P4d-2b spec §4.0)"
     assert end["stop_kind"] == "completed"
     codes = service.session.card.codes
     # The run's one block opens after `RUN_START` and wl-preproc's run escape -- 0x8006,

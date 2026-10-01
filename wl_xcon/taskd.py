@@ -1975,8 +1975,6 @@ class Session:
                 for name, ceiling in self.spec.bounds.ceilings.items()
                 if name != OUT_OF_CAGE
             },
-            # Every run is unplanned until the day's plan arrives from wl-works: XC-150.
-            unplanned=True,
             preflight=preflight_rows,
             by=by,
             strobed=start_code is not None,

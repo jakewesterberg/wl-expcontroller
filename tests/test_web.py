@@ -34,7 +34,6 @@ from wl_xcon.web import (
     NO_MARK_ENDPOINT,
     REWARD_ONLY_PAUSED,
     RUN_TRIALS,
-    UNPLANNED,
     font_bytes,
     fragments,
     page,
@@ -1535,14 +1534,21 @@ def test_outside_between_runs_the_preflight_pill_only_says_why_there_is_none(sho
     assert fragments(shown, view())["pf-pill"] == f'<span class="pill neutral">{said}</span>'
 
 
-def test_the_preflight_panel_shows_each_item_its_result_and_the_unplanned_warning():
+def test_the_preflight_panel_shows_each_item_its_result_and_no_unplanned_warning():
+    """Under a line naming the task and S9a §10's rule, and nothing after it: the PI
+    retired the unplanned-run warning on 2026-10-01, through wl-works (P4d-2b spec
+    §4.0)."""
     shown = fragments(_between(preflight=FAILING), view())["preflight"]
 
     assert '<span class="st fail" title="fail"></span><span>out of cage</span>' in shown
     assert '<span class="st pass" title="pass"></span><span>task checks</span>' in shown
     assert '<span class="st untested" title="unknown"></span><span>eye tracker</span>' in shown
     assert "past &lt;the&gt; limit" in shown
-    assert html.escape(UNPLANNED) in shown
+    assert (
+        '<div class="sub">for fixation_detection.py · a fail blocks the run; each unknown '
+        "starts it only on your acknowledgement, by name, written into runs.jsonl</div>"
+    ) in shown
+    assert "unplanned" not in shown and "timing tier" not in shown
     assert 'data-task="fixation_detection.py"' in shown
     assert "not taken" in fragments(_between(), view())["preflight"]
 
@@ -1582,7 +1588,8 @@ def test_between_runs_start_run_carries_the_shown_preflights_task_and_waits_for_
         'data-task="fixation_detection.py">start run</button>'
     ) in ready
     assert 'disabled title="pre-flight: out of cage failing">start run</button>' in failing
-    assert html.escape(UNPLANNED) in ready
+    # No unplanned-run warning beside it (the PI, 2026-10-01, through wl-works).
+    assert "unplanned" not in ready and "timing tier" not in ready
     assert 'data-cmd="pause"' not in ready and 'data-cmd="stop"' not in ready
 
 

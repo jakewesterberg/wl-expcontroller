@@ -315,9 +315,8 @@ def test_the_run_a_session_spec_describes_is_run_0_in_every_file_it_writes(tmp_p
     assert start["resolved"]["fix_hold"] == 0.3, "what it started with, before the staged 0.5"
     assert start["layers"] == {"task": FIXATION_STARTS, "run": start["resolved"]}
     assert start["bounded"] == {"reward_correct": 0.15}
-    assert (start["unplanned"], start["preflight"], start["trials"], start["seed"]) == (
-        True, None, 5, 1,
-    )
+    assert (start["preflight"], start["trials"], start["seed"]) == (None, 5, 1)
+    assert "unplanned" not in start, "retired by the PI, 2026-10-01 (P4d-2b spec §4.0)"
     assert (end["stop_kind"], end["trials"], end["strobed"]) == ("completed", 5, True)
     assert {row["run"] for row in _trial_rows(session)} == {0}
     assert _parameter_changes(session)[0]["run"] == 0

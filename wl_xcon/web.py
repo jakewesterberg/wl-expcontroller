@@ -134,13 +134,6 @@ REWARD_ONLY_PAUSED = "a manual reward is given only while the session is paused:
 #: milliseconds: the mockup's debounce (spec §5.2), housekeeping and not a
 #: measurement. The page's script reads it from `<body>`.
 DEBOUNCE_MS = 600
-#: What the page says beside *start run* and atop every pre-flight (P4d-2b spec §6.2:
-#: "Every run is unplanned until b3b brings the day's plan, and the page says so each
-#: time, with the warning that an unplanned run lowers the session's timing tier").
-UNPLANNED = (
-    "unplanned run: no day's plan reaches this rig yet (b3b), and an unplanned run lowers "
-    "the session's timing tier"
-)
 #: The trials a run is offered with: `wlx run --trials`'s default (`cli`), since a run from
 #: the page is `wlx run`'s flat run of N trials, one block, until a task program or the rig
 #: gives a block plan (XC-207; the b3a-2 plan, decision 6). A starting figure the person
@@ -629,8 +622,9 @@ def _pf_row(item, view: View) -> str:
 def _preflight_pane(frame: Telemetry | Idle | None, view: View) -> str:
     """The Setup tab's pre-flight (the mockup's `pf-panel`, drawn from `wlx taskd`'s items
     rather than the mockup's list: spec §6.2): one row per item, under a line naming the
-    task, S9a §10's rule and the unplanned warning. The mockup's *must* tag is left out,
-    since every fail blocks (the b3a-2 plan, decision 6)."""
+    task and S9a §10's rule. The mockup's *must* tag is left out, since every fail blocks
+    (the b3a-2 plan, decision 6). **No "unplanned run" warning**: the PI retired that
+    ruling on 2026-10-01, through wl-works (P4d-2b spec §4.0), and every run is a run."""
     if frame is None or isinstance(frame, Idle):
         return _NONE
     if not frame.service:
@@ -651,7 +645,7 @@ def _preflight_pane(frame: Telemetry | Idle | None, view: View) -> str:
     rows = "".join(_pf_row(item, view) for item in frame.preflight.items)
     return (
         f'<div class="sub">for {task} · a fail blocks the run; each unknown starts it only '
-        f"on your acknowledgement, by name, written into runs.jsonl · {_e(UNPLANNED)}</div>"
+        "on your acknowledgement, by name, written into runs.jsonl</div>"
         f'<div class="pf" data-task="{task}">{rows}</div>'
     )
 
@@ -746,13 +740,14 @@ def _session_refused(refusals) -> str:
 
 def _outside_a_run(frame: Telemetry, view: View) -> str:
     """A `wlx taskd` session between runs or awaiting its animal's return (spec §6.0,
-    §6.2): *start run* between runs, with the unplanned warning beside it, and *give
-    reward* and *mark* in both, since the rig gives a hand reward and stamps a mark
-    outside a run (the b3a-2 plan, decision 13). Pause and stop have no run to act on."""
+    §6.2): *start run* between runs, and *give reward* and *mark* in both, since the rig
+    gives a hand reward and stamps a mark outside a run (the b3a-2 plan, decision 13).
+    Pause and stop have no run to act on. Nothing beside *start run* warns of an
+    unplanned run: the PI retired that ruling on 2026-10-01 (P4d-2b spec §4.0)."""
     # Concatenated, not an f-string: an apostrophe inside a replacement field of a
     # single-quoted f-string is a syntax error before Python 3.12, and 3.11 is supported.
     lead = (
-        _start_button(frame, view) + '<span class="nm">' + _e(UNPLANNED) + "</span>"
+        _start_button(frame, view)
         if frame.phase == "between_runs"
         else '<span class="nm">'
         + _e("session ended · waiting for the animal's return")
