@@ -438,7 +438,7 @@ def test_a_host_clock_stepped_back_between_two_frames_leaves_the_reward_age_righ
             frame_period=1 / 240,
             seed=1,
             values={},
-            bounds=_load_bounds(Path("tasks/twelve_hour_bounds.py")),
+            bounds=_load_bounds(Path("tasks/eight_hour_bounds.py")),
             already_delivered_today=0.0,
             deployment=Deployment.RIG_CHAIRED,
             geometry=DIRECT,
@@ -1211,8 +1211,8 @@ ALLOCATION = "tasks/allocation.py"
 #: What every `wlx run` here runs in: the stand-in rig's direct view, which the
 #: reference tasks are written for.
 _SETUP = ("--rig", RIG_FILE, "--view", "direct")
-#: The twelve-hour reference config: a session under it runs until it is stopped.
-TWELVE_HOURS = "tasks/twelve_hour_bounds.py"
+#: The eight-hour reference config: a session under it runs until it is stopped.
+EIGHT_HOURS = "tasks/eight_hour_bounds.py"
 #: What the fixation task needs set to run headless (as in `test_cli.py`).
 _TASK_SETS = [
     "--set", "fix_timeout=4.0",
@@ -1325,7 +1325,7 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
     `wlx serve` on loopback, and the event stream read as a browser reads it.
 
     The session is ended by a console's `Stop` -- what slice b2's page will send --
-    because under the twelve-hour reference config nothing else would end it soon,
+    because under the eight-hour reference config nothing else would end it soon,
     and `E2E_TRIAL_BUDGET` fails it if the `Stop` never lands (Ruling 10). With no
     terminal attached -- pytest's stdin is not one -- `wlx run` records `return not
     recorded (no terminal)` and publishes nothing after the loop (P4d-2a Task 8), so
@@ -1344,7 +1344,7 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
                 "run", GOOD,
                 *_SETUP,
                 "--allocation", ALLOCATION,
-                "--bounds", TWELVE_HOURS,
+                "--bounds", EIGHT_HOURS,
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_08",
                 "--subject", "REFERENCE",
@@ -3146,7 +3146,7 @@ class _Session:
     and reads the recorder afterwards; what it reads is bounded by how few trials the
     session runs before the test stops it."""
 
-    def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, bounds=TWELVE_HOURS,
+    def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, bounds=EIGHT_HOURS,
                  session_id="2027-01-14_21", cleanup=None):
         from wl_xcon import dio
 
@@ -3437,7 +3437,7 @@ def test_e2e_the_limit_ends_a_session_paused_in_front_of_it(
         "from wl_xcon.bounds import Bounds, Ceiling, Floor\n"
         "BOUNDS = Bounds(subject='REFERENCE', ceilings={"
         "'reward_correct': Ceiling(value=0.05, maximum=10.0, unit='mL'), "
-        f"'out_of_cage': Ceiling(value={limit!r}, maximum=43200.0, unit='s')}}, "
+        f"'out_of_cage': Ceiling(value={limit!r}, maximum=28800.0, unit='s')}}, "
         "minima={'daily_fluid': Floor(value=20.0, unit='mL')})\n",
         encoding="utf-8",
     )
@@ -3692,7 +3692,7 @@ def test_e2e_wlx_serve_restarted_while_paused_shows_it_paused_and_can_resume(
 
 #: `MANUAL_REWARD`'s code (`tasks/allocation.py`), after b2a's other three.
 MANUAL_REWARD_CODE = 4134
-#: `tasks/twelve_hour_bounds.py`'s `reward_correct`: what one press gives these sessions.
+#: `tasks/eight_hour_bounds.py`'s `reward_correct`: what one press gives these sessions.
 REWARD_ML = 0.05
 
 
@@ -3885,7 +3885,7 @@ BY = "jake (box, unverified)"
 HEAD_FIXED, HEAD_RELEASED, RUN_START, RUN_END = 4128, 4129, 4135, 4136
 
 
-def _service_folders(tmp_path, bounds: str = TWELVE_HOURS, animals=("REFERENCE",)):
+def _service_folders(tmp_path, bounds: str = EIGHT_HOURS, animals=("REFERENCE",)):
     """`--subjects`, `--tasks` and `--root` for a service, as `tests/test_service.py`'s
     `_folders` builds them -- copied, for `_main_uninterrupted`'s reason."""
     subjects, tasks, root = tmp_path / "subjects", tmp_path / "tasks", tmp_path / "sessions"
@@ -3950,7 +3950,7 @@ class _Taskd:
     `CONTROL_TRIAL_BUDGET` says."""
 
     def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, folders=None,
-                 bounds=TWELVE_HOURS, wall=None):
+                 bounds=EIGHT_HOURS, wall=None):
         from wl_xcon import dio
 
         _trial_budget(monkeypatch, CONTROL_TRIAL_BUDGET, pace_s=CONTROL_TRIAL_PACE_S)
@@ -4161,7 +4161,7 @@ def test_page_e2e_a_crash_strands_the_animal_and_its_return_is_recorded_from_its
     """Spec §6.5: a crash and restart refuses a new session until the stranded animal's
     return is recorded -- here from the page: its banner's *end session…* names its
     session, and the refusal tells a person to use it (XC-176)."""
-    folders = _service_folders(tmp_path, TWELVE_HOURS, ("B", "REFERENCE"))
+    folders = _service_folders(tmp_path, EIGHT_HOURS, ("B", "REFERENCE"))
     with _Taskd(tmp_path, monkeypatch, zmq_cleanup, folders=folders) as first:
         first.post(_open_body())
         first.seen(_between)
@@ -4232,7 +4232,7 @@ def test_page_e2e_every_departure_and_return_refusal_is_the_terminals_own_senten
         taskd.seen(lambda f: isinstance(f, Idle) and any(r.why == unreadable for r in f.refusals))
         taskd.post(_open_body(departure=_typed(-3600)))
         taskd.seen(lambda f: isinstance(f, Idle) and any("in the future" in r.why for r in f.refusals))
-        taskd.post(_open_body(departure=_typed(13 * 3600)))
+        taskd.post(_open_body(departure=_typed(9 * 3600)))
         past = taskd.seen(lambda f: isinstance(f, Idle) and any("at or outside the limit" in r.why for r in f.refusals))
         far = _typed(2 * 3600)
         taskd.post(_open_body(departure=far))

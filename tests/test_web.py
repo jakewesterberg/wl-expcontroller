@@ -40,7 +40,7 @@ from wl_xcon.web import (
     page,
 )
 
-LIMIT = "out_of_cage: subject 'A' has been out of its cage 43201 s against a ceiling of 43200"
+LIMIT = "out_of_cage: subject 'A' has been out of its cage 28801 s against a ceiling of 28800"
 
 STATES = {
     "running": {},
@@ -111,7 +111,7 @@ def test_a_cage_side_session_says_it_has_no_out_of_cage_clock_rather_than_zero()
 
 
 def test_the_duration_warning_is_never_dropped():
-    warning = "out_of_cage: subject 'A' has 900 s left of its 43200 s out of the cage"
+    warning = "out_of_cage: subject 'A' has 900 s left of its 28800 s out of the cage"
 
     parts = fragments(frame(duration_warning=warning), view())
 
@@ -479,7 +479,7 @@ def test_setup_names_the_configuration_and_what_has_no_source():
     assert '<dt>bounds config</dt><dd><span class="nm">not given</span></dd>' in setup
     assert setup.count("no source yet") == 1
     assert "<dt>display mode</dt><dd>direct view</dd>" in setup
-    assert "250.00 mL" in setup and "12:00:00" in setup
+    assert "250.00 mL" in setup and "8:00:00" in setup
 
 
 def test_still_needed_lists_each_condition_and_its_count():

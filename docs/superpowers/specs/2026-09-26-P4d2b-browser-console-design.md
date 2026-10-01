@@ -130,7 +130,8 @@ Every ruling the PI made while the mockup was iterated (2026-09-26). Each binds 
 builds its part; S9a is amended to match when that slice lands.
 
 - **The always-visible strip carries four cells**: fluid today / floor, out-of-cage time /
-  12:00, correct / trials for the session, and time since the last reward. Fluid session
+  8:00 (12:00 when this was ruled; the PI corrected the limit to eight hours on 2026-10-01),
+  correct / trials for the session, and time since the last reward. Fluid session
   moves to the runtime tab and the end-of-session summary; the supplement moves to the
   end-of-session summary. Asked against the 09-20 ruling that allowed zero-reward sessions
   *because* fluid session and supplement were always visible (S9a §9): "fine as is". What

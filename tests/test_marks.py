@@ -94,7 +94,7 @@ def test_a_far_departure_a_person_confirmed_is_marked_confirmed_with_its_row(tmp
 
 def test_an_amendment_is_its_own_confirmation_and_marks_the_corrected_time(tmp_path):
     made = session(tmp_path)
-    typed_at, corrected = WALL - 9 * 3600, WALL - 600
+    typed_at, corrected = WALL - 5 * 3600, WALL - 600
 
     decision = marks.decide_departure(
         made,
@@ -123,7 +123,7 @@ def test_an_amendment_without_a_reason_or_a_name_is_refused(tmp_path, reason, by
     with pytest.raises(Exceeded, match=said):
         marks.decide_departure(
             made,
-            WALL - 9 * 3600,
+            WALL - 5 * 3600,
             marks.Amend(at=WALL - 600, reason=reason, by=by, how="amended on the page"),
             by="jake",
             how="typed on the page",
@@ -138,7 +138,7 @@ def test_an_amendment_meets_every_refusal_the_original_would(tmp_path):
     made = session(tmp_path)
     decision = marks.decide_departure(
         made,
-        WALL - 9 * 3600,
+        WALL - 5 * 3600,
         marks.Amend(at=WALL + 3600, reason="typo", by="sam", how="amended on the page"),
         by="jake",
         how="typed on the page",
@@ -219,7 +219,7 @@ def test_the_pages_answers_are_the_terminals(tmp_path):
         amend_to=None, amend_reason="", by="jake",
     )
     amended = marks.page_departure(
-        session(tmp_path / "b"), departure=typed(9 * 3600), answer="amend",
+        session(tmp_path / "b"), departure=typed(5 * 3600), answer="amend",
         amend_to=typed(600), amend_reason="typo", by="jake",
     )
 
@@ -263,7 +263,7 @@ def test_an_amended_time_the_host_cannot_place_is_refused_in_the_terminals_words
 
     with pytest.raises(argparse.ArgumentTypeError, match="is not a clock time"):
         marks.page_departure(
-            made, departure=typed(9 * 3600), answer="amend", amend_to=text,
+            made, departure=typed(5 * 3600), answer="amend", amend_to=text,
             amend_reason="typo", by="jake",
         )
 
@@ -284,7 +284,7 @@ def test_a_return_time_the_host_cannot_place_is_refused_in_the_terminals_words(
 
 @pytest.mark.parametrize(
     ("departure", "answer", "amend_to", "amend_reason"),
-    [(LAST_MINUTE, None, None, ""), (typed(9 * 3600), "amend", LAST_MINUTE, "typo")],
+    [(LAST_MINUTE, None, None, ""), (typed(5 * 3600), "amend", LAST_MINUTE, "typo")],
     ids=["typed", "amended"],
 )
 def test_a_departure_in_the_calendars_last_minute_is_refused_on_any_host(
@@ -369,7 +369,7 @@ def test_the_pages_return_confirmation_is_strictly_a_bool(tmp_path, confirm):
 def test_an_amendment_from_the_page_needs_its_corrected_time(tmp_path):
     with pytest.raises(argparse.ArgumentTypeError, match="corrected departure time"):
         marks.page_departure(
-            session(tmp_path), departure=typed(9 * 3600), answer="amend",
+            session(tmp_path), departure=typed(5 * 3600), answer="amend",
             amend_to=None, amend_reason="typo", by="jake",
         )
 

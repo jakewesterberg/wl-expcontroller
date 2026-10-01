@@ -19,7 +19,7 @@ from wl_xcon.welfare import Deployment, Simulated as Pump
 WALL = time.time()
 
 
-def bounds(subject: str = "A", out_of_cage: float = 43_200.0) -> Bounds:
+def bounds(subject: str = "A", out_of_cage: float = 28_800.0) -> Bounds:
     """A bounded config: a reward entry, the out-of-cage ceiling, the daily floor."""
     return Bounds(
         subject=subject,
@@ -32,7 +32,7 @@ def bounds(subject: str = "A", out_of_cage: float = 43_200.0) -> Bounds:
 
 
 def session(
-    tmp_path, *, deployment: Deployment = Deployment.RIG_CHAIRED, out_of_cage: float = 43_200.0
+    tmp_path, *, deployment: Deployment = Deployment.RIG_CHAIRED, out_of_cage: float = 28_800.0
 ) -> Session:
     """Built and not opened: nothing is on disk until a mark or `open()` writes it.
     Rig-chaired by default, so no head-fixation stands between a test and a return."""

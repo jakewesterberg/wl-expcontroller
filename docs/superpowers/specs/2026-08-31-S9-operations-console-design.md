@@ -86,8 +86,9 @@ so often that people route around it, at which point it protects nothing.
   `RIG_CHAIRED` session reports restraint as **absent rather than zero** — it is restrained and
   unmarked, and a clock at zero would claim a measurement nobody took.
 - **Out of cage / back in cage** — the console action added 2026-09-19 beside it, and the one
-  preflight now depends on: it starts the twelve-hour clock that *is* the welfare limit (S8
-  §5.2 item 4). A rig session without it is refused; a cage-side deployment declares it has no
+  preflight now depends on: it starts the eight-hour clock that *is* the welfare limit (S8
+  §5.2 item 4; the PI corrected the twelve recorded here on 2026-10-01). A rig session
+  without it is refused; a cage-side deployment declares it has no
   such interval (S13 §4.0). **It is given as a clock time** — `wlx run --out-of-cage-at`, and the
   console action the same — because that is what an operator reads (PI, 2026-09-20), and the
   session prints the interval it computed so a mistyped hour is legible. **It gets no event

@@ -48,7 +48,7 @@ from wl_xcon.service import Service, _fresh_seed
 from wl_xcon.taskd import Session
 
 ALLOCATION = "tasks/allocation.py"
-TWELVE_HOURS = Path("tasks/twelve_hour_bounds.py")
+EIGHT_HOURS = Path("tasks/eight_hour_bounds.py")
 TEN_MINUTES = Path("tasks/reference_bounds.py")
 TASK = "fixation_detection.py"
 BY = "jake (box, unverified)"
@@ -64,7 +64,7 @@ class _Wall:
         return self.at
 
 
-def _folders(tmp_path, bounds: Path = TWELVE_HOURS, animals=("REFERENCE",)):
+def _folders(tmp_path, bounds: Path = EIGHT_HOURS, animals=("REFERENCE",)):
     """`--subjects`, `--tasks` and `--root` for a service: each animal a folder with its
     bounds (the reference file, renamed for it), `REFERENCE` with its settings too, and
     one task. **Copies, never imports**: a file `--subjects` or `--tasks` points at must
@@ -93,7 +93,7 @@ def _made(folders, *, link=None, wall=None, seed=lambda: 7) -> Service:
     )
 
 
-def _service(tmp_path, *, bounds=TWELVE_HOURS, animals=("REFERENCE",), link=None, wall=None):
+def _service(tmp_path, *, bounds=EIGHT_HOURS, animals=("REFERENCE",), link=None, wall=None):
     return _made(_folders(tmp_path, bounds, animals), link=link, wall=wall)
 
 
@@ -310,9 +310,9 @@ def test_the_idle_frames_refusals_start_fresh_with_each_session(tmp_path):
 def test_a_far_departure_amended_on_the_page_is_marked_at_the_corrected_time(tmp_path):
     """Asked first: an amendment answers the warning (Ruling 1 of the b3a-1 review)."""
     service = _service(tmp_path)
-    _step(service, _open(departure=typed(9 * 3600)))
+    _step(service, _open(departure=typed(5 * 3600)))
 
-    _step(service, _open(departure=typed(9 * 3600), answer="amend",
+    _step(service, _open(departure=typed(5 * 3600), answer="amend",
                          amend_to=typed(600), amend_reason="typed 09:30 for 17:30"))
 
     rows = _rows(service.root)
@@ -326,7 +326,7 @@ def test_an_amendment_with_no_reason_is_refused_and_its_question_stays_to_answer
     on the frame until it is answered: a refused answer is not an answer, and a corrected
     one sent next is taken."""
     service = _service(tmp_path)
-    far = typed(9 * 3600)
+    far = typed(5 * 3600)
     _step(service, _open(departure=far))
 
     refused = _step(service, _open(departure=far, answer="amend", amend_to=typed(600),
@@ -351,7 +351,7 @@ def test_an_amendment_with_no_reason_is_refused_and_its_question_stays_to_answer
     "over",
     [
         {"departure": typed(3 * 3600), "answer": "confirm"},
-        {"departure": typed(9 * 3600), "answer": "amend", "amend_to": typed(600),
+        {"departure": typed(5 * 3600), "answer": "amend", "amend_to": typed(600),
          "amend_reason": "typed 09:30 for 17:30"},
         {"departure": typed(60), "answer": "confirm"},
     ],
@@ -650,7 +650,7 @@ def test_every_mark_is_taken_on_the_thread_that_serves(tmp_path, monkeypatch):
             return drained
 
     service = _service(tmp_path, link=_UntilQuiet())
-    far = typed(9 * 3600)
+    far = typed(5 * 3600)
     for command in (
         _open(departure=far),
         _open(departure=far, answer="amend", amend_to=typed(600), amend_reason="a typo"),
@@ -1625,7 +1625,7 @@ class _Rig:
     recorder of every frame, as `tests/test_serve.py`'s `_Session.seen` reads one."""
 
     def __init__(self, tmp_path, monkeypatch, zmq_cleanup, *, folders=None,
-                 bounds=TWELVE_HOURS, wall=None):
+                 bounds=EIGHT_HOURS, wall=None):
         from wl_xcon import dio
 
         _trial_budget(monkeypatch)
@@ -1781,7 +1781,7 @@ def test_e2e_a_crash_leaves_the_animal_stranded_and_the_restarted_service_waits_
 ):
     """Spec §6.5: a crash and restart refuses a new session until the stranded animal's
     return is recorded."""
-    folders = _folders(tmp_path, TWELVE_HOURS, ("B", "REFERENCE"))
+    folders = _folders(tmp_path, EIGHT_HOURS, ("B", "REFERENCE"))
     with _Rig(tmp_path, monkeypatch, zmq_cleanup, folders=folders) as first:
         first.send(_open(departure=_now()))
         first.seen(_between)
@@ -1872,7 +1872,7 @@ def test_e2e_an_amendment_with_no_reason_or_no_sender_is_refused_and_marks_nothi
     refuses when blank before the service sees it, so a blank name is refused there (the
     link's sentence) and a blank reason by `welfare.amend_mark` (the service's)."""
     with _Rig(tmp_path, monkeypatch, zmq_cleanup) as rig:
-        far = _now(9 * 3600)
+        far = _now(5 * 3600)
         amend = dict(departure=far, answer="amend", amend_to=_now(600))
         rig.send(_open(departure=far))
         rig.seen(lambda f: isinstance(f, Idle) and f.question is not None)
@@ -1904,7 +1904,7 @@ def test_a_run_started_with_no_values_starts_from_the_tasks_own(tmp_path):
 
 
 def test_the_hand_reward_works_between_runs_and_while_the_return_is_awaited(tmp_path):
-    """PI, 2026-09-29 (P4d-2b spec §6.0), through the service: `tasks/twelve_hour_bounds.py`'s
+    """PI, 2026-09-29 (P4d-2b spec §6.0), through the service: `tasks/eight_hour_bounds.py`'s
     `reward_correct`, 0.05 mL, once per press, on the frame's fluid total and feed."""
     service = _service(tmp_path)
     _step(service, _open())

@@ -93,7 +93,7 @@ TRIAL_ALLOWANCE = 1_000
 def _a_session_that_cannot_finish_fails_instead_of_running_on(monkeypatch):
     """**Ruling 10.** A `wlx run` session here reaches its out-of-cage ceiling only
     in real time, since every welfare duration moved to the wall (P4d-2a spec §10) --
-    ten minutes for `tasks/reference_bounds.py`, twelve hours for `_far_bounds`. So a
+    ten minutes for `tasks/reference_bounds.py`, eight hours for `_far_bounds`. So a
     mutant that stops sessions finishing (`scheduler.record` neutered) left 25 tests
     here running until the mutation harness killed the suite at 300 s, and it read
     `timed out`: the harness noticing, not a test.
@@ -721,7 +721,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     over before the console heard it.
 
     So the session's length is no longer anybody's ceiling. `_far_bounds` puts the
-    out-of-cage limit twelve hours away, and **the console ends the session itself**
+    out-of-cage limit eight hours away, and **the console ends the session itself**
     with a `Stop` once it has seen the change applied -- which also drives a
     console's `Stop` through a real `wlx run`, the one path the `--stop` tests stub.
     `--trials` now only bounds how long a *broken* run takes to finish on its own.
@@ -926,7 +926,7 @@ def _telemetry(**overrides) -> Telemetry:
         # Fifteen minutes, chosen so its clock (`15:00`) contains no `0:00`:
         # `test_console_says_a_session_that_has_not_opened_has_no_in_session_clock`
         # refuses `0:00` anywhere on the screen, and `render` prints this limit beside
-        # the out-of-cage clock -- `10:00` or `12:00:00` would fail it on a line it is
+        # the out-of-cage clock -- `10:00` or `8:00:00` would fail it on a line it is
         # not about. A test about the limit passes its own.
         out_of_cage_limit_s=900.0,
         wall_at=1_700_000_000.0,
@@ -1636,9 +1636,9 @@ def test_wlx_run_prints_how_long_the_animal_has_been_out(tmp_path, capsys):
     """**The visibility the PI asked for in exchange for the guard he gave up.**
 
     A clock time cannot be refused for being implausible the way a 1.7e9-second
-    interval could, and `08:45` typed for `18:45` is nine hours of slack that lands
-    inside a twelve-hour ceiling. So the computed interval is printed where an
-    operator sees it as the session starts -- a nine-hour error is then legible
+    interval could, and `15:45` typed for `18:45` is three hours of slack that lands
+    inside an eight-hour ceiling. So the computed interval is printed where an
+    operator sees it as the session starts -- a three-hour error is then legible
     rather than silent."""
     main(
         [
@@ -1668,18 +1668,18 @@ def test_wlx_run_prints_how_long_the_animal_has_been_out(tmp_path, capsys):
     assert "local time" in out, "the zone the clock time was read in is stated"
 
 
-def test_the_visible_interval_reads_a_nine_hour_typo_as_nine_hours():
+def test_the_visible_interval_reads_a_three_hour_typo_as_three_hours():
     """**The mitigation Ruling 1 traded a guard for, tested at the size it exists
-    for.** `08:45` typed for `18:45` is nine hours, it sits comfortably inside a
-    twelve-hour ceiling, and no refusal will ever catch it -- this line is the whole
+    for.** `15:45` typed for `18:45` is three hours, it sits comfortably inside an
+    eight-hour ceiling, and no refusal will ever catch it -- this line is the whole
     of what does. Its only test asserted `0 hours 0 minutes`, which is the one value
     that would also be produced by a function that had stopped working.
 
-    `_hours_minutes` is pure, so testing nine hours needs no session and no invented
+    `_hours_minutes` is pure, so testing three hours needs no session and no invented
     bounded config -- the reason given for not doing this the first time was wrong.
     """
-    assert _hours_minutes(9 * 3_600.0) == "9 hours 0 minutes"
-    assert _hours_minutes(9 * 3_600.0 + 15 * 60.0) == "9 hours 15 minutes"
+    assert _hours_minutes(3 * 3_600.0) == "3 hours 0 minutes"
+    assert _hours_minutes(3 * 3_600.0 + 15 * 60.0) == "3 hours 15 minutes"
 
 
 def test_the_visible_interval_says_one_hour_rather_than_one_hours():
@@ -1721,7 +1721,7 @@ def test_wlx_run_refuses_a_departure_in_the_future(tmp_path):
 
 def test_wlx_run_refuses_a_departure_longer_ago_than_the_ceiling(tmp_path):
     """The second. `tasks/reference_bounds.py`'s placeholder ceiling is ten minutes,
-    so an hour ago is outside it -- which is the same refusal a real twelve-hour
+    so an hour ago is outside it -- which is the same refusal a real eight-hour
     config gives a departure typed a day early."""
     an_hour_ago = datetime.now().astimezone() - timedelta(hours=1)
 
@@ -1979,12 +1979,12 @@ def test_console_lists_the_recent_outcomes_oldest_first():
 # before reading these tests rather than after: its `out_of_cage` ceiling is a
 # deliberately implausible ten minutes, so anything more than thirty minutes ago is
 # refused outright by the ceiling long before a confirmation is offered. Every test
-# here therefore writes its own bounded config with a twelve-hour ceiling -- the
+# here therefore writes its own bounded config with an eight-hour ceiling -- the
 # institutional figure S8 5.2 item 4 states -- which is also the only shape in
 # which the confirmation band exists at all.
 
 _FAR_BOUNDS = '''\
-"""A bounded config for the confirmation band: a real twelve-hour ceiling.
+"""A bounded config for the confirmation band: a real eight-hour ceiling.
 
 `tasks/reference_bounds.py`'s ten minutes is a placeholder by design, and it is
 shorter than the thirty-minute confirmation threshold, so the band between them is
@@ -1997,7 +1997,7 @@ BOUNDS = Bounds(
     subject="REFERENCE",
     ceilings={
         "reward_correct": Ceiling(value=0.05, maximum=10.0, unit="mL"),
-        "out_of_cage": Ceiling(value=43_200.0, maximum=43_200.0, unit="s"),
+        "out_of_cage": Ceiling(value=28_800.0, maximum=28_800.0, unit="s"),
     },
     minima={"daily_fluid": Floor(value=20.0, unit="mL")},
 )
@@ -2150,10 +2150,10 @@ def test_a_far_departure_is_refused_when_nobody_can_be_asked(tmp_path):
     `wlx run` is a command line that may have no terminal behind it -- a wrapper, a
     scheduler, or `console`'s `labhost` surface (not a process of its own). A
     confirmation nobody made is worse than no confirmation, because the record then
-    says a person saw a nine-hour departure and nobody did. So it refuses, and the
+    says a person saw a five-hour departure and nobody did. So it refuses, and the
     message names the flag that is the honest way to say it out loud."""
     with pytest.raises(SystemExit) as refused:
-        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(5)))
 
     assert "--confirm-out-of-cage" in str(refused.value)
     assert "no terminal" in str(refused.value)
@@ -2166,7 +2166,7 @@ def test_the_flag_is_the_non_interactive_confirmation_and_says_so(tmp_path):
     quietly."""
     exit_code = main(
         _run_args(
-            tmp_path, "--out-of-cage-at", _hours_ago(9), "--confirm-out-of-cage"
+            tmp_path, "--out-of-cage-at", _hours_ago(5), "--confirm-out-of-cage"
         )
     )
 
@@ -2197,7 +2197,7 @@ def test_an_interactive_run_asks_and_a_person_can_confirm(tmp_path, monkeypatch)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "confirm")
 
-    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(5)))
 
     assert exit_code == 0
     rows = _notes(tmp_path)
@@ -2219,7 +2219,7 @@ def test_an_interactive_run_stops_when_the_person_does_not_confirm(
     monkeypatch.setattr("builtins.input", lambda _prompt="": "")
 
     with pytest.raises(SystemExit) as refused:
-        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(5)))
 
     assert "not confirmed" in str(refused.value)
     # Task 9 fix round 1: `session.open()` runs right after the `Session` is
@@ -2248,7 +2248,7 @@ def test_an_interrupted_departure_prompt_exits_130_with_the_clock_closed(
     monkeypatch.setattr("builtins.input", interrupt)
 
     exit_code = _main_uninterrupted(
-        _run_args(tmp_path, "--out-of-cage-at", _hours_ago(9))
+        _run_args(tmp_path, "--out-of-cage-at", _hours_ago(5))
     )
 
     assert exit_code == 130
@@ -2266,7 +2266,7 @@ def test_an_interactive_run_can_amend_the_time_with_a_reason_and_a_name(
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
-    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+    exit_code = main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(5)))
 
     assert exit_code == 0
     rows = _notes(tmp_path)
@@ -2297,7 +2297,7 @@ def test_the_departure_row_says_who_gave_it_and_how(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
-    assert main(_run_args(amended, "--out-of-cage-at", _hours_ago(9))) == 0
+    assert main(_run_args(amended, "--out-of-cage-at", _hours_ago(5))) == 0
     departure = next(row for row in _notes(amended) if row["kind"] == "departure")
     assert (departure["by"], departure["how"]) == ("sam", "amended at the terminal")
 
@@ -2308,7 +2308,7 @@ def test_an_amendment_can_be_made_without_a_terminal_too(tmp_path):
     exit_code = main(
         _run_args(
             tmp_path,
-            "--out-of-cage-at", _hours_ago(9),
+            "--out-of-cage-at", _hours_ago(5),
             "--amend-out-of-cage-to", _hhmm(),
             "--amend-reason", "wl-works pushed the wrong departure",
             "--as", "jake",
@@ -2334,7 +2334,7 @@ def test_an_amendment_with_no_reason_is_refused(tmp_path):
         main(
             _run_args(
                 tmp_path,
-                "--out-of-cage-at", _hours_ago(9),
+                "--out-of-cage-at", _hours_ago(5),
                 "--amend-out-of-cage-to", _hhmm(),
                 "--as", "jake",
             )
@@ -2348,7 +2348,7 @@ def test_an_amendment_with_no_actor_is_refused(tmp_path):
         main(
             _run_args(
                 tmp_path,
-                "--out-of-cage-at", _hours_ago(9),
+                "--out-of-cage-at", _hours_ago(5),
                 "--amend-out-of-cage-to", _hhmm(),
                 "--amend-reason", "typed 08:45 for 18:45",
             )
@@ -2369,7 +2369,7 @@ def test_a_refused_amendment_still_opens_and_closes_the_clock(tmp_path):
         main(
             _run_args(
                 tmp_path,
-                "--out-of-cage-at", _hours_ago(9),
+                "--out-of-cage-at", _hours_ago(5),
                 "--amend-out-of-cage-to", _hhmm(),
                 "--as", "jake",
             )
@@ -2389,7 +2389,7 @@ def test_an_amended_time_still_meets_every_refusal_the_original_would(tmp_path):
         main(
             _run_args(
                 tmp_path,
-                "--out-of-cage-at", _hours_ago(9),
+                "--out-of-cage-at", _hours_ago(5),
                 "--amend-out-of-cage-to", tomorrow,
                 "--amend-reason", "typed 08:45 for 18:45",
                 "--as", "jake",
@@ -2410,7 +2410,7 @@ def test_a_departure_past_the_ceiling_is_still_refused_without_a_prompt(
     )
 
     with pytest.raises(SystemExit, match="refused: .*against a ceiling of"):
-        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(13)))
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
 
 
 def test_the_dst_gap_is_closed_as_a_ruling_and_the_description_is_kept():
@@ -2448,7 +2448,7 @@ def test_a_closed_stdin_is_not_a_terminal_and_the_flag_still_works(
 
     exit_code = main(
         _run_args(
-            tmp_path, "--out-of-cage-at", _hours_ago(9), "--confirm-out-of-cage"
+            tmp_path, "--out-of-cage-at", _hours_ago(5), "--confirm-out-of-cage"
         )
     )
 
@@ -2471,7 +2471,7 @@ def test_a_closed_stdin_refuses_with_a_sentence_rather_than_a_traceback(
     monkeypatch.setattr("sys.stdin", None)
 
     with pytest.raises(SystemExit) as refused:
-        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(5)))
 
     assert "--confirm-out-of-cage" in str(refused.value)
     assert "no terminal" in str(refused.value)
@@ -2488,7 +2488,7 @@ def test_abort_at_the_prompt_stops_rather_than_starting_an_amendment(
     monkeypatch.setattr("builtins.input", lambda _prompt="": "abort")
 
     with pytest.raises(SystemExit) as refused:
-        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(9)))
+        main(_run_args(tmp_path, "--out-of-cage-at", _hours_ago(5)))
 
     assert "not confirmed" in str(refused.value)
     # Task 9 fix round 1: `session.open()` runs ahead of this prompt, so its
@@ -2520,15 +2520,15 @@ def test_the_shipped_reference_config_cannot_reach_the_confirmation_band(tmp_pat
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
                 "--subject", "REFERENCE",
-                "--out-of-cage-at", _hours_ago(9),
+                "--out-of-cage-at", _hours_ago(5),
                 "--delivered-today", "0",
                 "--trials", "2",
             ]
         )
 
 
-def test_the_twelve_hour_reference_config_can(tmp_path):
-    """The other half, and the reason `tasks/twelve_hour_bounds.py` exists: the same
+def test_the_eight_hour_reference_config_can(tmp_path):
+    """The other half, and the reason `tasks/eight_hour_bounds.py` exists: the same
     command against a config carrying the real institutional ceiling reaches the
     confirmation instead of the ceiling refusal. Both guards of
     `tasks/reference_bounds.py` still apply to it -- subject `REFERENCE`, and every
@@ -2540,11 +2540,11 @@ def test_the_twelve_hour_reference_config_can(tmp_path):
                 "tasks/fixation_detection.py",
                 *_SETUP,
                 "--allocation", "tasks/allocation.py",
-                "--bounds", "tasks/twelve_hour_bounds.py",
+                "--bounds", "tasks/eight_hour_bounds.py",
                 "--root", str(tmp_path),
                 "--session-id", "2027-01-14_01",
                 "--subject", "REFERENCE",
-                "--out-of-cage-at", _hours_ago(9),
+                "--out-of-cage-at", _hours_ago(5),
                 "--delivered-today", "0",
                 "--trials", "2",
             ]
@@ -2554,7 +2554,7 @@ def test_the_twelve_hour_reference_config_can(tmp_path):
     assert "--confirm-out-of-cage" in str(refused.value)
 
 
-def test_the_twelve_hour_reference_config_runs_a_session_when_confirmed(
+def test_the_eight_hour_reference_config_runs_a_session_when_confirmed(
     tmp_path, capsys
 ):
     """And it is a config a session actually runs under, not only one that refuses --
@@ -2565,11 +2565,11 @@ def test_the_twelve_hour_reference_config_runs_a_session_when_confirmed(
             "tasks/fixation_detection.py",
             *_SETUP,
             "--allocation", "tasks/allocation.py",
-            "--bounds", "tasks/twelve_hour_bounds.py",
+            "--bounds", "tasks/eight_hour_bounds.py",
             "--root", str(tmp_path),
             "--session-id", "2027-01-14_01",
             "--subject", "REFERENCE",
-            "--out-of-cage-at", _hours_ago(9),
+            "--out-of-cage-at", _hours_ago(5),
             "--confirm-out-of-cage",
             "--delivered-today", "0",
             "--trials", "3",
@@ -2578,7 +2578,7 @@ def test_the_twelve_hour_reference_config_runs_a_session_when_confirmed(
     )
 
     assert exit_code == 0
-    assert "the animal has been out 9 hours" in capsys.readouterr().out
+    assert "the animal has been out 5 hours" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------

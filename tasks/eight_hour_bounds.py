@@ -1,4 +1,4 @@
-"""A second reference bounded config, with the real twelve-hour duration ceiling.
+"""A second reference bounded config, with the real eight-hour duration ceiling.
 
 **Read `reference_bounds.py` first.** Both of its guards apply here unchanged: the
 subject is `REFERENCE`, so a session refuses this config for a real animal, and every
@@ -15,21 +15,25 @@ shipped with this repository could exercise the prompt at all**, so nobody could
 the one welfare interaction an operator is asked to perform. Review found that; this
 closes it.
 
-    wlx run tasks/fixation_detection.py --bounds tasks/twelve_hour_bounds.py \\
+    wlx run tasks/fixation_detection.py --bounds tasks/eight_hour_bounds.py \\
         --rig tests/_rig.py --view direct --allocation tasks/allocation.py \\
         --root /tmp/dry-run --session-id 2027-01-14_01 --subject REFERENCE \\
         --out-of-cage-at YYYY-MM-DDTHH:MM --delivered-today 0 --trials 2
 
-Give the clock time about nine hours before now, with its date: that is more than
-`welfare.CONFIRM_MARK_WITHIN` ago and inside the twelve-hour ceiling, so the prompt is
-offered.
+Give the clock time about five hours before now, with its date. It has to be more than
+`welfare.CONFIRM_MARK_WITHIN` ago, or nothing is asked, and less than the eight-hour
+ceiling, or it is refused before anything is asked. Five hours sits well inside both
+edges: the ceiling is three hours off, so the thirty-minute warning before it
+(`welfare.WARN_WITHIN_DEFAULT`) does not appear either.
 
 The dry run uses the tests' stand-in rig because `tasks/rig.py`'s direct view refuses
 until the housings are measured.
 
-**Twelve hours is not a placeholder and is not this file inventing one.** It is the
-institutional figure, documented in S8 §5.2 item 4 and in `welfare.py`'s docstring, and
-`welfare.py` deliberately carries no constant for it so that nothing can default to it.
+**Eight hours is not a placeholder and is not this file inventing one.** It is the
+institutional figure, as the PI corrected it on 2026-10-01: this file carried twelve,
+the figure recorded from his ruling of 2026-09-19, until then. It is documented in S8
+§5.2 item 4 and in `welfare.py`'s docstring, and `welfare.py` deliberately carries no
+constant for it so that nothing can default to it.
 Writing it into a *bounded config* is exactly where it belongs -- a subject's config is
 what states a limit -- and the subject here is still `REFERENCE`, so this states it for
 nobody.
@@ -48,11 +52,11 @@ BOUNDS = Bounds(
         # bound** rather than a dose cap on the maximum (PI, 2026-09-19).
         "reward_correct": Ceiling(value=0.05, maximum=10.0, unit="mL"),
         # **The one entry that differs, and the whole reason this file exists.**
-        # Twelve hours, the institutional figure (PI, 2026-09-19) -- a **protocol
-        # figure**, so it changes when the protocol does. It is longer than
-        # `welfare.CONFIRM_MARK_WITHIN`, which is what gives this config a
-        # confirmation band to dry-run in.
-        "out_of_cage": Ceiling(value=43_200.0, maximum=43_200.0, unit="s"),
+        # Eight hours, the institutional figure (PI, 2026-09-19, corrected from
+        # twelve on 2026-10-01) -- a **protocol figure**, so it changes when the
+        # protocol does. It is longer than `welfare.CONFIRM_MARK_WITHIN`, which is
+        # what gives this config a confirmation band to dry-run in.
+        "out_of_cage": Ceiling(value=28_800.0, maximum=28_800.0, unit="s"),
     },
     minima={
         # Still a placeholder, still implausible, still a floor rather than a

@@ -10,8 +10,9 @@ refusal messages an operator actually reads.
   running total, two clocks, a pump -- and joining them is the whole of its job.
 - **Fluid has a floor, not a ceiling** (PI, 2026-09-06): no delivery is refused on
   volume, and the day's shortfall is reported at close so a person can supplement.
-- **One duration limit: out of the cage to back in it**, twelve hours (PI,
-  2026-09-19). Chair time is recorded and bounds nothing; there is no trial cap.
+- **One duration limit: out of the cage to back in it**, eight hours (PI,
+  2026-09-19; the figure as he corrected it on 2026-10-01). Chair time is recorded
+  and bounds nothing; there is no trial cap.
   **Both ends of that interval are wall-clock times** (PI, 2026-09-20): the frame clock
   stops when the frames do, so a return read from it left the unchairing and the walk
   back outside the limit. **And every duration here is read on the wall** (P4d-2a
@@ -79,7 +80,7 @@ DAILY_FLUID = "daily_fluid"
 
 #: The duration ceiling, in seconds. **From leaving the home cage to returning to
 #: it** (PI, 2026-09-19) -- not from head-fixation, which under-counts by transport
-#: and chairing, and not from the first trial. Twelve hours is the institutional
+#: and chairing, and not from the first trial. Eight hours is the institutional
 #: figure; the number itself lives in a subject's bounded config and nowhere in this
 #: module, so that nothing can default to it.
 OUT_OF_CAGE = "out_of_cage"
@@ -93,7 +94,7 @@ OUT_OF_CAGE = "out_of_cage"
 #: *starting* value rather than a settled one.** No block duration has been measured
 #: and nothing under `docs/measurements/` states one, so nothing here claims it clears
 #: a block. S8 §5.2 item 4 carries the reasoning, what it is not claiming, and why this
-#: may have a named default where the twelve-hour ceiling may not.
+#: may have a named default where the eight-hour ceiling may not.
 #: `Welfare.warn_within` is where a lab sets its own.
 WARN_WITHIN_DEFAULT = 1_800.0
 
@@ -144,11 +145,11 @@ class Deployment(Enum):
     """
 
     #: A rig session: the animal left its home cage, was transported, chaired and
-    #: head-fixed. The twelve-hour clock binds it, and it must carry both marks.
+    #: head-fixed. The eight-hour clock binds it, and it must carry both marks.
     RIG_FIXED = "rig_fixed"
 
     #: A rig session with no head-fixation -- a chaired animal working at a screen.
-    #: The twelve-hour clock binds it exactly as above, and it carries the
+    #: The eight-hour clock binds it exactly as above, and it carries the
     #: out-of-cage mark; it has no restraint marks, so it reports no restraint time.
     RIG_CHAIRED = "rig_chaired"
 
@@ -158,7 +159,7 @@ class Deployment(Enum):
     CAGE_SIDE = "cage_side"
 
 
-#: The kinds where the animal left its home cage, and which the twelve-hour ceiling
+#: The kinds where the animal left its home cage, and which the eight-hour ceiling
 #: therefore binds. A tuple rather than a method on `Deployment`, so that the whole
 #: three-way behaviour of this file is readable as `is` and `in` against S8 §5.2
 #: item 4's table and nothing dispatches.
@@ -767,7 +768,7 @@ class Welfare:
         the frames do. So an operator who ended a session, unchaired the animal,
         walked it back and *then* marked the return recorded the animal as home at
         the instant the loop ended -- the unchairing and the walk back, minutes of an
-        animal out of its cage, fell outside the twelve hours. With both ends of the
+        animal out of its cage, fell outside the eight hours. With both ends of the
         interval read from the wall, the frame clock stopping no longer matters.
 
         **Kept as the wall instant it is** (P4d-2a spec §10, 2026-09-26). From ruling
@@ -1133,7 +1134,7 @@ class Welfare:
     def approaching_limit(self, wall_now: float) -> str | None:
         """How little of the out-of-cage interval is left, once it is worth saying.
 
-        **PI, 2026-09-20: warn as the twelve-hour limit approaches**, so an operator
+        **PI, 2026-09-20: warn as the eight-hour limit approaches**, so an operator
         can finish a block deliberately rather than have a session cut mid-sequence.
         The console showed the clock and nothing drew attention as it ran out, which
         made the limit arrive as an interruption instead of as a deadline.

@@ -96,7 +96,7 @@ ceilings the console cannot exceed and the task cannot touch.**
 | Bounded | Covers |
 |---|---|
 | Reward | Volume per delivery, rate. **Not a daily total** — see the correction at the head of this file: the daily fluid figure is a floor, and only the per-delivery volume is a ceiling |
-| Session | **Time out of the cage** — the one duration limit (§5.2), twelve hours. **Not maximum trials**: there is no session-length maximum (PI, 2026-09-19), and per-condition targets are a task's config, carried by `scheduler`. Mandatory breaks |
+| Session | **Time out of the cage** — the one duration limit (§5.2), eight hours (the PI corrected the twelve recorded here on 2026-10-01). **Not maximum trials**: there is no session-length maximum (PI, 2026-09-19), and per-condition targets are a task's config, carried by `scheduler`. Mandatory breaks |
 | Tokens | Token-to-fluid conversion, maximum accumulation |
 | Stimulation | Amplitude, pulse width, frequency, train duration, duty cycle, charge per phase and charge density, refractory, deliveries per session |
 
@@ -140,17 +140,24 @@ supplement afterwards — is then computed against a figure that describes half 
    `Welfare.shortfall()` answers `None` rather than zero, because a day nobody measured is not a
    day that went well.
 4. ~~**Session duration is chair time, from head-fixation**~~ **Superseded 2026-09-19 (PI):
-   the one duration limit is out-of-cage to back-in-cage, and it is twelve hours.**
+   the one duration limit is out-of-cage to back-in-cage, and it is eight hours** (the PI
+   corrected the twelve recorded here, and quoted below, on 2026-10-01).
 
    > *"The only limit we have welfare wise is that a session from out of cage to back into
    > cage cannot be longer than 12 hours."*
+
+   **Corrected 2026-10-01 (PI): the institution's out-of-cage limit is eight hours.** The
+   twelve in the ruling above was wrong. No real animal's bounded config existed while this
+   file said twelve, and `welfare.py` carries no constant for the figure, so the correction
+   reached the documents, the reference config (`tasks/eight_hour_bounds.py`, until then
+   `tasks/twelve_hour_bounds.py`) and the tests built on it.
 
    Chair time was the wrong clock for that limit, not a wrong idea: it starts at
    head-fixation, so it misses the transport and chairing that sit before it and
    under-counts exactly the interval the institution bounds. `welfare.out_of_cage_seconds`
    measures from the mark, and it is the only quantity `welfare.must_stop` reads.
 
-   **Twelve hours is documented, not configured.** No constant in `welfare.py` carries it —
+   **Eight hours is documented, not configured.** No constant in `welfare.py` carries it —
    a number with a name is a number something will default to — and the figure arrives with
    a real subject's bounded config. `tasks/reference_bounds.py`'s `out_of_cage` value stays
    implausible until there are animals, per that file's own two guards.
@@ -195,7 +202,10 @@ supplement afterwards — is then computed against a figure that describes half 
    a wall-clock catch: an *interval* of 1.79e9 seconds is fifty-seven years and self-evidently
    absurd. An *instant* of 1.79e9 is simply now, so that catch is gone. Worse, a plausible
    typo now survives: `08:45` for `18:45` is nine hours of slack, comfortably inside a
-   twelve-hour ceiling. Two refusals replace it and a third thing does the rest:
+   twelve-hour ceiling. (That was the figure when this was shown to him. At the eight hours he
+   corrected it to on 2026-10-01, the ceiling refuses that typo; a slip in the hour's last
+   digit — `15:45` for `18:45`, three hours — is the kind that still survives.) Two refusals
+   replace it and a third thing does the rest:
 
    - **A departure in the future is refused** — against the wall clock the session is
      reading, which is the mark nothing could have taken.
@@ -229,7 +239,8 @@ supplement afterwards — is then computed against a figure that describes half 
    is a deliberately implausible ten minutes, **shorter than the threshold**, so that config
    has an *empty* band and `wlx run` against it never prompts. Review made the point that this
    left **nothing that ships able to dry-run the one welfare interaction an operator is asked
-   to perform**, so `tasks/twelve_hour_bounds.py` is a second reference config carrying the
+   to perform**, so `tasks/eight_hour_bounds.py` (`tasks/twelve_hour_bounds.py` until the PI's
+   correction of 2026-10-01) is a second reference config carrying the
    real institutional ceiling — same subject `REFERENCE`, same implausible fluid placeholders,
    one entry different. `--confirm-out-of-cage`'s help names it, and two tests check the pair
    rather than asserting it.
@@ -373,8 +384,9 @@ supplement afterwards — is then computed against a figure that describes half 
    **Closed by this ruling.** That caveat was the gap, not a footnote about it: an operator who
    ends a session, unchairs the animal, walks it back and *then* marks the return was recording
    the animal as home at the instant the frames stopped, so the release, the unchairing and the
-   walk back — minutes of an animal out of its cage — fell outside the twelve hours, every
-   time. With both ends read from the wall, the frame clock stopping no longer matters.
+   walk back — minutes of an animal out of its cage — fell outside the limit (eight hours;
+   the PI corrected the twelve recorded here on 2026-10-01), every time. With both ends read
+   from the wall, the frame clock stopping no longer matters.
 
    ~~**`welfare.returned_to_cage(at, wall_now, confirmed=False)` maps against `left_cage`'s
    anchor, not against a fresh `now`/`wall_now` pair.** Those two are the same instant only
@@ -431,7 +443,8 @@ supplement afterwards — is then computed against a figure that describes half 
    configurable by `SessionSpec.warn_within` / `wlx run --warn-within`. It is **not derived
    from any measurement of this system** — no block duration has
    been measured and nothing under `docs/measurements/` states one, so nothing here claims it
-   clears a block. What it is: a twenty-fourth of the twelve-hour limit, **intended to be**
+   clears a block. What it is: a sixteenth of the eight-hour limit (a twenty-fourth of the
+   twelve recorded here until the PI's correction of 2026-10-01), **intended to be**
    long enough to finish what is running and walk an animal back and short enough not to sit
    on screen for most of a session — an intention, not a measured property, stated as one
    because the sentence before it disclaims measuring anything. **That is why it is a
@@ -439,7 +452,7 @@ supplement afterwards — is then computed against a figure that describes half 
    for exactly that reason: accepting a number is not the same as measuring one. Zero switches the warning off. **A threshold wider than the ceiling is not
    refused**: such a session is genuinely inside the threshold throughout, and refusing it
    would make `tasks/reference_bounds.py`'s deliberately implausible ten-minute placeholder
-   fail to construct a `Welfare` at all. This may carry a named default where twelve hours may
+   fail to construct a `Welfare` at all. This may carry a named default where eight hours may
    not, because it **bounds nothing** — the session ends at the same instant whatever it is.
 
    **Chair time is still recorded and bounds nothing.** `HEAD_FIXED` / `HEAD_RELEASED`
@@ -620,7 +633,7 @@ wl_xcon/` lands on the `raise`. Interpolated values are elided.
 | `already holds a departure, at …, so a recorded one cannot be restored beside it` | Two departures on one interval, the shorter winning — `left_cage`'s re-arm refusal, for the departure a restart reads back | §5.2 item 4; P4d-2b spec §6.1 |
 | `cannot have left its cage … seconds in the future` | A mark nothing could have taken. It caught a negative "how long ago" until 2026-09-20 and catches a clock time later than the wall clock since — **and it is the guard that makes "a bare time is today, never yesterday" safe**: `23:59` mistyped in the morning is refused rather than rolled back into a departure twenty-three hours old | §5.2 item 4 |
 | `is recorded as out of its cage … ago, against a ceiling of` | A session starting at or past its own limit, and the gross data-entry error — a date typed a day early, a departure in the wrong half of the day. It *also* caught a wall clock handed to a session-relative parameter until the mark became a clock time (PI, 2026-09-20); that catch is gone and its loss is accounted for in §5.2 item 4 | §5.2 item 4 |
-| `It was not confirmed by anyone, so it is refused rather than taken` | **A clock time cannot be refused for being implausible, so a person has to look at it** (PI, 2026-09-20). `08:45` typed for `18:45` is nine hours and sits inside a twelve-hour ceiling; no other refusal here will ever catch it. It is on the *marks* rather than only in `wlx run`'s prompt because `Session.left_cage`/`returned_to_cage` are console actions, and a guardrail written now and wired later is how `bounds`' fluid check went a week called by nothing (CLAUDE.md). A caller can lie to `confirmed`; it cannot forget it | §5.2 item 4 |
+| `It was not confirmed by anyone, so it is refused rather than taken` | **A clock time cannot be refused for being implausible, so a person has to look at it** (PI, 2026-09-20). `15:45` typed for `18:45` is three hours and sits inside an eight-hour ceiling; no other refusal here will ever catch it (the example was `08:45` for `18:45` until the PI corrected the limit from twelve to eight on 2026-10-01, and the ceiling refuses that one now). It is on the *marks* rather than only in `wlx run`'s prompt because `Session.left_cage`/`returned_to_cage` are console actions, and a guardrail written now and wired later is how `bounds`' fluid check went a week called by nothing (CLAUDE.md). A caller can lie to `confirmed`; it cannot forget it | §5.2 item 4 |
 | `is at home, so there is no interval for a return to close` | Declaration and mark disagreeing, on the closing side | S13 §4.0 |
 | `is not recorded as having left its cage, so a return closes nothing` | A session marked only at the end has no interval at all | §5.2 item 4 |
 | `is already recorded as back in its cage at` *(in `returned_to_cage`)* | A second return moves a closed interval, and the shorter one silently wins | §5.2 item 4 |
@@ -754,9 +767,9 @@ Everything else may change without a welfare review. These four may not.
 | 1 | Arbitration rule between console and control-API writers (§3.3) | S9 |
 | 2 | Whether the sync box's delivered-line record is readable by us live, or only at session end | §5.1's "continuously" — **less urgent since 2026-09-06**: with a floor rather than a ceiling nothing in-session depends on it, and session-end is enough to compute a supplement |
 | 6 | ~~**Is a runaway-fluid fault limit wanted?**~~ **Answered 2026-09-19 (PI): yes, and it is `reward_correct`'s maximum.** Set to **10 mL** — far above any dose, so what it refuses is software delivering litres, not an animal earning a ration. `Ceiling` therefore no longer means "a protocol figure" at every entry: `bounds.Ceiling` names the two kinds, and a bounded config states at each entry which it is — `tasks/reference_bounds.py` labels `reward_correct` a fault bound and `out_of_cage` a protocol figure. The *value* beside it stays a placeholder until there are animals | ✔ |
-| 7 | ~~**There is no session-length maximum**~~ **Done 2026-09-19.** `max_trials` is gone — from `welfare`, from `must_stop`, from `tasks/reference_bounds.py` and from every document that said two ceilings end a session. Per-condition targets were always `scheduler`'s (`Counts`, `owed()`, `upcoming()`), which the console renders as *still needed by condition*. The clock question that blocked it is answered in the same change: `welfare.must_stop` reads **out-of-cage time** against a twelve-hour ceiling, and chair time is recorded and bounds nothing. See §5.2 item 4 | ✔ |
+| 7 | ~~**There is no session-length maximum**~~ **Done 2026-09-19.** `max_trials` is gone — from `welfare`, from `must_stop`, from `tasks/reference_bounds.py` and from every document that said two ceilings end a session. Per-condition targets were always `scheduler`'s (`Counts`, `owed()`, `upcoming()`), which the console renders as *still needed by condition*. The clock question that blocked it is answered in the same change: `welfare.must_stop` reads **out-of-cage time** against an eight-hour ceiling (the PI corrected the twelve recorded here on 2026-10-01), and chair time is recorded and bounds nothing. See §5.2 item 4 | ✔ |
 | 8 | ~~**The out-of-cage marks have no event code** (§5.2 item 4). The clock that now bounds a session has no hardware record, so a restart cannot reconstruct it — the gap `HEAD_FIXED` closed for chair time. Two codes in 4096–32767 would close it; allocation is S2's and `wl-preproc`'s under ADR-0007~~ **Answered 2026-09-20 (PI): no codes.** The marks are **operator-entered rather than measured**, so a hardware timestamp would add precision to a number that never had it; our own log and the session directory already carry them. The consequence he accepted: a restart re-asks a person for the departure time (§6). No longer an ask on S2 or `wl-preproc` | ✔ |
 | 3 | ~~Default re-queue policy~~ **Answered: fixation break re-queued at end of block, wrong choice not, overridable per block** | — |
-| 4 | ~~Session duration from first reward or first trial~~ ~~**Answered: chair time, from head-fixation.**~~ **Re-answered 2026-09-19: out of cage to back in cage, twelve hours** (§5.2 item 4). Remaining: whether a hardware head-fix signal is ever worth adding beside the console action — still open, and now about a *recorded* quantity rather than a bounding one | welfare review |
+| 4 | ~~Session duration from first reward or first trial~~ ~~**Answered: chair time, from head-fixation.**~~ **Re-answered 2026-09-19: out of cage to back in cage**, eight hours since the PI's correction of 2026-10-01, twelve before it (§5.2 item 4). Remaining: whether a hardware head-fix signal is ever worth adding beside the console action — still open, and now about a *recorded* quantity rather than a bounding one | welfare review |
 | 5 | Who plans blocks when wl.works is unreachable | S3 §7's quarantine risk |
 | 9 | **A token that accumulates across trials and later converts to fluid has no representation** (new, 2026-09-20). The PI's reason for allowing zero reward — *"they may get an on-screen token reward that eventually becomes a real reward"* — describes a designed trial outcome the task vocabulary cannot express: `task.Reward` means fluid, and S1 §2.3's `Token`/`SetPersistent` are specified and unimplemented. Three things are missing — a persistent count, a conversion rule, and what the recording sees when a token rather than fluid is paid. §5.3 has the detail. **Deliberately not designed here**; it is S1's vocabulary and S2's codes before it is S8's accounting | S1 §10 item 3; a task-layer session |

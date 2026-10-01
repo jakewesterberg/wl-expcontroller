@@ -81,8 +81,9 @@ Two consequences that matter more than the numbers:
 
 ### 4.0 A kiosk session has no duration bound, and says so
 
-**Ruled 2026-09-19 (PI).** The one welfare duration limit is twelve hours out of the home cage
-to back in it (S8 §5.2 item 4). A cage-side session has no out-of-cage event, because the
+**Ruled 2026-09-19 (PI).** The one welfare duration limit is eight hours out of the home cage
+to back in it (S8 §5.2 item 4; the PI corrected the twelve recorded here on 2026-10-01). A
+cage-side session has no out-of-cage event, because the
 animal never left home — so the limit has nothing to measure, and the PI chose no time-based
 limit here rather than a different number.
 

@@ -61,7 +61,7 @@ def frame(**overrides) -> Telemetry:
             ParamRow("reward_correct", "mL", 0.0, 0.4, 0.15, True),
         ),
         floor_ml=250.0,
-        out_of_cage_limit_s=43_200.0,
+        out_of_cage_limit_s=28_800.0,
         wall_at=1_700_000_041.5,
         last_reward_at=1_700_000_000.0,
         recent_outcomes=("correct", "no_fixation", "correct"),

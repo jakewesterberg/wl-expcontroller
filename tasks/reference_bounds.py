@@ -46,13 +46,14 @@ BOUNDS = Bounds(
         # still a floor; nothing here caps what an animal may earn.
         "reward_correct": Ceiling(value=0.05, maximum=10.0, unit="mL"),
         # **The session's one duration limit** (PI, 2026-09-19): out of the home
-        # cage to back in it, which is what the twelve-hour institutional figure is
-        # about -- not chair time, which starts at head-fixation and so misses the
-        # transport and chairing before it. **A protocol figure**: an institution
-        # states it, and the number changes when the protocol does.
+        # cage to back in it, which is what the eight-hour institutional figure is
+        # about (the PI corrected the twelve recorded here on 2026-10-01) -- not
+        # chair time, which starts at head-fixation and so misses the transport and
+        # chairing before it. **A protocol figure**: an institution states it, and
+        # the number changes when the protocol does.
         #
         # Ten minutes, and therefore a placeholder like everything else here. The
-        # real figure is twelve hours; nobody could mistake this one for it, which
+        # real figure is eight hours; nobody could mistake this one for it, which
         # is this file's second guard doing its job.
         "out_of_cage": Ceiling(value=600.0, maximum=600.0, unit="s"),
         # There is no `chair_time` ceiling and no `max_trials` ceiling. Both were

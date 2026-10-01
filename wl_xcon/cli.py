@@ -1204,7 +1204,7 @@ def main(argv: list[str] | None = None) -> int:
         "chair time, which is the under-count that limit replaced chair time to "
         "remove. Refused if it is in the future or longer ago than the subject's "
         "out_of_cage ceiling. The session prints the resulting interval as it starts, "
-        "because a plausible typo -- 08:45 for 18:45 -- is inside a twelve-hour "
+        "because a plausible typo -- 15:45 for 18:45 -- is inside an eight-hour "
         "ceiling and nothing else would catch it",
     )
     runner.add_argument(
@@ -1222,7 +1222,7 @@ def main(argv: list[str] | None = None) -> int:
         "tasks/reference_bounds.py's out_of_cage ceiling is a deliberately "
         "implausible ten minutes, shorter than the threshold, so a far departure is "
         "refused by the ceiling before a confirmation is ever offered -- "
-        "tasks/twelve_hour_bounds.py is a second reference config, with the real "
+        "tasks/eight_hour_bounds.py is a second reference config, with the real "
         "institutional figure, that this path can be dry-run against",
     )
     runner.add_argument(
@@ -1736,8 +1736,8 @@ def main(argv: list[str] | None = None) -> int:
                         # **The consequence of a clock time, made visible** (PI,
                         # 2026-09-20). He accepted losing the automatic wall-clock
                         # refusal on the condition that a mistyped hour is legible
-                        # rather than silent: `08:45` for `18:45` sits comfortably
-                        # inside a twelve-hour ceiling, and nothing else on this path
+                        # rather than silent: `15:45` for `18:45` sits comfortably
+                        # inside an eight-hour ceiling, and nothing else on this path
                         # would remark on it. Read from `welfare`, never recomputed
                         # here -- `render`'s rule, on the headless path.
                         #

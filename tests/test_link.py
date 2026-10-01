@@ -75,7 +75,7 @@ from wl_xcon.welfare import Deployment, Simulated as Pump, Welfare
 def _bounds(daily_fluid: float = 250.0) -> Bounds:
     return Bounds(
         subject="A",
-        ceilings={"out_of_cage": Ceiling(value=43_200.0, maximum=43_200.0, unit="s")},
+        ceilings={"out_of_cage": Ceiling(value=28_800.0, maximum=28_800.0, unit="s")},
         minima={"daily_fluid": Floor(value=daily_fluid, unit="mL")},
     )
 
@@ -353,7 +353,7 @@ def test_telemetry_carries_the_warning_as_the_limit_approaches():
     """`welfare.approaching_limit` read, not recomputed -- the console's whole
     reason for showing it is that it is the same sentence the session would use."""
     session = _session_with(delivered_ml=1.0, already_today=None)
-    session.welfare.warn_within = 43_200.0
+    session.welfare.warn_within = 28_800.0
 
     telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)
 
@@ -1149,7 +1149,7 @@ def test_the_limits_are_the_ones_welfare_reads_them_against():
     -- the number `welfare.must_stop` compares with -- never its maximum."""
     session = _session_with(delivered_ml=1.0, already_today=None)
     session.welfare.bounds.ceilings["out_of_cage"] = Ceiling(
-        value=3_600.0, maximum=43_200.0, unit="s"
+        value=3_600.0, maximum=28_800.0, unit="s"
     )
 
     telemetry = Telemetry.of(session, Tally(), _scheduler(), index=0)

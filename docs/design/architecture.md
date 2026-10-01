@@ -186,7 +186,8 @@ ceiling** (PI, 2026-09-06): the daily figure is a minimum the animal must reach,
 by hand after the session, so a delivery is never refused on volume and `Floor` is a different
 type from `Ceiling` precisely so the two cannot be confused at a call site. **One ceiling ends
 a session, and it is time out of the cage** (PI, 2026-09-19): out of the home cage to back in
-it, twelve hours, which is the interval the institutional limit is about. Chair time and trial
+it, eight hours (the PI corrected the twelve recorded here on 2026-10-01), which is the
+interval the institutional limit is about. Chair time and trial
 count were the two until then; there is no session-length maximum, per-condition targets are
 `scheduler`'s, and chair time is recorded by `HEAD_FIXED`/`HEAD_RELEASED` and bounds nothing.
 **Checking a value and moving it are

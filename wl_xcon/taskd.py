@@ -22,7 +22,7 @@ below stand before every run of either.
 this file exists to hold. A task with a blocking finding does not run, because a
 session that begins and *then* discovers the task is malformed has already put an
 animal in a chair. And a session that has not satisfied `welfare.preflight` does not
-run: a rig session needs the mark that starts the twelve-hour out-of-cage clock (PI,
+run: a rig session needs the mark that starts the eight-hour out-of-cage clock (PI,
 2026-09-19), and `Deployment.RIG_FIXED` additionally needs the head-fixation that
 records restraint, while a cage-side one declares `Deployment.CAGE_SIDE` and needs
 neither. The declaration is on `SessionSpec` rather than inferred, because a rig

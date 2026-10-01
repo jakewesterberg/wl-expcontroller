@@ -47,12 +47,12 @@ _contract = pytest.mark.skipif(
 )
 
 WARNING = (
-    "out_of_cage: subject 'A' has 900 s left of its 43200 s out of the cage; finish "
+    "out_of_cage: subject 'A' has 900 s left of its 28800 s out of the cage; finish "
     "the block and start bringing the animal back"
 )
 LIMIT = (
-    "out_of_cage: subject 'A' has been out of its cage 43201 s against a ceiling of "
-    "43200"
+    "out_of_cage: subject 'A' has been out of its cage 28801 s against a ceiling of "
+    "28800"
 )
 
 #: `(frame, seconds since it arrived)` for every row of spec §3's verdict table, and
@@ -287,7 +287,7 @@ def test_the_readings_say_what_a_person_needs_to_know():
 
     assert values["session"] == "2027-01-14_01 · A · tasks/fixation_detection.py"
     assert values["state"] == "running · trial 40 · block session"
-    assert values["out_of_cage"] == "1:23:45 of 12:00:00"
+    assert values["out_of_cage"] == "1:23:45 of 8:00:00"
     assert values["fluid_session"] == "1.25 mL"
     assert values["supplement"] == "188.75 mL"
     assert values["trials"] == "40"

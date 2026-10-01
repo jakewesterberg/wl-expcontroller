@@ -34,13 +34,13 @@ from wl_xcon.welfare import Absent, Deployment, Rig, Simulated, Welfare
 def _bounds(daily_fluid: float = 250.0, **over: float) -> Bounds:
     """A rig's bounded config: a fluid floor and the out-of-cage ceiling.
 
-    Twelve hours, because that is the institutional limit S8 §5.2 states. A
+    Eight hours, because that is the institutional limit S8 §5.2 states. A
     fixture, not a protocol figure -- `tasks/reference_bounds.py` keeps its own
     number implausible on purpose, and this one never leaves the test suite.
     """
     ceilings = {
         "reward_correct": Ceiling(value=0.15, maximum=0.40, unit="mL"),
-        "out_of_cage": Ceiling(value=43_200.0, maximum=43_200.0, unit="s"),
+        "out_of_cage": Ceiling(value=28_800.0, maximum=28_800.0, unit="s"),
     }
     for name, value in over.items():
         ceiling = ceilings[name]
@@ -363,8 +363,9 @@ def test_a_delivery_with_an_unknown_ref_is_refused_before_the_charge():
 
 def test_the_departure_precedes_the_fixation_so_transport_and_chairing_count():
     """PI, 2026-09-19: *"a session from out of cage to back into cage cannot be
-    longer than 12 hours"*. The clock ran from head-fixation until then, which
-    under-counts by exactly the transport and chairing that precede it.
+    longer than 12 hours"* -- eight, as he corrected the figure on 2026-10-01. The
+    clock ran from head-fixation until then, which under-counts by exactly the
+    transport and chairing that precede it.
 
     **This is the test that makes the ruling real rather than renamed.** The
     departure is earlier than anything the session itself marks, and nothing pinned
@@ -438,8 +439,8 @@ def test_a_session_that_starts_exactly_at_its_ceiling_is_refused():
     """**The boundary belongs to the refusal, not to the session.** An animal out
     for exactly the limit has no room for a trial: the first one is already past
     it, and `left_cage` accepting this let a session run one trial and then stop.
-    `must_stop` keeps `>` -- at exactly twelve hours nothing has been *longer* than
-    twelve hours yet -- and the two now meet rather than overlapping by a trial."""
+    `must_stop` keeps `>` -- at exactly eight hours nothing has been *longer* than
+    eight hours yet -- and the two now meet rather than overlapping by a trial."""
     welfare = _welfare(out_of_cage=60.0)
 
     with pytest.raises(Exceeded, match="at or outside"):
@@ -648,14 +649,14 @@ def test_a_session_must_stop_at_the_out_of_cage_ceiling():
 def test_chair_time_is_recorded_and_bounds_nothing():
     """**Chair time stopped being a ceiling on 2026-09-19**, and `head_fixed` /
     `head_released` remain because their codes (4128/4129) are still the durable
-    record of restraint (S8 §5.2). Ten hours in the chair, inside a twelve-hour
+    record of restraint (S8 §5.2). Seven hours in the chair, inside an eight-hour
     out-of-cage window, is a session that runs on."""
     welfare = _welfare()
     welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW)
     welfare.head_fixed(at=WALL_NOW)
 
-    assert welfare.chair_seconds(WALL_NOW + 36_000.0) == pytest.approx(36_000.0)
-    assert welfare.must_stop(WALL_NOW + 36_000.0) is None
+    assert welfare.chair_seconds(WALL_NOW + 25_200.0) == pytest.approx(25_200.0)
+    assert welfare.must_stop(WALL_NOW + 25_200.0) is None
 
 
 def test_chair_time_is_zero_before_the_animal_is_in_the_chair():
@@ -773,11 +774,11 @@ def test_a_rig_config_with_no_out_of_cage_ceiling_refuses_to_start():
 
 def test_a_cage_side_session_carrying_a_duration_ceiling_is_refused():
     """The declaration and the config must not disagree. A bounded config stating a
-    twelve-hour limit, under a deployment declaring that the limit does not apply,
+    eight-hour limit, under a deployment declaring that the limit does not apply,
     is a limit switched off by a flag -- the failure the declaration exists to
     prevent, arrived at from the other side."""
     bounds = _home_bounds()
-    bounds.ceilings["out_of_cage"] = Ceiling(43_200.0, 43_200.0, "s")
+    bounds.ceilings["out_of_cage"] = Ceiling(28_800.0, 28_800.0, "s")
 
     with pytest.raises(Exceeded, match="out_of_cage"):
         Welfare(
@@ -893,7 +894,7 @@ def test_a_departure_longer_ago_than_the_ceiling_is_still_refused():
     welfare = _welfare()
 
     with pytest.raises(Exceeded, match="against a ceiling of"):
-        welfare.left_cage(at=WALL_NOW - 43_300.0, wall_now=WALL_NOW)
+        welfare.left_cage(at=WALL_NOW - 28_900.0, wall_now=WALL_NOW)
 
 
 def test_a_wall_clock_that_is_not_a_number_is_refused_at_the_mark():
@@ -1048,7 +1049,7 @@ def test_a_chaired_session_runs_without_head_fixation():
 
 
 def test_a_chaired_session_is_bounded_by_the_same_out_of_cage_clock():
-    """Restraint is what differs between the two rig kinds; the twelve-hour limit is
+    """Restraint is what differs between the two rig kinds; the eight-hour limit is
     not. A chaired session is out of its cage and the clock binds it identically."""
     welfare = _chaired_welfare(out_of_cage=60.0)
     welfare.left_cage(at=WALL_NOW, wall_now=WALL_NOW)
@@ -1081,7 +1082,7 @@ def test_a_chaired_session_still_refuses_to_run_with_no_out_of_cage_mark():
 
 
 def test_the_session_warns_before_the_limit_rather_than_only_at_it():
-    """**PI, 2026-09-20: warn as the twelve-hour limit approaches**, so an operator
+    """**PI, 2026-09-20: warn as the eight-hour limit approaches**, so an operator
     can finish a block deliberately instead of having a session cut mid-sequence.
     The console showed the clock and nothing drew attention as it ran out."""
     welfare = _welfare(out_of_cage=3_600.0)
@@ -1193,14 +1194,14 @@ def test_a_zero_threshold_switches_the_warning_off():
 # reason should be given and the experimenter name logged."*
 #
 # This is the mitigation for the guard he accepted losing when the mark became a
-# clock time: `08:45` typed for `18:45` is nine hours and sits comfortably inside a
-# twelve-hour ceiling, so no refusal will ever catch it. These tests are about the
+# clock time: `15:45` typed for `18:45` is three hours and sits comfortably inside an
+# eight-hour ceiling, so no refusal will ever catch it. These tests are about the
 # *band* -- between "obviously wrong", which is still refused outright, and
 # "obviously fine", which still runs with nothing asked.
 
 
 def test_a_departure_far_from_now_needs_a_persons_confirmation():
-    """Two hours ago, inside a twelve-hour ceiling: nothing refuses it and nothing
+    """Two hours ago, inside an eight-hour ceiling: nothing refuses it and nothing
     should, but a person has to have seen it."""
     welfare = _welfare()
 
@@ -1293,7 +1294,7 @@ def test_an_amendment_carries_a_reason_and_an_actor_into_the_record():
 
     welfare.amend_mark(
         "departure",
-        original=WALL_NOW - 33_300.0,
+        original=WALL_NOW - 18_900.0,
         amended=WALL_NOW - 900.0,
         reason="typed 08:45 for 18:45",
         by="jake",
@@ -1303,7 +1304,7 @@ def test_an_amendment_carries_a_reason_and_an_actor_into_the_record():
         (
             "mark amended",
             "departure",
-            WALL_NOW - 33_300.0,
+            WALL_NOW - 18_900.0,
             WALL_NOW - 900.0,
             "typed 08:45 for 18:45",
             "jake",
@@ -1318,7 +1319,7 @@ def test_an_amendment_with_no_reason_is_refused_rather_than_recorded_blank():
     with pytest.raises(Exceeded, match="no reason"):
         _welfare().amend_mark(
             "departure",
-            original=WALL_NOW - 33_300.0,
+            original=WALL_NOW - 18_900.0,
             amended=WALL_NOW - 900.0,
             reason="   ",
             by="jake",
@@ -1332,7 +1333,7 @@ def test_an_amendment_with_no_actor_is_refused_like_a_console_write_with_no_as()
     with pytest.raises(Exceeded, match="nobody"):
         _welfare().amend_mark(
             "departure",
-            original=WALL_NOW - 33_300.0,
+            original=WALL_NOW - 18_900.0,
             amended=WALL_NOW - 900.0,
             reason="typed 08:45 for 18:45",
             by="",
@@ -1348,7 +1349,7 @@ def test_an_amendment_is_refused_before_it_touches_the_mark():
     with pytest.raises(Exceeded):
         welfare.amend_mark(
             "departure",
-            original=WALL_NOW - 33_300.0,
+            original=WALL_NOW - 18_900.0,
             amended=WALL_NOW - 900.0,
             reason="x",
             by="",
@@ -1366,7 +1367,7 @@ def test_an_amendment_is_refused_before_it_touches_the_mark():
 # operator who ends a session, unchairs the animal, walks it back and *then* marks
 # the return recorded the animal as home at the instant the loop ended. The
 # unchairing and the walk back -- minutes of an animal out of its cage -- did not
-# count toward the twelve hours.
+# count toward the eight hours.
 
 
 def test_the_walk_back_counts_because_the_return_is_a_clock_time():
@@ -1488,7 +1489,7 @@ def test_a_restored_departure_is_one_a_return_can_close_even_past_the_ceiling():
     died. `left_cage` would refuse a departure past the ceiling; the restored one is read
     back, not decided, so its return can still be taken under every return rule."""
     welfare = _chaired_welfare()
-    welfare.restore_departure(WALL_NOW - 50_000.0)  # past the 43,200 s ceiling
+    welfare.restore_departure(WALL_NOW - 50_000.0)  # past the 28,800 s ceiling
 
     welfare.returned_to_cage(WALL_NOW - 60.0, wall_now=WALL_NOW)
 
@@ -2395,7 +2396,7 @@ def _a_departure_at_the_ceiling() -> None:
 
 
 def _a_departure_past_the_ceiling() -> None:
-    _welfare().left_cage(at=WALL_NOW - 43_300.0, wall_now=WALL_NOW)
+    _welfare().left_cage(at=WALL_NOW - 28_900.0, wall_now=WALL_NOW)
 
 
 @pytest.mark.parametrize(

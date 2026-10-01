@@ -154,8 +154,10 @@
 ## 5. Storage
 
 - **During the session**, video goes to the box's NVMe. Its size is set from **measured**
-  bitrates for 8 cameras at 200 fps over the longest possible session (the 12-hour
-  out-of-cage limit), plus margin. It is checked at session open (§4).
+  bitrates for 8 cameras at 200 fps over the longest possible session (the eight-hour
+  out-of-cage limit: the PI corrected the 12 recorded here on 2026-10-01), plus margin. It is
+  checked at session open (§4). S0 §7.6's storage arithmetic and bring-up check 2 below still
+  use twelve, which is longer than any session can now be.
 - **Afterwards**, the video, its `bcam` sidecar and the camera log join the session's package
   (P4d-2b's b6), bound for wl-nas.
 - **Until wl-nas exists** (it does not yet: `wl-stack/docs/data-access.md`, read

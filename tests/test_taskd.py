@@ -534,10 +534,10 @@ def test_the_m1_gate_one_thousand_deterministic_trials_with_full_outputs(tmp_pat
     spec = _spec(tmp_path, trials=1_000)
     # The gate's own claim is a thousand trials, so the session has to be able to
     # reach them: the block quota is a thousand, and the duration ceiling is the
-    # twelve hours a real session runs under (S8 §5.2) rather than the deliberately
+    # eight hours a real session runs under (S8 §5.2) rather than the deliberately
     # small backstop `_bounds` uses everywhere else in this file. The gate passing
     # is itself the statement that a thousand trials fit inside a real session.
-    spec.bounds = _bounds(out_of_cage=43_200.0)
+    spec.bounds = _bounds(out_of_cage=28_800.0)
     census = _session(spec).run()
 
     trials = (
@@ -687,7 +687,7 @@ def test_a_session_with_an_unknown_daily_total_still_pays_and_says_it_cannot_cou
 
 def test_a_session_refuses_to_run_before_the_animal_is_out_of_its_cage(tmp_path):
     """**The refusal that makes the duration limit real** (PI, 2026-09-19). A rig
-    session nobody marked has no start for the twelve-hour clock, and running it
+    session nobody marked has no start for the eight-hour clock, and running it
     against an assumed zero is how a limit gets disabled by forgetting rather than
     by deciding. `welfare.preflight` is what `run()` asks, so the rule has one
     home; `test_welfare.py` covers the refusal's own shape."""
@@ -762,7 +762,7 @@ def test_putting_the_animal_back_in_its_cage_closes_the_sessions_clock(tmp_path)
 
     The limit is on an interval, not on a process (S8 §5.2 item 4): when the loop ends
     the animal is still in the chair, and the release, the unchairing and the walk back
-    are all inside the twelve hours. A `run()` that closed the clock itself would report
+    are all inside the eight hours. A `run()` that closed the clock itself would report
     a session as shorter than the animal's day actually was, every time. So the mark is
     the console's, and this drives it the way a console would.
 
@@ -793,7 +793,7 @@ def test_putting_the_animal_back_in_its_cage_closes_the_sessions_clock(tmp_path)
         "the clock did not close, so it would have run to the end of time"
     )
     assert closed > when_the_loop_ended, (
-        "the release, the unchairing and the walk back are inside the twelve hours, "
+        "the release, the unchairing and the walk back are inside the eight hours, "
         "and marking the return on the frozen frame clock left every one of them out"
     )
 
@@ -827,12 +827,12 @@ def test_transport_and_chairing_count_toward_the_sessions_limit(tmp_path):
     counts every one of them while the restraint record counts none. Both are read
     on the wall since P4d-2a (spec §10).
 
-    The twelve-hour ceiling rather than `_bounds`' deliberately small backstop,
+    The eight-hour ceiling rather than `_bounds`' deliberately small backstop,
     because twenty minutes of transport is past an 800-second one -- which is
     `left_cage` refusing a session that starts outside its own limit, and is a
     different test (`test_welfare.py`)."""
     spec = _spec(tmp_path, trials=3)
-    spec.bounds = _bounds(out_of_cage=43_200.0)
+    spec.bounds = _bounds(out_of_cage=28_800.0)
     session = _session(spec, left_cage_ago=1_200.0)
 
     session.run()
@@ -1783,7 +1783,7 @@ def test_a_return_is_recorded_with_who_and_how(tmp_path):
 
 
 def test_a_far_return_that_was_confirmed_says_so(tmp_path):
-    session = _chaired(tmp_path, bounds=_bounds(out_of_cage=43_200.0))
+    session = _chaired(tmp_path, bounds=_bounds(out_of_cage=28_800.0))
     session.left_cage(at=WALL_NOW - 7_200.0, confirmed=True)
 
     session.returned_to_cage(at=WALL_NOW - 3_600.0, confirmed=True, by="jake")
@@ -1818,7 +1818,7 @@ def test_a_return_nobody_recorded_says_why(tmp_path):
 
 
 def test_the_session_says_when_a_return_needs_a_person(tmp_path):
-    session = _chaired(tmp_path, bounds=_bounds(out_of_cage=43_200.0))
+    session = _chaired(tmp_path, bounds=_bounds(out_of_cage=28_800.0))
     session.left_cage(at=WALL_NOW - 7_200.0, confirmed=True)
 
     assert session.return_needs_confirmation(WALL_NOW - 60.0) is None
@@ -2448,11 +2448,11 @@ def test_the_in_session_clock_bounds_nothing(tmp_path):
     (nothing in this file passes either to it, and `Welfare.__init__` takes no such
     argument)."""
     wall = _Wall(WALL_NOW)
-    # Twelve hours: comfortably past the thirteen the in-session clock will read,
+    # Eight hours: well short of the thirteen the in-session clock will read,
     # so a `must_stop`/`approaching_limit` answer here can only be about the
     # departure, one hour old, never about the in-session clock this test is
     # actually asking about.
-    spec = _spec(tmp_path, trials=3, bounds=_bounds(out_of_cage=43_200.0))
+    spec = _spec(tmp_path, trials=3, bounds=_bounds(out_of_cage=28_800.0))
     session = Session(spec, card=Card(), pump=Pump(), wall_clock=wall)
     session.open()
 
