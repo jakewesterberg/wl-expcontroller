@@ -105,7 +105,10 @@ On resume:
   - the stranded record cannot be read (it fails closed, as `stranded.find` does today);
   - the record predates §4 (above);
   - the animal is already past its out-of-cage limit, on the restored departure. The page then
-    asks for the return, and only *end* is offered;
+    asks for the return, and only *end* is offered; *(2026-10-01, Task 7's review: "then" is
+    after the refused resume. The service marks that stranded session not resumable, with the
+    refusal's sentence as its reason, so its banner no longer offers resume; past the limit only
+    ever stays true. The changed-bounds refusal below leaves it resumable.)*
   - the bounds loaded differ from `config.json`'s (§3).
 - **"No new session while an animal is stranded" still holds** (P4d-2b §6.1). A resume is not a
   new session. With two stranded sessions, each is resumed or ended on its own.

@@ -1753,6 +1753,37 @@ def test_a_stranded_session_past_its_out_of_cage_limit_is_refused_with_welfares_
     )
 
 
+def test_a_session_refused_past_its_limit_is_then_offered_only_end(tmp_path):
+    """Spec §5 (fix round 1 of Task 7): past its out-of-cage limit a resume is refused,
+    and "the page then asks for the return, and only *end* is offered". The entry is
+    marked not resumable, with the refusal's sentence; a second resume, sent later, is
+    refused with that same sentence, not asked again, and writes nothing; *end session…*
+    still takes the return."""
+    from _frames import view
+    from wl_xcon.web import fragments
+
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01")
+    wall = _Wall()
+    service = _made(folders, wall=wall)
+    (found,) = service.stranded
+    wall.at = found.left_at + 28_800 + 1
+    why = _resume_refused(service, "2027-01-14_01")
+
+    idle = _step(service)
+
+    assert [(s.session_id, s.resumable, s.why) for s in idle.stranded] == [
+        ("2027-01-14_01", False, why),
+    ]
+    banners = fragments(idle, view())["banners"]
+    assert 'data-resume=' not in banners and 'data-return="2027-01-14_01"' in banners
+    wall.at += 600
+    assert _resume_refused(service, "2027-01-14_01") == why, "marked once, never re-asked"
+    _step(service, _end(session_id="2027-01-14_01"))
+    assert service.stranded == [], "end session… still takes the return"
+    assert _kinds(folders[2])[-1] == "returned"
+
+
 @pytest.mark.parametrize(
     ("was", "now", "named"),
     [
@@ -1787,6 +1818,9 @@ def test_a_stranded_session_whose_animals_bounds_changed_is_refused_naming_what(
         f"'REFERENCE''s bounds changed since session 2027-01-14_01 opened ({named}); a "
         f"session's limits do not change across a restart, so end it instead"
     )
+    # A plain refusal (fix round 1 of Task 7): restoring the animal's file makes the
+    # session resumable again, so it is never marked otherwise.
+    assert [(s.resumable, s.why) for s in _step(service).stranded] == [(True, "")]
 
 
 def test_a_resume_naming_no_stranded_session_is_refused_naming_it(tmp_path):
@@ -2058,6 +2092,15 @@ def _recorded_fluid(xcon: Path) -> float:
     return sum(float(line["fluid_ml"]) for line in lines) + sum(float(row["ml"]) for row in hand)
 
 
+def _killed(xcon: Path, run: int) -> None:
+    """The record exactly as a kill leaves it (spec §3: "a start row and no end row";
+    fix round 1 of Task 7): `Session.run`'s `finally` wrote the interrupted run's end row,
+    which a SIGKILL would not have, so it is taken out again."""
+    rows = _jsonl(xcon / "runs.jsonl")
+    assert (rows[-1]["event"], rows[-1]["run"], rows[-1]["stop_kind"]) == ("end", run, "operator")
+    (xcon / "runs.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows[:-1]))
+
+
 @_contract
 def test_two_crashes_and_their_resumes_repeat_no_number_in_one_recording(tmp_path, monkeypatch):
     """XC-026, the path and not the piece (spec §7; the plan's Review Focus 1, 3 and 4).
@@ -2110,6 +2153,7 @@ def test_two_crashes_and_their_resumes_repeat_no_number_in_one_recording(tmp_pat
     _step(first, ManualReward(by=BY))
     with pytest.raises(KeyboardInterrupt):
         _step(first, _start())
+    _killed(xcon, run=1)
     departure = first.session.welfare.left_cage_wall_at
     died_with = first.session.welfare.session_total()
     assert lost[0] > 0, "the first death took a reward its trial commanded, and no line holds it"
@@ -2129,6 +2173,7 @@ def test_two_crashes_and_their_resumes_repeat_no_number_in_one_recording(tmp_pat
     _step(second, ManualReward(by=BY))
     with pytest.raises(KeyboardInterrupt):
         _step(second, _start())
+    _killed(xcon, run=2)
     died_with = welfare.session_total()
 
     # --- the third process: resumed again, run 4 to its end, and the session ended ---
@@ -2173,7 +2218,10 @@ def test_two_crashes_and_their_resumes_repeat_no_number_in_one_recording(tmp_pat
     assert [block.block_id for block in assembly.blocks if block.end_s is None] == [4, 5]
     assert [run.run_number for run in assembly.runs if run.end_s is None] == [2, 3]
     assert codes.count(4137) == 2, "SESSION_RESUMED, once at each resume"
-    # Spec §8a item 2: a rig-fixed resume fixes the head again, with no release between.
+    # Spec §8a item 2: a rig-fixed resume fixes the head again, with no release between:
+    # the one release comes after the last fixation.
+    last_fixed = len(codes) - 1 - codes[::-1].index(4128)
+    assert codes.index(4129) > last_fixed, "no HEAD_RELEASED before the last HEAD_FIXED"
     assert (codes.count(4128), codes.count(4129)) == (3, 1)
 
     # --- the record ---
@@ -2189,6 +2237,9 @@ def test_two_crashes_and_their_resumes_repeat_no_number_in_one_recording(tmp_pat
         (block,) = [b for b in assembly.blocks if b.start_s <= trial.start_s <= b.last_s]
         (run,) = [r for r in assembly.runs if r.start_s <= trial.start_s <= r.last_s]
         assert (block.block_id, run.run_number) == (line["block_in_session"], line["run_in_session"])
+    assert [(row["event"], row["run"]) for row in _jsonl(xcon / "runs.jsonl")] == [
+        ("start", 0), ("end", 0), ("start", 1), ("start", 2), ("start", 3), ("end", 3),
+    ], "each run that died has its start row and no end row, as a kill leaves it"
     runs = [row for row in _jsonl(xcon / "runs.jsonl") if row["event"] == "start"]
     assert [row["bounded"]["reward_correct"] for row in runs] == [0.05, 0.1, 0.1, 0.1]
     changes = _jsonl(xcon / "parameter_changes.jsonl")

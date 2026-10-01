@@ -123,7 +123,8 @@ then `Session.resume`) — between runs, its departure restored by `restore_depa
 never re-taken, its fluid so far by `Welfare.restore_fluid`, its next run numbered on and
 every block and trial number continuing — refused, before anything is written, while a
 session is open, when its record cannot carry it, when its animal's bounds changed since it
-opened, or when the animal is past its out-of-cage limit. A resume is not a new session, so
+opened, or when the animal is past its out-of-cage limit, after which the page offers only *end*
+for it. A resume is not a new session, so
 the rule above still holds; with two stranded, each is resumed or ended on its own.
 `Service._resume`, `Service._built` and `resume.py` are not on this list (XC-026 spec §8).
 **And `service._unasked`** (the b3a-1 review's Ruling 1): a

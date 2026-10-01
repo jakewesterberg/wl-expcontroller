@@ -632,8 +632,10 @@ XC-150.)*
   session, so the refusal above still holds for an open, and with two stranded each is resumed
   or ended on its own. A record that cannot carry a resume — written before XC-026, or one it
   cannot read — is offered only *end*, and the banner says why. A resume of an animal already
-  past its out-of-cage limit, or whose bounds changed since the session opened, is refused when
-  sent, before anything is written, saying why and to end the session instead.
+  past its out-of-cage limit is refused when sent, before anything is written; the page then
+  asks for the return, and the banner offers only *end* from then on, saying why (XC-026 spec
+  §5). A resume of an animal whose bounds changed since the session opened is refused the same
+  way but stays offered, since restoring its file makes the session resumable again.
 - **`wlx run` stays**, for the terminal: it opens a session, runs one run and ends it, through
   the same session and run code as the service, so the terminal and the page are two peers on
   one path and not two implementations.

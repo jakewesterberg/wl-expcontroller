@@ -54,6 +54,7 @@ replace them when they do.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import gc
 import re
 import secrets
@@ -709,7 +710,10 @@ class Service:
         stranded is no bar: each is resumed or ended on its own (spec §5; plan ruling 7).
         **A record it cannot carry is a refusal, never the service's end** (the
         controller's ruling on Task 4): what `stranded.restore` raises is said too, and
-        what `Session.resume` refuses before it writes."""
+        what `Session.resume` refuses before it writes. **One refused for being past its
+        limit is then marked not resumable**, with the refusal's sentence, so the page
+        offers only *end* (spec §5; fix round 1 of Task 7); a stranded session marked
+        not resumable, by this or by `stranded.find`, is refused with what it is marked."""
         if self.session is not None:
             self._refuse(command.KIND, command.by,
                          f"a session is open ({self.session.spec.session_id}); a stranded "
@@ -720,6 +724,12 @@ class Service:
             self._refuse(command.KIND, command.by,
                          f"no stranded session {command.session_id!r} can be resumed"
                          + ("" if found is None else f": {found.why}"))
+            return
+        if not found.resumable:
+            # What the banner says of it, so the page and the refusal agree: its record
+            # cannot carry a resume (`stranded.find`), or its animal is past its limit
+            # (below). Neither is taken back while this service runs.
+            self._refuse(command.KIND, command.by, found.why)
             return
         directory = self.root / found.session_id / XCON_DIRNAME
         try:
@@ -764,8 +774,16 @@ class Service:
             self._refuse(command.KIND, command.by, _sentence(refused))
             return
         if stop is not None:
-            self._refuse(command.KIND, command.by,
-                         f"{stop}; record its return with End session instead")
+            # **The page then asks for the return, and only end is offered** (spec §5;
+            # fix round 1 of Task 7): the entry is marked so, with this sentence, and its
+            # banner loses *resume session*. Past the limit only ever stays true, so the
+            # mark is never wrong. Changed bounds stay a plain refusal: restoring the
+            # animal's file makes the session resumable again.
+            why = f"{stop}; record its return with End session instead"
+            self.stranded[self.stranded.index(found)] = dataclasses.replace(
+                found, resumable=False, why=why
+            )
+            self._refuse(command.KIND, command.by, why)
             return
         try:
             session.resume(restoration, by=command.by, how="wlx taskd")
