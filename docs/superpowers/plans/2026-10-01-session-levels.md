@@ -1255,12 +1255,14 @@ def test_hangs_count_among_the_trials():
 def test_between_runs_one_line_says_so():
     """Review Focus 5 and plan ruling 4."""
     strip = fragments(_between("between_runs"), view())["strip"]
-    assert "between runs" in strip and "this run" not in strip and "block" not in strip
+    assert '<span class="k">between runs</span>' in strip
+    assert "this run" not in strip and "block" not in strip
 
 
 def test_after_the_runs_one_line_says_no_run_is_going():
     strip = fragments(_between("awaiting_return"), view())["strip"]
-    assert "no run going" in strip
+    # The line's own name span: the fluid cell's reward note also says "no run going".
+    assert '<span class="k">no run going</span>' in strip
 
 
 def test_before_the_first_trial_the_session_says_so_not_zero():
