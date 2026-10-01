@@ -119,3 +119,32 @@ def test_every_marker_codes_mirrors_is_theirs():
     }
 
     assert mirrored == {name: int(wl_preproc_events.Marker[name]) for name in mirrored}
+
+
+def test_the_block_markers_are_wl_preprocs():
+    assert codes.BLOCK_END == wl_preproc_events.Marker.BLOCK_END
+    assert encode.BLOCK_START == wl_preproc_events.Escape.BLOCK_START
+    assert wl_preproc_events.PAYLOAD_WORD_COUNTS[wl_preproc_events.Escape.BLOCK_START] == 2
+
+
+@pytest.mark.parametrize(("block", "task"), [(1, 0), (27, 0), (65_535, 255)])
+def test_a_block_start_is_framed_exactly_as_wl_preproc_frames_it(block, task):
+    theirs = wl_preproc_events.encode_payload(wl_preproc_events.Escape.BLOCK_START, [block, task])
+    assert encode.words_for_block(block, task) == list(theirs)
+
+
+def test_a_block_start_round_trips_through_wl_preprocs_decoder():
+    words = encode.words_for_block(7, encode.UNALLOCATED_TASK_CODE)
+    events = wl_preproc_events.decode_stream([(i * 0.001, w) for i, w in enumerate(words)])
+    assert [(e.escape, e.words) for e in events] == [(wl_preproc_events.Escape.BLOCK_START, (7, 0))]
+
+
+@pytest.mark.parametrize(("block", "task", "said"), [
+    (0, 0, "counts from 1"),
+    (65_536, 0, "block number out of 16-bit range"),
+    (1, -1, "task code out of 16-bit range"),
+    (1, 65_536, "task code out of 16-bit range"),
+])
+def test_a_block_start_that_cannot_be_framed_is_refused(block, task, said):
+    with pytest.raises(ValueError, match=said):
+        encode.words_for_block(block, task)

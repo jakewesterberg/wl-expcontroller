@@ -23,6 +23,16 @@ WORD_MASK = 0xFFFF
 TRIAL_NUMBER = 0x8001
 CONDITION = 0x8003
 
+#: wl-preproc's `Escape.BLOCK_START`: two payload words, `(block_number,
+#: task_type_code)`, each a 16-bit word of its own, not one uint32. `taskd` strobes it
+#: as each block opens, with the block's `block_in_session` (session-levels spec §4).
+BLOCK_START = 0x8002
+
+#: The task type code a task carries until wl-xtasks allocates codes (spec §4).
+#: wl-preproc's `TaskTypeCode` namespace is 1-255 (`contracts/events.py`), so 0 names no
+#: task: it says "not allocated" rather than naming another.
+UNALLOCATED_TASK_CODE = 0
+
 #: Payload word counts, mirroring `wl-preproc`'s `PAYLOAD_WORD_COUNTS`. Mirrored
 #: rather than imported so the rig carries no pipeline dependency; the round-trip
 #: tests are what keep the mirror honest, and a drift fails there rather than in a
@@ -73,3 +83,19 @@ def words_for(escape: int, value: int) -> list[int]:
         raise ValueError(f"value out of uint32 range: {value}")
     payload = [(value >> 16) & WORD_MASK, value & WORD_MASK]
     return [escape, *payload, _checksum(escape, payload)]
+
+
+def words_for_block(block_number: int, task_code: int) -> list[int]:
+    """`BLOCK_START`'s full word sequence: the escape, the block's number in the
+    session, the task's type code, and the checksum every escape carries.
+
+    Called before anything of the block is strobed, as `words_for` is for a trial's
+    number (XC-155): a value that cannot be framed raises ahead of the stream."""
+    if not 0 <= block_number <= WORD_MASK:
+        raise ValueError(f"block number out of 16-bit range: {block_number}")
+    if block_number < 1:
+        raise ValueError(f"a block number counts from 1: {block_number}")
+    if not 0 <= task_code <= WORD_MASK:
+        raise ValueError(f"task code out of 16-bit range: {task_code}")
+    payload = [block_number, task_code]
+    return [BLOCK_START, *payload, _checksum(BLOCK_START, payload)]

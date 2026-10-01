@@ -70,6 +70,7 @@ class Allocation:
 #: wl-preproc opens a trial at the one and closes it at the other
 #: (`events/assemble.py`), so a stream without them holds no trials at all. Public,
 #: unlike the five outcome markers, since `taskd` strobes them by name.
+#: `BLOCK_END` below closes a block the same way, after its last `TRIAL_END`.
 #:
 #: **`NO_FIXATION` maps to `TRIAL_ABORT`, and that loses information on purpose.**
 #: There is no dedicated marker for it, and asking for one would put a task-level
@@ -79,6 +80,11 @@ class Allocation:
 #: analysis distinguishing abort kinds reads the pair, not the marker alone.
 TRIAL_START = 32
 TRIAL_END = 33
+
+#: **`BLOCK_END` closes a block** (session-levels spec §4): `taskd.Session.run` strobes
+#: it after a block's last `TRIAL_END`, when its block type is done or its run ends by
+#: design. A run that faults sends none, as it sends no `RUN_END`.
+BLOCK_END = 3
 _TRIAL_CORRECT = 34
 _TRIAL_ERROR = 35
 _TRIAL_ABORT = 36
