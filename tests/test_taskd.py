@@ -5420,19 +5420,33 @@ def _resumed(tmp_path, first: Session, **spec) -> Session:
         link=Simulated(),
         service=True,
     )
-    again.wall_clock = lambda: WALL_NOW + again.now()
+    # The second process starts a minute after the first's last frame, so a departure
+    # taken afresh at the resume would differ from the one restored.
+    later = first.now() + 60.0
+    again.wall_clock = lambda: WALL_NOW + later + again.now()
     again.resume(restoration, by="jake", how="test")
     return again
 
 
 def test_a_resumed_session_carries_its_numbers_clock_fluid_and_reward_size(tmp_path):
-    first = _service_session(tmp_path, link=Simulated())
+    from wl_xcon import resume
+
+    first = _service_session(tmp_path, link=Simulated(), already_delivered_today=40.0)
     _stage_bounded(first, "reward_correct", 0.2)
     first.run(_levels_run(blocks=_plan("X", each=3)))
     config_before = (first.directory / "config.json").read_bytes()
+    restoration = resume.read(first.directory, first.welfare.left_cage_wall_at)
 
-    again = _resumed(tmp_path, first)
+    again = _resumed(tmp_path, first, already_delivered_today=40.0)
     assert again.spec.bounds.value("reward_correct") == 0.2
+    assert first.welfare.session_total() > 0
+    assert again.welfare.session_total() == pytest.approx(first.welfare.session_total())
+    assert again.welfare.total_today() == pytest.approx(first.welfare.total_today())
+    assert again.welfare.last_delivery_wall_at == first.welfare.last_delivery_wall_at
+    assert again._sequence == restoration.sequence
+    assert again.welfare.out_of_cage_seconds(again.wall_now()) > 60.0, (
+        "the clock runs from the first process's departure, not from the resume"
+    )
     again.run(_levels_run(blocks=_plan("Y", each=2)))
 
     numbers = [row["trial_number"] for row in _trial_rows(again)]

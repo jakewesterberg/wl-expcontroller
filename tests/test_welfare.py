@@ -2615,7 +2615,7 @@ def test_restored_fluid_counts_toward_the_session_and_the_day():
 
 def test_fluid_is_restored_once():
     welfare = _welfare()
-    welfare.restore_fluid(1.0, None)
+    welfare.restore_fluid(0.0, None)  # nothing held, so only the flag can refuse
     with pytest.raises(Exceeded, match="restored once"):
         welfare.restore_fluid(1.0, None)
 
