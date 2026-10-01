@@ -197,6 +197,10 @@ def _session(spec, link=None, left_cage_ago: float = 0.0) -> Session:
 
 
 RUN_START, RUN_END = 4135, 4136
+#: wl-preproc's own run markers (XC-205): its `Escape.RUN_START` and `Marker.RUN_END`,
+#: written as numbers for the trial markers' reason below, and named apart from the
+#: allocation's `RUN_START` and `RUN_END` codes above, which keep their meaning.
+RUN_ESCAPE, RUN_END_MARKER = 0x8006, 4
 #: wl-preproc's `Marker.TRIAL_START` and `TRIAL_END`, and its `Escape.TRIAL_NUMBER`
 #: (XC-155), written here as numbers rather than read from `codes` or `encode`, so a
 #: wrong value there fails these tests rather than agreeing with them.
@@ -322,20 +326,25 @@ def test_the_run_a_session_spec_describes_is_run_0_in_every_file_it_writes(tmp_p
 
 def test_a_run_is_strobed_where_it_starts_and_where_it_ends(tmp_path):
     """The run's markers sit outside its one block's (session-levels spec §4):
-    `RUN_START`, then `BLOCK_START` with block 1 and task code 0, before the first trial
-    opens; `BLOCK_END`, then `RUN_END`, after the last trial closes."""
+    `RUN_START`, then wl-preproc's run escape -- 0x8006, run 1, task code 0, and the
+    checksum (XC-205) -- then `BLOCK_START` with block 1 and task code 0, before the
+    first trial opens; `BLOCK_END`, then wl-preproc's `RUN_END` marker (4), then
+    `RUN_END`, after the last trial closes."""
     session = _session(_spec(tmp_path, trials=3))
 
     session.run()
 
     codes = session.card.codes
-    assert codes[:7] == [
-        4128, RUN_START, BLOCK_START, 0x0001, 0x0000, 0x8003, TRIAL_START_CODE,
+    assert codes[:11] == [
+        4128, RUN_START,
+        RUN_ESCAPE, 0x0001, 0x0000, 0x8007,
+        BLOCK_START, 0x0001, 0x0000, 0x8003, TRIAL_START_CODE,
     ], "before the first trial opens"
-    assert codes[-4:] == [TRIAL_END_CODE, BLOCK_END, RUN_END, 4129], (
+    assert codes[-5:] == [TRIAL_END_CODE, BLOCK_END, RUN_END_MARKER, RUN_END, 4129], (
         "after the last trial closes"
     )
     assert codes.count(RUN_START) == codes.count(RUN_END) == 1
+    assert _block_words(codes) == [("run", 1), ("start", 1), "end", "run end"]
 
 
 def test_a_run_that_faults_writes_its_end_row_and_strobes_no_run_end(tmp_path, monkeypatch):
@@ -356,6 +365,8 @@ def test_a_run_that_faults_writes_its_end_row_and_strobes_no_run_end(tmp_path, m
     assert (end["event"], end["stop_kind"], end["strobed"]) == ("end", "fault", False)
     assert "the display went away" in end["stopped_because"]
     assert RUN_END not in session.card.codes
+    # Opened in wl-preproc's terms too, and never closed in them (XC-205).
+    assert _block_words(session.card.codes) == [("run", 1), ("start", 1)]
 
 
 def test_a_run_whose_allocation_has_no_run_codes_runs_and_says_it_was_not_strobed(tmp_path):
@@ -386,6 +397,11 @@ def test_a_run_whose_allocation_has_no_run_codes_runs_and_says_it_was_not_strobe
 
     start, end = _runs(session)
     assert (start["strobed"], end["strobed"], end["stop_kind"]) == (False, False, "completed")
+    # **wl-preproc's run markers go out all the same** (XC-205): they are its framework
+    # codes, not the allocation's, so the run is still opened and closed in its terms.
+    codes = session.card.codes
+    assert codes[:6] == [4128, RUN_ESCAPE, 0x0001, 0x0000, 0x8007, BLOCK_START]
+    assert codes[-4:] == [TRIAL_END_CODE, BLOCK_END, RUN_END_MARKER, 4129]
 
 
 def test_a_second_run_starts_afresh_and_the_session_goes_on(tmp_path):
@@ -1682,6 +1698,11 @@ def test_ctrl_c_in_the_loop_stops_the_session_as_an_operator_would(
     assert session.stop_kind == "operator"
     assert link.published[-1].stopped_because == "interrupted at the terminal"
     assert link.published[-1].stop_kind == "operator"
+    # **Opened in the stream and never closed** (session-levels spec §4; XC-205): an
+    # interrupted run sends no `BLOCK_END`, no `RUN_END` marker and no `RUN_END`, as a
+    # faulted one sends none.
+    assert _block_words(session.card.codes) == [("run", 1), ("start", 1)]
+    assert RUN_END not in session.card.codes
 
 
 def test_the_sessions_wall_does_not_step_when_the_host_clock_does(
@@ -4613,12 +4634,13 @@ def _escapes(codes: list) -> list:
 
 def test_each_trial_is_opened_numbered_and_closed_in_the_stream(tmp_path):
     """XC-155 spec §2.1, the whole stream of a `wlx run` session of two trials: after
-    `HEAD_FIXED` and `RUN_START`, the run's one block opens -- `BLOCK_START` (0x8002),
-    its number in the session, task code 0, and the checksum (session-levels spec §4) --
-    then each trial is `TRIAL_START`, its number's escape -- 0x8001, the high word, the
-    low word, and 0x8001 XOR both as the checksum -- then the task's own `FIX_ON`, the
-    outcome marker (34, correct) and `TRIAL_END`; then `BLOCK_END` (3), `RUN_END` and
-    `HEAD_RELEASED`."""
+    `HEAD_FIXED` and `RUN_START`, wl-preproc's run escape -- 0x8006, the run's number in
+    the session, task code 0, and the checksum (XC-205) -- then the run's one block
+    opens -- `BLOCK_START` (0x8002), its number in the session, task code 0, and the
+    checksum (session-levels spec §4) -- then each trial is `TRIAL_START`, its number's
+    escape -- 0x8001, the high word, the low word, and 0x8001 XOR both as the checksum --
+    then the task's own `FIX_ON`, the outcome marker (34, correct) and `TRIAL_END`; then
+    `BLOCK_END` (3), wl-preproc's `RUN_END` marker (4), `RUN_END` and `HEAD_RELEASED`."""
     task = tmp_path / "one_state.py"
     task.write_text(ONE_STATE_TASK)
     session = _session(_spec(tmp_path, trials=2, task=str(task), values={}))
@@ -4627,11 +4649,12 @@ def test_each_trial_is_opened_numbered_and_closed_in_the_stream(tmp_path):
 
     assert session.card.codes == [
         4128, RUN_START,
+        RUN_ESCAPE, 0x0001, 0x0000, 0x8007,
         BLOCK_START, 0x0001, 0x0000, 0x8003,
         TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0001, 0x8000, 4096, 34, TRIAL_END_CODE,
         TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0002, 0x8003, 4096, 34, TRIAL_END_CODE,
         BLOCK_END,
-        RUN_END, 4129,
+        RUN_END_MARKER, RUN_END, 4129,
     ]
     assert [row["trial_number"] for row in _trial_rows(session)] == [1, 2]
 
@@ -4666,7 +4689,8 @@ def test_nothing_is_strobed_inside_a_trial_numbers_escape(tmp_path):
     opening. **The block's escape is atomic too** (session-levels spec §4): the first
     trial opens the run's one block, so its boundary's mark comes before `BLOCK_START`
     and the block's four words go out whole, straight before that trial's
-    `TRIAL_START`."""
+    `TRIAL_START`. **And the run's** (XC-205): its four words go out whole, straight
+    after `RUN_START` and before the first boundary's mark."""
     link = _Scripted(script={1: [ManualReward(by="jake")], 2: [Resume(by="sam")]}, step=10.0)
     link.marks.extend([5] * 100_000)
     link.queue(SetParameter(name="fix_hold", value=0.4, by="jake"))
@@ -4685,6 +4709,9 @@ def test_nothing_is_strobed_inside_a_trial_numbers_escape(tmp_path):
                 "the block's escape, whole, just before its first trial opens"
             )
             assert codes[at - 5] == MARK_CODE, "the boundary's mark, before the block opens"
+            assert codes[at - 10 : at - 5] == [RUN_START, RUN_ESCAPE, 0x0001, 0x0000, 0x8007], (
+                "the run's escape, whole, straight after RUN_START and before the mark"
+            )
         else:
             assert codes[at - 1] == MARK_CODE, "the boundary's mark, before the trial opens"
         assert codes[at : at + 5] == [
@@ -4752,11 +4779,12 @@ def test_a_trial_that_reaches_no_outcome_is_still_closed(tmp_path, monkeypatch):
 
     assert session.card.codes == [
         4128, RUN_START,
+        RUN_ESCAPE, 0x0001, 0x0000, 0x8007,
         BLOCK_START, 0x0001, 0x0000, 0x8003,
         TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0001, 0x8000, 4096, TRIAL_END_CODE,
         TRIAL_START_CODE, TRIAL_NUMBER_ESCAPE, 0x0000, 0x0002, 0x8003, 4096, 34, TRIAL_END_CODE,
         BLOCK_END,
-        RUN_END, 4129,
+        RUN_END_MARKER, RUN_END, 4129,
     ]
     assert [row["outcome"] for row in _trial_rows(session)] == ["hang", "correct"]
 
@@ -4783,8 +4811,9 @@ def test_a_number_past_uint32_faults_the_session_before_its_trial_opens(tmp_path
     stream: a number the escape cannot carry faults the session with nothing of that
     trial strobed, never a `TRIAL_START` left with no number after it. Nor the
     `BLOCK_START` that trial would have opened: the block's words are computed first
-    and strobed with the trial's (session-levels spec §4). (Set on the counter directly,
-    as above.)"""
+    and strobed with the trial's (session-levels spec §4). The run was opened, whole,
+    before its first boundary: `RUN_START` and wl-preproc's run escape (XC-205), and no
+    `RUN_END` marker for a run that faulted. (Set on the counter directly, as above.)"""
     task = tmp_path / "one_state.py"
     task.write_text(ONE_STATE_TASK)
     session = _session(_spec(tmp_path, trials=1, task=str(task), values={}))
@@ -4793,7 +4822,7 @@ def test_a_number_past_uint32_faults_the_session_before_its_trial_opens(tmp_path
     with pytest.raises(ValueError, match="out of uint32 range"):
         session.run()
 
-    assert session.card.codes == [4128, RUN_START]
+    assert session.card.codes == [4128, RUN_START, RUN_ESCAPE, 0x0001, 0x0000, 0x8007]
     assert session.stop_kind == "fault"
 
 
@@ -4818,6 +4847,10 @@ def test_a_sessions_stream_assembles_in_wl_preproc_into_its_trials_numbered_acro
 
     assert assembly.errors == []
     assert [trial.trial_id for trial in assembly.trials] == list(range(1, 44))
+    # Two runs in wl-preproc's terms, each closed (XC-205), although trial 4's low word
+    # is its `RUN_END` marker and trial 7's checksum its run escape.
+    assert [(run.run_number, run.task_type) for run in assembly.runs] == [(1, 0), (2, 0)]
+    assert all(run.end_s is not None for run in assembly.runs)
     assert [(line["run"], line["index"]) for line in lines] == [
         *[(0, index) for index in range(3)],
         *[(1, index) for index in range(40)],
@@ -4936,22 +4969,36 @@ def test_a_runs_start_row_places_it_in_the_session(tmp_path):
 # --- each block in the recording (session-levels spec §4) ---------------------------
 
 
-def _block_words(codes):
-    """The stream's block markers in order, read by position as wl-preproc reads them:
-    an escape (a word at or above 0x8000) is followed by its two payload words and its
-    checksum, all skipped. Trial 3's checksum is 0x8002 and trial 3's low word is 3, so
-    a scan by value would misread both (XC-155's cut-escape finding)."""
+def _framed(codes):
+    """Each word of a stream that is not inside an escape, with its index, read by
+    position as wl-preproc reads it: an escape (a word at or above 0x8000) is followed by
+    its two payload words and its checksum, all three skipped -- `TRIAL_NUMBER`'s,
+    `BLOCK_START`'s and the run's `0x8006` alike (XC-205), each two words and a checksum
+    in wl-preproc's `PAYLOAD_WORD_COUNTS`. Trial 3's checksum is 0x8002 and its low word
+    is 3, trial 4's low word is 4 and trial 7's checksum 0x8006, and run 4's checksum is
+    0x8002, so a scan by value would misread each (XC-155's cut-escape finding)."""
     out, i = [], 0
     while i < len(codes):
-        word = codes[i]
-        if word >= 0x8000:
-            if word == BLOCK_START:
-                out.append(("start", codes[i + 1]))
-            i += 4
-            continue
-        if word == BLOCK_END:
+        out.append((i, codes[i]))
+        i += 4 if codes[i] >= 0x8000 else 1
+    return out
+
+
+def _block_words(codes):
+    """The stream's run and block markers in order, read by position (`_framed`): a
+    run's escape as `("run", run_in_session)` and its `RUN_END` marker as `"run end"`
+    (XC-205), a block's `BLOCK_START` as `("start", block_in_session)` and its
+    `BLOCK_END` as `"end"`."""
+    out = []
+    for i, word in _framed(codes):
+        if word == RUN_ESCAPE:
+            out.append(("run", codes[i + 1]))
+        elif word == BLOCK_START:
+            out.append(("start", codes[i + 1]))
+        elif word == BLOCK_END:
             out.append("end")
-        i += 1
+        elif word == RUN_END_MARKER:
+            out.append("run end")
     return out
 
 
@@ -4961,7 +5008,7 @@ def test_each_block_is_opened_and_closed_in_the_stream(tmp_path):
     session.end_runs("jake")
 
     assert _block_words(session.card.codes) == [
-        ("start", 1), "end", ("start", 2), "end", ("start", 3), "end",
+        ("run", 1), ("start", 1), "end", ("start", 2), "end", ("start", 3), "end", "run end",
     ]
 
 
@@ -4974,13 +5021,44 @@ def test_a_block_opens_just_before_its_first_trial_and_closes_after_its_last(tmp
     first = codes.index(TRIAL_START_CODE)
     assert codes[first - 4 : first] == words_for_block(1, UNALLOCATED_TASK_CODE)
     last = len(codes) - 1 - codes[::-1].index(TRIAL_END_CODE)
-    assert codes[last + 1 : last + 3] == [BLOCK_END, RUN_END]
+    assert codes[last + 1 : last + 4] == [BLOCK_END, RUN_END_MARKER, RUN_END]
+
+
+def test_every_run_opens_and_closes_in_the_stream(tmp_path):
+    """XC-205 (session-levels spec §4: `RUN_START`, then each block, then `RUN_END`): a
+    run opens with the allocation's `RUN_START` (4135) and then wl-preproc's run escape --
+    0x8006, its `run_in_session`, task code 0, and the checksum -- unbroken, before its
+    first `BLOCK_START`; it closes with its last block's `BLOCK_END`, wl-preproc's
+    `RUN_END` marker (4), then the allocation's `RUN_END` (4136). A two-run service
+    session numbers its runs 1 and 2, as their start rows do. Read by position
+    (`_framed`), never by value."""
+    session = _service_session(tmp_path)
+    session.run(_levels_run(blocks=_plan("X")))
+    session.run(_levels_run(blocks=_plan("X", "Y")))
+    session.end_runs("jake")
+
+    codes = session.card.codes
+    assert _block_words(codes) == [
+        ("run", 1), ("start", 1), "end", "run end",
+        ("run", 2), ("start", 2), "end", ("start", 3), "end", "run end",
+    ]
+    framed = _framed(codes)
+    opened = [i for i, word in framed if word == RUN_START]
+    closed = [i for i, word in framed if word == RUN_END]
+    assert [codes[i : i + 7] for i in opened] == [
+        [RUN_START, RUN_ESCAPE, 0x0001, 0x0000, 0x8007, BLOCK_START, 0x0001],
+        [RUN_START, RUN_ESCAPE, 0x0002, 0x0000, 0x8004, BLOCK_START, 0x0002],
+    ]
+    assert [codes[i - 2 : i + 1] for i in closed] == [[BLOCK_END, RUN_END_MARKER, RUN_END]] * 2
+    starts = [row for row in _runs(session) if row["event"] == "start"]
+    assert [row["run_in_session"] for row in starts] == [1, 2]
 
 
 def _closes_its_block_before_run_end(codes) -> bool:
-    """`BLOCK_END` is the word just before the run's `RUN_END`, the stream's last."""
+    """`BLOCK_END`, then wl-preproc's `RUN_END` marker (XC-205), are the two words just
+    before the run's `RUN_END`, the stream's last."""
     end = len(codes) - 1 - codes[::-1].index(RUN_END)
-    return codes[end - 1] == BLOCK_END
+    return codes[end - 2 : end] == [BLOCK_END, RUN_END_MARKER]
 
 
 def test_a_run_ended_by_the_out_of_cage_limit_closes_its_open_block_first(tmp_path):
@@ -4993,7 +5071,7 @@ def test_a_run_ended_by_the_out_of_cage_limit_closes_its_open_block_first(tmp_pa
 
     assert session.stop_kind == "limit"
     assert _trials_run(session) > 0, "the limit landed mid-run, inside a block"
-    assert _block_words(session.card.codes) == [("start", 1), "end"]
+    assert _block_words(session.card.codes) == [("run", 1), ("start", 1), "end", "run end"]
     assert _closes_its_block_before_run_end(session.card.codes)
 
 
@@ -5007,7 +5085,7 @@ def test_a_run_ended_by_a_scheduled_stop_closes_its_open_block_first(tmp_path):
     session.run()
 
     assert session.stopped_because == "scheduled stop (after trial 5) set by jake"
-    assert _block_words(session.card.codes) == [("start", 1), "end"]
+    assert _block_words(session.card.codes) == [("run", 1), ("start", 1), "end", "run end"]
     assert _closes_its_block_before_run_end(session.card.codes)
 
 
@@ -5015,7 +5093,9 @@ def test_a_run_stopped_before_its_first_trial_marks_no_block(tmp_path):
     """Review Focus 1: a Stop drained at the first boundary ends the run with no trial;
     the next run's first block is number 1. In a service session a `Stop` ends the run,
     not the session: the run returns to between runs (`Session._after_service_run`),
-    and the next `run` clears its reason, so the second run starts."""
+    and the next `run` clears its reason, so the second run starts. **The stopped run is
+    still a run** (XC-205): ended by design, it opens with wl-preproc's escape and closes
+    with its `RUN_END` marker, with no block between, and the next run is run 2."""
     link = Simulated()
     session = _service_session(tmp_path, link=link)
     link.queue(Stop(by="jake"))
@@ -5023,7 +5103,14 @@ def test_a_run_stopped_before_its_first_trial_marks_no_block(tmp_path):
     session.run(_levels_run(blocks=_plan("X")))
     session.end_runs("jake")
 
-    assert _block_words(session.card.codes) == [("start", 1), "end"]
+    codes = session.card.codes
+    assert _block_words(codes) == [
+        ("run", 1), "run end", ("run", 2), ("start", 1), "end", "run end",
+    ]
+    first = next(i for i, word in _framed(codes) if word == RUN_START)
+    assert codes[first : first + 7] == [
+        RUN_START, RUN_ESCAPE, 0x0001, 0x0000, 0x8007, RUN_END_MARKER, RUN_END,
+    ], "opened and closed with nothing between"
     assert [row["block_in_session"] for row in _trial_rows(session)] == [1, 1]
 
 
@@ -5050,12 +5137,19 @@ def test_a_faulted_run_leaves_its_block_open_and_the_next_takes_the_next_number(
     session.run(_levels_run(blocks=_plan("X")))
     session.end_runs("jake")
 
-    assert _block_words(session.card.codes) == [("start", 1), ("start", 2), "end"]
+    # The faulted run opened in wl-preproc's terms and sent no `RUN_END` marker; the next
+    # takes run number 2 (XC-205).
+    assert _block_words(session.card.codes) == [
+        ("run", 1), ("start", 1), ("run", 2), ("start", 2), "end", "run end",
+    ]
     stream = [(i * 0.001, word) for i, word in enumerate(session.card.codes)]
     assembly = their_assemble(their_events.decode_stream(stream))
     assert [block.block_id for block in assembly.blocks] == [1, 2]
     assert assembly.blocks[0].end_s is None, "the faulted block never closed"
     assert assembly.blocks[1].end_s is not None
+    assert [(run.run_number, run.task_type) for run in assembly.runs] == [(1, 0), (2, 0)]
+    assert assembly.runs[0].end_s is None, "the faulted run never closed"
+    assert assembly.runs[1].end_s is not None
 
 
 def test_a_pause_inside_a_block_keeps_one_block(tmp_path):
@@ -5068,7 +5162,7 @@ def test_a_pause_inside_a_block_keeps_one_block(tmp_path):
     session.run()
 
     assert PAUSE_CODE in session.card.codes and RESUME_CODE in session.card.codes
-    assert _block_words(session.card.codes) == [("start", 1), "end"]
+    assert _block_words(session.card.codes) == [("run", 1), ("start", 1), "end", "run end"]
 
 
 @_contract
@@ -5086,11 +5180,27 @@ def test_a_sessions_blocks_and_trials_assemble_in_wl_preproc(tmp_path):
     session.end_runs("jake")
 
     stream = [(i * 0.001, word) for i, word in enumerate(session.card.codes)]
-    assembly = their_assemble(their_events.decode_stream(stream))
+    events = their_events.decode_stream(stream)
+    assembly = their_assemble(events)
     assert assembly.errors == []
     assert [block.block_id for block in assembly.blocks] == [1, 2, 3, 4, 5]
     assert all(block.end_s is not None for block in assembly.blocks)
     assert len(assembly.trials) == 8
+    # **Each run in wl-preproc's terms** (XC-205): one `RUN_START` payload per run,
+    # `(run_in_session, 0)`, and one assembled run each, closed by its `RUN_END` marker --
+    # the stopped one too, since a stop is an end by design -- holding its own blocks.
+    run_start = their_events.Escape.RUN_START
+    assert [
+        event.words
+        for event in events
+        if isinstance(event, their_events.PayloadEvent) and event.escape is run_start
+    ] == [(1, 0), (2, 0), (3, 0)]
+    assert [(run.run_number, run.task_type) for run in assembly.runs] == [(1, 0), (2, 0), (3, 0)]
+    assert all(run.end_s is not None for run in assembly.runs)
+    assert [
+        [b.block_id for b in assembly.blocks if run.start_s < b.start_s <= b.end_s < run.end_s]
+        for run in assembly.runs
+    ] == [[1, 2, 3], [4], [5]]
     # Joined as wl-preproc joins them: a trial's id is the stream's `TRIAL_NUMBER`, and
     # a line's key is its `trial_number` (the session-levels final review, M8).
     lines = {line["trial_number"]: line for line in _trial_rows(session)}
@@ -5099,6 +5209,9 @@ def test_a_sessions_blocks_and_trials_assemble_in_wl_preproc(tmp_path):
         inside = [b for b in assembly.blocks if b.start_s <= trial.start_s <= b.end_s]
         assert len(inside) == 1, trial
         assert inside[0].block_id == lines[trial.trial_id]["block_in_session"], trial
+        run = [r for r in assembly.runs if r.start_s <= trial.start_s <= r.end_s]
+        assert len(run) == 1, trial
+        assert run[0].run_number == lines[trial.trial_id]["run_in_session"], trial
     # **Every line, worked out by hand** (spec §3), in `POSITION_FIELDS`' order: the
     # stopped run's one trial is the first of its block X.
     assert [tuple(lines[n][k] for k in POSITION_FIELDS) for n in sorted(lines)] == [

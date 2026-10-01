@@ -309,12 +309,14 @@ display layer that per-trial scenes do not reset.
   short, and wl-preproc's decoder then takes the next words as its payload whatever they
   are, losing that trial and what comes next with it. When a `wlx taskd` session goes on
   to another run with nothing strobed between, that is the next run's `RUN_START` and, if
-  the escape was cut after its first or second word, the opening of that run's first
-  block, and what the decoder makes of the rest can lose its first trial too (XC-199). A
-  block's `BLOCK_START` escape (below) is cut short the same way. Read the stream
+  the escape was cut after its first or second word, that run's escape (below), and what
+  the decoder makes of the rest can lose the opening of its first block and its first
+  trial too (XC-199). A block's `BLOCK_START` escape and a run's (below) are cut short the
+  same way. Read the stream
   through wl-preproc's `decode_stream`, never by value: from trial 1 the escape's payload
-  words take marker values (1-3 are `SESSION_START`, `SESSION_END` and `BLOCK_END`,
-  32-38 the trial markers), and trial 3's checksum is `BLOCK_START`'s `0x8002`. The
+  words take marker values (1-4 are `SESSION_START`, `SESSION_END`, `BLOCK_END` and
+  `RUN_END`, 32-38 the trial markers), trial 3's checksum is `BLOCK_START`'s `0x8002`,
+  and trial 7's is the run escape's `0x8006`. The
   number counts from 1 across
   a session's runs and is the trial's `trial_number` in `trials.jsonl`, the field
   wl-preproc now joins a line to its recorded trial by: its `events/rigtrials.py`
@@ -328,8 +330,17 @@ display layer that per-trial scenes do not reset.
   `TRIAL_END` when its block type is done or its run ends by design; a run that faults
   or is interrupted (a Ctrl-C or a SIGTERM) sends no `BLOCK_END` for its open block,
   as it sends no `RUN_END`. A block is a
-  stretch of trials under one block type inside a run, not a run (the PI, 2026-10-01);
-  runs stay `RUN_START`/`RUN_END`.
+  stretch of trials under one block type inside a run, not a run (the PI, 2026-10-01).
+  **And each run, in wl-preproc's terms** (XC-205, sent since 2026-10-01): its `RUN_START`
+  escape (`0x8006`, the run's `run_in_session` and its task's code, 0 as for a block),
+  unbroken, right after the allocation's `RUN_START` code (4135) and before the run's
+  first `BLOCK_START`; and its `RUN_END` marker (4) on an end by design, after the run's
+  last `BLOCK_END` and before the allocation's `RUN_END` code (4136). So a run reads
+  4135, the escape, each block with its trials and its `BLOCK_END`, marker 4, 4136. A run
+  that faults or is interrupted sends neither the marker nor 4136, and a run stopped
+  before its first trial is the escape and the marker with no block between. The escape
+  and the marker go out whether or not the allocation has 4135 and 4136; wl-preproc
+  stores those two and reads nothing from them.
 
 ## The display: direct view, and stereo as viewports
 

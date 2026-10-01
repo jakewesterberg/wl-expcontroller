@@ -139,6 +139,12 @@ trial late in the second fixation run, the line could read `trial_number` 512, `
 
   wl-xcon sends them once wl-preproc's `contracts/events.py` carries them, so the mirror can
   be pinned against theirs. That is a change of its own, filed in the backlog.
+
+  **Sent since 2026-10-01 (XC-205).** The escape goes out unbroken right after 4135, before
+  the run's first `BLOCK_START`, and marker 4 after the run's last `BLOCK_END`, before 4136,
+  on an end by design only. Both go out when the allocation has no 4135/4136.
+  `encode.RUN_ESCAPE` and `codes.RUN_END_MARKER` mirror them, pinned against wl-preproc's
+  `main` `b0f8b52`.
 - **Until block plans exist (XC-150),** `_plan` gives every run one block, so each run has
   exactly one `BLOCK_START`/`BLOCK_END` pair.
 
@@ -260,5 +266,6 @@ The list is not widened (the PI, 2026-09-30).
 - Real block plans: the day's plan, XC-150. Until then a run is one block.
 - Carrying numbers across a crash: XC-026, before January, its own change.
 - Sending wl-preproc's run markers (`0x8006`, marker 4): once its codec carries them (§4).
+  Sent since 2026-10-01 (XC-205).
 - Task type codes: wl-xtasks' to allocate.
 - The 8-hour correction, on its own branch (§6).

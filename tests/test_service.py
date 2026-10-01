@@ -1028,11 +1028,12 @@ def test_an_acknowledged_run_starts_records_who_acknowledged_what_and_ends_betwe
     assert (start["unplanned"], start["by"], start["seed"], start["trials"]) == (True, BY, 7, 3)
     assert end["stop_kind"] == "completed"
     codes = service.session.card.codes
-    # The run's one block opens after `RUN_START` -- `BLOCK_START` (0x8002), block 1, task
-    # code 0, checksum -- and closes with `BLOCK_END` (3) before `RUN_END` (session-levels
-    # spec §4).
-    assert codes[:7] == [4128, 4135, 0x8002, 1, 0, 0x8003, 32]
-    assert codes[-3:] == [33, 3, 4136] and 4129 not in codes
+    # The run's one block opens after `RUN_START` and wl-preproc's run escape -- 0x8006,
+    # run 1, task code 0, checksum (XC-205) -- with `BLOCK_START` (0x8002), block 1, task
+    # code 0, checksum; it closes with `BLOCK_END` (3), then wl-preproc's `RUN_END` marker
+    # (4), before `RUN_END` (session-levels spec §4).
+    assert codes[:11] == [4128, 4135, 0x8006, 1, 0, 0x8007, 0x8002, 1, 0, 0x8003, 32]
+    assert codes[-4:] == [33, 3, 4, 4136] and 4129 not in codes
 
 
 @pytest.mark.parametrize(
@@ -1753,15 +1754,18 @@ def test_e2e_open_a_session_run_it_twice_and_end_it(tmp_path, monkeypatch, zmq_c
     # Each of the six trials opened and closed in the stream (XC-155); numbered 1..6, so
     # no payload word is 32 or 33.
     assert codes.count(32) == codes.count(33) == 6
-    # Each run is one block, numbered on across the session: its `BLOCK_START` straight
-    # after its `RUN_START`, its `BLOCK_END` straight before its `RUN_END` (session-levels
-    # spec §4). Read beside the run markers, which no payload word or checksum here
-    # equals, and never found by their own values: trial 3's escape carries a 3 and a
-    # 0x8002.
-    assert [codes[i + 1 : i + 5] for i, code in enumerate(codes) if code == 4135] == [
-        [0x8002, 1, 0, 0x8003], [0x8002, 2, 0, 0x8000],
+    # Each run is one block, numbered on across the session, and a run in wl-preproc's
+    # terms too (XC-205): after its `RUN_START`, the run escape (0x8006, its number, task
+    # code 0, checksum), then its `BLOCK_START`; before its `RUN_END`, its `BLOCK_END` and
+    # then the `RUN_END` marker (4) (session-levels spec §4). Read beside the
+    # allocation's run codes, which no payload word or checksum here equals, and never
+    # found by their own values: trial 3's escape carries a 3 and a 0x8002, and trial
+    # 4's a 4.
+    assert [codes[i + 1 : i + 9] for i, code in enumerate(codes) if code == 4135] == [
+        [0x8006, 1, 0, 0x8007, 0x8002, 1, 0, 0x8003],
+        [0x8006, 2, 0, 0x8004, 0x8002, 2, 0, 0x8000],
     ]
-    assert [codes[i - 1] for i, code in enumerate(codes) if code == 4136] == [3, 3]
+    assert [codes[i - 2 : i] for i, code in enumerate(codes) if code == 4136] == [[3, 4], [3, 4]]
     assert _kinds(root) == ["departure", "session opened", "returned", "session ended"]
 
 

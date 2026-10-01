@@ -48,9 +48,15 @@ from wl_xcon import link as _link
 from wl_xcon.bounds import Bounds, Exceeded, _finite
 from wl_xcon.check import check
 from wl_xcon.cli import _clock, _load_allocation, _load_trial, _shown
-from wl_xcon.codes import BLOCK_END, TRIAL_END, TRIAL_START, Allocation
+from wl_xcon.codes import BLOCK_END, RUN_END_MARKER, TRIAL_END, TRIAL_START, Allocation
 from wl_xcon.dio import Absent as NoCard
-from wl_xcon.encode import TRIAL_NUMBER, UNALLOCATED_TASK_CODE, words_for, words_for_block
+from wl_xcon.encode import (
+    TRIAL_NUMBER,
+    UNALLOCATED_TASK_CODE,
+    words_for,
+    words_for_block,
+    words_for_run,
+)
 from wl_xcon.geometry import Geometry
 from wl_xcon.levels import Levels
 from wl_xcon.record import XCON_DIRNAME, SessionRecord, welfare_note
@@ -1926,6 +1932,12 @@ class Session:
         self.run_index = 0 if self.run_index is None else self.run_index + 1
         levels = self._levels
         levels.start_run(run.task)
+        # **The run's escape, computed before anything of the run is strobed or
+        # written** (XC-205; session-levels spec §4), as a block's and a trial's are:
+        # wl-preproc's `RUN_START` with the run's `run_in_session` and its task's code,
+        # 0 until wl-xtasks allocates codes. A number it cannot frame raises here,
+        # ahead of the stream and of the run's start row.
+        run_words = words_for_run(levels.runs, UNALLOCATED_TASK_CODE)
         self.stopped_because, self.stop_kind = "", None
         self.paused_at = None
         self.scheduled_stop = None
@@ -1986,6 +1998,15 @@ class Session:
         try:
             if start_code is not None:
                 self.card.emit(start_code)
+            # **wl-preproc's run escape, unbroken, right after the allocation's
+            # `RUN_START`** (XC-205; session-levels spec §4: `RUN_START`, then each
+            # block, its trials and its `BLOCK_END`, then `RUN_END`). Sent whether or
+            # not the allocation has that code: the escape is wl-preproc's framework
+            # code, not the allocation's. Nothing goes out between its four words on any
+            # path the loop takes; a card fault, a Ctrl-C, a SIGTERM or a crash between
+            # them cuts it short, as it does a block's or a trial's (XC-199).
+            for word in run_words:
+                self.card.emit(word)
             index = 0
             #: Block transitions taken. Bounded by the plan -- see the check below.
             advanced = 0
@@ -2170,10 +2191,13 @@ class Session:
                     self.observe(condition, values, result)
                 index += 1
             # **A run that ends by design closes its open block first** (spec §4):
-            # `BLOCK_END`, then `RUN_END`. A fault or an interrupt never reaches here,
-            # so it sends neither, as it sends no `RUN_END` today.
+            # `BLOCK_END`, then wl-preproc's `RUN_END` marker (4; XC-205), then the
+            # allocation's `RUN_END` code. This is the one place all three go out, and
+            # a fault or an interrupt never reaches it, so such a run sends none of
+            # them: wl-preproc ends its run and its block at their last event.
             if levels.end_block():
                 self.card.emit(BLOCK_END)
+            self.card.emit(RUN_END_MARKER)
             # **Only the kind that was fixed is released** (PI, 2026-09-20).
             # `welfare.head_released` would accept the call for any deployment, and
             # `self.card.emit` would then put a `HEAD_RELEASED` in the stream of a
