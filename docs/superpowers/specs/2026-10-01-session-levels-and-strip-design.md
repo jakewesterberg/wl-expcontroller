@@ -130,9 +130,15 @@ trial late in the second fixation run, the line could read `trial_number` 512, `
   (XC-155 §2.1). The escape's words are computed before anything is strobed, and are sent
   unbroken. `codes.py` mirrors `BLOCK_END`, and `encode.py` mirrors `BLOCK_START`, each pinned
   by a test against wl-preproc's enums.
-- **Runs stay bare `RUN_START`/`RUN_END`.** If wl-preproc wants a run's number in the recording,
-  its escape is wl-preproc's to allocate (ADR-0007: decodability is theirs), and wl-xcon sends
-  it once allocated. That is not in this change.
+- **Runs stay bare `RUN_START`/`RUN_END` (4135/4136) in this change.** wl-preproc allocated
+  its own run markers the same day (its spec `2026-10-01-runs-and-trials-design.md`,
+  `3d3cc85`). These are the measured runs it reads; it stores 4135/4136 and reads nothing from
+  them:
+  - an escape `0x8006`, `(run_in_session, task code)`, at each run's start;
+  - marker 4 when a run ends by design.
+
+  wl-xcon sends them once wl-preproc's `contracts/events.py` carries them, so the mirror can
+  be pinned against theirs. That is a change of its own, filed in the backlog.
 - **Until block plans exist (XC-150),** `_plan` gives every run one block, so each run has
   exactly one `BLOCK_START`/`BLOCK_END` pair.
 
@@ -247,6 +253,6 @@ The list is not widened (the PI, 2026-09-30).
 
 - Real block plans: the day's plan, XC-150. Until then a run is one block.
 - Carrying numbers across a crash: XC-026, before January, its own change.
-- A run-number escape: wl-preproc's to allocate.
+- Sending wl-preproc's run markers (`0x8006`, marker 4): once its codec carries them (§4).
 - Task type codes: wl-xtasks' to allocate.
 - The 8-hour correction, on its own branch (§6).
