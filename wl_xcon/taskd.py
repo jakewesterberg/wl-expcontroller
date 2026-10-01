@@ -52,6 +52,7 @@ from wl_xcon.codes import TRIAL_END, TRIAL_START, Allocation
 from wl_xcon.dio import Absent as NoCard
 from wl_xcon.encode import TRIAL_NUMBER, words_for
 from wl_xcon.geometry import Geometry
+from wl_xcon.levels import Levels
 from wl_xcon.record import XCON_DIRNAME, SessionRecord, welfare_note
 from wl_xcon.scheduler import Block, Condition, Scheduler
 from wl_xcon.simulate import Census, Subject, Tally, prepare
@@ -335,16 +336,15 @@ class Session:
     _elapsed: float = field(init=False, default=0.0, repr=False)
     _staged: list = field(init=False, default_factory=list, repr=False)
     _sequence: int = field(init=False, default=0, repr=False)
-    #: **The number of the session's latest trial, counted from 1 across all its runs**
-    #: (XC-155), or 0 before its first: strobed in that trial's `TRIAL_NUMBER` escape and
-    #: written on its `trials.jsonl` line as `trial_number`, the field wl-preproc joins a
-    #: line to its recorded trial by. Kept for the session beside `_sequence`, which
-    #: `run()`'s reset leaves alone for the same reason (the b3a-1 plan, decision 2): a
-    #: run's `index` restarts at 0, and a number that restarted would name two trials in
-    #: one recording, of which wl-preproc keeps the first and drops the second silently.
-    #: **Taken as a trial starts**, so a trial that faults keeps its number -- it is in
-    #: the recording -- and the next trial never reuses it.
-    _trial_number: int = field(init=False, default=0, repr=False)
+    #: **Where each trial sits in the session at every level** (session-levels spec
+    #: §3): its ten position numbers, `trial_number` (XC-155) among them, and the
+    #: outcome counts the strip shows at the session, task and block levels. Kept for
+    #: the session beside `_sequence`, which a run's reset leaves alone (the b3a-1 plan,
+    #: decision 2): a number counted across runs, or per task across runs, would
+    #: restart with each run otherwise. **Taken as a trial starts**, so a trial that
+    #: faults keeps its numbers -- it is in the recording -- and the next trial never
+    #: reuses them.
+    _levels: Levels = field(init=False, default_factory=Levels, repr=False)
     _record: SessionRecord | None = field(init=False, default=None, repr=False)
     #: The run in progress or the last one, or `None` before any.
     _run: RunSpec | None = field(init=False, default=None, repr=False)
@@ -1893,6 +1893,8 @@ class Session:
         else:
             self.spec.values = {**starts, **given}
         self.run_index = 0 if self.run_index is None else self.run_index + 1
+        levels = self._levels
+        levels.start_run(run.task)
         self.stopped_because, self.stop_kind = "", None
         self.paused_at = None
         self.scheduled_stop = None
@@ -1930,6 +1932,9 @@ class Session:
             preflight=preflight_rows,
             by=by,
             strobed=start_code is not None,
+            run_in_session=levels.runs,
+            run_in_task=levels.task_runs[levels.task],
+            task_in_session=levels.order[levels.task],
         )
         self._tally = tally
         self._scheduler = scheduler
@@ -2047,6 +2052,8 @@ class Session:
                             f"scheduler is not leaving {scheduler.block.name!r}; it "
                             f"can draw no further trial and must not spin"
                         )
+                    # The block its type finished is closed; the next trial opens the next.
+                    levels.end_block()
                     scheduler.advance()
                     self.blocks_run.append(scheduler.block.name)
                     continue
@@ -2056,19 +2063,19 @@ class Session:
                 world = make_world(trial, values, index)
                 # **The trial opens in the stream at the boundary, never in a frame**
                 # (XC-155; S1 §4's between-trial surface): `TRIAL_START`, then its number
-                # (`_trial_number`, taken as it starts) in the `TRIAL_NUMBER` escape's
-                # four words, from `encode.words_for`. **Unbroken** (S2 §6 item 3):
-                # wl-preproc reads the payload by position, so a word strobed inside it
-                # fails the checksum and loses the trial. The four go out here,
-                # consecutively, on the loop's one thread: after everything this
-                # boundary strobes, and before the trial's first frame. They are
-                # computed before `TRIAL_START`, so `words_for`, the one call here that
-                # can raise before anything is strobed, raises ahead of the stream and
-                # never leaves a trial opened without its number. Once `TRIAL_START` is
-                # out, a card that fails between the emits, a Ctrl-C, a SIGTERM or a
-                # crash can still cut the escape short (XC-199).
-                self._trial_number += 1
-                escape = words_for(TRIAL_NUMBER, self._trial_number)
+                # (`position.trial_number`, taken as it starts (`Levels.start_trial`)) in
+                # the `TRIAL_NUMBER` escape's four words, from `encode.words_for`.
+                # **Unbroken** (S2 §6 item 3): wl-preproc reads the payload by position, so
+                # a word strobed inside it fails the checksum and loses the trial. The four
+                # go out here, consecutively, on the loop's one thread: after everything
+                # this boundary strobes, and before the trial's first frame. They are
+                # computed before `TRIAL_START`, so `words_for`, the one call here that can
+                # raise before anything is strobed, raises ahead of the stream and never
+                # leaves a trial opened without its number. Once `TRIAL_START` is out, a
+                # card that fails between the emits, a Ctrl-C, a SIGTERM or a crash can
+                # still cut the escape short (XC-199).
+                position, _opened = levels.start_trial()
+                escape = words_for(TRIAL_NUMBER, position.trial_number)
                 self.card.emit(TRIAL_START)
                 for word in escape:
                     self.card.emit(word)
@@ -2097,6 +2104,7 @@ class Session:
                 # (`schema/events.py::_trial_stop_time`).
                 self.card.emit(TRIAL_END)
                 tally.add(result)
+                levels.end_trial(result)
                 scheduler.record(condition.name, result.outcome)
                 # One string for the record and for a console's recent outcomes, so
                 # the two cannot disagree (P4d-2b spec §4.1).
@@ -2109,7 +2117,7 @@ class Session:
                     block=scheduler.block.name,
                     condition=condition.name,
                     run=self.run_index,
-                    trial_number=self._trial_number,
+                    position=position,
                 )
                 if self.observe is not None:
                     self.observe(condition, values, result)

@@ -344,6 +344,9 @@ def simulate(
     outcomes, so it runs far past any daily ceiling on purpose, and enforcing one
     would turn an exploration into a session that stopped early.
     """
+    # `levels` imports this module for `Tally`, so a module-level import would cycle.
+    from wl_xcon.levels import Position
+
     tally = Tally()
     prepare(subject, trial, frame_period, values or {})
     for index in range(trials):
@@ -358,8 +361,8 @@ def simulate(
                 outcome=result.outcome.value if result.outcome else "hang",
                 params=dict(values or {}),
                 run=0,  # one simulated run; a session of several is `taskd`'s
-                # The number a rig's session of this one run strobes for the trial,
-                # counting from 1 (`taskd.Session._trial_number`); a census strobes none.
-                trial_number=index + 1,
+                # One run of one block (`levels.Position.lone`): the numbers a rig's
+                # session of this one run would strobe and write; a census strobes none.
+                position=Position.lone(index),
             )
     return tally.census()

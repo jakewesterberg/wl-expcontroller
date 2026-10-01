@@ -20,7 +20,12 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    # For the annotation only: `levels` imports the simulator (for `Tally`), which a
+    # record has no use for at run time, and `trial` needs only `as_record`.
+    from wl_xcon.levels import Position
 
 #: The session's folder: `wl_preproc.contracts.paths.XCON_DIRNAME`, copied rather than
 #: imported, because nothing on a task PC imports `wl-preproc`. It was `expcontroller`
@@ -195,7 +200,7 @@ class SessionRecord:
         condition: str = "",
         *,
         run: int,
-        trial_number: int,
+        position: Position,
     ) -> None:
         """One trial's record, flushed before returning.
 
@@ -212,12 +217,13 @@ class SessionRecord:
         **And the run it is part of** (P4d-2b spec §6.3: "every trial row names its
         run"), since a session holds several and each counts its trials from 0.
 
-        **And its trial number** (XC-155): counted from 1 across the whole session, the
-        number `taskd` strobed in the trial's `TRIAL_NUMBER` escape, so the line and the
-        recording's trial carry one number. wl-preproc joins them by it: `index`
-        restarts with each run, and the stream numbers trials across the session.
-        Required, as `run` is: a line written without it would join nothing, and
-        nothing would say so.
+        **And its position at every level** (session-levels spec §3): ten numbers, each
+        counting from 1 -- `trial_number` (XC-155: the number `taskd` strobed in the
+        trial's `TRIAL_NUMBER` escape, so the line and the recording's trial carry one
+        number, which wl-preproc joins by) and the trial's place in its task, run and
+        block, its block's in the session, task and run, its run's in the session and
+        task, and its task's in the session. Required, as `run` is: a line written
+        without them would join nothing, and nothing would say so.
         """
         if self._trials is None:
             self._trials = (self.directory / "trials.jsonl").open("a", encoding="utf-8")
@@ -226,7 +232,7 @@ class SessionRecord:
                 {
                     "index": index,
                     "run": run,
-                    "trial_number": trial_number,
+                    **position.as_record(),
                     "subject": self.subject,
                     "outcome": outcome,
                     "params": params,

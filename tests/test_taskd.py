@@ -4511,7 +4511,7 @@ def test_a_new_session_numbers_its_trials_from_1_again(tmp_path):
 def test_a_trial_that_faults_keeps_its_number_and_the_next_trial_never_reuses_it(
     tmp_path, monkeypatch
 ):
-    """The number is taken as a trial starts (`Session._trial_number`), so a trial that
+    """The number is taken as a trial starts (`Session._levels`), so a trial that
     faults has used it -- the recording has it, though no line is written for the trial
     -- and the session's next trial takes the next one. A number used twice would be
     two trials in one recording, and wl-preproc keeps the first and drops the second
@@ -4703,7 +4703,7 @@ def test_a_number_past_16_bits_is_strobed_whole_high_word_first(tmp_path):
     task = tmp_path / "one_state.py"
     task.write_text(ONE_STATE_TASK)
     session = _session(_spec(tmp_path, trials=1, task=str(task), values={}))
-    session._trial_number = 0xFFFF
+    session._levels.trials = 0xFFFF
 
     session.run()
 
@@ -4720,7 +4720,7 @@ def test_a_number_past_uint32_faults_the_session_before_its_trial_opens(tmp_path
     task = tmp_path / "one_state.py"
     task.write_text(ONE_STATE_TASK)
     session = _session(_spec(tmp_path, trials=1, task=str(task), values={}))
-    session._trial_number = 0xFFFFFFFF
+    session._levels.trials = 0xFFFFFFFF
 
     with pytest.raises(ValueError, match="out of uint32 range"):
         session.run()
@@ -4761,3 +4761,105 @@ def test_a_sessions_stream_assembles_in_wl_preproc_into_its_trials_numbered_acro
         marker = their_events.Marker(session.allocation.outcomes[Outcome(line["outcome"])])
         assert trial.outcome == marker.name.removeprefix("TRIAL_").lower(), line
         assert trial.end_s is not None and trial.start_s < trial.end_s, line
+
+
+# --- where each trial sits in the session (session-levels spec §3) ------------------
+
+
+def _plan(*names, each=2):
+    """A plan whose blocks recur by name: every trial pays, so each block runs exactly `each`."""
+    return [
+        Block(
+            name=name,
+            conditions=[Condition(name.lower(), {}, target=each)],
+            counts_toward=frozenset(Outcome),
+        )
+        for name in names
+    ]
+
+
+def _levels_run(blocks=None, trials=50, seed=2):
+    return RunSpec(
+        task="tasks/fixation_detection.py", trials=trials, seed=seed, values=dict(VALUES), blocks=blocks
+    )
+
+
+def _other_run(tmp_path, blocks):
+    """A run of a second task: `ONE_STATE_TASK`, written to a file of its own."""
+    path = tmp_path / "one_state.py"
+    path.write_text(ONE_STATE_TASK)
+    return RunSpec(task=str(path), trials=50, seed=2, values={}, blocks=blocks)
+
+
+#: The ten position numbers in `trials.jsonl`'s names, in spec §3's order. Written out
+#: rather than read from `levels.Position`, so a field misnamed there fails here.
+POSITION_FIELDS = (
+    "trial_number", "trial_in_task", "trial_in_run", "trial_in_block",
+    "block_in_session", "block_in_task", "block_in_run",
+    "run_in_session", "run_in_task", "task_in_session",
+)
+
+
+def test_every_line_carries_its_position_across_runs_blocks_and_tasks(tmp_path):
+    """Spec §3 on a real service session: fixation with blocks X, Y, X; a second task
+    (`one_state`); then fixation again with X, Y. Each line's ten numbers are what the
+    spec's definitions give: trials 1-6 in blocks 1-3, trial 7 in block 4, trials 8-11
+    in blocks 5-6."""
+    session = _service_session(tmp_path)
+    session.run(_levels_run(blocks=_plan("X", "Y", "X")))
+    session.run(_other_run(tmp_path, _plan("C", each=1)))
+    session.run(_levels_run(blocks=_plan("X", "Y")))
+    session.end_runs("jake")
+
+    lines = _trial_rows(session)
+    last = lines[-1]
+    assert [line["trial_number"] for line in lines] == list(range(1, 12))
+    assert {k: last[k] for k in (
+        "trial_in_task", "trial_in_run", "trial_in_block", "block_in_session",
+        "block_in_task", "block_in_run", "run_in_session", "run_in_task", "task_in_session",
+    )} == {
+        "trial_in_task": 10, "trial_in_run": 4, "trial_in_block": 2, "block_in_session": 6,
+        "block_in_task": 5, "block_in_run": 2, "run_in_session": 3, "run_in_task": 2,
+        "task_in_session": 1,
+    }
+    assert [line["block"] for line in lines[:6]] == ["X", "X", "Y", "Y", "X", "X"]
+    # **Every line, worked out by hand** (spec §9), in `POSITION_FIELDS`' order.
+    assert [tuple(line[k] for k in POSITION_FIELDS) for line in lines] == [
+        # fixation, its first run: blocks X, Y, X, the session's 1-3.
+        (1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        (2, 2, 2, 2, 1, 1, 1, 1, 1, 1),
+        (3, 3, 3, 1, 2, 2, 2, 1, 1, 1),
+        (4, 4, 4, 2, 2, 2, 2, 1, 1, 1),
+        (5, 5, 5, 1, 3, 3, 3, 1, 1, 1),
+        (6, 6, 6, 2, 3, 3, 3, 1, 1, 1),
+        # one_state, the session's second task: block C, the session's 4th.
+        (7, 1, 1, 1, 4, 1, 1, 2, 1, 2),
+        # fixation, its second run: blocks X, Y, the session's 5-6 and its own 4-5.
+        (8, 7, 1, 1, 5, 4, 1, 3, 2, 1),
+        (9, 8, 2, 2, 5, 4, 1, 3, 2, 1),
+        (10, 9, 3, 1, 6, 5, 2, 3, 2, 1),
+        (11, 10, 4, 2, 6, 5, 2, 3, 2, 1),
+    ]
+    assert [(line["run"], line["index"], line["block"]) for line in lines] == [
+        (0, 0, "X"), (0, 1, "X"), (0, 2, "Y"), (0, 3, "Y"), (0, 4, "X"), (0, 5, "X"),
+        (1, 0, "C"),
+        (2, 0, "X"), (2, 1, "X"), (2, 2, "Y"), (2, 3, "Y"),
+    ], "the 0-based fields and the block type stay as they were"
+
+
+def test_a_runs_start_row_places_it_in_the_session(tmp_path):
+    """Spec §3: `runs.jsonl`'s start row gains `run_in_session`, `run_in_task` and
+    `task_in_session`, so a run is placed without reading its trials. A third run, of a
+    second task, is what tells the three apart: its run in the task is 1, not 3."""
+    session = _service_session(tmp_path)
+    session.run(_levels_run(blocks=_plan("X")))
+    session.run(_levels_run(blocks=_plan("X")))
+    session.run(_other_run(tmp_path, _plan("C", each=1)))
+    session.end_runs("jake")
+
+    starts = [row for row in _runs(session) if row["event"] == "start"]
+    assert [(r["run_in_session"], r["run_in_task"], r["task_in_session"]) for r in starts] == [
+        (1, 1, 1),
+        (2, 2, 1),
+        (3, 1, 2),
+    ]
