@@ -52,7 +52,7 @@ TRIAL_END (33)
 
 ### 2.3 Not in this change
 
-- **`CONDITION` (`0x8003`) is not emitted yet** (the PI, 2026-09-30: "Wait until conditions exist"). Every trial today runs under one condition named "session", since no production path passes blocks (`_plan` makes one block with one condition), and nothing yet says who numbers conditions. wl-preproc treats `CONDITION` as optional and takes condition names from `trials.jsonl`, so nothing is lost. It is emitted once the day's plan brings real conditions (b3b, XC-150), with its numbering decided then. XC-155's condition half is refiled as its own item.
+- **`CONDITION` (`0x8003`) is not emitted yet** (the PI, 2026-09-30: "Wait until conditions exist"). Every trial today runs under one condition named "session", since no production path passes blocks (`_plan` makes one block with one condition), and nothing yet says who numbers conditions. wl-preproc treats `CONDITION` as optional and takes condition names from `trials.jsonl`, so nothing is lost. It is emitted once the day's plan brings real conditions (b3b, XC-150), with its numbering decided then. *(2026-10-01: wl.works sends the rig no day's plan; real conditions come from a task program or are chosen at the rig, XC-207.)* XC-155's condition half is refiled as its own item.
 - **No `BLOCK_START`/`BLOCK_END`.** wl.works has asked wl-preproc to take wl-xcon's runs as its blocks, from `RUN_START` 4135 and `RUN_END` 4136 (wl.works' message of 2026-09-30); wl-xcon's run is wl-preproc's and the ELN's block.
 - **Rows outside `trials.jsonl`** (marks, controls, parameter changes) do not gain `trial_number` here. XC-173 (what a row's `run` means outside a run) was waiting on this key and can now be decided on its own.
 

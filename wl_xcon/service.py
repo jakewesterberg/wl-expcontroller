@@ -736,7 +736,8 @@ class Service:
         items this person acknowledged by name (`preflight.gate`); only then is the run
         kept to start once this pass has published, with a seed drawn for it and the
         pre-flight as its start row records it -- who acknowledged each unknown
-        (`preflight.rows`). Every run is unplanned until b3b.
+        (`preflight.rows`). Its block plan and conditions come from the task program or
+        are chosen at the rig, and until either exists (XC-207) a run is one block.
 
         **A run past the out-of-cage limit is refused here, before `RUN_START`**
         (carried from Task 3): `Session.run` refuses none -- `welfare.preflight` checks no

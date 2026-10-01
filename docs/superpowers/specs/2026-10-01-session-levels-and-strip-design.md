@@ -13,7 +13,9 @@
   - the XC-155 spec (`2026-09-30-xc155-trial-markers-design.md`), the session's trial number;
   - b3a-1, runs.
 - **Related:**
-  - XC-150, the day's plan, which brings real block plans;
+  - XC-207, block plans from a task program or chosen at the rig (until 2026-10-01 this read
+    "XC-150, the day's plan, which brings real block plans"; wl.works sends the rig no day's
+    plan);
   - XC-026, carrying numbers across a crash (the PI: before January);
   - XC-198, closed by wl-preproc's answers of 2026-10-01.
 - **Facts read** on 2026-10-01:
@@ -145,8 +147,8 @@ trial late in the second fixation run, the line could read `trial_number` 512, `
   on an end by design only. Both go out when the allocation has no 4135/4136.
   `encode.RUN_ESCAPE` and `codes.RUN_END_MARKER` mirror them, pinned against wl-preproc's
   `main` `b0f8b52`.
-- **Until block plans exist (XC-150),** `_plan` gives every run one block, so each run has
-  exactly one `BLOCK_START`/`BLOCK_END` pair.
+- **Until a task program or the rig gives a block plan (XC-207),** `_plan` gives every run
+  one block, so each run has exactly one `BLOCK_START`/`BLOCK_END` pair.
 
 ## 5. The live feed (`Telemetry`, schema 11 → 12)
 
@@ -263,7 +265,8 @@ The list is not widened (the PI, 2026-09-30).
 
 ## 10. Out of scope
 
-- Real block plans: the day's plan, XC-150. Until then a run is one block.
+- Real block plans: from a task program or chosen at the rig, XC-207 (wl.works sends the rig
+  no day's plan, 2026-10-01). Until one gives them, a run is one block.
 - Carrying numbers across a crash: XC-026, before January, its own change.
 - Sending wl-preproc's run markers (`0x8006`, marker 4): once its codec carries them (§4).
   Sent since 2026-10-01 (XC-205).

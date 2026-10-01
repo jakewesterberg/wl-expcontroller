@@ -4,10 +4,13 @@ Between-trial code (ADR-0006), so it may hold state and do arbitrary arithmetic 
 it runs in the inter-trial interval where an error is observable and recoverable
 rather than a dropped frame.
 
-**Blocks are planned in wl.works before a session** (S3 §7). `wl-preproc` authors
-block rows from that planner and quarantines on absence, so this schedules *within* a
-planned block and never invents one. Changing condition weights or geometry is free;
-changing task type is a planning operation.
+**Block plans and conditions come from the task programs (wl-xtasks) or are chosen at
+the rig** (XC-207). S3 §7 had them planned in wl.works before a session, with
+`wl-preproc` quarantining a block wl.works did not plan; the PI retired that on
+2026-10-01, through wl-works, which sends the rig no day's plan, and wl-preproc withdrew
+the quarantine. This schedules *within* the blocks a run is given and never invents
+one; until a task program or the rig gives them, a run is one block (`taskd._plan`).
+Changing condition weights or geometry is free; changing task is a new run.
 """
 
 from __future__ import annotations

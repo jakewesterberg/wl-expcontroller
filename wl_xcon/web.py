@@ -141,9 +141,10 @@ UNPLANNED = (
     "unplanned run: no day's plan reaches this rig yet (b3b), and an unplanned run lowers "
     "the session's timing tier"
 )
-#: The trials a run is offered with: `wlx run --trials`'s default (`cli`), since until the
-#: day's plan (b3b) a run from the page is `wlx run`'s flat run of N trials (the b3a-2
-#: plan, decision 6). A starting figure the person changes, not a rule or a measurement.
+#: The trials a run is offered with: `wlx run --trials`'s default (`cli`), since a run from
+#: the page is `wlx run`'s flat run of N trials, one block, until a task program or the rig
+#: gives a block plan (XC-207; the b3a-2 plan, decision 6). A starting figure the person
+#: changes, not a rule or a measurement.
 RUN_TRIALS = 1000
 #: What *end session* asks before it is sent (the mockup's `end-confirm`, P4d-2b spec
 #: §6.2): what ending does here, the head's release now and the return now or later (the

@@ -170,6 +170,13 @@ Three consequences, and the third is the one that keeps flexibility:
    tier-D condition rather than a silent reconciliation. So an unplanned block is *visible*, not
    destructive — but it degrades the session's timing tier, which is a real cost.
 
+> **Overtaken 2026-10-01** (the PI, as recorded by wl-works `6a57b1cc`, its spec
+> `2026-10-01-montage-plan-design.md` §1 and §6): wl.works sends the rig no day's plan, and
+> wl-preproc withdrew the quarantine the timing-tier cost rested on. Block plans and conditions
+> come from the task programs (wl-xtasks) or are chosen at the rig (backlog XC-207), so
+> consequence 1 and the planned calibration block of consequence 2 no longer hold: whether a
+> session opens with calibration is decided at the rig.
+
 ---
 
 ## 8. Photodiode patches, cameras, and reconstruction

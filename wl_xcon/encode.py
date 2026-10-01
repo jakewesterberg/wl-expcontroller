@@ -18,8 +18,9 @@ WORD_MASK = 0xFFFF
 
 #: The two escapes whose payload is one uint32, by `wl-preproc`'s names. `taskd`
 #: strobes each trial's number behind `TRIAL_NUMBER` (XC-155). `CONDITION` is framed
-#: here and emitted by nothing yet (XC-197): it waits on the conditions the day's plan
-#: brings (XC-150), and on who numbers them, decided then.
+#: here and emitted by nothing yet (XC-197): it waits on real conditions, which come
+#: from the task programs or are chosen at the rig (XC-207), and on who numbers them,
+#: decided then. Until either exists a run is one block under one condition.
 TRIAL_NUMBER = 0x8001
 CONDITION = 0x8003
 

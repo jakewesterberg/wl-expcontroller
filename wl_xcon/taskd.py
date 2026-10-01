@@ -1726,7 +1726,12 @@ class Session:
     _trial: Trial | None = field(init=False, default=None, repr=False)
 
     def _plan(self, run: RunSpec) -> list[Block]:
-        """The run's blocks, or the one block a flat run is."""
+        """The run's blocks, or the one block a flat run is.
+
+        **Block plans and conditions come from the task programs (wl-xtasks) or are
+        chosen at the rig** (XC-207; the PI, 2026-10-01, through wl-works, which sends the
+        rig no day's plan). Until either exists nothing but a test gives a run blocks, so
+        a run is one block of `run.trials` trials under one condition."""
         if run.blocks:
             return run.blocks
         return [

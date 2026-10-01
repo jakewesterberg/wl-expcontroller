@@ -557,7 +557,9 @@ b3 is cut in two (PI, 2026-09-29, asked in the UI): **b3a**, a service on the ri
 one animal's session across several runs, opened, run and ended from the page, with the
 pre-flight list; then **b3b**, the task-library pull from GitHub and the day's plan sent
 from wl-works, once wl-xtasks has tasks (it is an empty scaffold today) and wl-works sends
-plans. b3a was designed in three sections, each approved as written below.
+plans. b3a was designed in three sections, each approved as written below. *(2026-10-01:
+wl.works sends the rig no day's plan, §4.0, so b3b is the task-library pull alone: backlog
+XC-150.)*
 
 ### 6.0 Rulings (PI, 2026-09-29, asked in plain terms)
 
