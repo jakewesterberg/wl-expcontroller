@@ -130,9 +130,11 @@ unreadable, a start row without its run numbers, or a `config.json` naming anoth
 than its folder) or names two animals; when its animal's bounded config or settings will not
 load, or its bounds changed since it opened; when the animal is past its out-of-cage limit, on
 the recorded departure and that limit, after which the page offers only *end* for it; and when
-the record holds a value its animal's bounds or `welfare` refuse (a reward size or that limit
-over its maximum, or a fluid that is not a real, non-negative number), which `Session.resume`
-checks before its first write. A resume is not a new session, so
+the record holds a value its animal's bounds or `welfare` refuse (a reward size over its
+maximum, or a fluid that is not a real, non-negative number), which `Session.resume` checks
+before its first write; the out-of-cage limit over its maximum, or one that is no number, is
+refused one step earlier, by `Service._resume`'s own copy of that limit, as it checks the
+past-limit stop. A resume is not a new session, so
 the rule above still holds; with two stranded, each is resumed or ended on its own.
 `Service._resume`, `resume.py` and `Service._built` are not on this list. Whether the first
 two join it is a question in the PI's review summary (XC-026 spec §8 and its plan's

@@ -2219,6 +2219,35 @@ def test_a_record_the_session_will_not_take_back_is_a_refusal_never_the_services
     assert isinstance(_step(service), Idle), "the service goes on"
 
 
+def _start_row_out_of_cage_as(value):
+    def damage(directory) -> None:
+        rows = [json.loads(line) for line in (directory / "runs.jsonl").read_text().splitlines()]
+        rows[0]["bounded"]["out_of_cage"] = value
+        (directory / "runs.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return damage
+
+
+@pytest.mark.parametrize("value", ["x", None, [1]], ids=["a string", "null", "a list"])
+def test_a_start_row_whose_out_of_cage_is_no_number_is_a_refusal_never_the_services_end(
+    tmp_path, value
+):
+    """The final re-review's regression: `_resume` applies the restored limit to a copy
+    of the loaded bounds before it checks the past-limit stop, and a non-number raised
+    `TypeError` out of `step()` there, stopping `wlx taskd`. Refused; nothing written."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01", run=True)
+    directory = folders[2] / "2027-01-14_01" / "xcon"
+    _start_row_out_of_cage_as(value)(directory)
+    before = {p.name: p.read_bytes() for p in directory.iterdir()}
+    service = _made(folders)
+    (found,) = _step(service).stranded
+    assert found.resumable, "a record find offers to resume"
+
+    assert "must be real number, not" in _resume_refused(service, "2027-01-14_01")
+    assert isinstance(_step(service), Idle), "the service goes on"
+    assert {p.name: p.read_bytes() for p in directory.iterdir()} == before, "nothing written"
+
+
 @pytest.mark.parametrize("sent", ["open", "resume_session"])
 @pytest.mark.parametrize(
     ("text", "said"),

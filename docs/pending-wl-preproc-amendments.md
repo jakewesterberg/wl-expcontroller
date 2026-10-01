@@ -1,13 +1,14 @@
 # Amendments to wl-preproc
 
-**Three are open, all opened 2026-08-31** while designing S2
-([`superpowers/specs/2026-08-31-S2-event-vocabulary-design.md`](superpowers/specs/2026-08-31-S2-event-vocabulary-design.md)).
-Written here rather than applied there, following that repository's own convention for
-`wl-works`. Read against `wl_preproc/contracts/events.py` at commit `f7fb10a`.
+**Five are open.** The first three were opened 2026-08-31 while designing S2
+([`superpowers/specs/2026-08-31-S2-event-vocabulary-design.md`](superpowers/specs/2026-08-31-S2-event-vocabulary-design.md)),
+and the fourth (`read_online_map`) was added before XC-026. Written here rather than applied
+there, following that repository's own convention for `wl-works`. The first three were read
+against `wl_preproc/contracts/events.py` at commit `f7fb10a`.
 **And one from XC-026, opened 2026-10-01**: what a resumed session's stream holds, at the end
 of this file, before the note that is not an ask.
 
-**Two of the three are free, and the third is small.** Items 2 and 3 change no numbers and
+**Of the first three, two are free, and the third is small.** Items 2 and 3 change no numbers and
 no wire behaviour — one records an ownership split in a docstring, the other corrects a
 premise. Only item 1 touches the frozen interface, and it adds one escape without altering
 any existing value.

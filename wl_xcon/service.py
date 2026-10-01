@@ -778,7 +778,11 @@ class Service:
             stop = _stranded.restore(found, limits, directory, self.wall_now).welfare.must_stop(
                 self.wall_now()
             )
-        except Exceeded as refused:
+        except (Exceeded, TypeError, ValueError) as refused:
+            # A start row's `out_of_cage` that is no number raises from `Bounds.set`,
+            # as `Session.resume`'s own call below is caught: a refusal, never the end
+            # of the service. Not coerced in `resume.read`: `float("0.05")` would accept
+            # damage that is refused today.
             self._refuse(command.KIND, command.by, _sentence(refused))
             return
         if stop is not None:
