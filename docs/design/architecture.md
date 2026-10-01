@@ -314,7 +314,7 @@ display layer that per-trial scenes do not reset.
   words take marker values (1-3 are `SESSION_START`, `SESSION_END` and `BLOCK_END`,
   32-38 the trial markers). The number counts from 1 across
   a session's runs and is the trial's `trial_number` in `trials.jsonl`, the field
-  wl-preproc will join a line to its recorded trial by, once it reads it (XC-198).
+  wl-preproc will join a line to its recorded trial by, once it reads it (its runs-and-trials plan, which it confirmed on 2026-10-01).
   `CONDITION` is not emitted yet (XC-197).
 
 ## The display: direct view, and stereo as viewports
