@@ -137,6 +137,9 @@ builds its part; S9a is amended to match when that slice lands.
   *because* fluid session and supplement were always visible (S9a §9): "fine as is". What
   keeps an unpaid working animal visible is fluid today standing still while the time since
   the last reward grows. S9a §9 is amended to say so when this section is written.
+  *(Amended 2026-10-01 by the session-levels spec §6: two cells, the fluid box with the
+  supplement, the last reward and back to cage, and Correct / trials at the session,
+  task, run and block; the supplement returns to the strip.)*
 - **The return to the cage is the ELN's, not this page's.** Asked whether the wl-works ELN
   (not yet built) records the return as well as the departure: "Yes, the ELN handles return
   to cage. you can take it out of this interface." The page reads out-of-cage, on the wall
@@ -232,6 +235,9 @@ welfare number and bounds nothing.
   
   Fluid session and the supplement are shown on Runtime and End of session instead, as ruled
   in the rulings held above.
+  *(Amended 2026-10-01 by the session-levels spec §6: two cells, the fluid box with the
+  supplement, the last reward and back to cage, and Correct / trials at the session,
+  task, run and block; the supplement returns to the strip.)*
 - **Runtime:**
   - trials: the last 60 outcomes as ticks colored by family, with a legend;
   - this run: counts by family, with no rollup;

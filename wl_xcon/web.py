@@ -11,23 +11,25 @@ included), in elements and attributes alike. A task path, a condition, a refusal
 reason and an actor's typed name are text a person or a peer chose.
 
 **Every number is read from the frame**, as `cli.render`'s are, with the arithmetic a
-display needs and no more: the strip's correct count, which adds `correct_reject` to
+display needs and no more: the strip's correct counts, which add `correct_reject` to
 `correct` -- the one rollup, ruled for the strip alone (PI, 2026-09-26, spec §3) -- and
-its percentage, two bar widths, and the time since the last reward -- the frame's own
-instant less the reward's, both on the session's anchored clock, plus how long `wlx
-serve` has held the frame on its steady clock (`View.frame_age_s`; ledger Ruling 1,
-2026-09-27). No host clock is read against a session instant. Trials per minute is
-derived by `wlx serve`, never here, and is labeled as derived.
+their percentages, the fluid bar's width, the deadline back to the cage (the frame's
+instant less the time out, plus the limit: the session-levels plan, ruling 5), and the
+time since the last reward -- the frame's own instant less the reward's, both on the
+session's anchored clock, plus how long `wlx serve` has held the frame on its steady
+clock (`View.frame_age_s`; ledger Ruling 1, 2026-09-27). No host clock is read against
+a session instant. Trials per minute is derived by `wlx serve`, never here.
 
-**Unknown is a word, never 0**: a day nobody measured, a reward not given yet, a rate
-not derived yet, a configuration nobody named, and the three *Wrong?* measurements
-nothing takes yet.
+**Unknown is a word, never 0**: a day nobody measured, a reward not given yet, a
+configuration nobody named, and the three *Wrong?* measurements nothing takes yet. A
+rate not derived yet is left off the strip, as mockup v13 leaves it, never `0.0/min`.
 
-**The strip carries four cells** (PI, 2026-09-26, spec §4.0): fluid today against its
-floor, time out of the cage against its limit, correct over trials, and the time since
-the last reward. Fluid session and the supplement moved to Runtime and End of session,
-where **both are on the page in every state**: the zero-reward ruling (S9a §9) rests on
-their being visible.
+**The strip carries two cells** (session-levels spec §6, amending P4d-2b spec §4.0):
+fluid today against its floor, with the supplement, the last reward and back to cage
+beneath it; and correct over trials for the session, its task, this run and this
+block. Fluid session is on Runtime and End of session, and the supplement on both as
+well as the strip, where **both are on the page in every state**: the zero-reward
+ruling (S9a §9) rests on their being visible.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ from importlib import resources
 
 from wl_xcon import health as _health
 from wl_xcon.cli import _clock, _moment, _setup_words
-from wl_xcon.link import RECENT_OUTCOMES, Idle, Question, Telemetry
+from wl_xcon.link import RECENT_OUTCOMES, Counts, Idle, Question, Telemetry
 from wl_xcon.task import Family, Outcome
 
 
@@ -207,6 +209,11 @@ def _clock_time(at: float | None) -> str:
         return "—"
 
 
+def _wall_minute(at: float) -> str:
+    """A session instant as this host's `HH:MM`, as `_clock_time` gives `HH:MM:SS`."""
+    return _clock_time(at)[:5]
+
+
 def _state(frame: Telemetry | None) -> str:
     """The header's pill, from `phase`, `stop_kind` and -- P4d-2b b2a -- `paused_at`:
     a session that ended while paused shows how it ended, never *paused*."""
@@ -270,10 +277,15 @@ def _presence(view: View) -> str:
 
 
 def _cell(
-    label: str, value: str, *, sub: str = "", bar: tuple[float, str] | None = None
+    label: str,
+    value: str,
+    *,
+    sub: str = "",
+    bar: tuple[float, str] | None = None,
+    after: str = "",
 ) -> str:
-    """One strip cell. `label` and `sub` are this module's own text; `value` is HTML
-    built from escaped parts."""
+    """One strip cell. `label` and `sub` are this module's own text; `value` and
+    `after` are HTML built from escaped parts."""
     parts = [
         f'<div class="row"><span class="lab">{label}</span>'
         f'<span class="val">{value}</span></div>'
@@ -286,65 +298,62 @@ def _cell(
         )
     if sub:
         parts.append(f'<span class="sub">{sub}</span>')
+    if after:
+        parts.append(after)
     return "<div>" + "".join(parts) + "</div>"
 
 
-def _fluid_today(frame: Telemetry) -> str:
+def _lines(rows: list[tuple[str, str, str, str, str]]) -> str:
+    """A strip cell's lines: each `(name, value, percent, note, tone)`. `value` is
+    HTML built from escaped parts; `tone` is `""`, `"warn"` or `"crit"`."""
+    out = []
+    for name, value, percent, note, tone in rows:
+        hot = f" {tone}" if tone else ""
+        out.append(
+            f'<span class="k{hot}">{_e(name)}</span><span class="n{hot}">{value}</span>'
+            f'<span class="n">{percent}</span><span class="x">{note}</span>'
+        )
+    return '<div class="lines">' + "".join(out) + "</div>"
+
+
+def _fluid(frame: Telemetry, view: View) -> str:
+    """The strip's first cell (session-levels spec §6): fluid today against the floor
+    with its bar, then the supplement, the last reward, and back to cage."""
     floor = f'<span class="u">/ {frame.floor_ml:.2f} mL</span>'
     if frame.fluid_today_ml is None:
-        return _cell(
-            "Fluid today / floor",
-            f'<span class="nm">unknown</span>{floor}',
-            sub="the day's prior total was not supplied",
+        head = f'<span class="nm">unknown</span>{floor}'
+        bar = None
+    else:
+        head = f"{frame.fluid_today_ml:.2f}{floor}"
+        tone = "ok" if frame.fluid_today_ml >= frame.floor_ml else ""
+        bar = (_pct(frame.fluid_today_ml, frame.floor_ml), tone)
+    rows = [_supplement(frame), _reward_line(frame, view), _back_to_cage(frame)]
+    return _cell("Fluid today / floor", head, bar=bar, after=_lines(rows))
+
+
+def _supplement(frame: Telemetry) -> tuple:
+    if frame.shortfall_ml is None:
+        return (
+            "supplement",
+            '<span class="nm">unknown</span>',
+            "",
+            "the day's prior total was not supplied",
+            "",
         )
-    tone = "ok" if frame.fluid_today_ml >= frame.floor_ml else ""
-    return _cell(
-        "Fluid today / floor",
-        f"{frame.fluid_today_ml:.2f}{floor}",
-        bar=(_pct(frame.fluid_today_ml, frame.floor_ml), tone),
+    if frame.shortfall_ml <= 0:
+        return ("supplement", '<span class="u">none</span>', "", "floor met", "")
+    return (
+        "supplement",
+        f'{frame.shortfall_ml:.2f}<span class="u"> mL</span>',
+        "",
+        "to reach the floor",
+        "",
     )
 
 
-def _out_of_cage(frame: Telemetry) -> str:
-    if frame.out_of_cage_seconds is None:
-        return _cell("Out of cage", '<span class="nm">cage-side · no limit</span>')
-    clock = _clock(frame.out_of_cage_seconds)
-    limit = frame.out_of_cage_limit_s
-    if limit is None:
-        return _cell("Out of cage", clock)
-    tone = "crit" if frame.stop_kind == "limit" else "warn" if frame.duration_warning else ""
-    return _cell(
-        f"Out of cage / {_clock(limit)}",
-        clock,
-        bar=(_pct(frame.out_of_cage_seconds, limit), tone),
-    )
-
-
-def _correct(frame: Telemetry, view: View) -> str:
-    rate = (
-        "trials/min not yet derived"
-        if view.trials_per_min is None
-        else f"{view.trials_per_min:.1f} trials/min, derived by wlx serve"
-    )
-    if frame.trial_index == 0:
-        return _cell("Correct / trials", '<span class="nm">no trials yet</span>', sub=rate)
-    # The one rollup, and the strip's alone (PI, 2026-09-26, spec §3): `correct` plus
-    # `correct_reject`, both the right answer on their trial. The Working? pane and
-    # `/health` stay unrolled.
-    correct = frame.outcomes.get(Outcome.CORRECT.value, 0) + frame.outcomes.get(
-        Outcome.CORRECT_REJECT.value, 0
-    )
-    percent = 100.0 * correct / frame.trial_index
-    return _cell(
-        "Correct / trials",
-        f'{_e(correct)}<span class="u">/ {_e(frame.trial_index)}</span>',
-        sub=f"{percent:.0f}% correct · {rate}",
-    )
-
-
-def _last_reward(frame: Telemetry, view: View) -> str:
+def _reward_line(frame: Telemetry, view: View) -> tuple:
     if frame.last_reward_at is None:
-        return _cell("Since last reward", '<span class="nm">none yet</span>')
+        return ("last reward", '<span class="nm">none yet</span>', "", "", "")
     # Ledger Ruling 1 (2026-09-27): the frame's own instant less the reward's, one
     # interval on the session's anchored clock, plus how long `wlx serve` has held the
     # frame, on its steady clock. `frame_age_s` is `None` only before any frame, and
@@ -353,9 +362,94 @@ def _last_reward(frame: Telemetry, view: View) -> str:
     since = frame.wall_at - frame.last_reward_at + held
     # m1: a reward instant that is not a number is stored, not refused (it bounds
     # nothing), so it can arrive here; it is a word, never a crash of every pane.
-    if not math.isfinite(since):
-        return _cell("Since last reward", '<span class="nm">unknown</span>')
-    return _cell("Since last reward", _health.ago(since))
+    age = (
+        '<span class="nm">unknown</span>'
+        if not math.isfinite(since)
+        else _e(_health.ago(since) + " ago")
+    )
+    return ("last reward", age, "", _e(_per_correct(frame)), "")
+
+
+def _per_correct(frame: Telemetry) -> str:
+    """The reward size the run pays a correct trial (plan ruling 6), or "no run going"."""
+    if frame.phase != "running":
+        return "no run going"
+    for row in frame.params:
+        if row.name == "reward_correct" and isinstance(row.value, (int, float)):
+            return f"{row.value:.2f} {row.unit} per correct"
+    return ""
+
+
+def _back_to_cage(frame: Telemetry) -> tuple:
+    out = frame.out_of_cage_seconds
+    if out is None:
+        return ("back to cage", '<span class="nm">cage-side</span>', "", "no limit", "")
+    if frame.returned_at is not None:
+        return (
+            "back to cage",
+            _e(f"at {_wall_minute(frame.returned_at)}"),
+            "",
+            _e(f"{_clock(out)} out · recorded"),
+            "",
+        )
+    limit = frame.out_of_cage_limit_s
+    if limit is None:
+        return ("back to cage", _e(_clock(out)), "", "out · no limit published", "")
+    left = limit - out
+    tone = (
+        "crit"
+        if frame.stop_kind == "limit" or left <= 0
+        else "warn" if frame.duration_warning else ""
+    )
+    # Plan ruling 5: display arithmetic on published numbers, like `_pct`.
+    when = f"by {_wall_minute(frame.wall_at - out + limit)}"
+    note = f"{_clock(out)} out · " + (f"{_clock(left)} left" if left > 0 else "past the limit")
+    return ("back to cage", _e(when), "", _e(note), tone)
+
+
+def _correct_of(counts: Counts) -> tuple[int, int]:
+    """The strip's one rollup (PI, 2026-09-26, P4d-2b spec §3): `correct` plus
+    `correct_reject`, both the right answer on their trial, over every trial at the
+    level, hangs included. The Working? pane and `/health` stay unrolled."""
+    correct = counts.outcomes.get(Outcome.CORRECT.value, 0) + counts.outcomes.get(
+        Outcome.CORRECT_REJECT.value, 0
+    )
+    return correct, sum(counts.outcomes.values()) + counts.hangs
+
+
+def _level(name: str, counts: Counts, note: str) -> tuple:
+    correct, trials = _correct_of(counts)
+    if trials == 0:
+        return (name, '<span class="u">—</span>', "", "no trials yet", "")
+    return (
+        name,
+        f'{_e(correct)}<span class="u"> / {_e(trials)}</span>',
+        f"{100.0 * correct / trials:.0f}%",
+        _e(note),
+        "",
+    )
+
+
+def _performance(frame: Telemetry, view: View) -> str:
+    """The strip's second cell (session-levels spec §6): session, task, this run, this
+    block -- or, while no run goes, one line saying so (plan ruling 4)."""
+    perf = frame.performance
+    rate = "" if view.trials_per_min is None else f"{view.trials_per_min:.1f}/min"
+    rows = [_level("session", perf.session, rate)]
+    if perf.run is None:
+        said = "between runs" if frame.phase == "between_runs" else "no run going"
+        rows.append((said, "", "", "", ""))
+    else:
+        runs = f"{perf.runs_of_task} run" + ("" if perf.runs_of_task == 1 else "s")
+        rows.append(_level(perf.task_name, perf.task, runs))
+        rows.append(_level("this run", perf.run, f"run {perf.run_in_session}"))
+        if perf.block is None:
+            rows.append(("block", '<span class="u">—</span>', "", "", ""))
+        else:
+            rows.append(
+                _level(f"block {perf.block_in_session} · {perf.block_type}", perf.block, "")
+            )
+    return _cell("Correct / trials", "", after=_lines(rows))
 
 
 def _off(view: View, why: str = CONTROLS_AT_THE_BOX) -> str:
@@ -365,7 +459,7 @@ def _off(view: View, why: str = CONTROLS_AT_THE_BOX) -> str:
 
 
 def _scheduled(frame: Telemetry, view: View) -> str:
-    """The strip's fifth cell, while a scheduled stop is held (spec §5.2): *stop at
+    """The strip's third cell, while a scheduled stop is held (spec §5.2): *stop at
     14:30 · set by jake*, in the rig's own words, with a cancel button."""
     stop = frame.scheduled_stop
     cancel = (
@@ -377,20 +471,10 @@ def _scheduled(frame: Telemetry, view: View) -> str:
 
 def _strip(frame: Telemetry | None, view: View) -> str:
     if frame is None:
-        return "".join(
-            _cell(label, _NONE)
-            for label in (
-                "Fluid today / floor",
-                "Out of cage",
-                "Correct / trials",
-                "Since last reward",
-            )
-        )
+        return _cell("Fluid today / floor", _NONE) + _cell("Correct / trials", _NONE)
     return (
-        _fluid_today(frame)
-        + _out_of_cage(frame)
-        + _correct(frame, view)
-        + _last_reward(frame, view)
+        _fluid(frame, view)
+        + _performance(frame, view)
         # Only while the session runs: since Task 8's fix, `Telemetry.of` sends
         # `scheduled_stop=None` once `stopped_because` is set, so an ended session's
         # frame should never carry one. This guard defends against a frame the rig
@@ -725,8 +809,9 @@ def _trials(frame: Telemetry | None) -> str:
     )
 
 
-def _fluid(frame: Telemetry) -> str:
-    """Fluid session and the supplement: welfare-load-bearing, never dropped."""
+def _fluid_and_supplement(frame: Telemetry) -> str:
+    """Fluid session and the supplement: welfare-load-bearing, never dropped. (Named
+    apart from the strip's `_fluid`, its first cell, since the session-levels spec §6.)"""
     supplement = (
         f'<span class="nm">{_UNKNOWN_DAY}</span>'
         if frame.shortfall_ml is None
@@ -761,7 +846,7 @@ def _work(frame: Telemetry | None) -> str:
     return (
         f'<div class="selrow"><span class="big">{_e(frame.trial_index)}</span>'
         f'<span class="unit">trials</span></div>'
-        f'<div class="counts">{groups}{hangs}</div>{_fluid(frame)}'
+        f'<div class="counts">{groups}{hangs}</div>{_fluid_and_supplement(frame)}'
     )
 
 
@@ -1356,6 +1441,13 @@ h3 { margin: 0; font-family: var(--cond); font-weight: 600; font-size: 11.5px; l
 .strip .val { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 14.5px; font-weight: 600; white-space: nowrap; }
 .strip .val .u { font-size: 12px; color: var(--muted); font-family: var(--sans); font-weight: 400; margin-left: 3px; }
 .strip .bar { height: 4px; }
+.strip .lines { display: grid; grid-template-columns: auto auto auto 1fr; gap: 1px 10px; font-size: 12.5px; align-items: baseline; }
+.strip .lines .k { color: var(--muted); white-space: nowrap; }
+.strip .lines .n { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.strip .lines .n .u { color: var(--muted); }
+.strip .lines .x { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.strip .lines .warn { color: var(--warn); font-weight: 600; }
+.strip .lines .crit { color: var(--crit); font-weight: 600; }
 .banners { display: grid; gap: 6px; }
 .banner { border-radius: 6px; padding: 6px 12px; font-size: 13.5px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .banner.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); }

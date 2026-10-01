@@ -21,8 +21,8 @@ from pathlib import Path
 import pytest
 
 from _frames import frame, idle, view
-from wl_xcon.cli import _local
-from wl_xcon.link import Control, ParamRow, Preflight, PreflightItem, Question, Refused, ScheduledStop, Staged, Stranded
+from wl_xcon.cli import _clock, _local
+from wl_xcon.link import Control, Counts, ParamRow, Performance, Preflight, PreflightItem, Question, Refused, ScheduledStop, Staged, Stranded
 from wl_xcon.web import (
     _SCRIPT,
     CONTROLS_AT_THE_BOX,
@@ -74,8 +74,9 @@ STATES = {
 @pytest.mark.parametrize("state", sorted(STATES))
 def test_fluid_session_and_the_supplement_are_never_dropped(state):
     """The zero-reward ruling (PI, 2026-09-20) rests on both being visible, and the
-    strip no longer carries them (spec §4.0) -- so Runtime and End of session both
-    must, in every state, a zero volume included."""
+    strip does not carry fluid session (spec §4.0; the supplement returned to it with
+    the session-levels spec §6) -- so Runtime and End of session both must, in every
+    state, a zero volume included."""
     parts = fragments(
         frame(fluid_session_ml=0.0, shortfall_ml=3.21, **STATES[state]), view()
     )
@@ -105,7 +106,10 @@ def test_the_out_of_cage_time_is_never_dropped(state):
 def test_a_cage_side_session_says_it_has_no_out_of_cage_clock_rather_than_zero():
     parts = fragments(frame(**STATES["cage-side"]), view())
 
-    assert "cage-side · no limit" in parts["strip"]
+    assert (
+        '<span class="k">back to cage</span><span class="n"><span class="nm">cage-side</span>'
+        '</span><span class="n"></span><span class="x">no limit</span>' in parts["strip"]
+    )
     assert "cage-side · no out-of-cage interval" in parts["end"]
     assert "0:00" not in parts["strip"] + parts["end"]
 
@@ -143,8 +147,9 @@ def test_nothing_unmeasured_is_rendered_as_zero():
         ), name
     strip = parts["strip"]
     assert "unknown" in strip and "none yet" in strip
-    assert "trials/min not yet derived" in strip
-    assert "0.0 trials/min" not in strip
+    # A rate `wlx serve` has not yet derived is left out, as mockup v13 leaves it:
+    # never 0.0/min.
+    assert "/min" not in strip
     assert "0 s" not in strip
 
 
@@ -158,8 +163,7 @@ def test_the_time_since_the_last_reward_is_the_frames_instant_aged_by_serve():
     )
 
     assert (
-        '<span class="lab">Since last reward</span><span class="val">42 s</span>'
-        in parts["strip"]
+        '<span class="k">last reward</span><span class="n">42 s ago</span>' in parts["strip"]
     )
 
 
@@ -174,8 +178,8 @@ def test_a_reward_instant_that_is_not_a_number_reads_unknown_not_a_crash(at):
     parts = fragments(frame(last_reward_at=at), view())
 
     assert (
-        '<span class="lab">Since last reward</span>'
-        '<span class="val"><span class="nm">unknown</span></span>' in parts["strip"]
+        '<span class="k">last reward</span>'
+        '<span class="n"><span class="nm">unknown</span></span>' in parts["strip"]
     )
     assert tuple(parts) == FRAGMENT_IDS
 
@@ -199,52 +203,20 @@ def test_a_finite_instant_this_host_cannot_show_is_a_dash_not_a_crash(at):
     assert tuple(parts) == FRAGMENT_IDS
 
 
-def test_before_the_first_trial_the_strip_says_so_not_zero():
-    """Before the first trial the strip's correct cell says *no trials yet*: its
-    percentage would be 0/0, and neither `0%` nor `NaN` may stand in for a count
-    nobody has made."""
-    strip = fragments(frame(trial_index=0, outcomes={}), view())["strip"]
-
-    assert (
-        '<span class="lab">Correct / trials</span>'
-        '<span class="val"><span class="nm">no trials yet</span></span>' in strip
-    )
-    assert "0/0" not in strip
-    assert "0%" not in strip
-    assert "NaN" not in strip
-
-
 def test_out_of_cage_time_with_no_published_limit_shows_the_clock_alone():
     """A rig session whose frame carries its out-of-cage time but no limit shows the
-    clock alone: no bar, and no limit in the label, since a bar needs something to
-    be a fraction of."""
+    clock alone, and says no limit was published: no deadline and no time left, since
+    neither can be worked out without one."""
     strip = fragments(frame(out_of_cage_limit_s=None), view())["strip"]
 
     assert (
-        '<div><div class="row"><span class="lab">Out of cage</span>'
-        '<span class="val">1:23:45</span></div></div>' in strip
+        '<span class="k">back to cage</span><span class="n">1:23:45</span>'
+        '<span class="n"></span><span class="x">out · no limit published</span>' in strip
     )
-    assert "Out of cage /" not in strip
+    assert '<span class="n">by ' not in strip and " left" not in strip
 
 
 # --- counts, ticks, and the strip's arithmetic ----------------------------------
-
-
-def test_the_strips_correct_counts_correct_and_correct_reject():
-    """The one rollup (PI, 2026-09-26, spec §3): on the strip, `correct` plus
-    `correct_reject` -- 3 and 2 of 10 trials read 5 / 10, 50%."""
-    parts = fragments(
-        frame(
-            trial_index=10,
-            outcomes={"correct": 3, "correct_reject": 2, "no_fixation": 5},
-        ),
-        view(trials_per_min=12.0),
-    )
-
-    strip = parts["strip"]
-    assert '5<span class="u">/ 10</span>' in strip
-    assert "50% correct" in strip
-    assert "12.0 trials/min, derived by wlx serve" in strip
 
 
 def test_the_working_pane_keeps_every_count_unrolled():
@@ -309,6 +281,133 @@ def test_the_ticks_are_sixty_oldest_first_colored_by_family_with_a_legend():
     assert ticks.index('title="correct"') < ticks.index('title="wrong_target"')
     for key, label in LEGEND:
         assert f'<i class="tk f-{key}"></i>{label}' in ticks
+
+
+# --- the strip's two cells (session-levels spec §6) -----------------------------
+
+
+def _no_run(phase):
+    """A frame while no run goes: the session's counts alone (`taskd.Session.performance`).
+    Named apart from b3a-2's `_between` below, which keeps `frame()`'s four levels."""
+    return replace(
+        frame(),
+        phase=phase,
+        performance=Performance(
+            Counts({"correct": 30, "no_fixation": 10}, 0), None, None, None, None, None, None, None, None
+        ),
+    )
+
+
+def test_the_strip_has_two_cells():
+    assert fragments(frame(), view())["strip"].count('<div class="row">') == 2
+
+
+def test_correct_trials_shows_the_session_its_task_this_run_and_this_block():
+    strip = fragments(frame(), view(trials_per_min=12.0))["strip"]
+    assert '30<span class="u"> / 40</span>' in strip and "75%" in strip
+    assert "12.0/min" in strip
+    assert "fixation_detection" in strip and "2 runs" in strip
+    assert "this run" in strip and "run 3" in strip
+    assert "block 27 · near" in strip
+
+
+def test_correct_counts_correct_and_correct_reject_at_every_level():
+    """The one rollup (PI, 2026-09-26), on each line."""
+    perf = Performance(
+        session=Counts({"correct": 3, "correct_reject": 2, "no_fixation": 5}, 0),
+        task=Counts({"correct": 3, "correct_reject": 2, "no_fixation": 5}, 0),
+        run=Counts({"correct": 3, "correct_reject": 2, "no_fixation": 5}, 0),
+        block=Counts({"correct": 3, "correct_reject": 2, "no_fixation": 5}, 0),
+        task_name="t", runs_of_task=1, run_in_session=1, block_in_session=1, block_type="b",
+    )
+    strip = fragments(replace(frame(), performance=perf), view())["strip"]
+    assert strip.count("50%") == 4
+
+
+def test_hangs_count_among_the_trials():
+    perf = replace(frame().performance, session=Counts({"correct": 1}, 1))
+    strip = fragments(replace(frame(), performance=perf), view())["strip"]
+    assert '1<span class="u"> / 2</span>' in strip and "50%" in strip
+
+
+def test_between_runs_one_line_says_so():
+    """Review Focus 5 and plan ruling 4."""
+    strip = fragments(_no_run("between_runs"), view())["strip"]
+    assert '<span class="k">between runs</span>' in strip
+    assert "this run" not in strip and "block" not in strip
+
+
+def test_after_the_runs_one_line_says_no_run_is_going():
+    strip = fragments(_no_run("awaiting_return"), view())["strip"]
+    # The line's own name span: the fluid cell's reward note also says "no run going".
+    assert '<span class="k">no run going</span>' in strip
+
+
+def test_before_the_first_trial_the_session_says_so_not_zero():
+    """Its percentage would be 0/0, and neither `0%` nor `NaN` may stand in for a count
+    nobody has made (the claim of the four-cell strip's test of this name)."""
+    perf = Performance(Counts({}, 0), None, None, None, None, None, None, None, None)
+    strip = fragments(replace(frame(), performance=perf, phase="between_runs"), view())["strip"]
+    assert "no trials yet" in strip
+    assert '<span class="u"> / 0</span>' not in strip
+    assert "0%" not in strip and "NaN" not in strip
+
+
+def test_a_run_before_its_first_trial_has_no_block_yet():
+    """A block opens with its first trial (plan ruling 1): until then its line is
+    *block* and a dash, and the run's line shows no percentage of nothing."""
+    perf = replace(frame().performance, run=Counts({}, 0), block=None, block_in_session=None, block_type=None)
+    strip = fragments(replace(frame(), performance=perf), view())["strip"]
+    assert (
+        '<span class="k">block</span><span class="n"><span class="u">—</span></span>'
+        '<span class="n"></span><span class="x"></span>' in strip
+    )
+    assert (
+        '<span class="k">this run</span><span class="n"><span class="u">—</span></span>'
+        '<span class="n"></span><span class="x">no trials yet</span>' in strip
+    )
+
+
+def test_the_supplement_owed_is_on_the_strip():
+    strip = fragments(replace(frame(), shortfall_ml=12.5), view())["strip"]
+    assert "supplement" in strip and "12.50" in strip and "to reach the floor" in strip
+
+
+def test_a_met_floor_says_so():
+    strip = fragments(replace(frame(), shortfall_ml=0.0), view())["strip"]
+    assert "floor met" in strip
+
+
+def test_an_unknown_day_says_the_supplement_is_unknown():
+    strip = fragments(replace(frame(), shortfall_ml=None, fluid_today_ml=None), view())["strip"]
+    assert "unknown" in strip and "the day's prior total was not supplied" in strip
+
+
+def test_back_to_cage_gives_the_deadline_the_time_out_and_the_time_left():
+    """5025 s out of an 8 h limit (ruling 5): the deadline is the frame's wall instant
+    less the time out plus the limit, as this host shows it."""
+    f = replace(frame(), out_of_cage_seconds=5025.0, out_of_cage_limit_s=28_800.0, duration_warning=None)
+    strip = fragments(f, view())["strip"]
+    deadline = time.strftime("%H:%M", time.localtime(f.wall_at - 5025.0 + 28_800.0))
+    assert f"by {deadline}" in strip
+    assert f"{_clock(5025.0)} out · {_clock(28_800.0 - 5025.0)} left" in strip
+
+
+def test_back_to_cage_warns_with_the_sessions_warning_and_is_critical_at_the_limit():
+    warned = fragments(replace(frame(), duration_warning="30 min left"), view())["strip"]
+    limited = fragments(replace(frame(), stop_kind="limit"), view())["strip"]
+    assert 'class="k warn"' in warned and 'class="k crit"' in limited
+
+
+def test_a_recorded_return_says_when():
+    f = replace(frame(), returned_at=1_700_000_000.0, phase="closed")
+    strip = fragments(f, view())["strip"]
+    assert "at " + time.strftime("%H:%M", time.localtime(1_700_000_000.0)) in strip and "recorded" in strip
+
+
+def test_a_cage_side_session_has_no_back_to_cage_clock():
+    strip = fragments(replace(frame(), out_of_cage_seconds=None, out_of_cage_limit_s=None), view())["strip"]
+    assert "cage-side" in strip and "no limit" in strip
 
 
 # --- the header, the banners, and no session ------------------------------------
@@ -861,11 +960,11 @@ def test_the_strip_shows_a_scheduled_stop_with_who_set_it_and_a_cancel():
     assert '<button type="button" class="btn small" data-cmd="cancel">cancel</button>' in strip
 
 
-def test_with_nothing_scheduled_the_strip_keeps_its_four_cells():
+def test_with_nothing_scheduled_the_strip_keeps_its_two_cells():
     strip = fragments(frame(), view())["strip"]
 
     assert "Scheduled" not in strip
-    assert strip.count('<div class="row">') == 4
+    assert strip.count('<div class="row">') == 2
 
 
 def test_the_strip_guards_against_an_ended_frame_still_carrying_a_schedule():

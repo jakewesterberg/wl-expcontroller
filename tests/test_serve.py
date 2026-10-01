@@ -473,10 +473,7 @@ def test_a_host_clock_stepped_back_between_two_frames_leaves_the_reward_age_righ
 
     assert second.wall_at == wall + 60.0, "the session's anchored clock took the step"
     assert second.last_reward_at == wall + 10.0
-    assert (
-        '<span class="lab">Since last reward</span><span class="val">62 s</span>'
-        in strip
-    )
+    assert '<span class="k">last reward</span><span class="n">62 s ago</span>' in strip
 
 
 # --- the HTTP surface (Task 10) ---------------------------------------------------
@@ -806,7 +803,7 @@ def test_a_quiet_stream_is_refreshed_each_keepalive_not_sent_a_comment():
 
 def _since_last_reward(payload: dict) -> str:
     found = re.search(
-        r'<span class="lab">Since last reward</span><span class="val">([^<]*)</span>',
+        r'<span class="k">last reward</span><span class="n">([^<]*) ago</span>',
         payload["frags"]["strip"],
     )
     assert found, payload["frags"]["strip"]
@@ -1293,10 +1290,10 @@ def server_cleanup():
     yield _register
 
 
-#: The strip's time since the last reward before any reward (`web._last_reward`).
+#: The strip's time since the last reward before any reward (`web._reward_line`).
 _NONE_YET = (
-    '<span class="lab">Since last reward</span>'
-    '<span class="val"><span class="nm">none yet</span></span>'
+    '<span class="k">last reward</span>'
+    '<span class="n"><span class="nm">none yet</span></span>'
 )
 
 
@@ -1379,12 +1376,12 @@ def test_the_console_follows_a_simulated_session_through_a_restart_to_its_end(
                 range(20_000), _events(response, deadline_s=20.0)
             ):
                 strip = payload["frags"].get("strip", "")
-                if "Since last reward" in strip and _NONE_YET not in strip:
+                if '<span class="k">last reward</span>' in strip and _NONE_YET not in strip:
                     rewarded = strip
                     break
         assert rewarded is not None, "the strip never left 'none yet' for a reward"
         assert re.search(
-            r'<span class="lab">Since last reward</span><span class="val">\d+ s</span>',
+            r'<span class="k">last reward</span><span class="n">\d+ s ago</span>',
             rewarded,
         ), rewarded
 
