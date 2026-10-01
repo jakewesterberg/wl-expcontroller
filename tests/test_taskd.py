@@ -5072,6 +5072,15 @@ def test_the_performance_counts_the_session_the_task_the_run_and_the_block(tmp_p
     session.run(_levels_run(blocks=_plan("X", "Y")))
     session.run(_levels_run(blocks=_plan("X")))
 
+    # The first run's fourth trial, the second of block Y: a boundary where the run's
+    # count and the block's differ, and the open block's type is not the plan's first
+    # (the session-levels final review, I2). Spec §9's four tallies at a boundary.
+    in_y = seen[3]
+    assert sum(in_y.run.outcomes.values()) + in_y.run.hangs == 4
+    assert sum(in_y.block.outcomes.values()) + in_y.block.hangs == 2
+    assert in_y.block_in_session == 2
+    assert in_y.block_type == "Y"
+
     during = seen[-1]  # the second run's last trial
     assert during.task_name == "fixation_detection"
     assert (during.runs_of_task, during.run_in_session, during.block_in_session) == (2, 2, 3)

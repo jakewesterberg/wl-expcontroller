@@ -343,6 +343,36 @@ def test_after_the_runs_one_line_says_no_run_is_going():
     assert '<span class="k">no run going</span>' in strip
 
 
+def test_while_a_run_goes_the_last_reward_line_notes_what_a_correct_trial_pays():
+    """Session-levels spec §6 and plan ruling 6: the last-reward line's note is
+    `reward_correct`'s value in its row's own unit. The final review found
+    `web._per_correct` neutered to `None` with every test passing."""
+    running = frame(
+        phase="running",
+        stop_kind=None,
+        params=(ParamRow("reward_correct", "mL", 0.0, 0.4, 0.15, True),),
+    )
+
+    strip = fragments(running, view())["strip"]
+
+    assert (
+        '<span class="k">last reward</span><span class="n">42 s ago</span>'
+        '<span class="n"></span><span class="x">0.15 mL per correct</span>'
+    ) in strip
+
+
+def test_with_no_run_going_the_last_reward_line_says_so_in_its_own_note():
+    """The last-reward line's own `x` span, not a bare substring: after the runs the
+    performance cell's one line says "no run going" too
+    (`test_after_the_runs_one_line_says_no_run_is_going`)."""
+    strip = fragments(_no_run("awaiting_return"), view())["strip"]
+
+    assert (
+        '<span class="k">last reward</span><span class="n">42 s ago</span>'
+        '<span class="n"></span><span class="x">no run going</span>'
+    ) in strip
+
+
 def test_before_the_first_trial_the_session_says_so_not_zero():
     """Its percentage would be 0/0, and neither `0%` nor `NaN` may stand in for a count
     nobody has made (the claim of the four-cell strip's test of this name)."""
