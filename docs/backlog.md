@@ -15,7 +15,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 **Finding one.** Grep the ID, a package (`P9`, `b3`), a repository (`wl-sync`) or a file. The sections: brainstorms the PI asked to have later; features no plan covers yet; defects and review findings deliberately not fixed; debt (cleanup, stale wording, test hygiene); anything that needs the rig or other hardware, measurements included; and asks of, or waits on, other repositories.
 
-**Next free ID: XC-205.**
+**Next free ID: XC-206.**
 
 ## Brainstorms queued for the PI
 
@@ -192,6 +192,7 @@ No ` — ` inside a field. Link a section, not a file, where one exists. `tests/
 
 ## Waiting on another repository
 
+- **XC-205** Send wl-preproc's run markers: its escape `0x8006` `(run_in_session, task code)` at each run's start, before the run's first `BLOCK_START`, and its marker 4 after the last `BLOCK_END` of a run that ends by design, beside or in place of 4135/4136, mirrored in `encode.py`/`codes.py` and pinned against its codec. — 2026-10-01, [session-levels spec §4](superpowers/specs/2026-10-01-session-levels-and-strip-design.md#4-the-recording-decided-sent-to-wl-preproc-2026-10-01) — waits on: wl-preproc's `contracts/events.py` carrying them on its `main` (its runs-and-trials plan)
 - **XC-087** wl-sync: make the session id readable by a rig host, so `taskd` can name its own directory. — 2026-08-31, [pending-wl-sync-amendments.md](pending-wl-sync-amendments.md#open--the-session-id-is-minted-here-and-cannot-be-learned-from-anywhere-else) — waits on: wl-sync
 - **XC-088** wl-sync: a subject change mints `_02`, and wl-sync learns when a subject changes. — 2026-08-31, [pending-wl-sync-amendments.md](pending-wl-sync-amendments.md#open--a-day-is-not-one-session-on-these-rigs-so-something-must-mint-_02) — waits on: wl-sync
 - **XC-089** wl-sync: assign a misc-BNC input to the audio verification tap. — 2026-08-31, [S4 §12 item 3](superpowers/specs/2026-08-31-S4-stimulus-presentation-design.md#12-open-items) — waits on: wl-sync
