@@ -174,8 +174,11 @@ Three consequences, and the third is the one that keeps flexibility:
 > `2026-10-01-montage-plan-design.md` §1 and §6): wl.works sends the rig no day's plan, and
 > wl-preproc withdrew the quarantine the timing-tier cost rested on. Block plans and conditions
 > come from the task programs (wl-xtasks) or are chosen at the rig (backlog XC-207), so
-> consequence 1 and the planned calibration block of consequence 2 no longer hold: whether a
-> session opens with calibration is decided at the rig.
+> consequence 1, the planned calibration block of consequence 2, and consequence 3's last
+> sentence (an unplanned block's timing-tier cost) no longer hold. Whether a session opens with
+> calibration is decided at the rig, and wl-preproc now reports a block wl.works did not author
+> as "an unlinked block, reported and harmless" (its `docs/pending-wl-works-amendments.md`,
+> `main` `b0f8b52`).
 
 ---
 

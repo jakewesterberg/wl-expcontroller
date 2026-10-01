@@ -130,6 +130,13 @@ A `prepare-session` action carrying the existing `MetadataBundle`, plus the sess
 sends wl-preproc; `planned_task` and `session_intent` are the only additions, and both are
 optional — a rig that receives neither behaves exactly as it does today.
 
+> **Withdrawn 2026-10-01** (the PI, as recorded by wl-works `6a57b1cc`, its spec
+> `2026-10-01-montage-plan-design.md` §1): `planned_task`, `session_intent` and the `probes[]`
+> bundle are withdrawn. wl.works sends the rig nothing of a plan, and wl-xcon reads probes and
+> sites from SpikeGLX on the rig. **What stands:** `prepare-session` itself, now carrying no plan
+> fields, and the day's delivered fluid as an envelope (`fluid_delivered_today_ml`). Backlog
+> XC-100.
+
 ## Why it reaches wl-works
 
 Because the bundle is authored there and the rig has no route to fetch it (§11.2, above).
@@ -163,6 +170,12 @@ second-order calibration rung at all — an in-task epoch cannot guarantee the s
 So the planner should emit a calibration block at the head of every session, with
 `TaskTypeCode.CALIBRATION`. The in-task `CALIBRATION_START`/`CALIBRATION_END` epochs that follow
 through the day need no planning and create no blocks.
+
+> **Withdrawn 2026-10-01** (the PI, as recorded by wl-works `6a57b1cc`, its spec
+> `2026-10-01-montage-plan-design.md` §1): the planner sends no runs, so whether a session opens
+> with calibration is decided at the rig. wl-preproc withdrew the quarantine this rested on: a
+> block wl.works did not author is "an unlinked block, reported and harmless" (its
+> `docs/pending-wl-works-amendments.md`, `main` `b0f8b52`). Backlog XC-101, closed.
 
 ## An OAuth2 client per control box (new, 2026-09-19)
 
@@ -333,7 +346,10 @@ and that is item 5 below.
    attribution (above), and whether that is one client per box or one for the fleet.
 4. Whether `planned_task` and `session_intent` are worth adding to a bundle that is already
    load-bearing on their side — their Plan 18b tests run against a fake, so the payload
-   shape matters there before either machine exists.
+   shape matters there before either machine exists. **Withdrawn 2026-10-01** (wl-works
+   `6a57b1cc`, its montage-plan spec §1): both are plan fields, and nothing of a plan is sent.
+   What stands of wl.works' answers of 2026-08-31: `prepare-session` (with no plan fields),
+   the fluid figure as an envelope, the host list as configuration (item 1) and alerts.
 5. Whether wl-works can run an NTP server at `ntp.wl.works` reachable from the lab
    network on UDP 123, and open the one-port routing exception that requires (new,
    2026-09-20 — see above). **The hostname is settled by the PI; the route is not.**

@@ -311,8 +311,11 @@ display layer that per-trial scenes do not reset.
   to another run with nothing strobed between, that is the next run's `RUN_START` and, if
   the escape was cut after its first or second word, that run's escape (below), and what
   the decoder makes of the rest can lose the opening of its first block and its first
-  trial too (XC-199). A block's `BLOCK_START` escape and a run's (below) are cut short the
-  same way. Read the stream
+  trial too (XC-199). wl-preproc's `assemble` then folds that run into the faulted one,
+  which reads as closed by design, since the next run's `RUN_END` marker closes it; and a
+  cut after the second word reads run number 2, 3 or 4 as a bare `SESSION_END`,
+  `BLOCK_END` or `RUN_END`. A block's `BLOCK_START` escape and a run's (below) are cut
+  short the same way. Read the stream
   through wl-preproc's `decode_stream`, never by value: from trial 1 the escape's payload
   words take marker values (1-4 are `SESSION_START`, `SESSION_END`, `BLOCK_END` and
   `RUN_END`, 32-38 the trial markers), trial 3's checksum is `BLOCK_START`'s `0x8002`,

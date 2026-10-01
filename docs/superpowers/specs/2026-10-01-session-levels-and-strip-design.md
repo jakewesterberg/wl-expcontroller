@@ -148,7 +148,9 @@ trial late in the second fixation run, the line could read `trial_number` 512, `
   `encode.RUN_ESCAPE` and `codes.RUN_END_MARKER` mirror them, pinned against wl-preproc's
   `main` `b0f8b52`.
 - **Until a task program or the rig gives a block plan (XC-207),** `_plan` gives every run
-  one block, so each run has exactly one `BLOCK_START`/`BLOCK_END` pair.
+  one block, so each run has at most one block: one `BLOCK_START`, closed by `BLOCK_END` on an
+  end by design. A run stopped before its first trial has none, and a run that faults or is
+  interrupted has no `BLOCK_END`.
 
 ## 5. The live feed (`Telemetry`, schema 11 → 12)
 
