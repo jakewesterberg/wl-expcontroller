@@ -1,0 +1,146 @@
+"""A stranded session's folder read back for a resume (XC-026 spec §3, §4, §8a).
+
+**Pure.** It reads files and returns a `Restoration`, or raises `Unresumable` saying why.
+It decides nothing about welfare: `Session.resume` and `Welfare` apply what it read, and
+`Service._resume` decides whether to. The departure comes in from `stranded.find`, the
+one reader of `welfare_notes.jsonl`.
+
+**Every number comes from `trial_starts.jsonl`** (§8a item 1). A trial that died mid-trial
+started, and strobed its number, with no `trials.jsonl` line, so no number it took is
+issued again. **The fluid comes from the lines and the hand rewards** (§4). A trial that
+died has no line, so its reward, if any, is not counted, and the supplement errs larger.
+A record that cannot give the fluid so far cannot be resumed: it is never taken as zero.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+from wl_xcon.levels import Levels, task_name
+from wl_xcon.record import CONTROLS, RUNS, TRIAL_STARTS
+from wl_xcon.task import Outcome
+
+#: Why a record written before XC-026 cannot be resumed, said once, for the page.
+PREDATES = (
+    "its record was written before the rig recorded each trial's fluid (XC-026), so its "
+    "fluid so far cannot be known; end it with its return instead"
+)
+
+
+class Unresumable(Exception):
+    """A folder that cannot be resumed; its message says why, for the page."""
+
+
+@dataclass(frozen=True)
+class Restoration:
+    session_id: str
+    subject: str
+    deployment: str
+    view: str
+    subject_settings: str
+    bounds_at_open: dict
+    already_today: float | None
+    departure: float
+    commanded: float
+    last_reward_at: float | None
+    levels: Levels
+    run_index: int | None
+    sequence: int
+    bounded: dict
+    last_written_at: float
+
+
+def _rows(directory: Path, name: str) -> list[dict]:
+    path = directory / name
+    if not path.exists():
+        return []
+    try:
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()]
+    except (OSError, ValueError) as error:
+        raise Unresumable(f"its {name} cannot be read ({error}); end it instead") from error
+
+
+def read(directory: Path, departure: float) -> Restoration:
+    """The session at `directory` (its `xcon` folder), left at `departure`, read back."""
+    directory = Path(directory)
+    try:
+        return _read(directory, departure)
+    except (KeyError, TypeError, ValueError) as error:
+        raise Unresumable(f"its record cannot be read ({error!r}); end it instead") from error
+
+
+def _read(directory: Path, departure: float) -> Restoration:
+    try:
+        config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise Unresumable(f"its config.json cannot be read ({error}); end it instead") from error
+    starts = _rows(directory, TRIAL_STARTS)
+    lines = _rows(directory, "trials.jsonl")
+    if (
+        "already_delivered_today" not in config
+        or any("fluid_ml" not in line for line in lines)
+        or (lines and not starts)
+    ):
+        raise Unresumable(PREDATES)
+    run_rows = [row for row in _rows(directory, RUNS) if row["event"] == "start"]
+    controls = _rows(directory, CONTROLS)
+    changes = _rows(directory, "parameter_changes.jsonl")
+
+    hand = [row for row in controls if row["kind"] == "reward"]
+    commanded = sum(float(line["fluid_ml"]) for line in lines)
+    commanded += sum(float(row["ml"]) for row in hand)
+    instants = [line["last_reward_at"] for line in lines if line["last_reward_at"] is not None]
+    instants += [row["at"] for row in hand if row["at"] is not None]
+
+    # Runs replayed as they started, so the run and task numbers are `start_run`'s own;
+    # trials and blocks taken from the starts, the largest of each.
+    levels = Levels()
+    for row in run_rows:
+        levels.start_run(row["task"])
+    for row in starts:
+        name = task_name(row["task"])
+        levels.trials = max(levels.trials, int(row["trial_number"]))
+        levels.blocks = max(levels.blocks, int(row["block_in_session"]))
+        levels.task_trials[name] = max(levels.task_trials.get(name, 0), int(row["trial_in_task"]))
+        levels.task_blocks[name] = max(levels.task_blocks.get(name, 0), int(row["block_in_task"]))
+    tasks = {int(row["trial_number"]): task_name(row["task"]) for row in starts}
+    for line in lines:
+        number = int(line["trial_number"])
+        if number not in tasks:
+            raise Unresumable(
+                f"its trials.jsonl names trial {number}, which trial_starts.jsonl does not; "
+                f"end it instead"
+            )
+        for tally in (levels.session_tally, levels.task_tallies[tasks[number]]):
+            if line["outcome"] == "hang":
+                tally.hangs += 1
+            else:
+                tally.outcomes[Outcome(line["outcome"])] += 1
+
+    # The values the last run started with, then the changes made during it: a change in
+    # an earlier run is already in the last start row (`runs.jsonl`'s `bounded`).
+    run_index = int(run_rows[-1]["run"]) if run_rows else None
+    bounded = dict(run_rows[-1]["bounded"]) if run_rows else {}
+    for change in sorted(changes, key=lambda c: int(c["sequence"])):
+        if change["run"] == run_index and change["name"] in bounded:
+            bounded[change["name"]] = float(change["now"])
+    return Restoration(
+        session_id=str(config["session_id"]),
+        subject=str(config["subject"]),
+        deployment=str(config["deployment"]),
+        view=str(config["setup"]["view"]),
+        subject_settings=str(config["versions"]["subject_settings"]),
+        bounds_at_open=config["bounds"],
+        already_today=config["already_delivered_today"],
+        departure=departure,
+        commanded=commanded,
+        last_reward_at=max(instants) if instants else None,
+        levels=levels,
+        run_index=run_index,
+        sequence=max((int(c["sequence"]) for c in changes), default=0),
+        bounded=bounded,
+        last_written_at=max(path.stat().st_mtime for path in directory.iterdir()),
+    )

@@ -84,6 +84,7 @@ RETURNS: dict[str, str] = {
     "web": "None",
     "serve": "None",
     "levels": "None",
+    "resume": "None",
 }
 
 #: Modules with nothing to neuter, and why. An entry here is a claim someone made,
