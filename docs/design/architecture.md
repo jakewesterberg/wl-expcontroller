@@ -309,13 +309,24 @@ display layer that per-trial scenes do not reset.
   short, and wl-preproc's decoder then takes the next words as its payload whatever they
   are, losing that trial and what comes next with it. When a `wlx taskd` session goes on
   to another run with nothing strobed between, that is the next run's `RUN_START` and, if
-  the escape was cut after its first word, the next trial too (XC-199). Read the stream
+  the escape was cut after its first or second word, the opening of that run's first
+  block, and what the decoder makes of the rest can lose its first trial too (XC-199). A
+  block's `BLOCK_START` escape (below) is cut short the same way. Read the stream
   through wl-preproc's `decode_stream`, never by value: from trial 1 the escape's payload
   words take marker values (1-3 are `SESSION_START`, `SESSION_END` and `BLOCK_END`,
-  32-38 the trial markers). The number counts from 1 across
+  32-38 the trial markers), and trial 3's checksum is `BLOCK_START`'s `0x8002`. The
+  number counts from 1 across
   a session's runs and is the trial's `trial_number` in `trials.jsonl`, the field
   wl-preproc will join a line to its recorded trial by, once it reads it (its runs-and-trials plan, which it confirmed on 2026-10-01).
+  Every line carries ten position numbers (`levels.Position`; session-levels spec §3).
   `CONDITION` is not emitted yet (XC-197).
+  **Each block is marked too** (the session-levels spec, 2026-10-01): `BLOCK_START`
+  (`0x8002`, its `block_in_session` and its task's code, 0 until wl-xtasks allocates
+  codes) just before the block's first `TRIAL_START`, and `BLOCK_END` (3) after its last
+  `TRIAL_END` when its block type is done or its run ends by design; a run that faults
+  sends no `BLOCK_END` for its open block, as it sends no `RUN_END`. A block is a
+  stretch of trials under one block type inside a run, not a run (the PI, 2026-10-01);
+  runs stay `RUN_START`/`RUN_END`.
 
 ## The display: direct view, and stereo as viewports
 

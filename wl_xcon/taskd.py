@@ -48,9 +48,9 @@ from wl_xcon import link as _link
 from wl_xcon.bounds import Bounds, Exceeded, _finite
 from wl_xcon.check import check
 from wl_xcon.cli import _clock, _load_allocation, _load_trial, _shown
-from wl_xcon.codes import TRIAL_END, TRIAL_START, Allocation
+from wl_xcon.codes import BLOCK_END, TRIAL_END, TRIAL_START, Allocation
 from wl_xcon.dio import Absent as NoCard
-from wl_xcon.encode import TRIAL_NUMBER, words_for
+from wl_xcon.encode import TRIAL_NUMBER, UNALLOCATED_TASK_CODE, words_for, words_for_block
 from wl_xcon.geometry import Geometry
 from wl_xcon.levels import Levels
 from wl_xcon.record import XCON_DIRNAME, SessionRecord, welfare_note
@@ -2052,8 +2052,10 @@ class Session:
                             f"scheduler is not leaving {scheduler.block.name!r}; it "
                             f"can draw no further trial and must not spin"
                         )
-                    # The block its type finished is closed; the next trial opens the next.
-                    levels.end_block()
+                    # The block its type finished closes in the stream after its last
+                    # `TRIAL_END`; the next trial opens the next (session-levels spec §4).
+                    if levels.end_block():
+                        self.card.emit(BLOCK_END)
                     scheduler.advance()
                     self.blocks_run.append(scheduler.block.name)
                     continue
@@ -2069,13 +2071,27 @@ class Session:
                 # a word strobed inside it fails the checksum and loses the trial. The four
                 # go out here, consecutively, on the loop's one thread: after everything
                 # this boundary strobes, and before the trial's first frame. They are
-                # computed before `TRIAL_START`, so `words_for`, the one call here that can
-                # raise before anything is strobed, raises ahead of the stream and never
-                # leaves a trial opened without its number. Once `TRIAL_START` is out, a
-                # card that fails between the emits, a Ctrl-C, a SIGTERM or a crash can
-                # still cut the escape short (XC-199).
-                position, _opened = levels.start_trial()
+                # computed before `TRIAL_START`, with a block's below, so `words_for` and
+                # `words_for_block`, the calls here that can raise, raise ahead of the
+                # stream and never leave a trial opened without its number. Once
+                # `TRIAL_START` is out, a card that fails between the emits, a Ctrl-C, a
+                # SIGTERM or a crash can still cut the escape short (XC-199).
+                position, opened = levels.start_trial()
+                # **Every word this boundary strobes is computed first** (XC-155): a
+                # value that cannot be framed raises here, ahead of the stream, never
+                # leaving a block or a trial opened without its number.
+                block_words = (
+                    words_for_block(position.block_in_session, UNALLOCATED_TASK_CODE)
+                    if opened
+                    else ()
+                )
                 escape = words_for(TRIAL_NUMBER, position.trial_number)
+                # **A block opens with its first trial** (session-levels spec §4; plan
+                # ruling 1): `BLOCK_START` with its number in the session and its task's
+                # code, unbroken, just before that trial's `TRIAL_START`. An abort between
+                # its words cuts it short, as it does the trial's escape (XC-199).
+                for word in block_words:
+                    self.card.emit(word)
                 self.card.emit(TRIAL_START)
                 for word in escape:
                     self.card.emit(word)
@@ -2122,6 +2138,11 @@ class Session:
                 if self.observe is not None:
                     self.observe(condition, values, result)
                 index += 1
+            # **A run that ends by design closes its open block first** (spec §4):
+            # `BLOCK_END`, then `RUN_END`. A fault or an interrupt never reaches here,
+            # so it sends neither, as it sends no `RUN_END` today.
+            if levels.end_block():
+                self.card.emit(BLOCK_END)
             # **Only the kind that was fixed is released** (PI, 2026-09-20).
             # `welfare.head_released` would accept the call for any deployment, and
             # `self.card.emit` would then put a `HEAD_RELEASED` in the stream of a
