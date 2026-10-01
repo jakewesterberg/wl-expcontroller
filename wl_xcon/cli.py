@@ -1540,6 +1540,18 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError:
                 values[name] = raw
 
+        # **A session id is used once** (XC-201). `SessionRecord.open` makes the
+        # folder with `exist_ok`, so running into an existing one appended to its
+        # records and overwrote its `config.json`: two sessions in one folder. Checked
+        # before the link binds and before anything writes. A stranded session is
+        # resumed or ended from the page, which is `wlx taskd`'s path, not this one's.
+        if (args.root / args.session_id).exists():
+            raise SystemExit(
+                f"refused: session id {args.session_id!r} is already used under {args.root}; "
+                f"every session has its own. A stranded session is resumed or ended from the "
+                f"page (wlx taskd), never by running into its folder again (XC-201)"
+            )
+
         # `--link` is the only thing in this command that can reach `zmq`; built
         # here, not at module level, so `wlx run` with no `--link` never acquires
         # the transport dependency (S9a §5's argument for the display layer,

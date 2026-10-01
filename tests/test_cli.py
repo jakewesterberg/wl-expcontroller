@@ -434,6 +434,48 @@ def test_wlx_run_runs_a_session_and_reports_its_outcomes(tmp_path, capsys):
     assert [json.loads(line)["trial_number"] for line in lines] == list(range(1, 21))
 
 
+def test_wlx_run_refuses_a_session_folder_that_already_exists(tmp_path):
+    """**A reused `--session-id` is refused, and nothing under it moves** (XC-201).
+    `SessionRecord.open` made the folder with `exist_ok`, so a second run appended to
+    the first's `.jsonl` records and overwrote its `config.json`. A stranded session
+    is resumed or ended from the page, never by running into its folder again."""
+    folder = tmp_path / "2027-01-14_01"
+    (folder / "xcon").mkdir(parents=True)
+    (folder / "xcon" / "trials.jsonl").write_text('{"trial_number": 1}\n')
+    (folder / "config.json").write_text("{}")
+
+    def snapshot():
+        return {
+            str(p.relative_to(tmp_path)): p.stat().st_size
+            for p in sorted(tmp_path.rglob("*"))
+        }
+
+    before = snapshot()
+    with pytest.raises(SystemExit) as refused:
+        main(
+            [
+                "run",
+                "tasks/fixation_detection.py",
+                *_SETUP,
+                "--allocation", "tasks/allocation.py",
+                "--bounds", "tasks/reference_bounds.py",
+                "--root", str(tmp_path),
+                "--session-id", "2027-01-14_01",
+                "--subject", "REFERENCE",
+                "--out-of-cage-at", _hhmm(),
+                "--delivered-today", "0",
+                "--trials", "1",
+            ]
+        )
+
+    sentence = str(refused.value)
+    assert sentence.startswith("refused:")
+    assert "2027-01-14_01" in sentence
+    assert str(tmp_path) in sentence
+    assert "wlx taskd" in sentence
+    assert snapshot() == before
+
+
 def test_wlx_run_refuses_a_session_that_does_not_say_how_long_the_animal_was_out(
     tmp_path, capsys
 ):
