@@ -628,7 +628,9 @@ XC-150.)*
   **Resume beside end** (XC-026, 2026-10-01; the PI: "Resume or end";
   [its spec](2026-10-01-xc026-resume-design.md) §5): the stranded banner offers *resume
   session* beside *end session…*. A resume reopens the same session from its record, between
-  runs, with its departure read from the record and its numbers carried on; it is not a new
+  runs (or waiting for its return, when End session was pressed before its process stopped:
+  the PI, 2026-10-01, "Bring it back waiting"), with its departure read from the record and its
+  numbers carried on; it is not a new
   session, so the refusal above still holds for an open, and with two stranded each is resumed
   or ended on its own. A record that cannot carry a resume — written before XC-026, or one it
   cannot read — is offered only *end*, and the banner says why. A resume of an animal already

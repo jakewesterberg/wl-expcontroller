@@ -629,7 +629,12 @@ class Session:
         "Take it silently"). The in-session clock restarts here (plan ruling 4). A
         head-fixed session is marked fixed again, since a run needs it (spec §8a item 2);
         its restraint time counts from here, an undercount of a clock that bounds
-        nothing. **`wlx taskd`'s alone**: the terminal does not resume (spec §9)."""
+        nothing. **`wlx taskd`'s alone**: the terminal does not resume (spec §9).
+
+        **A session whose runs were ended comes back waiting for its return** (the final
+        review's I1; the PI, 2026-10-01: "Bring it back waiting"): End session was pressed
+        before its process stopped, so no run starts again, and its head, released then by
+        `end_runs`, is not marked fixed again. Its return closes it as any other's does."""
         if not self.service:
             raise RuntimeError("only a wlx taskd session is resumed (XC-026 spec §9)")
         if self.opened_wall_at is not None:
@@ -654,9 +659,12 @@ class Session:
         code = self._code("SESSION_RESUMED")
         if code is not None:
             self.card.emit(code)
-        if self.spec.deployment is Deployment.RIG_FIXED:
-            self.head_fixed(now)
-        self.phase = "between_runs"
+        if restoration.ended:
+            self.phase = "awaiting_return"
+        else:
+            if self.spec.deployment is Deployment.RIG_FIXED:
+                self.head_fixed(now)
+            self.phase = "between_runs"
 
     def _fixed_config(self) -> dict:
         """What `config.json` holds (P4d-2b spec §6.3): what is fixed for the whole

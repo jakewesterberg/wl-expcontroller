@@ -747,7 +747,8 @@ summary reports it.
 **Built by XC-026 (2026-10-01; [its spec](2026-10-01-xc026-resume-design.md)), for a `wlx taskd`
 session.** A session whose process stopped before its animal's return is resumed from the page,
 *resume session* beside *end session…* (the PI, 2026-10-01: "Resume or end"): the same session
-and folder, between runs, its next run numbered on and every block and trial number carried
+and folder, between runs (or waiting for its return, when End session was pressed before its
+process stopped: the PI, 2026-10-01, "Bring it back waiting"), its next run numbered on and every block and trial number carried
 forward from the record (`trial_starts.jsonl`), so one recording never repeats a number. **The
 departure is read from the record, not retyped** (the PI, 2026-10-01: "Take it silently"): the
 `departure` row in `welfare_notes.jsonl`, which did not exist when the duration clock's answer

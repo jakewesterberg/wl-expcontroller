@@ -119,7 +119,9 @@ these leaves an animal out of its cage with nothing saying so, or records its re
 against the wrong instant. **Since XC-026 (2026-10-01) a stranded session can also be
 resumed** (the PI: "Resume or end"): the page offers *resume session* beside *end
 session…*, and `Service._resume` reopens the same session from its record (`resume.read`,
-then `Session.resume`) — between runs, its departure restored by `restore_departure` and
+then `Session.resume`) — between runs, or waiting for its return when its runs were ended
+before its process stopped (the PI, 2026-10-01: "Bring it back waiting"), its departure
+restored by `restore_departure` and
 never re-taken, its fluid so far by `Welfare.restore_fluid`, its next run numbered on and
 every block and trial number continuing — refused, before anything is written, while a
 session is open, when its record cannot carry it, when its animal's bounds changed since it
@@ -366,11 +368,15 @@ display layer that per-trial scenes do not reset.
   the resume strobes the provisional `SESSION_RESUMED` (4137) once, and the next run's
   escape carries the next run number, with every block and trial number continuing, so
   one recording never repeats a trial, block or run number. **A resumed rig-fixed
-  session strobes a second `HEAD_FIXED` (4128) at the resume, with no `HEAD_RELEASED`
-  (4129) between** (XC-026 spec §8a item 2): a run needs the head marked fixed, and
-  nothing recorded whether it was released across the crash, so a stream can hold
-  several 4128 and one 4129, at the session's end; the session's own restraint time
-  counts from the latest 4128, an undercount. Restraint bounds nothing (the PI, 2026-09-19 and 2026-09-26).
+  session strobes another `HEAD_FIXED` (4128) at the resume, with no `HEAD_RELEASED`
+  (4129) between, unless its runs were ended before the crash** (XC-026 spec §8a item 2,
+  and §3's note of 2026-10-01): a run needs the head marked fixed, and nothing recorded
+  whether it was released across the crash. A session ended before the crash had its
+  4129 strobed by End session and comes back waiting for its return, with no run to
+  start, so its resume strobes no 4128. So a stream holds one or more 4128 and at most
+  one 4129, after the last 4128: at the session's end, or before the 4137 of a resume
+  that brings it back waiting. The session's own restraint time counts from the latest
+  4128, an undercount. Restraint bounds nothing (the PI, 2026-09-19 and 2026-09-26).
 
 ## The display: direct view, and stereo as viewports
 

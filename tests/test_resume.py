@@ -211,6 +211,19 @@ def test_a_start_row_without_its_run_and_task_numbers_cannot_be_resumed(tmp_path
         read(directory, DEPARTURE)
 
 
+def test_a_session_whose_runs_were_ended_reads_back_as_ended(tmp_path):
+    """The final review's I1: End session's `end` row (`Session.end_runs`) is read back,
+    so the session comes back waiting for its return (the PI, 2026-10-01)."""
+    directory = _two_runs(tmp_path)
+    assert read(directory, DEPARTURE).ended is False
+
+    with (directory / "controls.jsonl").open("a") as handle:
+        handle.write(json.dumps({"kind": "end", "by": "jake", "at": DEPARTURE + 950,
+                                 "trial_index": 0, "run": 1}) + "\n")
+
+    assert read(directory, DEPARTURE).ended is True
+
+
 def test_a_restored_tally_counts_hangs(tmp_path):
     directory = _two_runs(tmp_path)
     _jsonl(directory / "trials.jsonl", [_line(1, "hang", 0.0, None, run=0)])

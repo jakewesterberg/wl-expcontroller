@@ -55,6 +55,8 @@ class Restoration:
     sequence: int
     bounded: dict
     last_written_at: float
+    #: Whether its runs were ended (End session's `end` row) before its process stopped.
+    ended: bool
 
 
 def _rows(directory: Path, name: str) -> list[dict]:
@@ -185,4 +187,5 @@ def _read(directory: Path, departure: float) -> Restoration:
         sequence=max((int(c["sequence"]) for c in changes), default=0),
         bounded=bounded,
         last_written_at=max(path.stat().st_mtime for path in directory.iterdir()),
+        ended=any(row["kind"] == "end" for row in controls),
     )

@@ -1841,6 +1841,49 @@ def test_a_session_refused_past_its_limit_is_then_offered_only_end(tmp_path):
     assert _kinds(folders[2])[-1] == "returned"
 
 
+def _moved(seconds_later: float) -> _Wall:
+    wall = _Wall()
+    wall.at = WALL + seconds_later
+    return wall
+
+
+def test_a_session_ended_before_its_process_stopped_comes_back_waiting_for_its_return(tmp_path):
+    """The final review's I1, and the PI's answer (2026-10-01): "Bring it back waiting". A
+    rig-fixed session whose runs were ended with End session -- its head released, its
+    return not yet given -- and whose process then stopped is resumed waiting for that
+    return: no run starts, its head is not marked fixed again, and the return closes it
+    with the usual summary, its fluid and its supplement shown."""
+    cards, kept = _kept_cards()
+    folders = _folders(tmp_path)
+    first = _made(folders, card=kept)
+    _step(first, _open())
+    _step(first, _start())
+    _run_to_its_end(first)
+    assert _step(first, _end(returned=None)).phase == "awaiting_return"
+    _step(first, ManualReward(by=BY))
+    fluid = first.session.welfare.session_total()
+    service = _made(folders, card=kept, wall=_moved(300))
+
+    frame = _step(service, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    assert frame.phase == "awaiting_return"
+    assert frame.fluid_session_ml == pytest.approx(fluid)
+    refused = _step(service, _start())
+    assert _refused(refused)[-1] == (
+        "the session has ended and waits for its animal's return, so no run starts"
+    )
+    idle = _step(service, _end())
+    assert isinstance(idle, Idle) and service.stranded == []
+    summary = idle.closed
+    assert (summary.session_id, summary.phase) == ("2027-01-14_01", "closed")
+    assert summary.fluid_session_ml == pytest.approx(fluid)
+    assert summary.fluid_today_ml == pytest.approx(fluid), "none given earlier that day"
+    assert summary.shortfall_ml == pytest.approx(summary.floor_ml - fluid)
+    restraint = [code for card in cards for code in card.codes if code in (4128, 4129, 4137)]
+    assert restraint == [4128, 4129, 4137], "no HEAD_FIXED after the head was released"
+    assert _kinds(folders[2])[-3:] == ["session resumed", "returned", "session ended"]
+
+
 def _lowered_live(folders, limit: float) -> None:
     """A session whose out-of-cage limit was lowered to `limit` during its run -- a
     page's `set`, or `wlx console --set out_of_cage=…`, which `Session.set` takes as it

@@ -41,7 +41,13 @@ S8 §6 decided the other way in August: the session continues. It was never buil
 ## 3. What a resume does
 
 A resume reopens **the same session**: its id, its folder, its record files, appended to. It
-comes back **between runs** (`phase` `between_runs`), ready for the next run. It restores:
+comes back **between runs** (`phase` `between_runs`), ready for the next run. *(2026-10-01, the
+PI, answering the final review's I1: "Bring it back waiting". A session whose runs were ended
+with End session before its process stopped (its `end` row in `controls.jsonl`, its head
+released, its return not yet given) comes back **waiting for its return** (`awaiting_return`)
+instead. No run starts, a hand reward can still be given, its head is not marked fixed again,
+and the return closes it through the usual path, with the usual summary: its fluid and its
+supplement shown.)* It restores:
 
 | What | From |
 |---|---|
@@ -110,6 +116,9 @@ On resume:
     refusal's sentence as its reason, so its banner no longer offers resume; past the limit only
     ever stays true. The changed-bounds refusal below leaves it resumable.)*
   - the bounds loaded differ from `config.json`'s (§3).
+- **A session ended before its crash is resumed waiting for its return** (2026-10-01, the PI:
+  "Bring it back waiting"; §3). It is not refused: *start run* is refused for it, as for any
+  session awaiting its return, and *end session…* takes the return.
 - **"No new session while an animal is stranded" still holds** (P4d-2b §6.1). A resume is not a
   new session. With two stranded sessions, each is resumed or ended on its own.
 - **`wlx run`** refuses a `--session-id` whose folder already exists (closes XC-201). The refusal
@@ -122,12 +131,16 @@ On resume:
   `0x8006`) carries the next run number, and every block and trial number continues.
 - **4137 `SESSION_RESUMED`** marks the resume. wl-preproc's rule already bounds the crashed run
   at the next run's start.
-- **A resumed rig-fixed (`RIG_FIXED`) session strobes a second `HEAD_FIXED` (4128) at the
-  resume, with no `HEAD_RELEASED` (4129) between** (added 2026-10-01; §8a item 2, pinned by the
-  plan's path test). The resume marks the head fixed again because a run needs it, and nothing
-  recorded whether it was released across the crash. So one recording can hold several 4128 and
-  one 4129, at the session's end; the session's own restraint time counts from the latest 4128.
-  Restraint bounds nothing.
+- **A resumed rig-fixed (`RIG_FIXED`) session strobes another `HEAD_FIXED` (4128) at the
+  resume, with no `HEAD_RELEASED` (4129) between, unless its runs were ended before the crash**
+  (added 2026-10-01; §8a item 2, pinned by the plan's path test; corrected 2026-10-01 for the
+  PI's ruling in §3). A resume marks the head fixed again because a run needs it, and nothing
+  recorded whether it was released across the crash. A session ended before the crash had its
+  4129 strobed by End session, and it comes back waiting for its return with no run to start,
+  so its resume strobes no 4128. So one recording holds one or more 4128 and at most one 4129,
+  after the last 4128: at the session's end, or before the 4137 of a resume that brings it back
+  waiting. The session's own restraint time counts from the latest 4128. Restraint bounds
+  nothing.
 
 ## 7. Testing (sim first)
 
@@ -182,7 +195,9 @@ none changes what the PI chose.
    rows.
 2. **A head-fixed (`RIG_FIXED`) session cannot start a run without a head-fixed mark**
    (`Welfare.preflight`). A resume of one therefore **marks the head fixed again at the resume**
-   and strobes `HEAD_FIXED`; its restraint time counts from the resume, an undercount. Restraint
+   and strobes `HEAD_FIXED`, unless its runs were ended before the crash and it comes back
+   waiting for its return, with no run to start (§3's 2026-10-01 note); its restraint time
+   counts from the resume, an undercount. Restraint
    bounds nothing (the PI, 2026-09-19 and 2026-09-26). §3's "`chair_seconds` is `None`" stands for
    a chaired session only.
 3. **More session state is restored:**
