@@ -5396,3 +5396,116 @@ def test_the_frames_a_session_publishes_carry_its_performance(tmp_path):
     assert between.phase == "between_runs"
     assert between.performance == session.performance
     assert between.performance.run is None
+
+
+# --- a stranded session resumed from its record (XC-026 Task 3) ---------------
+
+
+def _stage_bounded(session: Session, name: str, value: float) -> None:
+    """Set a welfare-bounded value as a console does: queued on the link, drained at
+    the run's first boundary and applied at the next."""
+    session.link.queue(SetParameter(name=name, value=value, by="jake"))
+
+
+def _resumed(tmp_path, first: Session, **spec) -> Session:
+    """A second `wlx taskd` session over `first`'s folder, resumed from its record. The
+    record is read before anything writes to the folder (`last_written_at`)."""
+    from wl_xcon import resume
+
+    restoration = resume.read(first.directory, first.welfare.left_cage_wall_at)
+    again = Session(
+        _spec(tmp_path, task="", trials=0, values={}, **spec),
+        card=Card(),
+        pump=Pump(),
+        link=Simulated(),
+        service=True,
+    )
+    again.wall_clock = lambda: WALL_NOW + again.now()
+    again.resume(restoration, by="jake", how="test")
+    return again
+
+
+def test_a_resumed_session_carries_its_numbers_clock_fluid_and_reward_size(tmp_path):
+    first = _service_session(tmp_path, link=Simulated())
+    _stage_bounded(first, "reward_correct", 0.2)
+    first.run(_levels_run(blocks=_plan("X", each=3)))
+    config_before = (first.directory / "config.json").read_bytes()
+
+    again = _resumed(tmp_path, first)
+    assert again.spec.bounds.value("reward_correct") == 0.2
+    again.run(_levels_run(blocks=_plan("Y", each=2)))
+
+    numbers = [row["trial_number"] for row in _trial_rows(again)]
+    assert numbers == list(range(1, len(numbers) + 1)), "one file, its numbers continuing"
+    assert len(numbers) > 3
+    assert _runs(again)[-1]["run"] == 1
+    assert again.welfare.left_cage_wall_at == first.welfare.left_cage_wall_at
+    assert first.welfare.session_total() > 0, "the first process paid something"
+    assert again.welfare.session_total() >= first.welfare.session_total()
+    assert again.resumed_at is not None and again.opened_wall_at == again.resumed_at
+    assert again.phase == "between_runs"
+    assert (again.directory / "config.json").read_bytes() == config_before
+    notes = (again.directory / "welfare_notes.jsonl").read_text().splitlines()
+    kinds = [json.loads(line)["kind"] for line in notes]
+    assert kinds.count("departure") == 1 and kinds.count("session resumed") == 1
+    assert kinds.count("session opened") == 1, "a resume is not a second open"
+
+
+def test_a_resume_strobes_session_resumed_once_before_the_next_runs_start(tmp_path):
+    first = _service_session(tmp_path)
+    first.run(_levels_run(blocks=_plan("X", each=2)))
+    again = _resumed(tmp_path, first)
+    again.run(_levels_run(blocks=_plan("Y", each=1)))
+
+    assert again.card.codes.count(4137) == 1
+    assert again.card.codes.index(4137) < again.card.codes.index(4135)
+
+
+def test_a_resumed_head_fixed_session_is_fixed_at_the_resume_and_may_run(tmp_path):
+    first = _service_session(tmp_path)
+    first.run(_levels_run(blocks=_plan("X", each=2)))
+    again = _resumed(tmp_path, first)
+
+    assert again.card.codes.count(4128) == 1
+    assert again.welfare.fixed_wall_at == again.resumed_at
+    again.run(_levels_run(blocks=_plan("Y", each=1)))
+    assert again.stop_kind == "completed"
+
+
+def test_a_resumed_chaired_session_strobes_no_head_fixed_and_has_no_chair_time(tmp_path):
+    first = _service_session(tmp_path, deployment=Deployment.RIG_CHAIRED)
+    first.run(_levels_run(blocks=_plan("X", each=2)))
+    again = _resumed(tmp_path, first, deployment=Deployment.RIG_CHAIRED)
+
+    assert 4128 not in again.card.codes
+    assert again.welfare.chair_seconds(again.wall_now()) is None
+
+
+def test_resume_refuses_an_opened_session_and_a_non_service_one(tmp_path):
+    from wl_xcon import resume
+
+    first = _service_session(tmp_path)
+    first.run(_levels_run(blocks=_plan("X", each=2)))
+    restoration = resume.read(first.directory, first.welfare.left_cage_wall_at)
+    with pytest.raises(RuntimeError, match="opened or resumed once"):
+        first.resume(restoration, by="jake", how="test")
+    terminal = _session(_spec(tmp_path))
+    with pytest.raises(RuntimeError, match="only a wlx taskd session"):
+        terminal.resume(restoration, by="jake", how="test")
+
+
+def test_the_session_resumed_row_names_the_person_and_the_records_last_write(tmp_path):
+    from wl_xcon.record import _local
+
+    first = _service_session(tmp_path)
+    first.run(_levels_run(blocks=_plan("X", each=2)))
+    written = max(path.stat().st_mtime for path in first.directory.iterdir())
+    again = _resumed(tmp_path, first)
+
+    rows = [
+        json.loads(line)
+        for line in (again.directory / "welfare_notes.jsonl").read_text().splitlines()
+    ]
+    (row,) = [r for r in rows if r["kind"] == "session resumed"]
+    assert row["by"] == "jake" and row["how"] == "test"
+    assert _local(written) in row["reason"]

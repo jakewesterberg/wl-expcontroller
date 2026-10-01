@@ -1791,6 +1791,11 @@ ENTRY_POINTS = {
     # A stranded session's departure, read back from its record to take its return
     # (P4d-2b b3a): an instant like the marks it restores.
     "Welfare.restore_departure.at": (INSTANT, lambda v: _welfare().restore_departure(v)),
+    # A resumed session's fluid so far, read back from its record (XC-026): a volume.
+    "Welfare.restore_fluid.commanded": (
+        MAGNITUDE,
+        lambda v: _welfare().restore_fluid(v, None),
+    ),
     # The confirmation band (PI, 2026-09-20) reads the same two wall-clock instants
     # `left_cage` does, and computes the same interval from them, so it gets the
     # same three checks rather than trusting that its caller already made them: on
@@ -1924,6 +1929,7 @@ NOT_ENTRY_POINTS = {
         "restraint interval on every read"
     ),
     "Welfare.released_wall_at": "as fixed_wall_at; read through chair_seconds",
+    "Welfare.restore_fluid.last_delivery_wall_at": "as Welfare.last_delivery_wall_at",
     "Pump.deliver.ml": "a volume leaving this module, already checked by its ceiling",
     "Simulated.deliver.ml": "as Pump.deliver",
     "Absent.deliver.ml": "as Pump.deliver; refuses unconditionally anyway",
@@ -2594,3 +2600,34 @@ def test_a_far_departures_sentence_is_unchanged_confirm_or_amend_with_a_reason()
         "2026-09-20). Confirm it, or amend it with a reason -- an hour typed in the wrong "
         "half of the day sits inside every limit there is and nothing else will catch it"
     )
+
+
+# --- a resumed session's fluid (XC-026) ----------------------------------------
+
+
+def test_restored_fluid_counts_toward_the_session_and_the_day():
+    welfare = _welfare(already=40.0)
+    welfare.restore_fluid(1.5, 1_700_000_400.0)
+    assert welfare.session_total() == 1.5
+    assert welfare.total_today() == 41.5
+    assert welfare.last_delivery_wall_at == 1_700_000_400.0
+
+
+def test_fluid_is_restored_once():
+    welfare = _welfare()
+    welfare.restore_fluid(1.0, None)
+    with pytest.raises(Exceeded, match="restored once"):
+        welfare.restore_fluid(1.0, None)
+
+
+def test_fluid_is_restored_only_before_any_delivery():
+    welfare = _welfare()
+    welfare.deliver("reward_correct", 1_700_000_000.0)
+    with pytest.raises(Exceeded, match="restored once"):
+        welfare.restore_fluid(1.0, None)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -0.5])
+def test_restored_fluid_must_be_a_real_amount(bad):
+    with pytest.raises(Exceeded):
+        _welfare().restore_fluid(bad, None)

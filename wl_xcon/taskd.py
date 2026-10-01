@@ -59,7 +59,7 @@ from wl_xcon.encode import (
 )
 from wl_xcon.geometry import Geometry
 from wl_xcon.levels import Levels
-from wl_xcon.record import XCON_DIRNAME, SessionRecord, welfare_note
+from wl_xcon.record import XCON_DIRNAME, SessionRecord, _local, welfare_note
 from wl_xcon.scheduler import Block, Condition, Scheduler
 from wl_xcon.simulate import Census, Subject, Tally, prepare
 from wl_xcon.run import run_trial
@@ -400,6 +400,9 @@ class Session:
     #: `welfare` method reads either this or `ended_wall_at` -- and exists only to
     #: be shown and recorded, per the PI's own words on the ruling. See `open()`.
     opened_wall_at: float | None = field(init=False, default=None)
+    #: The instant a stranded session was resumed in this process (XC-026), `None`
+    #: for one opened here. The in-session clock restarts at it (plan ruling 4).
+    resumed_at: float | None = field(init=False, default=None)
     #: `None` until `end()`, a wall instant afterwards. See `end()`.
     ended_wall_at: float | None = field(init=False, default=None)
     #: When a console paused the session, on the session's anchored clock, or `None`
@@ -616,6 +619,44 @@ class Session:
         self._record.configure(self._fixed_config())
         if self.service:
             self.phase = "between_runs"
+
+    def resume(self, restoration, *, by: str, how: str) -> None:
+        """Reopen a stranded session from its record (XC-026 spec §3): its departure, its
+        fluid so far, its numbers and the bounded values it last ran with. It comes back
+        between runs, its record appended to and `config.json` left as written at open.
+
+        The departure is restored, never re-taken (`Welfare.restore_departure`; the PI:
+        "Take it silently"). The in-session clock restarts here (plan ruling 4). A
+        head-fixed session is marked fixed again, since a run needs it (spec §8a item 2);
+        its restraint time counts from here, an undercount of a clock that bounds
+        nothing. **`wlx taskd`'s alone**: the terminal does not resume (spec §9)."""
+        if not self.service:
+            raise RuntimeError("only a wlx taskd session is resumed (XC-026 spec §9)")
+        if self.opened_wall_at is not None:
+            raise RuntimeError("a session is opened or resumed once")
+        self.welfare.restore_departure(restoration.departure)
+        self.welfare.restore_fluid(restoration.commanded, restoration.last_reward_at)
+        for name, value in restoration.bounded.items():
+            self.spec.bounds.set(name, value, by=f"{by}, restored on resume")
+        self._levels = restoration.levels
+        self.run_index = restoration.run_index
+        self._sequence = restoration.sequence
+        now = self.wall_now()
+        self.opened_wall_at = self.resumed_at = now
+        self._note(
+            "session resumed", now, by, how,
+            reason=f"after its process stopped; its record was last written at "
+                   f"{_local(restoration.last_written_at)}",
+        )
+        self._record = SessionRecord.open(
+            self.spec.root, self.spec.session_id, self.spec.subject
+        )
+        code = self._code("SESSION_RESUMED")
+        if code is not None:
+            self.card.emit(code)
+        if self.spec.deployment is Deployment.RIG_FIXED:
+            self.head_fixed(now)
+        self.phase = "between_runs"
 
     def _fixed_config(self) -> dict:
         """What `config.json` holds (P4d-2b spec §6.3): what is fixed for the whole

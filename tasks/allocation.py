@@ -96,5 +96,9 @@ ALLOCATION: Allocation = replace(
         # wl-xtasks owns the final numbering.
         4135: "RUN_START",
         4136: "RUN_END",
+        # A stranded session resumed after its process stopped (XC-026 spec §3),
+        # strobed once at the resume. Provisional, in this range for the reason the
+        # five above are; wl-xtasks owns the final numbering.
+        4137: "SESSION_RESUMED",
     },
 )

@@ -377,6 +377,8 @@ class Welfare:
     warn_within: float = WARN_WITHIN_DEFAULT
     #: Anything a person should see in the session summary, in order.
     notes: list = field(default_factory=list)
+    #: Whether `restore_fluid` has run: a resumed session's fluid comes back once.
+    _fluid_restored: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
         # The three volumes this object is built around; `already_today` arrives
@@ -614,6 +616,28 @@ class Welfare:
             )
         _finite("the recorded departure of a stranded session", at)
         self.left_cage_wall_at = at
+
+    def restore_fluid(self, commanded: float, last_delivery_wall_at: float | None) -> None:
+        """The fluid a resumed session commanded before its process stopped, read back
+        from its record (XC-026 spec §4: each trial's line and each hand reward), and its
+        last reward's instant (§8a item 3).
+
+        **Restored once, and only before this process has delivered anything**, so a
+        restored total is never added to one this process counted: `Session.resume`
+        applies it before its first run. A trial the crash cut short has no line, so its
+        reward is not in `commanded`; the shortfall, and so the supplement, errs larger,
+        never smaller. Refused: an amount that is not a real, non-negative number.
+        `last_delivery_wall_at` is compared against nothing (see its field), so it is
+        taken as read."""
+        if self._fluid_restored or self.commanded or self.deliveries:
+            raise Exceeded(
+                f"subject {self.bounds.subject!r}'s session fluid is restored once, before "
+                f"any delivery, and this session already holds {self.commanded} mL"
+            )
+        _magnitude("a resumed session's commanded fluid", commanded)
+        self.commanded = commanded
+        self.last_delivery_wall_at = last_delivery_wall_at
+        self._fluid_restored = True
 
     def _far_from_now(self, what: str, at: float, wall_now: float) -> str | None:
         """The one copy of "is this mark far enough from now to need a person".
