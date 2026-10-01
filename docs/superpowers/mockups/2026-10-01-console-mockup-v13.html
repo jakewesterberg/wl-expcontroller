@@ -938,7 +938,7 @@ button.pill { border: 0; cursor: pointer; }
   /* ---- one simulated trial ---- */
   function newRun(task) {
     var t = TASKS[task];
-    var before = S.session ? S.session.runs.filter(function (q) { return q.task === task; }).reduce(function (a, q) { return a + q.blocks.length; }, 0) : 0;
+    var before = S.session ? S.session.runs.reduce(function (a, q) { return a + q.blocks.length; }, 0) : 0;
     return { n: S.session.runs.length + 1, task: task, started: S.clock, trial: 0, outcomes: {}, fluid: 0, blocks: [], blockBase: before,
       need: t.conds.map(function (c) { return [c[0], 0, c[1]]; }), byCond: {}, rts: [], rtByCond: {}, seq: [], stair: [], contrast: 0.45 };
   }

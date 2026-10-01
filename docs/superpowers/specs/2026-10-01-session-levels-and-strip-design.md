@@ -3,8 +3,8 @@
 - **Status:** designed in conversation on 2026-10-01 with the PI, who answered each section's
   questions in the UI (quoted below). He saw it drawn in the mockup
   `docs/superpowers/mockups/2026-10-01-console-mockup-v13.html` and asked for this spec to be
-  written and for wl-preproc and wl-works to be told the same day. The spec itself awaits his
-  review.
+  written and for wl-preproc and wl-works to be told the same day. He approved it the same day,
+  with one change: the strip's block line shows the session's block number (§6).
 - **Date:** 2026-10-01
 - **Parents:**
   - the P4d-2b browser console spec (`2026-09-26-P4d2b-browser-console-design.md`): §4.0, the
@@ -143,7 +143,7 @@ never recomputed by a console (the `Telemetry` docstring's rule):
 
 - **Session, task, run and block tallies**: the outcome counts for each, so the strip's rollup
   (correct plus correct rejection, P4d-2b §4.0) is applied on the page as today.
-- The current block's `block_in_task` and block type, and the current task's name and
+- The current block's `block_in_session` and block type, and the current task's name and
   `run_in_task`.
 - **Between runs**, the session tally stays. The run, task and block tallies are `None`, and
   the strip says "between runs".
@@ -177,15 +177,15 @@ below session"). **This amends P4d-2b §4.0**:
 - **session**, with trials per minute (derived by `wlx serve`, as today);
 - **the task's name**, across its runs, noting how many runs;
 - **this run**, noting its number;
-- **block N · type**: the current block's `block_in_task` and its block type.
+- **block N · type**: the current block's `block_in_session` and its block type.
 
-Between runs, the task, run and block lines read "between runs".
+Between runs, one line reading "between runs" stands in for the task, run and block lines.
 
 **The scheduled-stop cell** appears beside them while a stop is scheduled, as today.
 
-- **Ruling (mine, for the PI's review):** the block line shows `block_in_task`, not
-  `block_in_session`. It sits under the task's line, and the task's own block count is what a
-  person reading it is following. Costs if wrong: one field changes in one line.
+- **The block line shows `block_in_session`** (the PI, 2026-10-01, reviewing this spec).
+  That is the number the recording's `BLOCK_START` carries, so the strip and the recording
+  name a block alike. This spec's draft had proposed `block_in_task`.
 - **The limit is 8 hours.** The PI, 2026-10-01: the institution's out-of-cage limit is 8
   hours, and the 12 recorded since 2026-09-19 was wrong. The mockup shows 8. The repository's
   documents and the reference bounds config are corrected on their own branch,
