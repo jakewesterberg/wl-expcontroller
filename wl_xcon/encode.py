@@ -28,6 +28,14 @@ CONDITION = 0x8003
 #: as each block opens, with the block's `block_in_session` (session-levels spec §4).
 BLOCK_START = 0x8002
 
+#: wl-preproc's `Escape.RUN_START` (XC-205): two payload words, `(run_number,
+#: task_type_code)`, `BLOCK_START`'s layout. `taskd` strobes it as each run starts, with
+#: the run's `run_in_session` (session-levels spec §4). **Named apart from the
+#: allocation's `RUN_START`** (4135, which `taskd` looks up by name and still strobes
+#: just before it): that one is a task event in the allocation, and this is the
+#: framework's escape, the run wl-preproc measures.
+RUN_ESCAPE = 0x8006
+
 #: The task type code a task carries until wl-xtasks allocates codes (spec §4).
 #: wl-preproc's `TaskTypeCode` namespace is 1-255 (`contracts/events.py`), so 0 names no
 #: task: it says "not allocated" rather than naming another.
@@ -85,17 +93,35 @@ def words_for(escape: int, value: int) -> list[int]:
     return [escape, *payload, _checksum(escape, payload)]
 
 
+def _numbered(escape: int, level: str, number: int, task_code: int) -> list[int]:
+    """The full word sequence of an escape whose payload is `(number, task_type_code)`:
+    the escape, the number (counting from 1), the task's type code, and the checksum
+    every escape carries. `BLOCK_START` and `RUN_START` share this layout in wl-preproc's
+    `PAYLOAD_WORD_COUNTS`, so they share one framing, and one set of refusals, here.
+    `level` names the number in a refusal: `block` or `run`."""
+    if not 0 <= number <= WORD_MASK:
+        raise ValueError(f"{level} number out of 16-bit range: {number}")
+    if number < 1:
+        raise ValueError(f"a {level} number counts from 1: {number}")
+    if not 0 <= task_code <= WORD_MASK:
+        raise ValueError(f"task code out of 16-bit range: {task_code}")
+    payload = [number, task_code]
+    return [escape, *payload, _checksum(escape, payload)]
+
+
 def words_for_block(block_number: int, task_code: int) -> list[int]:
     """`BLOCK_START`'s full word sequence: the escape, the block's number in the
     session, the task's type code, and the checksum every escape carries.
 
     Called before anything of the block is strobed, as `words_for` is for a trial's
     number (XC-155): a value that cannot be framed raises ahead of the stream."""
-    if not 0 <= block_number <= WORD_MASK:
-        raise ValueError(f"block number out of 16-bit range: {block_number}")
-    if block_number < 1:
-        raise ValueError(f"a block number counts from 1: {block_number}")
-    if not 0 <= task_code <= WORD_MASK:
-        raise ValueError(f"task code out of 16-bit range: {task_code}")
-    payload = [block_number, task_code]
-    return [BLOCK_START, *payload, _checksum(BLOCK_START, payload)]
+    return _numbered(BLOCK_START, "block", block_number, task_code)
+
+
+def words_for_run(run_number: int, task_code: int) -> list[int]:
+    """wl-preproc's `RUN_START` (`RUN_ESCAPE` here): the escape, the run's number in the
+    session, the task's type code, and the checksum (XC-205).
+
+    Called before anything of the run is strobed, as `words_for_block` is for a block:
+    a value that cannot be framed raises ahead of the stream."""
+    return _numbered(RUN_ESCAPE, "run", run_number, task_code)

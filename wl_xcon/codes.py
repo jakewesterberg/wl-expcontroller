@@ -85,6 +85,14 @@ TRIAL_END = 33
 #: it after a block's last `TRIAL_END`, when its block type is done or its run ends by
 #: design. A run that faults sends none, as it sends no `RUN_END`.
 BLOCK_END = 3
+
+#: **wl-preproc's `Marker.RUN_END` closes a run that ended by design** (XC-205;
+#: session-levels spec §4): `taskd.Session.run` strobes it after the run's last
+#: `BLOCK_END`, and just before the allocation's own `RUN_END` code (4136). A run that
+#: faults or is interrupted sends neither. **Named apart from that code**, which `taskd`
+#: looks up in the allocation by the name `RUN_END`: this is wl-preproc's marker, the
+#: end of the run it measures, opened by `encode.RUN_ESCAPE`.
+RUN_END_MARKER = 4
 _TRIAL_CORRECT = 34
 _TRIAL_ERROR = 35
 _TRIAL_ABORT = 36

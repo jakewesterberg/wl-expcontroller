@@ -148,3 +148,48 @@ def test_a_block_start_round_trips_through_wl_preprocs_decoder():
 def test_a_block_start_that_cannot_be_framed_is_refused(block, task, said):
     with pytest.raises(ValueError, match=said):
         encode.words_for_block(block, task)
+
+
+def test_the_run_markers_are_wl_preprocs():
+    """XC-205: `encode.RUN_ESCAPE` is wl-preproc's `Escape.RUN_START`, two payload words
+    as `BLOCK_START`'s are, and `codes.RUN_END_MARKER` is its `Marker.RUN_END`. Named apart
+    from the allocation's `RUN_START` and `RUN_END` codes (4135 and 4136), which `taskd`
+    still strobes beside them."""
+    Escape, Marker = wl_preproc_events.Escape, wl_preproc_events.Marker
+
+    assert encode.RUN_ESCAPE == Escape.RUN_START
+    assert codes.RUN_END_MARKER == Marker.RUN_END
+    assert wl_preproc_events.PAYLOAD_WORD_COUNTS[Escape.RUN_START] == 2
+
+
+@pytest.mark.parametrize(("run", "task"), [(1, 0), (2, 0), (27, 0), (65_535, 255)])
+def test_a_run_start_is_framed_exactly_as_wl_preproc_frames_it(run, task):
+    """Their `encode_payload` as the oracle, as for `BLOCK_START`: the escape, the run's
+    number, the task code, and their checksum."""
+    theirs = wl_preproc_events.encode_payload(wl_preproc_events.Escape.RUN_START, [run, task])
+    assert encode.words_for_run(run, task) == list(theirs)
+
+
+def test_a_run_round_trips_through_wl_preprocs_decoder():
+    """A run's opening and its closing marker, decoded by theirs: one `RUN_START` payload
+    carrying the run's number and task code, then one `RUN_END`."""
+    words = [
+        *encode.words_for_run(2, encode.UNALLOCATED_TASK_CODE),
+        *words_for_code(codes.RUN_END_MARKER),
+    ]
+    start, end = wl_preproc_events.decode_stream([(i * 0.001, w) for i, w in enumerate(words)])
+
+    assert (start.escape, start.words) == (wl_preproc_events.Escape.RUN_START, (2, 0))
+    assert end.code == wl_preproc_events.Marker.RUN_END
+
+
+@pytest.mark.parametrize(("run", "task", "said"), [
+    (0, 0, "a run number counts from 1"),
+    (-1, 0, "run number out of 16-bit range"),
+    (65_536, 0, "run number out of 16-bit range"),
+    (1, -1, "task code out of 16-bit range"),
+    (1, 65_536, "task code out of 16-bit range"),
+])
+def test_a_run_start_that_cannot_be_framed_is_refused(run, task, said):
+    with pytest.raises(ValueError, match=said):
+        encode.words_for_run(run, task)
