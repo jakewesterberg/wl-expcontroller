@@ -219,6 +219,8 @@ Schema 7 carries §3's fields, plus four more for the strip and the ticks:
 Trials per minute is derived by `wlx serve` from `trial_index` over the wall time of the
 frames it has seen in the last five minutes, and the page labels it as derived. It is not a
 welfare number and bounds nothing.
+*(Amended 2026-10-01 by the session-levels spec §6: the strip shows the rate bare, as
+"12.0/min" on the session line, and shows nothing in its place before a rate is derived.)*
 
 ### 4.2 What the page shows
 
