@@ -1587,7 +1587,7 @@ def test_a_real_schema_6_frame_is_refused_by_name_not_a_keyerror(
         server.close()
 
 
-def test_closing_the_server_stops_serving(zmq_cleanup, server_cleanup):
+def test_closing_the_server_stops_serving(server_cleanup):
     pub, rep = free_endpoints(2)
     server = server_cleanup(Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN))
     server.start()
@@ -1601,9 +1601,7 @@ def test_closing_the_server_stops_serving(zmq_cleanup, server_cleanup):
         _request(port, "GET", "/")
 
 
-def test_closing_the_server_stops_its_threads_and_open_streams(
-    zmq_cleanup, server_cleanup
-):
+def test_closing_the_server_stops_its_threads_and_open_streams(server_cleanup):
     """Fix round 1, I2: the security review's mutants -- deleting `self._stop.set()`
     or `self.hub.close()` in `Server.close` -- passed every existing `Server` test,
     each merely 5 s slower (the `.join(timeout=5)` calls timing out rather than
@@ -1660,7 +1658,7 @@ def _serve_args(
 
 
 def test_wlx_serve_serves_until_interrupted_then_closes(
-    tmp_path, monkeypatch, capsys, zmq_cleanup, server_cleanup
+    tmp_path, monkeypatch, capsys, server_cleanup
 ):
     pub, rep = free_endpoints(2)
     seen: dict = {}
@@ -2561,7 +2559,7 @@ def test_a_session_command_from_the_boxs_page_is_dispatched_and_a_malformed_one_
     assert dispatch.seen[0].by == PAGE
 
 
-def test_the_services_commands_are_answered_with_what_the_page_shows_next(zmq_cleanup):
+def test_the_services_commands_are_answered_with_what_the_page_shows_next():
     """*Sent* for one of `wlx taskd`'s commands says the page shows what it did; b2a's
     sentence -- "acts on it at its next trial boundary" -- is a run's, and stays theirs.
     Each is handed to the command thread once."""
@@ -2860,7 +2858,7 @@ def test_a_command_is_sent_when_the_rig_acknowledges_it(zmq_cleanup, server_clea
     assert got == [Pause(by="jake (box, unverified)")]
 
 
-def test_with_taskd_gone_the_page_is_told_not_delivered(zmq_cleanup, server_cleanup):
+def test_with_taskd_gone_the_page_is_told_not_delivered(server_cleanup):
     """Spec §5.4: with `taskd` gone, the page is told *not delivered* -- once the
     connect timeout passes, since there is no rig to wait a reply from."""
     pub, rep = free_endpoints(2)
@@ -3196,22 +3194,29 @@ class _Session:
         return server
 
     def _run(self) -> None:
-        self.result["exit_code"] = _main_uninterrupted(
-            [
-                "run", GOOD,
-                *_SETUP,
-                "--allocation", ALLOCATION,
-                "--bounds", str(self.bounds),
-                "--root", str(self.root),
-                "--session-id", self.session_id,
-                "--subject", "REFERENCE",
-                "--out-of-cage-at", self.departure,
-                "--delivered-today", "0",
-                "--trials", "100000",
-                *_TASK_SETS,
-                "--link", f"{self.pub},{self.rep},{self.mark}",
-            ]
-        )
+        try:
+            self.result["exit_code"] = _main_uninterrupted(
+                [
+                    "run", GOOD,
+                    *_SETUP,
+                    "--allocation", ALLOCATION,
+                    "--bounds", str(self.bounds),
+                    "--root", str(self.root),
+                    "--session-id", self.session_id,
+                    "--subject", "REFERENCE",
+                    "--out-of-cage-at", self.departure,
+                    "--delivered-today", "0",
+                    "--trials", "100000",
+                    *_TASK_SETS,
+                    "--link", f"{self.pub},{self.rep},{self.mark}",
+                ]
+            )
+        except BaseException as error:
+            # Kept for `_ended`, then raised on: pytest still reports it as a
+            # thread-exception warning, but a mutation baseline's log keeps only the
+            # failing test's line, and this puts the exception in it (XC-203).
+            self.result["raised"] = repr(error)
+            raise
 
     def __enter__(self) -> "_Session":
         self.runner.start()
@@ -3280,18 +3285,23 @@ class _Session:
 
     def _ended(self) -> str:
         """What a failed wait says about `wlx run`: nothing while it runs, and once it
-        has ended, how (XC-203). CI's two failures of 2026-09-30 and 2026-10-01 said only
-        "wlx run had ended", which could not tell a session stopped early from a `wlx
-        run` that never started; it had raised on a port taken from under it
+        has ended, how, and the last frame the console held (XC-203). CI's two failures
+        of 2026-09-30 and 2026-10-01 said only "wlx run had ended", which could not tell
+        a session stopped early from a `wlx run` that never started; a Linux
+        reproduction showed the second, raising on a port taken from under it
         (`tests/_ports.py`)."""
         if self.runner.is_alive():
             return ""
         if "exit_code" in self.result:
-            return f"; wlx run had ended, exit code {self.result['exit_code']}"
-        return (
-            "; wlx run had ended, raising before main() returned (pytest reports its "
-            "exception as a thread-exception warning)"
+            how = f"exit code {self.result['exit_code']}"
+        else:
+            how = f"raising {self.result.get('raised', 'before main() returned')}"
+        latest = self.server.hub.snapshot(on_box=True, stale_after_s=float("inf"))[0]
+        held = "no frame" if latest is None else ", ".join(
+            f"{name} {getattr(latest, name, '-')}"
+            for name in ("trial_index", "stop_kind", "paused_at")
         )
+        return f"; wlx run had ended, {how}; the console last held {held}"
 
     def ended(self):
         return self.frame(lambda f: f.stop_kind is not None)

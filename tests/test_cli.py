@@ -667,7 +667,7 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     write travels all the way to `parameter_changes.jsonl`.
 
     **`zmq_cleanup` (now in `conftest.py`, moved there in fix round 1) registers
-    `probe` and `console` below.** Fix round 1 found this test reintroduced the 300 s
+    `console` below** (and registered a port probe, until 2026-10-01). Fix round 1 found this test reintroduced the 300 s
     mutation hang `test_link.py`'s own `zmq_cleanup` exists to prevent -- that
     fixture was module-local, so this file's sockets were not protected by it. See
     `conftest.py`'s copy for the full mechanism. `main()`'s *own* `ZmqLink`, built
@@ -683,9 +683,10 @@ def test_wlx_run_with_link_lets_a_real_console_attach(tmp_path, zmq_cleanup):
     Runs `wlx run` on a background thread (a real `Session.run()`, not a mock) and
     drives a real `ZmqConsole` from the test's own thread -- the same two-sided
     shape as the manual two-terminal drive this task's brief calls for, just
-    in-process. Endpoints come from a throwaway `ZmqLink` bound to `tcp://
-    127.0.0.1:0` and closed immediately -- an OS-assigned free pair reused for the
-    real run, rather than a hard-coded port a concurrent run could collide with.
+    in-process. Endpoints come from `tests/_ports.py`: free ports below the range the
+    operating system assigns from, claimed for this process. They used to come from a
+    throwaway `ZmqLink` bound to port 0 and closed at once, a port Linux could hand to
+    another socket before `wlx run` bound it again (2026-10-01).
 
     **Confirms staged-then-applied via telemetry, and only via telemetry.** A
     first draft of this test sent `SetParameter` and read back a single frame just

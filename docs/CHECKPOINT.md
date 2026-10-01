@@ -341,8 +341,7 @@ figure was one low. In order:
 ## What moved on 2026-10-01: the port race CI failed on
 
 **Resume here (state at 2026-10-01):** XC-155 is on `main` and green there (below); its reply is
-with wl-preproc, which acknowledged it the same day and will answer with its design of reading
-`trial_number` (XC-198). This entry is a test-only fix, branch `fix-port-race`, asked of the PI
+with wl-preproc (XC-198). This entry is a test-only fix, branch `fix-port-race`, asked of the PI
 in the UI ("Fix it now"). Nothing else is in flight. Next is the list under b3a-2's entry: b2b
 once wl-works has deployed, the manual reward's other two slices, then XC-183 and XC-186.
 
@@ -350,25 +349,30 @@ once wl-works has deployed, the manual reward's other two slices, then XC-183 an
   XC-155's branch (run `36789375559`, shard 8) and once on `main` after its merge (run
   `36797081773`, shard 3), each time an end-to-end test in `test_serve.py` finding `wlx run`
   ended before the console showed its first trial, with **one warning** where every clean
-  baseline on record has none. Each re-run passed.
+  baseline on record has none. Each re-run passed. CI's logs carry the warning's count, not its
+  text, so what follows is the reproduction's reading, which matches CI's signature.
 - **Not XC-155.** It reproduced on neither copy locally under load (36 full runs at twelve
   processes, 144 end-to-end runs at 48), and no session thread was alive across tests. **In a
   Linux container limited to two CPUs it did**: 3 of 80 runs, the warning `ZMQError: Address
   already in use` from `wlx run`'s thread, which had died before making its card. A probe of
   `/proc/net/tcp`, in the two runs it covered, found the port held by a **listening** socket
   with connections into it.
-- **The cause: probe, release, bind later.** Eight tests found a free port by binding port 0,
-  reading it and releasing it, and `wlx run`, `wlx taskd` or the test bound it again later. In
-  that gap the console's own web server, which binds port 0 itself, can be handed the same port.
-  macOS never showed it (XC-061). It has been there since the end-to-end tests were written;
+- **The cause: probe, release, bind later.** Eight places in four test files found a free port
+  by binding port 0, reading it and releasing it, and `wlx run`, `wlx taskd` or the test bound it
+  again later. In that gap the console's own web server, which binds port 0 itself, can be handed
+  the same port. macOS never showed it: it hands out port-0 ports in sequence, so it does not
+  hand back the one just released. It has been there since the end-to-end tests were written;
   the comment on `CONTROL_TRIAL_BUDGET` now says its "wlx run had ended" of 2026-09-29 may have
   been this too.
 - **The fix.** `tests/_ports.py` picks loopback ports from 20000-32767, below the ranges the
-  kernels choose from themselves (read 2026-10-01: Linux 32768-60999, macOS 49152-65535),
-  checks each is free, and **refuses** a kernel whose range reaches into that band rather than
-  trusting it (`tests/test_ports.py`, 8 tests; each of its five guards broken in turn fails one
-  or two of them). All eight sites use it. A failed wait now says how `wlx run` ended, its exit
-  code or that it raised (closes XC-203). **Measured on Linux under the load that reproduced it**
+  kernels choose from themselves (read 2026-10-01: Linux 32768-60999, macOS 49152-65535;
+  GitHub's `ubuntu-24.04` runners pass the test that checks this), checks each is free, claims
+  it with an `flock` held until the process exits, so parallel local lanes on one host never
+  share one, and **refuses** a kernel whose range reaches into that band rather than trusting it
+  (`tests/test_ports.py`, 12 tests; each of its eight guards broken in turn fails one to three
+  of them). All eight places use it, and `test_link.py`'s one deliberate release-and-rebind now
+  starts from a band port. A failed wait now says how `wlx run` ended, its exit code or the
+  exception it raised, and the console's last frame (closes XC-203). **Measured on Linux under the load that reproduced it**
   (six two-CPU containers, `test_serve.py`'s end-to-end tests): **0 of 120 runs** hit the race,
   where the code before it hit 2 of 60; a port held on purpose (a throwaway test, in the
   container only) fails with "wlx run had ended, raising before main() returned".

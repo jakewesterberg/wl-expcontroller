@@ -664,12 +664,16 @@ def test_a_link_that_cannot_bind_does_not_abandon_its_context(zmq_cleanup):
 
     taken = zmq_cleanup(ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint="tcp://127.0.0.1:0"))
 
+    # From `tests/_ports.py`, not port 0: the failed constructor releases this port and
+    # the retry below binds it again, and Linux can hand a released port-0 port to
+    # another socket in between (2026-10-01).
+    (pub,) = free_endpoints(1)
     with pytest.raises(zmq.ZMQError) as raised:
-        ZmqLink(pub_endpoint="tcp://127.0.0.1:0", rep_endpoint=taken.rep_endpoint)
+        ZmqLink(pub_endpoint=pub, rep_endpoint=taken.rep_endpoint)
     # Held from here to the end of the test, as a caller holding the error would.
     half_built = zmq_cleanup(_half_built(raised, ZmqLink))
     # The premise: PUB bound a port, and it was REP's bind that failed.
-    assert half_built.pub_endpoint.startswith("tcp://127.0.0.1:")
+    assert half_built.pub_endpoint == pub
     assert not hasattr(half_built, "rep_endpoint")
 
     try:
