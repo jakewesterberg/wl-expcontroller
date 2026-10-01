@@ -57,6 +57,9 @@ class Restoration:
     last_written_at: float
     #: Whether its runs were ended (End session's `end` row) before its process stopped.
     ended: bool
+    #: How its last run ended, as `Session.stopped_because` and `stop_kind` say it.
+    stopped_because: str
+    stop_kind: str | None
 
 
 def _rows(directory: Path, name: str) -> list[dict]:
@@ -110,8 +113,10 @@ def _read(directory: Path, departure: float) -> Restoration:
             "its config.json does not hold the bounds it opened with, as ceilings and "
             "minima, so whether they have changed cannot be checked; end it instead"
         )
-    run_rows = [row for row in _rows(directory, RUNS) if row["event"] == "start"]
+    runs = _rows(directory, RUNS)
+    run_rows = [row for row in runs if row["event"] == "start"]
     controls = _rows(directory, CONTROLS)
+    ends = [row for row in controls if row["kind"] == "end"]
     changes = _rows(directory, "parameter_changes.jsonl")
 
     hand = [row for row in controls if row["kind"] == "reward"]
@@ -171,6 +176,22 @@ def _read(directory: Path, departure: float) -> Restoration:
             change["run"] == run_index and change["name"] in bounded
         ):
             bounded[change["name"]] = float(change["now"])
+    # How the last run ended, for the frames and the summary (the final review's M1): its
+    # end row's reason, or, with none, that its process died in it. A session that ran no
+    # run and was ended says so, as `Session.end_runs` words it.
+    stopped_because, stop_kind = "", None
+    if run_index is not None:
+        end = [row for row in runs if row["event"] == "end" and row["run"] == run_index]
+        if end:
+            stopped_because, stop_kind = str(end[-1]["stopped_because"]), end[-1]["stop_kind"]
+        else:
+            stopped_because = (
+                f"run {run_index + 1} stopped with its process; its record holds no end for it"
+            )
+            stop_kind = "fault"
+    elif ends:
+        stopped_because = f"session ended by {ends[0]['by']}, before any run"
+        stop_kind = "operator"
     return Restoration(
         session_id=str(config["session_id"]),
         subject=str(config["subject"]),
@@ -187,5 +208,7 @@ def _read(directory: Path, departure: float) -> Restoration:
         sequence=max((int(c["sequence"]) for c in changes), default=0),
         bounded=bounded,
         last_written_at=max(path.stat().st_mtime for path in directory.iterdir()),
-        ended=any(row["kind"] == "end" for row in controls),
+        ended=bool(ends),
+        stopped_because=stopped_because,
+        stop_kind=stop_kind,
     )

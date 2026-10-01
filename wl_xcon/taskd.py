@@ -646,6 +646,9 @@ class Session:
         self._levels = restoration.levels
         self.run_index = restoration.run_index
         self._sequence = restoration.sequence
+        # How its last run ended (the final review's M1), so `end_runs` never says "before
+        # any run" of a session that ran one before its process stopped.
+        self.stopped_because, self.stop_kind = restoration.stopped_because, restoration.stop_kind
         now = self.wall_now()
         self.opened_wall_at = self.resumed_at = now
         self._note(

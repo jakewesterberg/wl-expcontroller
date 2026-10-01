@@ -1884,6 +1884,35 @@ def test_a_session_ended_before_its_process_stopped_comes_back_waiting_for_its_r
     assert _kinds(folders[2])[-3:] == ["session resumed", "returned", "session ended"]
 
 
+@pytest.mark.parametrize("before", ["a run to its end", "a run killed", "no run, ended"])
+def test_a_resumed_session_says_how_its_last_run_ended_never_before_any_run(tmp_path, before):
+    """The final review's M1: ended with no run since its resume, a session that ran a run
+    before its crash said "session ended by …, before any run". A resume restores how its
+    last run ended: its end row's reason, or, for a run its process died in, that it
+    stopped with its process; "before any run" stays for a session that ran none."""
+    folders = _folders(tmp_path)
+    if before == "no run, ended":
+        first = _made(folders)
+        _step(first, _open())
+        _step(first, _end(returned=None))
+        expected = (f"session ended by {BY}, before any run", "operator")
+    else:
+        _crashed(folders, "2027-01-14_01", run=True)
+        *started, end = _runs(folders[2])
+        expected = (end["stopped_because"], end["stop_kind"])
+        if before == "a run killed":
+            path = folders[2] / "2027-01-14_01" / "xcon" / "runs.jsonl"
+            path.write_text("".join(json.dumps(row) + "\n" for row in started))
+            expected = ("run 1 stopped with its process; its record holds no end for it", "fault")
+    service = _made(folders)
+
+    frame = _step(service, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    assert (frame.stopped_because, frame.stop_kind) == expected
+    ended = _step(service, _end(returned=None))
+    assert (ended.phase, ended.stopped_because, ended.stop_kind) == ("awaiting_return", *expected)
+
+
 def _lowered_live(folders, limit: float) -> None:
     """A session whose out-of-cage limit was lowered to `limit` during its run -- a
     page's `set`, or `wlx console --set out_of_cage=…`, which `Session.set` takes as it

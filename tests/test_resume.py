@@ -28,8 +28,9 @@ def _start(run, bounded, task=TASK, numbers=None):
             "task_in_session": task_in_session}
 
 
-def _end(run):
-    return {"event": "end", "run": run, "at": DEPARTURE + 60 * run + 50, "stop_kind": "completed"}
+def _end(run, stopped_because="every block is finished", stop_kind="completed"):
+    return {"event": "end", "run": run, "at": DEPARTURE + 60 * run + 50,
+            "stopped_because": stopped_because, "stop_kind": stop_kind}
 
 
 def _line(number, outcome, fluid_ml, last_reward_at, run):
@@ -222,6 +223,31 @@ def test_a_session_whose_runs_were_ended_reads_back_as_ended(tmp_path):
                                  "trial_index": 0, "run": 1}) + "\n")
 
     assert read(directory, DEPARTURE).ended is True
+
+
+def _ended_by(by):
+    return {"kind": "end", "by": by, "at": DEPARTURE + 950, "trial_index": 0, "run": None}
+
+
+def test_how_the_last_run_ended_is_read_back_and_never_before_any_run(tmp_path):
+    """The final review's M1: how the session's last run ended, for the frames between
+    runs and the summary -- its end row's reason, or, with no end row, that it stopped
+    with its process -- and "before any run" only of a session that ran none."""
+    killed = read(_two_runs(tmp_path / "a"), DEPARTURE)
+    assert (killed.stopped_because, killed.stop_kind) == (
+        "run 2 stopped with its process; its record holds no end for it", "fault",
+    )
+    directory = _two_runs(tmp_path / "b")
+    with (directory / "runs.jsonl").open("a") as handle:
+        handle.write(json.dumps(_end(1, "stopped by jake", "operator")) + "\n")
+    stopped = read(directory, DEPARTURE)
+    assert (stopped.stopped_because, stopped.stop_kind) == ("stopped by jake", "operator")
+    none = read(_folder(tmp_path / "c"), DEPARTURE)
+    assert (none.stopped_because, none.stop_kind) == ("", None)
+    ended = read(_folder(tmp_path / "d", controls=[_ended_by("jake")]), DEPARTURE)
+    assert (ended.stopped_because, ended.stop_kind) == (
+        "session ended by jake, before any run", "operator",
+    )
 
 
 def test_a_restored_tally_counts_hangs(tmp_path):
