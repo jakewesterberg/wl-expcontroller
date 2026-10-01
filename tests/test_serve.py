@@ -4314,3 +4314,29 @@ def test_page_e2e_the_hand_reward_is_given_between_runs_and_while_the_return_is_
     assert taskd.cards[0].codes.count(MANUAL_REWARD_CODE) == 2, "one press, one reward, none refused"
     rows = [row for row in _record(taskd.folders[2], "controls.jsonl") if row["kind"] == "reward"]
     assert [(r["by"], r["ml"], r["entry"]) for r in rows] == [(BY, REWARD_ML, "reward_correct")] * 2
+
+
+def test_a_resume_command_from_the_page_is_the_one_the_wire_would_decode_and_is_dispatched():
+    """XC-026 Task 5: `resume_session` takes only a session id, and goes to the command
+    thread as a service command."""
+    import msgpack
+
+    from wl_xcon.link import ResumeSession, _decode_command
+
+    body = {"kind": "resume_session", "session_id": "x", "by": "jake"}
+    expected = ResumeSession(by=PAGE, session_id="x")
+
+    assert parse_command(body) == expected
+    assert _decode_command(msgpack.packb({**body, "by": PAGE}, use_bin_type=True)) == expected
+    with pytest.raises(BadCommand):
+        parse_command({**body, "extra": 1})
+    with pytest.raises(BadCommand):
+        parse_command({"kind": "resume_session", "by": "jake"})
+
+    pub, rep = free_endpoints(2)
+    server = Server(sub=pub, req=rep, http=("127.0.0.1", 0), token=TOKEN)
+    sender = _Answers(None)
+    server._commands.submit = lambda work: work(sender)
+
+    assert server.dispatch(expected) == (200, {"status": "sent", "said": SERVICE_SENT})
+    assert sender.sent == [expected]

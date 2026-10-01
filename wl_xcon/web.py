@@ -498,6 +498,12 @@ def _banner(tone: str, tag: str, text: str) -> str:
     )
 
 
+def _resumed_sentence(resumed_at: float) -> str:
+    """What a resumed session says of itself (XC-026), in the banner and the closed
+    summary, at the resume's instant as this host's `HH:MM`."""
+    return f"this session was resumed after its process stopped, at {_wall_minute(resumed_at)}"
+
+
 def _banners(frame: Telemetry | None, view: View) -> str:
     """A refused frame first, then the duration warning and the stop reason -- where
     a person looks when something is wrong. The stream's own banner (stale, lost) is
@@ -525,6 +531,8 @@ def _banners(frame: Telemetry | None, view: View) -> str:
         out.append(_banner(tone, "Warning", _e(frame.duration_warning)))
     if frame.question is not None:
         out.append(_question_banner(frame.question, view))
+    if frame.resumed_at is not None:
+        out.append(_banner("info", "Resumed", _e(_resumed_sentence(frame.resumed_at))))
     if frame.stopped_because:
         tone = "crit" if frame.stop_kind in ("fault", "limit") else "info"
         tag = (
@@ -1110,8 +1118,14 @@ def _end(frame: Telemetry | None) -> str:
         if frame.phase == "between_runs"
         else '<span class="nm">still running</span>'
     )
+    resumed = (
+        ""
+        if frame.resumed_at is None
+        else f'<p class="nm">{_e(_resumed_sentence(frame.resumed_at))}</p>'
+    )
     return (
         f'<div class="owe"><h2>Supplement owed</h2>{owed}</div>'
+        f"{resumed}"
         f'<dl class="dl"><dt>fluid session</dt><dd>{frame.fluid_session_ml:.2f} mL</dd>'
         f"<dt>out of cage</dt><dd>{cage}</dd>"
         f"<dt>in session</dt><dd>{in_session}</dd>"
@@ -1146,8 +1160,8 @@ def _new_session_button(view: View, why: str | None = None) -> str:
 
 
 def _idle_banners(frame: Idle, view: View) -> str:
-    """A refused frame, then every stranded animal -- each with *end session…*, which
-    takes its return naming its session (XC-176) -- then a question owed, then, with no
+    """A refused frame, then every stranded animal -- each with *resume session*, when its record can carry one
+    (XC-026), and *end session…*, which takes its return naming its session (XC-176) -- then a question owed, then, with no
     animal stranded, *no session open* beside *new session* (spec §6.1). A stranded
     departure is given as this host's local date, minute and zone, as the terminal gives
     it (`cli._moment`): an animal out since days ago must not read as since this morning
@@ -1164,10 +1178,18 @@ def _idle_banners(frame: Idle, view: View) -> str:
                 f"repaired and the return recorded"
             )
         else:
+            resume = (
+                f'<button type="button" class="btn small" '
+                f'data-resume="{_e(found.session_id)}"{_off(view)}>resume session</button> '
+                if found.resumable
+                else ""
+            )
+            cannot = "" if found.resumable else f" It cannot be resumed: {_e(found.why)}."
             text = (
                 f"{_e(found.subject)} left its cage at {_e(_moment(found.left_at))} in "
                 f"session {_e(found.session_id)}, and its return is not recorded; no "
-                f"session opens until it is "
+                f"session opens until it is resumed or its return recorded.{cannot} "
+                f"{resume}"
                 f'<button type="button" class="btn small danger" '
                 f'data-return="{_e(found.session_id)}"{_off(view)}>end session…</button>'
             )
@@ -2030,6 +2052,8 @@ _SCRIPT = """
     if (!e.target.closest) { return; }
     var answering = e.target.closest("[data-answer]");
     if (answering && !answering.disabled) { answerWarning(answering); return; }
+    var resuming = e.target.closest("[data-resume]");
+    if (resuming && !resuming.disabled) { post({ kind: "resume_session", session_id: resuming.getAttribute("data-resume") }); return; }
     var returning = e.target.closest("[data-return]");
     if (returning && !returning.disabled) { openReturn(returning.getAttribute("data-return")); return; }
     var button = e.target.closest("[data-cmd]");

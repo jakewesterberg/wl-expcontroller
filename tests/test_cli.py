@@ -38,6 +38,7 @@ from wl_xcon.bounds import Exceeded
 from wl_xcon.cli import (
     _RETURN_PROMPT,
     _hours_minutes,
+    _time_of_day,
     _wall_clock_time,
     main,
     render,
@@ -3548,3 +3549,28 @@ def test_wlx_console_keeps_watching_a_service_past_a_runs_end(monkeypatch, capsy
     assert main(["console", "--sub", "tcp://127.0.0.1:1", "--req", "tcp://127.0.0.1:2"]) == 130
     out = capsys.readouterr().out
     assert "phase: between runs" in out and "no session open" in out
+
+
+def test_the_terminal_console_says_a_stranded_session_can_be_resumed_or_why_not():
+    shown = render(
+        idle(
+            stranded=(
+                Stranded("2027-01-13_01", "B", 1_700_000_000.0, resumable=True),
+                Stranded("2027-01-13_02", "C", 1_700_000_000.0, False, "no fluid\x1b[2J record"),
+            )
+        )
+    )
+
+    assert "session 2027-01-13_01, left its cage at" in shown
+    assert "it can be resumed: resume it from the page, or record its return" in shown
+    assert "it cannot be resumed (no fluid\ufffd[2J record): record its return" in shown
+    assert "\x1b" not in shown
+
+
+def test_the_terminal_console_says_a_session_was_resumed_and_when():
+    at = 1_700_000_000.0
+
+    shown = render(_telemetry(resumed_at=at))
+
+    assert f"resumed after its process stopped, at {_time_of_day(at)[:5]}" in shown
+    assert "resumed after" not in render(_telemetry())

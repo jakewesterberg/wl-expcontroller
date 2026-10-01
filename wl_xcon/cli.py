@@ -763,7 +763,12 @@ def _render_idle(frame: _link.Idle) -> str:
                 f"  STRANDED: {_printable(found.subject)}, session "
                 f"{_printable(found.session_id)}, left its cage at {_moment(found.left_at)}, "
                 f"this host's local time; its return is not recorded, and no session "
-                f"opens until it is"
+                f"opens until it is resumed or its return recorded; "
+                + (
+                    "it can be resumed: resume it from the page, or record its return"
+                    if found.resumable
+                    else f"it cannot be resumed ({_printable(found.why)}): record its return"
+                )
             )
     if frame.question is not None:
         lines.append(_question_line(frame.question))
@@ -895,6 +900,12 @@ def render(frame: _link.Telemetry | _link.Idle) -> str:
     # for different reasons, and a console that worked out which from the pattern of
     # `None`s would be computing -- see this function's second paragraph.
     lines.append(f"  deployment: {_printable(frame.deployment)}")
+    resumed = None if frame.resumed_at is None else _time_of_day(frame.resumed_at)
+    if frame.resumed_at is not None:
+        lines.append(
+            "  resumed after its process stopped, at "
+            f"{'an unknown time' if resumed is None else resumed[:5]}"
+        )
     # Direct-view spec §3: the setup, shown for the whole session. Words from the
     # frame's own fields, never inferred.
     lines.append(f"  setup: {_setup_words(frame.view, frame.half_ipd_cm)}")

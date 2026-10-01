@@ -538,11 +538,12 @@ _SHAPES = {
     "check": frozenset({"task", "values"}),
     "start": frozenset({"task", "values", "trials", "acknowledged"}),
     "end": frozenset({"session_id", "returned", "confirm"}),
+    "resume_session": frozenset({"session_id"}),
 }
 _SCHEDULES = {"at": "clock", "trials": "trials", "ml": "fluid"}
-#: The kinds `wlx taskd` takes that the page sends by the wire's own field names, built
+#: The kinds `wlx taskd` takes (open, check, start, end and resume_session) that the page sends by the wire's own field names, built
 #: by the wire's own function (`link._command_from`; the b3a-2 plan, decision 3).
-_SERVICE_KINDS = frozenset({"open", "check", "start", "end"})
+_SERVICE_KINDS = frozenset({"open", "check", "start", "end", "resume_session"})
 
 
 def _finite(value: int | float) -> bool:
@@ -1265,7 +1266,8 @@ class Server:
         """Send one parsed command (`parse_command`) and say what became of it.
 
         A `MarkSignal` goes to the mark thread, ahead of every command; the rest go
-        to the command thread's queue, a `MarkNote` as the `link.Mark` it is, with
+        to the command thread's queue (`wlx taskd`'s own -- `open`, `check`, `start`, `end` and
+        `resume_session` -- answered with `SERVICE_SENT`), a `MarkNote` as the `link.Mark` it is, with
         the instants this process kept for that mark."""
         if isinstance(request, MarkSignal):
             return self._signal(request)
@@ -1273,7 +1275,14 @@ class Server:
             # Its own answers, never a re-send (PI, 2026-09-28): see `_rewarded`.
             return self._commands.submit(_rewarded(request))
         if isinstance(
-            request, (_link.OpenSession, _link.CheckRun, _link.StartRun, _link.EndSession)
+            request,
+            (
+                _link.OpenSession,
+                _link.CheckRun,
+                _link.StartRun,
+                _link.EndSession,
+                _link.ResumeSession,
+            ),
         ):
             return self._commands.submit(_delivered(request, SERVICE_SENT))
         if isinstance(request, MarkNote):

@@ -25,6 +25,7 @@ from wl_xcon.cli import _clock, _local
 from wl_xcon.link import Control, Counts, ParamRow, Performance, Preflight, PreflightItem, Question, Refused, ScheduledStop, Staged, Stranded
 from wl_xcon.web import (
     _SCRIPT,
+    _clock_time,
     CONTROLS_AT_THE_BOX,
     DEBOUNCE_MS,
     END_CONFIRM,
@@ -2170,3 +2171,50 @@ def test_end_session_opens_its_confirmation_and_posts_nothing_until_end_yes():
         r'el\("(end-yes|ret-yes)"\)\.addEventListener\("click".*?\n  \}\);', "", _SCRIPT, flags=re.S
     )
 
+
+
+def test_a_resumable_stranded_session_offers_resume_beside_end_and_a_refused_one_says_why():
+    """XC-026 Task 5: *resume session* is offered only when the record can carry one; a
+    session that cannot be resumed says why, escaped, and keeps *end session...*."""
+    can = fragments(
+        idle(stranded=(Stranded("2027-01-13_01", "B", 1_700_000_000.0, resumable=True),)), view()
+    )["banners"]
+    cannot = fragments(
+        idle(stranded=(Stranded("2027-01-13_01", "B", 1_700_000_000.0, False, "no <i>fluid</i> record"),)),
+        view(),
+    )["banners"]
+
+    assert 'data-resume="2027-01-13_01"' in can and 'data-return="2027-01-13_01"' in can
+    assert "It cannot be resumed" not in can
+    assert 'data-resume=' not in cannot and 'data-return="2027-01-13_01"' in cannot
+    assert "It cannot be resumed: no &lt;i&gt;fluid&lt;/i&gt; record." in cannot
+    assert "<i>fluid" not in cannot
+    assert "no session opens until it is resumed or its return recorded" in can
+    assert "no session opens until it is resumed or its return recorded" in cannot
+
+
+def test_a_resumed_session_says_so_in_its_banner_and_its_closed_summary():
+    resumed = frame(resumed_at=1_700_000_000.0)
+    clock = _clock_time(1_700_000_000.0)[:5]
+    sentence = f"this session was resumed after its process stopped, at {clock}"
+
+    banners = fragments(resumed, view())["banners"]
+    closed = replace(resumed, phase="closed", stop_kind="operator", service=True)
+
+    assert "Resumed" in banners and sentence in banners
+    assert "Resumed" not in fragments(frame(), view())["banners"]
+    assert sentence in fragments(closed, view())["end"]
+    assert sentence in fragments(idle(closed=closed), view())["end"]
+    assert "resumed" not in fragments(replace(closed, resumed_at=None), view())["end"]
+
+
+def test_the_pages_script_posts_resume_session_for_a_click_on_resume():
+    handler = re.search(
+        r'document\.addEventListener\("click", function \(e\) \{(.*?)\n  \}\);', _SCRIPT, re.S
+    ).group(1)
+
+    assert 'var resuming = e.target.closest("[data-resume]");' in handler
+    assert (
+        'post({ kind: "resume_session", session_id: resuming.getAttribute("data-resume") })'
+    ) in handler
+    assert handler.index("[data-resume]") < handler.index("[data-return]")
