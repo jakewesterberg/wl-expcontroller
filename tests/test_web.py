@@ -353,10 +353,15 @@ def test_before_the_first_trial_the_session_says_so_not_zero():
     assert "0%" not in strip and "NaN" not in strip
 
 
-def test_a_run_before_its_first_trial_has_no_block_yet():
+def test_a_run_before_its_first_trial_keeps_its_notes_and_has_no_block_yet():
     """A block opens with its first trial (plan ruling 1): until then its line is
-    *block* and a dash, and the run's line shows no percentage of nothing."""
-    perf = replace(frame().performance, run=Counts({}, 0), block=None, block_in_session=None, block_type=None)
+    *block* and a dash. The run's line and its task's (the task's first run here) show
+    a dash, no percentage of nothing, and keep their notes, "run 3" and "1 run" (spec
+    §6, mockup v13; the controller's ruling in Task 6's review)."""
+    perf = replace(
+        frame().performance, task=Counts({}, 0), runs_of_task=1, run=Counts({}, 0),
+        block=None, block_in_session=None, block_type=None,
+    )
     strip = fragments(replace(frame(), performance=perf), view())["strip"]
     assert (
         '<span class="k">block</span><span class="n"><span class="u">—</span></span>'
@@ -364,8 +369,13 @@ def test_a_run_before_its_first_trial_has_no_block_yet():
     )
     assert (
         '<span class="k">this run</span><span class="n"><span class="u">—</span></span>'
-        '<span class="n"></span><span class="x">no trials yet</span>' in strip
+        '<span class="n"></span><span class="x">run 3</span>' in strip
     )
+    assert (
+        '<span class="k">fixation_detection</span><span class="n"><span class="u">—</span></span>'
+        '<span class="n"></span><span class="x">1 run</span>' in strip
+    )
+    assert "no trials yet" not in strip, "the session has trials; only its line says that"
 
 
 def test_the_supplement_owed_is_on_the_strip():
@@ -397,6 +407,18 @@ def test_back_to_cage_warns_with_the_sessions_warning_and_is_critical_at_the_lim
     warned = fragments(replace(frame(), duration_warning="30 min left"), view())["strip"]
     limited = fragments(replace(frame(), stop_kind="limit"), view())["strip"]
     assert 'class="k warn"' in warned and 'class="k crit"' in limited
+
+
+def test_back_to_cage_past_the_limit_is_critical_and_says_so():
+    """30,000 s out against an 8 h limit, the session ended and the return awaited:
+    no time is left, so the line is critical whatever `stop_kind` says, and it says
+    *past the limit* rather than a negative time left."""
+    f = replace(
+        frame(), phase="awaiting_return", stop_kind="completed",
+        out_of_cage_seconds=30_000.0, out_of_cage_limit_s=28_800.0,
+    )
+    strip = fragments(f, view())["strip"]
+    assert 'class="k crit"' in strip and "past the limit" in strip
 
 
 def test_a_recorded_return_says_when():
@@ -622,9 +644,15 @@ def test_every_telemetry_string_is_escaped():
         staged=(Staged(EVIL, 0.1, 0.2, EVIL, False),),
         refusals=(Refused(EVIL, EVIL, EVIL),),
         params=(ParamRow(EVIL, EVIL, None, None, EVIL, False),),
+        performance=replace(frame().performance, task_name=EVIL, block_type=EVIL),
     )
+    # `phase` is EVIL above, so the reward's unit, which the strip shows only while a
+    # run goes (`_per_correct`), needs a running frame of its own.
+    paying = frame(params=(ParamRow("reward_correct", EVIL, 0.0, 0.4, 0.15, True),))
 
-    text = "".join(fragments(evil, view(rejected=EVIL)).values())
+    text = "".join(fragments(evil, view(rejected=EVIL)).values()) + "".join(
+        fragments(paying, view()).values()
+    )
 
     assert "<script" not in text
     assert EVIL not in text
@@ -1340,16 +1368,42 @@ def test_the_page_escapes_control_characters_and_markup_in_an_idle_frames_text()
 
 
 def test_the_page_between_runs_says_which_run_ended_and_offers_start_run_not_pause_or_stop():
+    """`run_index` 1 is the session's second run: a person reads runs from 1
+    (session-levels spec §3)."""
     panes = fragments(
         frame(phase="between_runs", service=True, run_index=1, stop_kind="operator", stopped_because="stopped by jake"),
         view(),
     )
 
-    assert 'data-state="between-runs"' in panes["state"] and "run 1 ended" in panes["state"]
-    assert "Run 1 ended" in panes["banners"]
+    assert 'data-state="between-runs"' in panes["state"] and "run 2 ended" in panes["state"]
+    assert "Run 2 ended" in panes["banners"]
     assert 'data-cmd="start"' in panes["controls"]
     assert 'data-cmd="pause"' not in panes["controls"] and 'data-cmd="stop"' not in panes["controls"]
-    assert '<span class="k">Run</span><span class="v">1</span>' in panes["head-id"]
+    assert '<span class="k">Run</span><span class="v">2</span>' in panes["head-id"]
+
+
+def test_the_header_pill_banner_and_strip_name_one_run():
+    """The review of session levels' Task 6: the header, pill and banner printed the
+    wire's 0-based `run_index` while the strip printed `run_in_session`, so one page
+    named a session's third run as both 2 and 3."""
+    perf = frame().performance
+    assert perf.run_in_session == 3
+    running = fragments(frame(run_index=2), view())
+    ended = fragments(
+        frame(
+            phase="between_runs", service=True, run_index=2, stop_kind="operator",
+            stopped_because="stopped by jake",
+            performance=replace(perf, task=None, run=None, block=None, task_name=None,
+                                runs_of_task=None, run_in_session=None,
+                                block_in_session=None, block_type=None),
+        ),
+        view(),
+    )
+
+    assert '<span class="k">Run</span><span class="v">3</span>' in running["head-id"]
+    assert "run 3" in running["strip"]
+    assert '<span class="k">Run</span><span class="v">3</span>' in ended["head-id"]
+    assert "run 3 ended" in ended["state"] and "Run 3 ended" in ended["banners"]
 
 
 def test_the_page_before_a_sessions_first_run_shows_no_block_and_no_task():

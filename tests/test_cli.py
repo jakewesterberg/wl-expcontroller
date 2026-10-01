@@ -3487,6 +3487,15 @@ def test_the_terminal_console_strips_control_characters_from_an_idle_frames_text
     assert len(shown.splitlines()) == 1 + 1 + 2 + 1
 
 
+def test_the_terminal_console_counts_runs_from_1():
+    """`run_index` counts from 0 on the wire; a person reads the session's first run as
+    run 1, as the browser console's header and strip do (session-levels spec §3)."""
+    shown = render(_telemetry(run_index=0))
+
+    assert "  run: 1" in shown
+    assert "  run: 0" not in shown
+
+
 def test_the_terminal_console_shows_a_session_between_runs_honestly():
     shown = render(
         _telemetry(

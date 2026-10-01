@@ -220,10 +220,13 @@ def _state(frame: Telemetry | None) -> str:
     if frame is None:
         return '<span class="pill neutral" data-state="none">no session</span>'
     if frame.phase == "between_runs":
+        # `run_index` counts from 0 on the wire, as the record's `run` does; a person
+        # reads runs from 1, as the strip's `run_in_session` gives them (session-levels
+        # spec §3), so the header, this pill, the banner and the strip name one run.
         label = (
             "between runs"
             if frame.run_index is None
-            else f"between runs · run {frame.run_index} ended · {frame.stop_kind}"
+            else f"between runs · run {frame.run_index + 1} ended · {frame.stop_kind}"
         )
         tone = "crit" if frame.stop_kind in ("fault", "limit") else "neutral"
         return f'<span class="pill {tone}" data-state="between-runs">{_e(label)}</span>'
@@ -254,7 +257,8 @@ def _head(frame: Telemetry | None) -> str:
         ("Session", _e(frame.session_id), ""),
         ("Subject", _e(frame.subject), ""),
         ("Deployment", _e(frame.deployment), ""),
-        ("Run", "—" if frame.run_index is None else _e(frame.run_index), ""),
+        # Counted from 1, as `_state` says why.
+        ("Run", "—" if frame.run_index is None else _e(frame.run_index + 1), ""),
         ("Block", "—" if frame.block is None else _e(frame.block), ""),
         ("Trial", _e(frame.trial_index), f' data-trial="{_e(frame.trial_index)}"'),
         ("In session", in_session, ""),
@@ -417,10 +421,13 @@ def _correct_of(counts: Counts) -> tuple[int, int]:
     return correct, sum(counts.outcomes.values()) + counts.hangs
 
 
-def _level(name: str, counts: Counts, note: str) -> tuple:
+def _level(name: str, counts: Counts, note: str, *, none_yet: str | None = None) -> tuple:
+    """One level's line. With no trials its value is a dash, never `0 / 0` or `0%`, and
+    it keeps its note -- "run 3", "1 run", as session-levels spec §6 and mockup v13 have
+    it -- or says `none_yet` in its place where one is given."""
     correct, trials = _correct_of(counts)
     if trials == 0:
-        return (name, '<span class="u">—</span>', "", "no trials yet", "")
+        return (name, '<span class="u">—</span>', "", _e(note if none_yet is None else none_yet), "")
     return (
         name,
         f'{_e(correct)}<span class="u"> / {_e(trials)}</span>',
@@ -435,7 +442,7 @@ def _performance(frame: Telemetry, view: View) -> str:
     block -- or, while no run goes, one line saying so (plan ruling 4)."""
     perf = frame.performance
     rate = "" if view.trials_per_min is None else f"{view.trials_per_min:.1f}/min"
-    rows = [_level("session", perf.session, rate)]
+    rows = [_level("session", perf.session, rate, none_yet="no trials yet")]
     if perf.run is None:
         said = "between runs" if frame.phase == "between_runs" else "no run going"
         rows.append((said, "", "", "", ""))
@@ -527,7 +534,8 @@ def _banners(frame: Telemetry | None, view: View) -> str:
     if frame.stopped_because:
         tone = "crit" if frame.stop_kind in ("fault", "limit") else "info"
         tag = (
-            f"Run {frame.run_index} ended"
+            # Counted from 1, as `_state` says why.
+            f"Run {frame.run_index + 1} ended"
             if frame.phase == "between_runs" and frame.run_index is not None
             else "Ended"
         )

@@ -921,8 +921,10 @@ def render(frame: _link.Telemetry | _link.Idle) -> str:
     # space rather than the internal underscore -- this line is for a person, not
     # a match against the field's own wire spelling.
     lines.append(f"  phase: {_printable(frame.phase).replace('_', ' ')}")
-    # Schema 10 (P4d-2b b3a): which run, and whether a service holds the session.
-    lines.append("  run: none yet" if frame.run_index is None else f"  run: {frame.run_index}")
+    # Schema 10 (P4d-2b b3a): which run, and whether a service holds the session. The
+    # run counts from 1 for a person, as the browser console's strip and header give it
+    # (session-levels spec §3); `run_index` counts from 0, as the record's `run` does.
+    lines.append("  run: none yet" if frame.run_index is None else f"  run: {frame.run_index + 1}")
     if frame.service:
         lines.append("  runs: opened, run and ended from a console (wlx taskd)")
     if frame.offered_tasks:
