@@ -4977,6 +4977,40 @@ def test_a_block_opens_just_before_its_first_trial_and_closes_after_its_last(tmp
     assert codes[last + 1 : last + 3] == [BLOCK_END, RUN_END]
 
 
+def _closes_its_block_before_run_end(codes) -> bool:
+    """`BLOCK_END` is the word just before the run's `RUN_END`, the stream's last."""
+    end = len(codes) - 1 - codes[::-1].index(RUN_END)
+    return codes[end - 1] == BLOCK_END
+
+
+def test_a_run_ended_by_the_out_of_cage_limit_closes_its_open_block_first(tmp_path):
+    """Spec §4: a limit is an end by design, so the block open when it lands gets its
+    `BLOCK_END`, then `RUN_END` (the session-levels final review, M9)."""
+    link = Simulated()
+    session = _session(_spec(tmp_path, trials=10_000), link=link)
+
+    session.run()
+
+    assert session.stop_kind == "limit"
+    assert _trials_run(session) > 0, "the limit landed mid-run, inside a block"
+    assert _block_words(session.card.codes) == [("start", 1), "end"]
+    assert _closes_its_block_before_run_end(session.card.codes)
+
+
+def test_a_run_ended_by_a_scheduled_stop_closes_its_open_block_first(tmp_path):
+    """Spec §4: a scheduled stop is an operator's stop, an end by design, so the open
+    block gets its `BLOCK_END`, then `RUN_END` (the session-levels final review, M9)."""
+    link = Simulated()
+    session = _session(_spec(tmp_path, trials=50), link=link)
+    _scheduled_at_trial(link, session, 2, ScheduleStop(kind="trials", value=3, by="jake"))
+
+    session.run()
+
+    assert session.stopped_because == "scheduled stop (after trial 5) set by jake"
+    assert _block_words(session.card.codes) == [("start", 1), "end"]
+    assert _closes_its_block_before_run_end(session.card.codes)
+
+
 def test_a_run_stopped_before_its_first_trial_marks_no_block(tmp_path):
     """Review Focus 1: a Stop drained at the first boundary ends the run with no trial;
     the next run's first block is number 1. In a service session a `Stop` ends the run,
@@ -5041,7 +5075,8 @@ def test_a_pause_inside_a_block_keeps_one_block(tmp_path):
 def test_a_sessions_blocks_and_trials_assemble_in_wl_preproc(tmp_path):
     """Spec §9, the path: fixation X, Y, X; a second task; fixation again, stopped after
     its first trial, mid-block. Every block assembles with its block_in_session and an
-    end, the stopped one closed by BLOCK_END; every trial lies inside one block."""
+    end, the stopped one closed by BLOCK_END; every trial lies inside one block, the one
+    its line names; and every line's ten numbers are spec §3's."""
     link = Simulated()
     session = _service_session(tmp_path, link=link)
     _scheduled_at_trial(link, session, 8, Stop(by="jake"))
@@ -5056,9 +5091,30 @@ def test_a_sessions_blocks_and_trials_assemble_in_wl_preproc(tmp_path):
     assert [block.block_id for block in assembly.blocks] == [1, 2, 3, 4, 5]
     assert all(block.end_s is not None for block in assembly.blocks)
     assert len(assembly.trials) == 8
+    # Joined as wl-preproc joins them: a trial's id is the stream's `TRIAL_NUMBER`, and
+    # a line's key is its `trial_number` (the session-levels final review, M8).
+    lines = {line["trial_number"]: line for line in _trial_rows(session)}
+    assert sorted(lines) == sorted(trial.trial_id for trial in assembly.trials)
     for trial in assembly.trials:
         inside = [b for b in assembly.blocks if b.start_s <= trial.start_s <= b.end_s]
         assert len(inside) == 1, trial
+        assert inside[0].block_id == lines[trial.trial_id]["block_in_session"], trial
+    # **Every line, worked out by hand** (spec §3), in `POSITION_FIELDS`' order: the
+    # stopped run's one trial is the first of its block X.
+    assert [tuple(lines[n][k] for k in POSITION_FIELDS) for n in sorted(lines)] == [
+        # fixation, its first run: blocks X, Y, X, the session's 1-3.
+        (1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        (2, 2, 2, 2, 1, 1, 1, 1, 1, 1),
+        (3, 3, 3, 1, 2, 2, 2, 1, 1, 1),
+        (4, 4, 4, 2, 2, 2, 2, 1, 1, 1),
+        (5, 5, 5, 1, 3, 3, 3, 1, 1, 1),
+        (6, 6, 6, 2, 3, 3, 3, 1, 1, 1),
+        # one_state, the session's second task: block C, the session's 4th.
+        (7, 1, 1, 1, 4, 1, 1, 2, 1, 2),
+        # fixation, its second run, stopped after its first trial: block X, the
+        # session's 5th and its own 4th.
+        (8, 7, 1, 1, 5, 4, 1, 3, 2, 1),
+    ]
 
 
 # --- the strip's four levels on the feed (session-levels spec §5) -------------------
