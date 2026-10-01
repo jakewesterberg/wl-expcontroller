@@ -21,7 +21,7 @@ from _rig import PATH as RIG_FILE
 from _rig import RIG
 from _sessions import WALL, malformed_task, typed, whole_point_task
 from _zmq_release import _every_zmq_context_released  # noqa: F401
-from wl_xcon import preflight, resume
+from wl_xcon import preflight, resume, stranded
 from wl_xcon.cli import _load_allocation, main
 from wl_xcon.bounds import Exceeded
 from wl_xcon.link import (
@@ -47,6 +47,7 @@ from wl_xcon.link import (
 from wl_xcon.record import welfare_note
 from wl_xcon.service import Service, _fresh_seed
 from wl_xcon.taskd import Session
+from wl_xcon.welfare import Welfare
 
 ALLOCATION = "tasks/allocation.py"
 EIGHT_HOURS = Path("tasks/eight_hour_bounds.py")
@@ -1814,6 +1815,91 @@ def test_a_resumable_record_whose_animal_is_no_folder_name_runs_nothing_outside_
 
     assert not marker.exists(), "a file outside --subjects ran"
     assert "one folder name" in why and repr(subject) in why
+
+
+# The controller's ruling on Task 4 (2026-10-01): a record the service cannot read fails
+# closed, as `stranded.find` always has -- it never stops `wlx taskd` starting, and never
+# crashes `step()`.
+
+
+def _infinite_trial_number(directory) -> None:
+    rows = [json.loads(line) for line in (directory / "trial_starts.jsonl").read_text().splitlines()]
+    rows[0]["trial_number"] = float("inf")
+    (directory / "trial_starts.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def _bounds_as(bounds):
+    def damage(directory) -> None:
+        config = json.loads((directory / "config.json").read_text())
+        config["bounds"] = bounds(config["bounds"])
+        (directory / "config.json").write_text(json.dumps(config))
+    return damage
+
+
+@pytest.mark.parametrize(
+    ("damage", "said"),
+    [
+        (_infinite_trial_number, "OverflowError"),
+        (_bounds_as(lambda b: {"ceilings": b["ceilings"]}), "config.json"),
+        (_bounds_as(lambda b: [b]), "config.json"),
+    ],
+    ids=["Infinity in trial_starts", "bounds without minima", "bounds not a mapping"],
+)
+def test_a_record_the_service_cannot_read_is_stranded_unresumable_and_never_stops_it(
+    tmp_path, damage, said
+):
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01", run=True)
+    damage(folders[2] / "2027-01-14_01" / "xcon")
+
+    service = _made(folders)
+
+    (found,) = _step(service).stranded
+    assert (found.session_id, found.left_at is not None, found.resumable) == (
+        "2027-01-14_01", True, False,
+    )
+    assert said in found.why
+    assert said in _resume_refused(service, "2027-01-14_01")
+    assert isinstance(_step(service), Idle), "the service goes on"
+
+
+def test_a_record_naming_two_animals_is_refused_before_anything_is_built(tmp_path, monkeypatch):
+    """`config.json`'s animal is the one `_build` loads bounds for; the departure row's is
+    the one the out-of-cage check holds them to. A record that disagrees with itself is
+    refused, naming both, before either becomes a path."""
+    folders = _folders(tmp_path, animals=("B", "REFERENCE"))
+    _crashed(folders, "2027-01-14_01")
+    path = folders[2] / "2027-01-14_01" / "xcon" / "config.json"
+    path.write_text(json.dumps({**json.loads(path.read_text()), "subject": "B"}))
+    service = _made(folders)
+    monkeypatch.setattr(Service, "_build", lambda *_a, **_k: pytest.fail("a session was built"))
+
+    why = _resume_refused(service, "2027-01-14_01")
+
+    assert why == (
+        "session 2027-01-14_01's config.json names 'B' and its departure names "
+        "'REFERENCE'; a record that disagrees with itself is not resumed, so end it instead"
+    )
+    assert isinstance(_step(service), Idle), "the service goes on"
+
+
+@pytest.mark.parametrize("where", ["restore", "must_stop"])
+def test_what_the_out_of_cage_check_raises_is_a_refusal_never_the_services_end(
+    tmp_path, monkeypatch, where
+):
+    """`stranded.restore` refuses a record it cannot hold a return to, by raising
+    `Exceeded`; whatever it or `must_stop` raises that way is said, and nothing written."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01")
+    service = _made(folders)
+
+    def refuses(*_args, **_kwargs):
+        raise Exceeded("the out-of-cage check refused it, in this test")
+
+    monkeypatch.setattr(*((stranded, "restore") if where == "restore" else (Welfare, "must_stop")), refuses)
+
+    assert _resume_refused(service, "2027-01-14_01") == "the out-of-cage check refused it, in this test"
+    assert isinstance(_step(service), Idle), "the service goes on"
 
 
 # --- wlx taskd -----------------------------------------------------------------

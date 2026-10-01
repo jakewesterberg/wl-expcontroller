@@ -64,12 +64,19 @@ def _rows(directory: Path, name: str) -> list[dict]:
 
 
 def read(directory: Path, departure: float) -> Restoration:
-    """The session at `directory` (its `xcon` folder), left at `departure`, read back."""
+    """The session at `directory` (its `xcon` folder), left at `departure`, read back.
+    **Fails closed**: whatever its record makes raise is `Unresumable`, naming it, so a
+    record nobody can read is never resumed and never stops `wlx taskd`, whose start
+    reads every stranded folder through here (`stranded.find`)."""
     directory = Path(directory)
     try:
         return _read(directory, departure)
-    except (KeyError, TypeError, ValueError) as error:
-        raise Unresumable(f"its record cannot be read ({error!r}); end it instead") from error
+    except Unresumable:
+        raise
+    except Exception as error:  # noqa: BLE001 -- fail closed: an unreadable record is not resumed
+        raise Unresumable(
+            f"its record cannot be read ({type(error).__name__}: {error}); end it instead"
+        ) from error
 
 
 def _read(directory: Path, departure: float) -> Restoration:
@@ -85,6 +92,17 @@ def _read(directory: Path, departure: float) -> Restoration:
         or (lines and not starts)
     ):
         raise Unresumable(PREDATES)
+    # What a resume compares the animal's bounds with (plan ruling 3), so it must be there.
+    bounds = config.get("bounds")
+    if not (
+        isinstance(bounds, dict)
+        and isinstance(bounds.get("ceilings"), dict)
+        and isinstance(bounds.get("minima"), dict)
+    ):
+        raise Unresumable(
+            "its config.json does not hold the bounds it opened with, as ceilings and "
+            "minima, so whether they have changed cannot be checked; end it instead"
+        )
     run_rows = [row for row in _rows(directory, RUNS) if row["event"] == "start"]
     controls = _rows(directory, CONTROLS)
     changes = _rows(directory, "parameter_changes.jsonl")
@@ -133,7 +151,7 @@ def _read(directory: Path, departure: float) -> Restoration:
         deployment=str(config["deployment"]),
         view=str(config["setup"]["view"]),
         subject_settings=str(config["versions"]["subject_settings"]),
-        bounds_at_open=config["bounds"],
+        bounds_at_open=bounds,
         already_today=config["already_delivered_today"],
         departure=departure,
         commanded=commanded,

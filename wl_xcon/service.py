@@ -687,12 +687,14 @@ class Service:
     def _resume(self, command: _link.ResumeSession) -> None:
         """**Welfare-critical** (pending the PI's ruling on the list). A stranded session
         resumed (XC-026 spec §5): refused, saying why, while a session is open, for an id
-        not stranded, when its record cannot give what a resume needs, when its animal's
-        bounds changed since it opened, or when the animal is past its out-of-cage limit
-        on the recorded departure -- each **before anything is written** (plan ruling 6).
-        Otherwise built as `_open` builds one (`_build`), from its record (`resume.read`),
-        and resumed (`Session.resume`). Another session still stranded is no bar: each is
-        resumed or ended on its own (spec §5; plan ruling 7)."""
+        not stranded, when its record cannot give what a resume needs or names two
+        animals, when its animal's bounds changed since it opened, or when the animal is
+        past its out-of-cage limit on the recorded departure -- each **before anything is
+        written** (plan ruling 6). Otherwise built as `_open` builds one (`_build`), from
+        its record (`resume.read`), and resumed (`Session.resume`). Another session still
+        stranded is no bar: each is resumed or ended on its own (spec §5; plan ruling 7).
+        **A record it cannot carry is a refusal, never the service's end** (the
+        controller's ruling on Task 4): what `stranded.restore` raises is said too."""
         if self.session is not None:
             self._refuse(command.KIND, command.by,
                          f"a session is open ({self.session.spec.session_id}); a stranded "
@@ -707,12 +709,24 @@ class Service:
         directory = self.root / found.session_id / XCON_DIRNAME
         try:
             restoration = _resume_mod.read(directory, found.left_at)
+        except _resume_mod.Unresumable as refused:
+            self._refuse(command.KIND, command.by, _sentence(refused))
+            return
+        if restoration.subject != found.subject:
+            # `_build` loads bounds for `config.json`'s animal, and `stranded.restore`
+            # holds them to the departure row's: one record, so one animal.
+            self._refuse(command.KIND, command.by,
+                         f"session {found.session_id}'s config.json names "
+                         f"{restoration.subject!r} and its departure names {found.subject!r}; "
+                         f"a record that disagrees with itself is not resumed, so end it instead")
+            return
+        try:
             session, bounds = self._build(
                 session_id=found.session_id, animal=restoration.subject,
                 deployment=restoration.deployment, view=restoration.view,
                 delivered_today=restoration.already_today,
             )
-        except (_resume_mod.Unresumable, SystemExit, ValueError, TypeError, Exceeded) as refused:
+        except (SystemExit, ValueError, TypeError, Exceeded) as refused:
             self._refuse(command.KIND, command.by, _sentence(refused))
             return
         except Exception as broken:  # noqa: BLE001 -- the animal's files are code
@@ -732,9 +746,13 @@ class Service:
                          f"{found.session_id} opened ({', '.join(changed)}); a session's "
                          f"limits do not change across a restart, so end it instead")
             return
-        stop = _stranded.restore(found, bounds, directory, self.wall_now).welfare.must_stop(
-            self.wall_now()
-        )
+        try:
+            stop = _stranded.restore(found, bounds, directory, self.wall_now).welfare.must_stop(
+                self.wall_now()
+            )
+        except Exceeded as refused:
+            self._refuse(command.KIND, command.by, _sentence(refused))
+            return
         if stop is not None:
             self._refuse(command.KIND, command.by,
                          f"{stop}; record its return with End session instead")

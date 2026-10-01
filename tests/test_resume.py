@@ -217,3 +217,49 @@ def test_the_last_write_is_the_newest_record_file(tmp_path):
         os.utime(path, (DEPARTURE + 5, DEPARTURE + 5))
     os.utime(directory / "trials.jsonl", (DEPARTURE + 777, DEPARTURE + 777))
     assert read(directory, DEPARTURE).last_written_at == DEPARTURE + 777
+
+
+# --- fail closed (the controller's ruling on Task 4, 2026-10-01) -------------------
+#
+# A record the service cannot read must never stop `wlx taskd` starting, since
+# `stranded.find` reads every stranded folder through `read` as it starts: whatever a
+# record makes raise is `Unresumable`, naming it.
+
+
+def test_an_infinite_number_in_a_record_cannot_be_resumed(tmp_path):
+    """`int(Infinity)` raises `OverflowError`, which no narrower handler named."""
+    directory = _two_runs(tmp_path)
+    with (directory / "trial_starts.jsonl").open("a") as handle:
+        handle.write(json.dumps(_pos(float("inf"), 6, 4, 4, 2, 2, 1, 2, 2, 1, run=1)) + "\n")
+    assert "Infinity" in (directory / "trial_starts.jsonl").read_text()
+
+    with pytest.raises(Unresumable, match="OverflowError"):
+        read(directory, DEPARTURE)
+
+
+def test_a_record_nested_past_the_parsers_depth_cannot_be_resumed(tmp_path):
+    directory = _two_runs(tmp_path)
+    (directory / "controls.jsonl").write_text("[" * 100_000 + "]" * 100_000 + "\n")
+
+    with pytest.raises(Unresumable, match="RecursionError"):
+        read(directory, DEPARTURE)
+
+
+@pytest.mark.parametrize(
+    "bounds",
+    [
+        {"ceilings": {"reward_correct": {"value": 0.05, "maximum": 10.0, "unit": "mL"}}},
+        [],
+        {"ceilings": [], "minima": {}},
+        {"ceilings": {}, "minima": "daily_fluid"},
+        None,
+    ],
+    ids=["no minima", "a list", "ceilings a list", "minima a string", "none"],
+)
+def test_a_config_whose_bounds_are_not_ceilings_and_minima_cannot_be_resumed(tmp_path, bounds):
+    """What a resume compares the animal's bounds with (plan ruling 3) must be there to
+    compare, so a `config.json` without it is refused, naming the file."""
+    directory = _folder(tmp_path, config=_config(bounds=bounds))
+
+    with pytest.raises(Unresumable, match=r"config\.json"):
+        read(directory, DEPARTURE)
