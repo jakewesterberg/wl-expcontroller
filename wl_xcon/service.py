@@ -801,6 +801,10 @@ class Service:
             return
         session.offered_tasks = self._tasks()
         self.session = session
+        # A return asked about it while it was stranded is moot now, as `_close_stranded`
+        # leaves it (the final review's I4); another stranded session's question stays.
+        if self.question is not None and self.question.session_id == found.session_id:
+            self.question = None
         self.stranded.remove(found)
 
     # --- runs -----------------------------------------------------------------------

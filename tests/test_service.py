@@ -1884,6 +1884,25 @@ def test_a_session_ended_before_its_process_stopped_comes_back_waiting_for_its_r
     assert _kinds(folders[2])[-3:] == ["session resumed", "returned", "session ended"]
 
 
+@pytest.mark.parametrize("asked_of", ["2027-01-14_01", "2027-01-14_02"], ids=["it", "another"])
+def test_a_return_question_is_cleared_by_a_resume_of_its_own_session_only(tmp_path, asked_of):
+    """The final review's I4: a far return asked about a stranded session that is then
+    resumed came back on the idle page once that session closed -- a warning about an
+    animal already recorded home, whose answer was refused. A question about another
+    stranded session stays: it is still that session's to answer."""
+    folders = _folders(tmp_path)
+    _crashed(folders, "2027-01-14_01", "2027-01-14_02")
+    service = _made(folders, wall=_moved(3 * 3600))
+    asked = _step(service, _end(returned=typed(-60), session_id=asked_of)).question
+    assert asked is not None and (asked.mark, asked.session_id) == ("return", asked_of)
+
+    _step(service, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    idle = _step(service, _end())
+    assert isinstance(idle, Idle) and idle.closed.session_id == "2027-01-14_01"
+    assert idle.question == (None if asked_of == "2027-01-14_01" else asked)
+
+
 @pytest.mark.parametrize("before", ["a run to its end", "a run killed", "no run, ended"])
 def test_a_resumed_session_says_how_its_last_run_ended_never_before_any_run(tmp_path, before):
     """The final review's M1: ended with no run since its resume, a session that ran a run
