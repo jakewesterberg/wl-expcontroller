@@ -149,6 +149,19 @@ def test_the_reward_size_is_the_last_runs_then_its_own_changes(tmp_path):
     assert stale.bounded == {"reward_correct": 0.25}
 
 
+def test_an_out_of_cage_limit_changed_in_any_run_is_carried_the_latest_last(tmp_path):
+    """The final review's I2: no start row's `bounded` holds `out_of_cage`, so a change
+    to it made in any run is carried, never reverted to the file's on resume; of two,
+    the later by sequence."""
+    once = read(_two_runs(tmp_path / "a", changes=[_change(1, "out_of_cage", 28800.0, 3600.0, run=0)]),
+                DEPARTURE)
+    assert once.bounded == {"reward_correct": 0.25, "out_of_cage": 3600.0}
+    twice = read(_two_runs(tmp_path / "b", changes=[_change(1, "out_of_cage", 28800.0, 7200.0, run=0),
+                                                    _change(2, "out_of_cage", 7200.0, 3600.0, run=1)]),
+                 DEPARTURE)
+    assert twice.bounded == {"reward_correct": 0.25, "out_of_cage": 3600.0}
+
+
 def test_a_session_opened_with_no_run_reads_back_with_run_one_next(tmp_path):
     """Review Focus 2."""
     got = read(_folder(tmp_path), DEPARTURE)

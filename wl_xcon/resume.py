@@ -22,6 +22,7 @@ from wl_xcon.levels import Levels, task_name
 from wl_xcon.record import CONTROLS, RUNS, TRIAL_STARTS
 from wl_xcon.simulate import Tally
 from wl_xcon.task import Outcome
+from wl_xcon.welfare import OUT_OF_CAGE
 
 #: The numbers a run's start row records (`Session.run`), which a resume continues from.
 RUN_NUMBERS = ("run_in_session", "run_in_task", "task_in_session")
@@ -158,11 +159,15 @@ def _read(directory: Path, departure: float) -> Restoration:
                 tally.outcomes[Outcome(line["outcome"])] += 1
 
     # The values the last run started with, then the changes made during it: a change in
-    # an earlier run is already in the last start row (`runs.jsonl`'s `bounded`).
+    # an earlier run is already in the last start row (`runs.jsonl`'s `bounded`). **The
+    # out-of-cage limit is in no start row**, so its latest change, in any run, is carried
+    # (the final review's I2): a limit the session lowered is never reverted to the file's.
     run_index = int(run_rows[-1]["run"]) if run_rows else None
     bounded = dict(run_rows[-1]["bounded"]) if run_rows else {}
     for change in sorted(changes, key=lambda c: int(c["sequence"])):
-        if change["run"] == run_index and change["name"] in bounded:
+        if change["name"] == OUT_OF_CAGE or (
+            change["run"] == run_index and change["name"] in bounded
+        ):
             bounded[change["name"]] = float(change["now"])
     return Restoration(
         session_id=str(config["session_id"]),

@@ -1841,6 +1841,50 @@ def test_a_session_refused_past_its_limit_is_then_offered_only_end(tmp_path):
     assert _kinds(folders[2])[-1] == "returned"
 
 
+def _lowered_live(folders, limit: float) -> None:
+    """A session whose out-of-cage limit was lowered to `limit` during its run -- a
+    page's `set`, or `wlx console --set out_of_cage=…`, which `Session.set` takes as it
+    takes any ceiling -- and whose process then stopped, with no end and no return."""
+    first = _made(folders, link=_Script({3: [SetParameter(name="out_of_cage", value=limit, by=BY)]}))
+    _step(first, _open())
+    _step(first, _start())
+    _run_to_its_end(first)
+    assert first.session.spec.bounds.value("out_of_cage") == limit
+
+
+def test_an_out_of_cage_limit_lowered_during_the_session_is_the_resumed_sessions(tmp_path):
+    """The final review's I2: a limit the session had lowered was reverted to its
+    animal's file on resume, silently, though spec §3 says a session's limits do not
+    change across a crash."""
+    folders = _folders(tmp_path)
+    _lowered_live(folders, 3600.0)
+    service = _made(folders)
+
+    frame = _step(service, ResumeSession(by=BY, session_id="2027-01-14_01"))
+
+    assert service.session.spec.bounds.value("out_of_cage") == 3600.0
+    assert frame.out_of_cage_limit_s == 3600.0
+
+
+def test_a_stranded_session_past_its_lowered_limit_is_refused_though_inside_its_files(tmp_path):
+    """The final review's I2: the past-limit check reads the limit the session had, not
+    its animal's file's -- an hour past a limit lowered to one hour, seven inside eight."""
+    folders = _folders(tmp_path)
+    _lowered_live(folders, 3600.0)
+    wall = _Wall()
+    service = _made(folders, wall=wall)
+    (found,) = service.stranded
+    wall.at = found.left_at + 3600 + 1
+
+    why = _resume_refused(service, "2027-01-14_01")
+
+    assert why == (
+        "out_of_cage: subject 'REFERENCE' has been out of its cage 3601 s against a "
+        "ceiling of 3600; record its return with End session instead"
+    )
+    assert [(s.resumable, s.why) for s in _step(service).stranded] == [(False, why)]
+
+
 @pytest.mark.parametrize(
     ("was", "now", "named"),
     [
@@ -2033,14 +2077,24 @@ def _negative_fluid(directory) -> None:
     (directory / "trials.jsonl").write_text("".join(json.dumps(r) + "\n" for r in lines))
 
 
+def _out_of_cage_changed_to(value):
+    def damage(directory) -> None:
+        with (directory / "parameter_changes.jsonl").open("a") as handle:
+            handle.write(json.dumps({"sequence": 1, "name": "out_of_cage", "was": 28800.0,
+                                     "now": value, "by": BY, "run": 0}) + "\n")
+    return damage
+
+
 @pytest.mark.parametrize(
     ("damage", "said"),
     [
         (_start_row_bounded_as(100.0), "'reward_correct' may not exceed 10.0 mL (asked for 100.0)"),
         (_negative_fluid, "a resumed session's commanded fluid is -"),
         (_start_row_bounded_as("0.05"), "must be real number, not str"),
+        (_out_of_cage_changed_to(99_999.0), "'out_of_cage' may not exceed 28800.0 s (asked for 99999.0)"),
     ],
-    ids=["bounded over its maximum", "negative fluid", "bounded not a number"],
+    ids=["bounded over its maximum", "negative fluid", "bounded not a number",
+         "out-of-cage limit over its maximum"],
 )
 def test_a_record_the_session_will_not_take_back_is_a_refusal_never_the_services_end(
     tmp_path, damage, said

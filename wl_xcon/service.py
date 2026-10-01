@@ -78,7 +78,7 @@ from wl_xcon.dio import Simulated as SimulatedCard
 from wl_xcon.geometry import Rig
 from wl_xcon.record import XCON_DIRNAME
 from wl_xcon.taskd import RunSpec, Session, SessionSpec, bounds_record
-from wl_xcon.welfare import Deployment, SessionClock
+from wl_xcon.welfare import OUT_OF_CAGE, Deployment, SessionClock
 from wl_xcon.welfare import Simulated as SimulatedPump
 
 #: Seconds between housekeeping passes while no run is in progress: one frame published,
@@ -767,7 +767,13 @@ class Service:
                          f"limits do not change across a restart, so end it instead")
             return
         try:
-            stop = _stranded.restore(found, bounds, directory, self.wall_now).welfare.must_stop(
+            # **Against the limit the session had** (the final review's I2): one it lowered
+            # is the one `Session.resume` restores, so it is the one this check reads, set
+            # through `Bounds.set` on a copy, which holds it under the file's maximum.
+            limits = dataclasses.replace(bounds, ceilings=dict(bounds.ceilings))
+            if OUT_OF_CAGE in restoration.bounded:
+                limits.set(OUT_OF_CAGE, restoration.bounded[OUT_OF_CAGE], by=command.by)
+            stop = _stranded.restore(found, limits, directory, self.wall_now).welfare.must_stop(
                 self.wall_now()
             )
         except Exceeded as refused:
