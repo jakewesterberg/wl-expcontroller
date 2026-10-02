@@ -393,6 +393,14 @@ build's can-wait review findings.
     service (`resume.read`, then `Session.resume`, then the out-of-cage copy in `_resume`).
   - **`tools/mutate.py` has no time-limit flag**; an unbounded rerun of a CI timeout is done by
     neutering with `mutate._neuter_source` in a `git archive` copy and running pytest there.
+  - **wl-preproc for a worktree's suite**: the local `../wl-preproc` checkout is on another branch
+    (`spec/run-requests` on 2026-10-02; its `origin/main` is `6a67ae2`), so this build's worktree
+    linked `wl-preproc` to a `git archive` export of its `main` in the session scratchpad, which a
+    reboot clears. Make a fresh export (`git -C ../wl-preproc fetch` then
+    `git -C ../wl-preproc archive origin/main | tar -x -C <dir>`) and link it before running with
+    `WLX_REQUIRE_PREPROC=1` in a new worktree.
+  - **`gh run watch` hit GitHub's API rate limit** on a 1h40m run, and the limit outlasted its own
+    reset time; check a long run every twenty minutes instead.
 - **Proof**: `2240 passed` three times in a row with `WLX_REQUIRE_PREPROC=1`; a local sweep of all
   36 new and changed functions, every one caught (`link._telemetry_from` by an unbounded rerun).
   CI on the branch's push (run `36932041835`): pytest `2240 passed` on 3.11-3.13; **371 caught, 0
