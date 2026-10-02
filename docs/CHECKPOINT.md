@@ -403,6 +403,14 @@ build's can-wait review findings.
   paused session that never resumes), so it was run again stopping at the first failure: `1 failed,
   1337 passed in 72.72s`, `tests/test_serve.py::test_e2e_pause_holds_the_trial_count_keeps_the_clock_and_resume_continues`,
   the pause's own resume test, a real catch. XC-140 now names it.
+- **CI on `main` after the fast-forward** (push run `36969813494`, on `68703f7`; its gate diffs
+  against the previous `main`, so it re-swept every module the branch changed), read job by job:
+  pytest `2240 passed` on 3.11-3.13; **371 caught, 0 survived**, every baseline and restore at
+  `2240 passed`, `welfare.emit` the known NOT MUTABLE stub. Its sixteen timeouts are all known and
+  verified: XC-140's (`must_stop`, `out_of_cage_seconds`), the 2026-10-01 full sweep's (`link`'s
+  `decode`, `deliver`, `publish`, `receive`, `_telemetry_from`; `serve`'s `offer`, `start`,
+  `_send_frame`; `service.step`; `taskd`'s `publish`, `_publish`; `simulate.signal`), run markers'
+  `taskd._ends`, and `taskd._resume` above.
 
 ## What moved on 2026-10-01: run markers, and the plan retired
 
