@@ -1,6 +1,6 @@
 # Where this build actually is
 
-**Last updated 2026-10-01**, at the commit this file was committed in. Check
+**Last updated 2026-10-02**, at the commit this file was committed in. Check
 `git log --oneline -1`; if it has moved far, distrust the numbers here before you
 distrust the reasoning. Numbers go stale, arguments do not.
 
@@ -9,7 +9,10 @@ distrust the reasoning. Numbers go stale, arguments do not.
 > written with**, `wl-expcontroller` and `wl_expcontroller/…` paths included, as the PI
 > ruled for dated documents; read `wl_expcontroller/taskd.py` there as `wl_xcon/taskd.py`.
 >
-> **This file describes `main`.** The newest entry, "What moved on 2026-10-01: run markers, and the
+> **This file describes `main`.** The newest entry, "What moved on 2026-10-02: XC-026, a stranded
+> session resumed", lets a crashed `wlx taskd` session be resumed from its record with its numbers,
+> its out-of-cage clock and its fluid carried on (on `main` by fast-forward once its CI read green).
+> Below it, "What moved on 2026-10-01: run markers, and the
 > plan retired", sends wl-preproc's run escape and marker and drops the unplanned-run label. Below it,
 > "What moved on 2026-10-01: session levels",
 > is the PI's vocabulary, ten position numbers on every trial line, block markers in the
@@ -341,6 +344,65 @@ figure was one low. In order:
   a path outside the workspace, and no credentials for it.
 
 ---
+
+## What moved on 2026-10-02: XC-026, a stranded session resumed
+
+**Resume here (state at 2026-10-02):** this change is on `main` (branch `xc026-resume`, a
+fast-forward once its push run read green). The PI approved the spec, the plan and an eleven-item
+welfare summary ("Approve all eleven"), and left the welfare-critical list as it is ("None of
+them", asked whether the resume code should join it). Nothing is in flight. **Next:** XC-207
+(block plans from the task program or chosen at the rig), b2b once wl-works says rig sign-in is
+deployed, the manual reward's other two slices (XC-157, XC-158; XC-157's line now names the double
+count an in-trial hand reward would make on resume), XC-183 and XC-186. XC-211 to XC-215 are this
+build's can-wait review findings.
+
+- **XC-026, closed: a stranded `wlx taskd` session can be resumed** (spec
+  `docs/superpowers/specs/2026-10-01-xc026-resume-design.md`, §8a its corrections; plan
+  `docs/superpowers/plans/2026-10-01-xc026-resume.md`). The stranded banner offers *resume session*
+  beside *end session…* (the PI: "Resume or end"). A resume reopens the same session, appending to
+  its record: between runs, or waiting for its return when its runs were ended before its process
+  stopped (the PI, 2026-10-01: "Bring it back waiting"). Its departure is restored, never re-taken
+  (the PI: "Take it silently"); its fluid so far is restored (`Welfare.restore_fluid`, once, before
+  any delivery); its reward size, its out-of-cage limit as the session last had it, and every
+  number continue; the in-session clock restarts; 4137 `SESSION_RESUMED` is strobed, provisional.
+  It is refused, before anything is written, for the reasons `architecture.md`'s stranded paragraph
+  lists; one refused past its limit is then offered only *end*. A record the service cannot read
+  fails closed and never stops `wlx taskd` starting.
+- **The record keeps what a resume needs**: `trial_starts.jsonl` (each trial's position, written
+  before its first strobe, which is where a resume takes every number from), `fluid_ml` and
+  `last_reward_at` on each trial line, and `already_delivered_today` in `config.json` (null when
+  unknown); a resume also reads the run numbers each run's start row has carried since session
+  levels. A record from before this change cannot be resumed: its fluid so far cannot be known, and
+  it is never taken as zero.
+- **XC-201, closed**: `wlx run` refuses a `--session-id` whose folder exists.
+- **Wire**: `ResumeSession` (kind `resume_session`), `Stranded.resumable` and `why`,
+  `Telemetry.resumed_at`; schema 13.
+- **Accepted by the PI with the summary**: a crash, or a trial that faulted earlier in the
+  session, can leave a trial's reward out of the restored fluid (an undercount, so the supplement
+  errs larger); an ended-then-crashed session's head-release instant is not restored; and the
+  no-repeat promise holds for a process crash, not a power loss (XC-210).
+- **Told to wl-preproc**: `docs/pending-wl-preproc-amendments.md`'s new open entry (4137, numbers
+  continuing, the head-fixed codes, and its `assemble` bounding a crashed run at the resumed run's
+  start).
+- **Learned, and worth the next session's time**:
+  - **Test the path found what the pieces could not**: the final review's own drives through
+    `Service` objects found an ended session resumable, a lowered limit reverted and a run number
+    repeatable after a failed run start, all behind green per-task reviews.
+  - **A broad `except` in a reader of damaged files is fail-closed only if every caller catches
+    what its own next step raises**: three fix rounds each closed one way a bad record stopped the
+    service (`resume.read`, then `Session.resume`, then the out-of-cage copy in `_resume`).
+  - **`tools/mutate.py` has no time-limit flag**; an unbounded rerun of a CI timeout is done by
+    neutering with `mutate._neuter_source` in a `git archive` copy and running pytest there.
+- **Proof**: `2240 passed` three times in a row with `WLX_REQUIRE_PREPROC=1`; a local sweep of all
+  36 new and changed functions, every one caught (`link._telemetry_from` by an unbounded rerun).
+  CI on the branch's push (run `36932041835`): pytest `2240 passed` on 3.11-3.13; **371 caught, 0
+  survived**, every catch a real `N failed` or a timeout. Twelve of the thirteen timeouts were
+  verified before (XC-140's and the 2026-10-01 full sweep's list, with `serve._listen`); the new
+  one, `taskd._resume` (the pause's resume, which this branch did not change), was re-run locally
+  with no limit. The full suite blocked past sixteen minutes (a later end-to-end test waits on a
+  paused session that never resumes), so it was run again stopping at the first failure: `1 failed,
+  1337 passed in 72.72s`, `tests/test_serve.py::test_e2e_pause_holds_the_trial_count_keeps_the_clock_and_resume_continues`,
+  the pause's own resume test, a real catch. XC-140 now names it.
 
 ## What moved on 2026-10-01: run markers, and the plan retired
 
