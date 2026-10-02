@@ -136,10 +136,11 @@ before its first write; the out-of-cage limit over its maximum, or one that is n
 refused one step earlier, by `Service._resume`'s own copy of that limit, as it checks the
 past-limit stop. A resume is not a new session, so
 the rule above still holds; with two stranded, each is resumed or ended on its own.
-`Service._resume`, `resume.py` and `Service._built` are not on this list. Whether the first
-two join it is a question in the PI's review summary (XC-026 spec §8 and its plan's
-constraints); `_built`, the build handler `_open` has shared with `_resume` since that plan's
-Task 4 review, is in the same summary as a change to `_open`.
+`Service._resume`, `Session.resume`, `resume.py` and `Service._built` are not on this list:
+the PI was asked whether the resume code should join it, and answered "None of them"
+(2026-10-02, approving XC-026's eleven-item welfare summary). `_built`, the build handler
+`_open` has shared with `_resume` since that plan's Task 4 review, was in the same summary as
+a change to `_open`.
 **And `service._unasked`** (the b3a-1 review's Ruling 1): a
 page's *confirm*, or a departure's *amend*, is taken only as the answer to the question
 the service posed — for that mark, that session and the instant it asked about, and for a

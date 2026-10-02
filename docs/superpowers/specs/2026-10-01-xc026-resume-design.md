@@ -1,8 +1,9 @@
 # XC-026 — Resume a Session After a Crash
 
 - **Status:** designed in conversation on 2026-10-01. The PI answered each question in the UI
-  (quoted below) and approved the design's sections ("Yes, continue", "Yes, write the spec"). The
-  spec itself awaits his review.
+  (quoted below) and approved the design's sections ("Yes, continue", "Yes, write the spec"),
+  then the spec ("Approve, write the plan") and the plan ("Approve, build it"), all 2026-10-01.
+  Built on branch `xc026-resume`; its welfare summary approved 2026-10-02 (§8).
 - **Date:** 2026-10-01
 - **Closes:** XC-026 and XC-201.
 - **Parents:**
@@ -190,6 +191,10 @@ The PI reviews, as a numbered summary:
 This spec does not widen the list (the PI, 2026-09-30). `Service._resume` restores the
 out-of-cage clock and the fluid, so whether it joins the list is a question in his review
 summary, his to answer.
+
+> **Answered 2026-10-02.** The PI approved the eleven-item welfare summary ("Approve all
+> eleven") and, asked whether the resume command, `Session.resume` and the record reader
+> should join the list, answered "None of them". The list is unchanged.
 
 ## 8a. Corrections found while planning (2026-10-01)
 

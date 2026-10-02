@@ -702,7 +702,9 @@ class Service:
         self.session = session
 
     def _resume(self, command: _link.ResumeSession) -> None:
-        """**Welfare-critical** (pending the PI's ruling on the list). A stranded session
+        """**Not on the welfare-critical list** (the PI, 2026-10-02: "None of them"), though
+        it restores the out-of-cage clock and the fluid; it was reviewed with XC-026's
+        welfare summary. A stranded session
         resumed (XC-026 spec §5): refused, saying why, while a session is open, for an id
         not stranded, when its record cannot give what a resume needs or names two
         animals, when its animal's bounds changed since it opened, or when the animal is
